@@ -4,6 +4,15 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_type:
+        description: Build artifacts only, or explicitly publish a release
+        type: choice
+        options: [none, stable, prerelease]
+        default: none
+      release_tag:
+        description: New version tag for a release (for example v0.1.0 or v0.1.0-preview.1)
+        type: string
 
 permissions:
   contents: read
@@ -27,6 +36,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Resolve package version
+        id: version
+        shell: bash
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type || 'none' }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: bash packaging/release-version.sh
       - name: Configure standalone core
         run: cmake -S . -B build-core ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=OFF
       - name: Build standalone core
@@ -39,24 +55,56 @@ jobs:
         run: cmake --build build --config Release --parallel 2
       - name: Run tests
         run: ctest --test-dir build -C Release --output-on-failure --no-tests=error
-      - name: Package Windows preview
+      - name: Package Windows installer and Portable ZIP
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.version.outputs.display }}
+          BINARY_VERSION: ${{ steps.version.outputs.binary }}
         run: |
-          New-Item -Path dist -ItemType Directory -Force | Out-Null
-          $exe = 'build/OSTFStudio_artefacts/Release/OSTF Studio.exe'
-          if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Missing build output: $exe" }
-          Compress-Archive -LiteralPath $exe -DestinationPath 'dist/OSTF_Studio_Windows_x64.zip' -Force
-      - name: Package macOS preview (unsigned)
+          ./packaging/windows/Package.ps1 -AppVersion $env:APP_VERSION -BinaryVersion $env:BINARY_VERSION
+      - name: Package macOS DMG
         if: runner.os == 'macOS'
         shell: bash
         run: |
           mkdir -p dist
           app='build/OSTFStudio_artefacts/Release/OSTF Studio.app'
           test -d "$app"
-          ditto -c -k --sequesterRsrc --keepParent "$app" dist/OSTF_Studio_macOS_arm64_unsigned.zip
+          lipo -verify_arch arm64 "$app/Contents/MacOS/OSTF Studio"
+          dmg='dist/OSTF_Studio_macOS_arm64.dmg'
+          staging=$(mktemp -d)
+          ditto "$app" "$staging/OSTF Studio.app"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create -volname 'OSTF Studio' -srcfolder "$staging" -format UDZO "$dmg"
+          hdiutil verify "$dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: OSTF-Studio-${{ matrix.name }}
-          path: dist/*.zip
+          path: dist/
+          retention-days: 7
           if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && (inputs.release_type == 'stable' || inputs.release_type == 'prerelease')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: OSTF-Studio-*
+          path: dist
+          merge-multiple: true
+      - name: Create version tag and publish both platforms
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: bash packaging/publish-release.sh
