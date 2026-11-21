@@ -8,6 +8,7 @@ Build a cross-platform, AI-native OSTF-based DAW. OSTF 5.0 is the canonical musi
 - Work on feature branches and record changes in commits. Review the diff and verify tests before integrating into `main`. Follow the applicable permissions and approvals for pushes and integration. Release publication is a separate operation.
 - Preserve source files and commit history. Check existing design and behavior before changing them, and limit changes to the requested scope.
 - Maintain the feature inventory, roadmap and implementation status in `README.md` and `docs/ARCHITECTURE.md`. Distinguish implemented, in progress, and unimplemented features. Record CI compilation, tests, packaging and real-device app verification independently. Report unresolved failures and unverified behavior by platform.
+- Read `HANDOFF.md` when resuming development. Update it in the same change as significant implementations, fixes or validation results. Keep branch context, platform verification and unresolved work reproducible from a fresh clone.
 
 ## Do not fabricate OSTF standard details
 - Before implementing OSTF/OSTFP serialization, obtain the official user's final OSTF 5.0 release package (schemas, spec, sample files) from the user or an authorized repository.

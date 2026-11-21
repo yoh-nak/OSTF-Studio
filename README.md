@@ -14,6 +14,16 @@ OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical mu
 
 **Not included:** licensed third-party plugins, real VST3 hosting, sound engine, OSTFP parser/writer, SMF/SVP exporters, network sync, real AI connection, signed binaries, official OSTF 5.0 schema/spec/assets. These must be implemented and verified separately.
 
+## Resume development from GitHub
+
+```bash
+git clone https://github.com/yoh-nak/OSTF-Studio.git
+cd OSTF-Studio
+git branch -avv
+```
+
+Open the clone in Codex. Read the [development rules](AGENTS.md), the [current handoff](HANDOFF.md), and the [architecture and roadmap](docs/ARCHITECTURE.md). For an existing clone, fetch `origin` and check the working tree before switching to the relevant remote branch. Install the local build prerequisites below on each machine. Keep GitHub credentials, personal settings, and generated build files local.
+
 ## Quick start — Codex desktop
 1. Extract this ZIP into a folder named `OSTF-Studio` (retain all directories).
 2. In Codex desktop, select **Add project / Open folder**, then point it to the extracted folder.
