@@ -1,0 +1,40 @@
+# Generated builds and caches
+/build/
+/build-*/
+/cmake-build-*/
+/dist/
+/CMakeFiles/
+/CMakeCache.txt
+/CMakeUserPresets.json
+/compile_commands.json
+/Testing/
+/.cache/
+/.vs/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.user
+*.suo
+*.log
+
+# Local credentials and settings
+.env
+.env.*
+!.env.example
+.aws/
+.ssh/
+.secrets/
+credentials.json
+secrets.json
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Local projects and archives
+*.ostfp
+!tests/fixtures/*.ostfp
+*.zip
