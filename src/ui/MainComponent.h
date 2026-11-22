@@ -6,6 +6,7 @@
 #include "ui/OstfpPreview.h"
 #include "ui/PluginBrowser.h"
 #include "ui/PreviewTransport.h"
+#include "ui/ViewButton.h"
 
 class MainComponent final : public juce::Component, public juce::DragAndDropContainer,
                             public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
@@ -43,7 +44,9 @@ private:
     void inspectOSTF();
     void openDemo();
     bool openPreview(juce::InputStream& input, bool plainScore = false, const juce::File& sourceFolder = {});
-    void saveDocument(bool package);
+    enum class SaveFormat { score, package, midi0, midi1 };
+    void saveDocument(SaveFormat);
+    juce::PopupMenu timelineMenu() const;
     void selectTrack(std::size_t index);
     void rebuildTrackControls();
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {});
@@ -84,8 +87,8 @@ private:
         juce::TextButton mute {"M"};
         juce::TextButton solo {"S"};
         juce::Slider volume, pan;
-        juce::TextButton plugin {"Instrument"};
-        juce::TextButton mix {"Mix"};
+        juce::TextButton plugin {TRANS("Instrument")};
+        juce::TextButton mix {TRANS("Mix")};
         EffectChain effects;
         juce::Label preset;
         juce::File pluginPath, candidatePath;
@@ -98,10 +101,12 @@ private:
         juce::var instrumentAssignment;
     };
     juce::MenuBarComponent menuBar_;
-    juce::TextButton pianoButton_ {"Piano Roll"};
-    juce::TextButton mixerButton_ {"Mixer"};
-    juce::TextButton pluginBrowserButton_ {"Plug-ins"};
-    juce::TextButton playButton_ {"Play"}, stopButton_ {"Stop"}, recordButton_ {"Record MIDI"};
+    ViewButton pianoButton_ {ViewButton::Icon::piano}, mixerButton_ {ViewButton::Icon::mixer},
+               pluginBrowserButton_ {ViewButton::Icon::plugins}, outputButton_ {ViewButton::Icon::outputs},
+               lanesButton_ {ViewButton::Icon::lanes};
+    juce::TooltipWindow tooltips_ {this};
+    bool editorVisible_ = true;
+    juce::TextButton playButton_ {TRANS("Play")}, stopButton_ {TRANS("Stop")}, recordButton_ {TRANS("Record MIDI")};
     juce::Label transportPosition_;
     juce::ComboBox trackPicker_;
     juce::ComboBox performanceLane_;

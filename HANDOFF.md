@@ -4,7 +4,11 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
-- The first public release target is `v1.0.0-alpha.1` for Windows x64 and macOS arm64. See [the release procedure](docs/RELEASING.md) for numbering and [GitHub Releases](https://github.com/yoh-nak/OSTF-Studio/releases) for publication status.
+- The `feature/smf-language-toolbar` branch adds File → Save as MIDI (SMF) for merged format 0 and multitrack format 1. It exports the current score, including recorded or inserted clips, and uses explicit event channels or the current track channel. The visual chord-voicing projection is excluded from source-track export. Song MIDI readback and language fallback checks run in CTest.
+- Settings → Language stores `system`, `en` or `ja` in the local view preferences. The UI chooses its catalog before creating the splash screen. A new launch applies the preference. Maintain Japanese Studio strings in `assets/Japanese.txt`. External plug-in editors supply their own language. The icon toolbar shares commands and visibility state with View. English and Japanese READMEs link to each other and to the published installers.
+- Local Windows x64 Release passed all 10 CTests. Windows x64 and macOS arm64 CI both built, tested and packaged the SMF and language changes at `ec0e406`. Interactive menu testing and physical audio-device checks remain open. [Cross-platform validation](https://github.com/yoh-nak/OSTF-Studio/actions/runs/45060796272)
+
+- The release target is `v1.0.0-alpha.2` for Windows x64 and macOS arm64. The two READMEs link to the public installer assets. See [the alpha 2 release notes](docs/releases/v1.0.0-alpha.2.md), [release procedure](docs/RELEASING.md) and [publication history](https://github.com/yoh-nak/OSTF-Studio/releases).
 - This alpha uses GPL-3.0-only for original app and plug-in code. Windows enables WASAPI and the ASIO SDK's GPLv3 option. JUCE uses its AGPLv3 option. Binary packages carry licenses and releases include the matching source archive. Physical ASIO and Core Audio playback still require separate verification.
 
 - The GM VST3 uses a sixteen-part editor with standard program names, MIDI activity and saved controls. Deployment builds package the checksum-pinned FluidR3 GM bank with its license notice. See README for development provisioning.

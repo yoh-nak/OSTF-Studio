@@ -29,8 +29,8 @@ private:
     double progressUpdatedAt_ = 0.0;
     juce::String lastScanMessage_, lastSkipped_;
     int skipped_ = 0;
-    juce::TextButton scanButton_ {"Scan VST3"};
-    juce::TextButton scanOneButton_ {"Scan one..."};
+    juce::TextButton scanButton_ {TRANS("Scan VST3")};
+    juce::TextButton scanOneButton_ {TRANS("Scan one...")};
     juce::ComboBox filter_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String scanTarget_;

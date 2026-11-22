@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 project(OSTFStudio VERSION 1.0.0 LANGUAGES C CXX)
-set(OSTF_STUDIO_ALPHA_NUMBER 1)
+set(OSTF_STUDIO_ALPHA_NUMBER 2)
 if(NOT DEFINED OSTF_STUDIO_DISPLAY_VERSION)
     set(OSTF_STUDIO_DISPLAY_VERSION "${PROJECT_VERSION}-alpha.${OSTF_STUDIO_ALPHA_NUMBER}")
 endif()
@@ -87,12 +87,13 @@ if (OSTF_STUDIO_BUILD_GUI)
         set_source_files_properties(${ostf_document_icons} PROPERTIES MACOSX_PACKAGE_LOCATION Resources HEADER_FILE_ONLY TRUE)
     endif()
     juce_add_binary_data(OSTFStudioAssets SOURCES
-        assets/AppIcon.png tests/fixtures/10-comprehensive-core.ostfp
+        assets/AppIcon.png assets/Japanese.txt tests/fixtures/10-comprehensive-core.ostfp
         examples/demo-songs/neon-platforms.ostfp examples/demo-songs/blue-hour-waltz.ostfp
         examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp)
     juce_generate_juce_header(OSTFStudio)
     target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/OstfpPreview.cpp
-        src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp)
+        src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
+        src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp)
     target_include_directories(OSTFStudio PRIVATE src)
     target_compile_definitions(OSTFStudio PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
     target_compile_definitions(OSTFStudio PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
@@ -109,14 +110,18 @@ if (OSTF_STUDIO_BUILD_GUI)
     )
     include(packaging/collect-notices.cmake)
 
-    add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp)
+    add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
     target_include_directories(ostf_studio_ostfp_tests PRIVATE src)
     target_compile_definitions(ostf_studio_ostfp_tests PRIVATE JUCE_USE_CURL=0)
-    target_link_libraries(ostf_studio_ostfp_tests PRIVATE juce::juce_cryptography)
+    target_link_libraries(ostf_studio_ostfp_tests PRIVATE juce::juce_cryptography juce::juce_audio_basics)
     add_test(NAME ostf_studio_ostfp_tests COMMAND ostf_studio_ostfp_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
     add_test(NAME ostf_studio_demo_gallery COMMAND ostf_studio_ostfp_tests --gallery
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs")
+    add_test(NAME ostf_studio_song_midi COMMAND ostf_studio_ostfp_tests --smf
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostf")
+    add_test(NAME ostf_studio_languages COMMAND ostf_studio_ostfp_tests --languages
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/Japanese.txt")
     if(WIN32 AND OSTF_STUDIO_ENABLE_ASIO)
         add_test(NAME ostf_studio_asio_backend COMMAND OSTFStudio --asio-backend-smoke)
         set_tests_properties(ostf_studio_asio_backend PROPERTIES TIMEOUT 15)

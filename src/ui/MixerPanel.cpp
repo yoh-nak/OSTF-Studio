@@ -21,7 +21,7 @@ const char* groupName(ostfstudio::MixerTrackGroup group) {
 MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, bool track) : isTrack(track) {
     name.setText(title, juce::dontSendNotification);
     name.setJustificationType(juce::Justification::centred);
-    classification.setText(group, juce::dontSendNotification);
+    classification.setText(juce::translate(group), juce::dontSendNotification);
     classification.setJustificationType(juce::Justification::centred);
     classification.setColour(juce::Label::textColourId, juce::Colour(0xffe7b46c));
     classification.setFont(juce::FontOptions(11.0f));
@@ -46,9 +46,9 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
         cue.setTitle(title + " pre-fader cue");
         cue.setTooltip("Send to the independent Cue output pair.");
         output.setTitle(title + " output");
-        output.addItem("Out: Master", 1);
-        output.addItem("Out: Bus A", 2);
-        output.addItem("Out: Bus B", 3);
+        output.addItem(TRANS("Out: Master"), 1);
+        output.addItem(TRANS("Out: Bus A"), 2);
+        output.addItem(TRANS("Out: Bus B"), 3);
         output.setSelectedId(1, juce::dontSendNotification);
         returnTarget.setTitle(title + " return send");
         sendLevel.setName(title + " send level");
@@ -122,8 +122,8 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     std::iota(trackOrder_.begin(), trackOrder_.end(), std::size_t{0});
     std::stable_sort(trackOrder_.begin(), trackOrder_.end(), [&](auto a, auto b) { return project.mixerGroups[a] < project.mixerGroups[b]; });
     caption_.setText(project.chordVoicings > 0
-        ? "Global Timeline: " + juce::String(project.chordVoicings) + " chord voicings / Cue outputs 3-4"
-        : juce::String("Global Timeline tracks left / Cue outputs 3-4"), juce::dontSendNotification);
+        ? TRANS("Global Timeline: ") + juce::String(project.chordVoicings) + TRANS(" chord voicings / Cue outputs 3-4")
+        : TRANS("Global Timeline tracks left / Cue outputs 3-4"), juce::dontSendNotification);
 
     for (std::size_t i = 0; i < tracks.size(); ++i) {
         auto strip = std::make_unique<Strip>(juce::String::fromUTF8(tracks[i].label), groupName(project.mixerGroups[i]), true);
@@ -154,9 +154,9 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     }
 
     for (std::size_t i = 0; i < routing_.busDb.size(); ++i) {
-        auto bus = std::make_unique<Strip>(i == 0 ? "Bus A" : "Bus B", "BUS", false);
+        auto bus = std::make_unique<Strip>(i == 0 ? TRANS("Bus A") : TRANS("Bus B"), "BUS", false);
         bus->mute.onClick = [this, i, button = &bus->mute] { setOutputMuted(i + 1, button->getToggleState()); };
-        bus->status.setText("To Master", juce::dontSendNotification);
+        bus->status.setText(TRANS("To Master"), juce::dontSendNotification);
         bus->volume.onValueChange = [this, i, control = &bus->volume] {
             routing_.busDb[i] = control->getValue();
             if (routingChanged) routingChanged();
@@ -164,11 +164,11 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         outputRack_.addAndMakeVisible(*bus);
         buses_.push_back(std::move(bus));
     }
-    master_ = std::make_unique<Strip>("Master", "OUTPUT", false);
+    master_ = std::make_unique<Strip>(TRANS("Master"), "OUTPUT", false);
     cue_ = std::make_unique<Strip>("Cue", "MONITOR", false);
     master_->mute.onClick = [this] { setOutputMuted(0, master_->mute.getToggleState()); };
-    master_->status.setText("Out 1-2", juce::dontSendNotification);
-    cue_->status.setText("Out 3-4", juce::dontSendNotification);
+    master_->status.setText(TRANS("Out 1-2"), juce::dontSendNotification);
+    cue_->status.setText(TRANS("Out 3-4"), juce::dontSendNotification);
     master_->volume.onValueChange = [this] {
         routing_.masterDb = master_->volume.getValue();
         if (routingChanged) routingChanged();
@@ -188,9 +188,9 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
 void MixerPanel::addReturn() {
     if (routing_.returnCount >= ostfstudio::maxMixerReturns) return;
     const auto index = routing_.returnCount++;
-    auto strip = std::make_unique<Strip>("Return " + juce::String(static_cast<int>(index + 1)), "RETURN", false);
+    auto strip = std::make_unique<Strip>(TRANS("Return ") + juce::String(static_cast<int>(index + 1)), "RETURN", false);
     strip->mute.onClick = [this, index, button = &strip->mute] { setOutputMuted(index + 3, button->getToggleState()); };
-    strip->status.setText("To Master", juce::dontSendNotification);
+    strip->status.setText(TRANS("To Master"), juce::dontSendNotification);
     strip->volume.onValueChange = [this, index, control = &strip->volume] {
         routing_.returnDb[index] = control->getValue();
         if (routingChanged) routingChanged();
@@ -207,7 +207,7 @@ void MixerPanel::updateReturnOptions() {
         const auto chosen = std::max(1, strip->returnTarget.getSelectedId());
         strip->returnTarget.clear(juce::dontSendNotification);
         for (std::size_t i = 0; i < routing_.returnCount; ++i)
-            strip->returnTarget.addItem("Send: Return " + juce::String(static_cast<int>(i + 1)), static_cast<int>(i + 1));
+            strip->returnTarget.addItem(TRANS("Send: Return ") + juce::String(static_cast<int>(i + 1)), static_cast<int>(i + 1));
         strip->returnTarget.setSelectedId(chosen, juce::dontSendNotification);
     }
 }
@@ -318,7 +318,7 @@ void MixerPanel::resized() {
 
 void MixerPanel::refreshAudibility() {
     for (std::size_t i = 0; i < strips_.size(); ++i) {
-        const auto label = channels_[i].muted ? "Muted" : isAudible(i) ? "Active" : "Excluded";
+        const auto label = channels_[i].muted ? TRANS("Muted") : isAudible(i) ? TRANS("Active") : TRANS("Excluded");
         strips_[i]->status.setText(label, juce::dontSendNotification);
     }
 }
