@@ -82,6 +82,8 @@ if (OSTF_STUDIO_BUILD_GUI)
         PRODUCT_NAME "OSTF Studio"
         COMPANY_NAME "OSTF"
         BUNDLE_ID "org.ostf.studio"
+        MICROPHONE_PERMISSION_ENABLED TRUE
+        MICROPHONE_PERMISSION_TEXT "OSTF Studio uses the selected audio input to show its level in Audio / MIDI Settings."
         ICON_BIG "assets/AppIcon.png"
         PLIST_TO_MERGE "${ostf_document_types}"
     )

@@ -76,6 +76,7 @@ jobs:
           app='build/OSTFStudio_artefacts/Release/OSTF Studio.app'
           test -d "$app"
           lipo -verify_arch arm64 "$app/Contents/MacOS/OSTF Studio"
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist"
           dmg='dist/OSTF_Studio_macOS_arm64.dmg'
           staging=$(mktemp -d)
           ditto "$app" "$staging/OSTF Studio.app"

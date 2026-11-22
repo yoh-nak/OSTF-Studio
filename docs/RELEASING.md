@@ -28,7 +28,7 @@ To build the packages on Windows after the Release GUI build, install Inno Setup
 
 Review [Inno Setup licensing](https://jrsoftware.org/inno-setup/downloads) before commercial use of the packaging workflow.
 
-Review the [Steinberg ASIO license options](https://www.steinberg.net/developers/) and the bundled JUCE ASIO notices before distributing Windows builds with the ASIO backend. Set `-DOSTF_STUDIO_ENABLE_ASIO=OFF` for builds that exclude it. Device drivers are installed separately by the user.
+For the public 1.0.0-alpha.1 Windows package, the workflow explicitly configures `-DOSTF_STUDIO_ENABLE_ASIO=OFF` and uses WASAPI. The macOS package uses Core Audio. Revisit the Windows build flag and user-facing release notes for alpha.2 or later after the ASIO agreement has been countersigned. Device drivers are installed separately by the user. [Steinberg ASIO licensing FAQ](https://forums.steinberg.net/t/asio-sdk-proprietary-licensing-faq/1044024)
 
 Windows packages currently have no Authenticode signing configured or verified. Validate the installer and portable executable on Windows independently of compilation and archive verification.
 
