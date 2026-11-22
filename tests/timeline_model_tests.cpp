@@ -1,5 +1,6 @@
 #include "core/TimelineModel.h"
 #include "core/MixerState.h"
+#include "core/MidiGeneratorPattern.h"
 #include "ui/DemoArrangement.h"
 #include <cstdlib>
 #include <iostream>
@@ -11,6 +12,13 @@ static void check(bool value, const char* label) {
 
 int main() {
     using namespace ostfstudio;
+    check(stereoBalance(-1.0f, false) == 1.0f && stereoBalance(-1.0f, true) == 0.0f
+          && stereoBalance(1.0f, false) == 0.0f && stereoBalance(0.0f, true) == 1.0f,
+          "stereo pan attenuates the opposite channel");
+    check(generatorPitchAtBeat(0) == 60 && generatorPitchAtBeat(1) == 64
+          && generatorPitchAtBeat(2) == 67 && generatorPitchAtBeat(3) == 64
+          && generatorPitchAtBeat(4) == 60 && generatorPitchAtBeat(-2) == 67,
+          "shared generator repeats across the song origin");
     TimelineModel model {4};
     check(model.getBeatsPerBar() == 4, "default meter");
     check(model.toBeats({1, 1.0}).value_or(-1) == 0.0, "bar one origin");

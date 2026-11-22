@@ -13,11 +13,22 @@ public:
     const ostfstudio::ChannelMix& channel(std::size_t index) const { return channels_[index]; }
     bool isAudible(std::size_t index) const { return ostfstudio::channelIsAudible(channels_, index); }
     ostfstudio::MixGains gains(std::size_t index) const { return ostfstudio::mixGains(channels_, index, routing_); }
+    void setOutputMuted(std::size_t index, bool muted);
+    double outputVolume(std::size_t index) const;
+    void setOutputVolume(std::size_t index, double db);
     void setVolumeDb(std::size_t index, double db);
+    void setPan(std::size_t index, float pan);
+    void setOutputBus(std::size_t index, int bus);
+    void setSendLevel(std::size_t index, std::size_t target, float level);
+    std::size_t returnCount() const { return routing_.returnCount; }
+    const ostfstudio::MixerRouting& routing() const { return routing_; }
     void setMuted(std::size_t index, bool muted);
     void setSoloed(std::size_t index, bool soloed);
+    ostfstudio::SessionMix snapshot() const;
+    void restore(const ostfstudio::SessionMix& mix);
     std::function<void(std::size_t)> channelChanged;
     std::function<void()> routingChanged;
+    std::function<void()> returnsChanged;
 
 private:
     struct Strip final : juce::Component {
@@ -26,7 +37,7 @@ private:
         void paint(juce::Graphics& g) override;
         juce::Label name;
         juce::Label classification;
-        juce::Slider volume;
+        juce::Slider volume, pan;
         juce::ToggleButton mute {"M"};
         juce::ToggleButton solo {"S"};
         juce::ToggleButton cue {"C"};
@@ -43,6 +54,8 @@ private:
     juce::TextButton addReturnButton_ {"+ Return"};
     juce::Component rack_;
     juce::Viewport viewport_;
+    juce::Component outputRack_;
+    juce::Viewport outputViewport_;
     std::vector<ostfstudio::ChannelMix> channels_;
     ostfstudio::MixerRouting routing_;
     std::vector<std::unique_ptr<Strip>> strips_;

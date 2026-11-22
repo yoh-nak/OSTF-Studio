@@ -21,8 +21,8 @@ inline constexpr Region vocals[] {{{9, 17}, "Verse vocal"}, {{25, 33}, "Hook"}};
 inline constexpr Region audio[] {{{1, 5}, "Ambience"}, {{21, 25}, "Riser"}, {{29, 33}, "Tail"}};
 
 inline constexpr Lane globalLanes[] {
-    {"SECTION", sections}, {"CHORD", chords}, {"KEY / SCALE", keys},
-    {"METER", meters}, {"BPM", tempos}, {"PHRASING", phrases}
+    {"SECTION", sections, TimelineLane::section}, {"CHORD", chords, TimelineLane::chord}, {"KEY / SCALE", keys, TimelineLane::key},
+    {"METER", meters, TimelineLane::meter}, {"BPM", tempos, TimelineLane::tempo}, {"PHRASING", phrases}
 };
 
 inline constexpr Lane trackLanes[] {

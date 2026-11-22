@@ -1,9 +1,15 @@
 #include "ui/PluginBrowser.h"
+#include "ui/PluginLibrary.h"
+#include "ui/PluginRoles.h"
 #include <algorithm>
 
 namespace {
-juce::File pluginDataDirectory() {
-    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("OSTF Studio");
+int browserCategory(const juce::PluginDescription& plugin) {
+    return plugin.isInstrument ? 2 : 3;
+}
+
+juce::String displayManufacturer(const juce::PluginDescription& plugin) {
+    return plugin.manufacturerName.isEmpty() ? "Unknown manufacturer" : plugin.manufacturerName;
 }
 
 juce::File statusFile(const juce::String& token) {
@@ -24,7 +30,8 @@ void writeStatus(const juce::File& file, const juce::String& message, double pro
 
 class Item final : public juce::TreeViewItem {
 public:
-    Item(juce::String label, juce::String id = {}) : label_(std::move(label)), id_(std::move(id)) {}
+    Item(juce::String label, juce::String id = {}, int category = 0)
+        : label_(std::move(label)), id_(std::move(id)), category_(category) {}
     bool mightContainSubItems() override { return id_.isEmpty(); }
     juce::String getUniqueName() const override { return id_.isEmpty() ? label_ : id_; }
     juce::var getDragSourceDescription() override {
@@ -34,10 +41,34 @@ public:
         if (isSelected()) g.fillAll(juce::Colour(0xff364e61));
         g.setFont(juce::FontOptions(13.0f, id_.isEmpty() ? juce::Font::bold : juce::Font::plain));
         g.setColour(id_.isEmpty() ? juce::Colour(0xffe7b46c) : juce::Colours::white);
-        g.drawFittedText(label_, 3, 0, width - 6, height, juce::Justification::centredLeft, 1);
+        const int textX = id_.isEmpty() ? 3 : 22;
+        if (id_.isNotEmpty()) {
+            const float y = static_cast<float>(height) / 2.0f;
+            g.setColour(juce::Colour(category_ == 2 ? 0xff73d8cc : 0xffe7b46c));
+            if (category_ == 4) {
+                g.setColour(juce::Colour(0xff9fbaff));
+                for (float x : {4.0f, 9.0f, 14.0f})
+                    g.fillRoundedRectangle(x, y - 4.0f, 3.0f, 8.0f, 1.0f);
+            } else if (category_ == 2) {
+                g.drawRoundedRectangle(3.0f, y - 5.0f, 14.0f, 10.0f, 1.5f, 1.0f);
+                for (float x : {7.0f, 12.0f}) g.fillRect(x, y - 4.5f, 2.0f, 7.0f);
+            } else {
+                juce::Path wave;
+                wave.startNewSubPath(3.0f, y);
+                wave.lineTo(6.0f, y);
+                wave.lineTo(8.0f, y - 5.0f);
+                wave.lineTo(12.0f, y + 5.0f);
+                wave.lineTo(14.0f, y);
+                wave.lineTo(17.0f, y);
+                g.strokePath(wave, juce::PathStrokeType(1.4f));
+            }
+            g.setColour(juce::Colours::white);
+        }
+        g.drawFittedText(label_, textX, 0, width - textX - 3, height, juce::Justification::centredLeft, 1);
     }
 private:
     juce::String label_, id_;
+    int category_;
 };
 }
 
@@ -46,21 +77,42 @@ PluginBrowser::PluginBrowser() {
     directory.createDirectory();
     cache_ = directory.getChildFile("vst3-cache.xml");
     if (const auto xml = juce::XmlDocument::parse(cache_)) plugins_.recreateFromXml(*xml);
+    registerBundledPlugins();
     addAndMakeVisible(scanButton_);
+    addAndMakeVisible(scanOneButton_);
+    addAndMakeVisible(filter_);
+    filter_.addItem("All plug-ins", 1);
+    filter_.addItem("Instruments", 2);
+    filter_.addItem("Effects", 3);
+    filter_.setSelectedId(1, juce::dontSendNotification);
+    filter_.onChange = [this] { refreshTree(); };
+    scanOneButton_.onClick = [this] { choosePlugin(); };
     addAndMakeVisible(status_);
     addChildComponent(progress_);
     addAndMakeVisible(tree_);
     tree_.setRootItemVisible(false);
     tree_.setDefaultOpenness(true);
-    scanButton_.onClick = [this] { scan(); };
+    scanButton_.onClick = [this] {
+        if (!scanProcess_) scan();
+        else if (scanProcess_->kill()) finishScan("Scan canceled; saved results retained");
+        else status_.setText("Could not stop the scanner", juce::dontSendNotification);
+    };
     refreshTree();
 }
 
-PluginBrowser::~PluginBrowser() { stopTimer(); }
+PluginBrowser::~PluginBrowser() {
+    stopTimer();
+    tree_.setRootItem(nullptr);
+    if (scanProcess_ && scanProcess_->isRunning()) scanProcess_->kill();
+    if (scanStatus_ != juce::File{}) scanStatus_.deleteFile();
+}
 
 void PluginBrowser::resized() {
     auto area = getLocalBounds().reduced(6);
-    scanButton_.setBounds(area.removeFromTop(24));
+    auto buttons = area.removeFromTop(24);
+    scanOneButton_.setBounds(buttons.removeFromRight(buttons.getWidth() / 2).reduced(2, 0));
+    scanButton_.setBounds(buttons.reduced(2, 0));
+    filter_.setBounds(area.removeFromTop(28).reduced(2, 2));
     status_.setBounds(area.removeFromTop(28));
     if (progress_.isVisible()) progress_.setBounds(area.removeFromTop(14).reduced(0, 2));
     tree_.setBounds(area);
@@ -74,90 +126,197 @@ std::optional<juce::PluginDescription> PluginBrowser::find(const juce::String& i
 
 void PluginBrowser::scan() {
     if (scanProcess_) return;
-    const auto token = juce::Uuid().toString();
-    scanStatus_ = statusFile(token);
-    auto process = std::make_unique<juce::ChildProcess>();
-    const juce::StringArray command {juce::File::getSpecialLocation(juce::File::currentExecutableFile).getFullPathName(),
-                                    "--scan-vst3", token};
-    if (!process->start(command, 0)) {
-        status_.setText("Could not start VST3 scanner", juce::dontSendNotification);
-        return;
-    }
-    scanProcess_ = std::move(process);
-    scanButton_.setEnabled(false);
-    status_.setText("Starting VST3 scan...", juce::dontSendNotification);
-    scanProgress_ = -1.0;
+    skipped_ = 0;
+    lastSkipped_.clear();
+    if (!startScanner()) return;
+    scanButton_.setButtonText("Cancel scan");
+    scanOneButton_.setEnabled(false);
     progress_.setVisible(true);
     resized();
     startTimer(120);
 }
 
-void PluginBrowser::timerCallback() {
-    if (const auto state = juce::XmlDocument::parse(scanStatus_)) {
-        status_.setText(state->getStringAttribute("message"), juce::dontSendNotification);
-        scanProgress_ = state->getDoubleAttribute("progress", -1.0);
+void PluginBrowser::choosePlugin() {
+    if (scanProcess_) return;
+    const auto locations = juce::VST3PluginFormat{}.getDefaultLocationsToSearch();
+    juce::File start;
+    for (int i = 0; i < locations.getNumPaths(); ++i) {
+        if (locations[i].isDirectory()) {
+            start = locations[i];
+            break;
+        }
     }
-    if (scanProcess_->isRunning()) return;
+    // The Windows native dialog cannot select both files and bundle directories.
+    chooser_ = std::make_unique<juce::FileChooser>("Select a VST3 file or bundle", start, "*.vst3", !JUCE_WINDOWS);
+    chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                          | juce::FileBrowserComponent::canSelectDirectories,
+                          [safe = juce::Component::SafePointer<PluginBrowser>(this)](const juce::FileChooser& chooser) {
+        if (safe == nullptr || safe->scanProcess_) return;
+        const auto file = chooser.getResult();
+        if (file == juce::File{}) return;
+        if (!file.exists() || !file.hasFileExtension("vst3")) {
+            safe->status_.setText("Select a .vst3 file or bundle", juce::dontSendNotification);
+            return;
+        }
+        safe->scanTarget_ = file.getFullPathName();
+        safe->scan();
+        if (!safe->scanProcess_) safe->scanTarget_.clear();
+    });
+}
+
+bool PluginBrowser::startScanner() {
+    const auto token = juce::Uuid().toString();
+    scanStatus_ = statusFile(token);
+    auto process = std::make_unique<juce::ChildProcess>();
+    juce::StringArray command {juce::File::getSpecialLocation(juce::File::currentExecutableFile).getFullPathName(),
+                               "--scan-vst3", token};
+    if (scanTarget_.isNotEmpty()) command.add(scanTarget_);
+    if (!process->start(command, 0)) {
+        status_.setText("Could not start VST3 scanner", juce::dontSendNotification);
+        return false;
+    }
+    scanProcess_ = std::move(process);
+    lastStatusWrite_ = {};
+    progressUpdatedAt_ = juce::Time::getMillisecondCounterHiRes();
+    lastScanMessage_ = skipped_ == 0 ? "Starting VST3 scan..." : "Resuming after " + lastSkipped_;
+    status_.setText(lastScanMessage_, juce::dontSendNotification);
+    scanProgress_ = -1.0;
+    return true;
+}
+
+void PluginBrowser::timerCallback() {
+    const auto timestamp = scanStatus_.getLastModificationTime();
+    if (timestamp != lastStatusWrite_) {
+        if (const auto state = juce::XmlDocument::parse(scanStatus_)) {
+            lastStatusWrite_ = timestamp;
+            progressUpdatedAt_ = juce::Time::getMillisecondCounterHiRes();
+            lastScanMessage_ = state->getStringAttribute("message");
+            status_.setText(lastScanMessage_, juce::dontSendNotification);
+            scanProgress_ = state->getDoubleAttribute("progress", -1.0);
+        }
+    }
+    const auto elapsed = juce::Time::getMillisecondCounterHiRes() - progressUpdatedAt_;
+    const bool running = scanProcess_->isRunning();
+    const bool loadingPlugin = lastScanMessage_.startsWith("Scanning: ");
+    if (running && elapsed < (loadingPlugin ? 25000.0 : 60000.0)) {
+        if (loadingPlugin && elapsed >= 6000.0)
+            status_.setText("Waiting: " + lastScanMessage_.substring(10), juce::dontSendNotification);
+        return;
+    }
+    if (running && !scanProcess_->kill()) {
+        status_.setText("Scanner did not respond to stop", juce::dontSendNotification);
+        return;
+    }
 
     const auto exit = scanProcess_->getExitCode();
-    const auto lastStatus = status_.getText();
+    if (scanTarget_.isEmpty() && exit != 2 && (running || exit != 0) && loadingPlugin && skipped_ < 12
+        && lastSkipped_ != lastScanMessage_.substring(10)) {
+        lastSkipped_ = lastScanMessage_.substring(10);
+        ++skipped_;
+        scanStatus_.deleteFile();
+        scanProcess_.reset();
+        if (startScanner()) return;
+        finishScan("Could not restart scanner; saved results retained");
+        return;
+    }
+    finishScan(exit == 2 ? juce::String("Another VST3 scan is running")
+               : exit == 3 ? "No VST3 type found in " + juce::File(scanTarget_).getFileName()
+               : running || exit != 0 ? "Scan stopped: " + lastScanMessage_
+               : lastScanMessage_.startsWith("Scan complete") ? lastScanMessage_
+               : skipped_ > 0 ? "Scan complete; skipped " + juce::String(skipped_) + " unresponsive plug-ins" : juce::String{});
+}
+
+void PluginBrowser::finishScan(const juce::String& message) {
     stopTimer();
     scanProcess_.reset();
     scanStatus_.deleteFile();
-    scanButton_.setEnabled(true);
+    scanButton_.setButtonText("Scan VST3");
+    scanOneButton_.setEnabled(true);
+    scanTarget_.clear();
     progress_.setVisible(false);
     if (const auto xml = juce::XmlDocument::parse(cache_)) plugins_.recreateFromXml(*xml);
+    registerBundledPlugins();
     refreshTree();
-    if (exit != 0) status_.setText(exit == 2 ? "Another VST3 scan is running" : "Scan stopped: " + lastStatus,
-                                   juce::dontSendNotification);
+    if (message.isNotEmpty()) status_.setText(message, juce::dontSendNotification);
     resized();
 }
 
-int PluginBrowser::runScanWorker(const juce::String& token) {
+int PluginBrowser::runScanWorker(const juce::String& token, const juce::String& target) {
     if (token.length() != 32 || !token.containsOnly("abcdefABCDEF0123456789")) return 1;
     const auto directory = pluginDataDirectory();
     if (directory.createDirectory().failed()) return 1;
     const auto status = statusFile(token);
     juce::InterProcessLock lock("OSTFStudio-VST3-library-scan");
-    if (!lock.enter(0)) return 2;
+    if (!lock.enter(1000)) return 2;
     const auto cache = directory.getChildFile("vst3-cache.xml");
     juce::KnownPluginList library;
     if (const auto xml = juce::XmlDocument::parse(cache)) library.recreateFromXml(*xml);
     juce::VST3PluginFormat format;
     writeStatus(status, "Finding installed VST3 plug-ins...", -1.0);
+    const auto guard = directory.getChildFile("vst3-scan-in-progress.txt");
+    if (target.isNotEmpty()) {
+        const juce::File plugin(target);
+        if (!plugin.exists() || !plugin.hasFileExtension("vst3")) return 3;
+        library.removeFromBlacklist(target);
+        auto previous = juce::StringArray::fromLines(guard.loadFileAsString());
+        previous.removeString(target);
+        if (!guard.replaceWithText(previous.joinIntoString("\n"))) return 1;
+    }
+    const bool single = target.isNotEmpty();
     juce::PluginDirectoryScanner scanner(library, format, format.getDefaultLocationsToSearch(), true,
-                                         directory.getChildFile("vst3-scan-in-progress.txt"));
+                                         guard);
+    if (single) scanner.setFilesOrIdentifiersToScan({target});
+    int blocked = 0;
     bool more;
     do {
         const auto next = scanner.getNextPluginFileThatWillBeScanned();
+        if (library.getBlacklistedFiles().contains(next)) {
+            ++blocked;
+            more = scanner.skipNextFile();
+            continue;
+        }
         if (next.isNotEmpty()) writeStatus(status, "Scanning: " + juce::File(next).getFileName(), scanner.getProgress());
         juce::String scanned;
-        more = scanner.scanNextFile(true, scanned);
+        more = scanner.scanNextFile(!single, scanned);
         if (const auto xml = library.createXml(); xml && !writeXml(cache, *xml)) return 1;
     } while (more);
-    writeStatus(status, "VST3 scan complete", 1.0);
+    if (single && (library.getBlacklistedFiles().contains(target) || !scanner.getFailedFiles().isEmpty())) return 3;
+    const auto missing = blocked + scanner.getFailedFiles().size();
+    writeStatus(status, missing > 0 ? "Scan complete; " + juce::String(missing) + " skipped or not recognized"
+                                    : single ? "Scan complete: " + juce::File(target).getFileName()
+                                             : "VST3 scan complete", 1.0);
     return 0;
 }
 
+void PluginBrowser::registerBundledPlugins() {
+    for (const auto* file : {"OSTF Arranger.vst3", "OSTF GM Sound Module.vst3"})
+        registerBundledVst3(plugins_, file);
+}
+
 void PluginBrowser::refreshTree() {
-    const auto types = plugins_.getTypes();
+    auto types = plugins_.getTypes();
+    const auto filter = filter_.getSelectedId();
+    for (int i = types.size(); --i >= 0;)
+        if (isOstfGenerator(types.getReference(i)) || (filter != 1 && browserCategory(types.getReference(i)) != filter))
+            types.remove(i);
     auto next = std::make_unique<Item>("VST3");
     juce::StringArray manufacturers;
     for (const auto& plugin : types)
-        manufacturers.addIfNotAlreadyThere(plugin.manufacturerName.isEmpty() ? "Unknown manufacturer" : plugin.manufacturerName);
+        manufacturers.addIfNotAlreadyThere(displayManufacturer(plugin));
     manufacturers.sort(true);
     for (const auto& maker : manufacturers) {
         auto group = std::make_unique<Item>(maker);
         std::vector<juce::PluginDescription> matches;
         for (const auto& plugin : types)
-            if ((plugin.manufacturerName.isEmpty() ? "Unknown manufacturer" : plugin.manufacturerName) == maker) matches.push_back(plugin);
+            if (displayManufacturer(plugin) == maker) matches.push_back(plugin);
         std::sort(matches.begin(), matches.end(), [](const auto& a, const auto& b) { return a.name.compareNatural(b.name) < 0; });
         for (const auto& plugin : matches)
-            group->addSubItem(new Item(plugin.name, plugin.createIdentifierString()));
+            group->addSubItem(new Item(plugin.name, plugin.createIdentifierString(), browserCategory(plugin)));
         next->addSubItem(group.release());
     }
     tree_.setRootItem(next.get());
     root_ = std::move(next);
-    status_.setText(types.isEmpty() ? "No cached VST3 plug-ins" : juce::String(types.size()) + " VST3 / drag to a track",
-                    juce::dontSendNotification);
+    if (!scanProcess_)
+        status_.setText(types.isEmpty() ? "No VST3 in this view" : juce::String(types.size()) + " VST3 / drag to a track",
+                        juce::dontSendNotification);
 }

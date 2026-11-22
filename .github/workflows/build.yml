@@ -75,6 +75,18 @@ jobs:
           staging=$(mktemp -d)
           ditto "$app" "$staging/OSTF Studio.app"
           ln -s /Applications "$staging/Applications"
+          gm='build/OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3'
+          lipo -verify_arch arm64 "$gm/Contents/MacOS/OSTF GM Sound Module"
+          arranger='build/OSTFArranger_artefacts/Release/VST3/OSTF Arranger.vst3'
+          lipo -verify_arch arm64 "$arranger/Contents/MacOS/OSTF Arranger"
+          pkgroot=$(mktemp -d)
+          mkdir -p "$pkgroot/Applications" "$pkgroot/Library/Audio/Plug-Ins/VST3"
+          ditto "$app" "$pkgroot/Applications/OSTF Studio.app"
+          ditto "$gm" "$pkgroot/Library/Audio/Plug-Ins/VST3/OSTF GM Sound Module.vst3"
+          ditto "$arranger" "$pkgroot/Library/Audio/Plug-Ins/VST3/OSTF Arranger.vst3"
+          cp third_party/tinysoundfont/LICENSE.txt "$staging/TinySoundFont-License.txt"
+          pkgbuild --root "$pkgroot" --install-location / --identifier org.ostf.studio.installer \
+            --version '${{ steps.version.outputs.binary }}' "$staging/Install OSTF Studio and VST3.pkg"
           hdiutil create -volname 'OSTF Studio' -srcfolder "$staging" -format UDZO "$dmg"
           hdiutil verify "$dmg"
       - uses: actions/upload-artifact@v4

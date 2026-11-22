@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "ui/DeviceSettingsWindow.h"
 #include "ui/MixerPanel.h"
+#include "ui/MidiDragButton.h"
 #include "ui/OstfpPreview.h"
 #include "ui/PluginBrowser.h"
 #include "ui/PreviewTransport.h"
@@ -10,12 +11,18 @@ class MainComponent final : public juce::Component, public juce::DragAndDropCont
                             public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer {
 public:
     MainComponent();
+    ~MainComponent() override;
+    bool openDocument(const juce::File& file);
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& event) override;
+    void mouseDrag(const juce::MouseEvent& event) override;
 private:
     bool isInterestedInDragSource(const SourceDetails& details) override;
+    void itemDragMove(const SourceDetails& details) override;
+    void itemDragExit(const SourceDetails& details) override;
     void itemDropped(const SourceDetails& details) override;
+    std::optional<std::size_t> pluginDropTrack(juce::Point<int> position) const;
     void timerCallback() override;
     void startTransport(bool recording);
     void stopTransport();
@@ -23,32 +30,66 @@ private:
     void togglePluginBrowser();
     juce::Rectangle<int> getWorkspace() const;
     int getArrangementHeight(int workspaceHeight) const;
+    void refreshTimelineLanes();
+    ostfstudio::ArrangementView currentArrangement() const;
     juce::StringArray getMenuBarNames() override;
     juce::PopupMenu getMenuForIndex(int index, const juce::String&) override;
     void menuItemSelected(int item, int topLevelMenuIndex) override;
     void inspectOSTF();
     void openDemo();
-    void openPreview(juce::InputStream& input);
+    bool openPreview(juce::InputStream& input, bool plainScore = false, const juce::File& sourceFolder = {});
+    void saveDocument(bool package);
     void selectTrack(std::size_t index);
     void rebuildTrackControls();
+    void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {});
+    bool canEditTracks() const;
     void chooseTrackPlugin(std::size_t index, bool bundleDirectory);
     void showTrackPluginMenu(std::size_t index);
     void scanTrackPlugin(std::size_t index);
     void discoverTrackPlugin(std::size_t index);
     void loadTrackPlugin(std::size_t index, const juce::PluginDescription& description);
     void openTrackPluginEditor(std::size_t index);
+    void linkAudio(std::size_t index);
+    void setupOutputTracks();
+    struct EffectSlot {
+        juce::String id;
+        std::unique_ptr<juce::AudioPluginInstance> effect;
+        std::unique_ptr<juce::DocumentWindow> editor;
+    };
+    struct EffectChain {
+        juce::TextButton button {"FX"};
+        std::vector<EffectSlot> slots;
+        std::size_t loading = 0;
+    };
+    EffectChain& effectChain(bool output, std::size_t index);
+    void updateEffectButton(EffectChain& chain);
+    void showEffects(bool output, std::size_t index);
+    void appendEffect(bool output, std::size_t index, const juce::PluginDescription& description);
+    void loadEffect(bool output, std::size_t index, std::size_t slot, const juce::PluginDescription& description);
+    void restoreEffects(bool output, std::size_t index, const juce::StringArray& ids);
+    PluginBrowser& ensurePluginBrowser();
+    void showTrackMix(std::size_t index);
+    void updatePresetLabel(std::size_t index);
     void refreshEditor();
+    bool canExportTrack(std::size_t track) const;
+    bool writeTrackMidi(std::size_t track, juce::OutputStream& stream) const;
     void drawArrangement(juce::Graphics& g, juce::Rectangle<int> area, const ostfstudio::ArrangementView& view);
     void drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) const;
     struct TrackControls {
         juce::TextButton mute {"M"};
         juce::TextButton solo {"S"};
         juce::Slider volume;
-        juce::TextButton plugin {"Plug-in"};
-        juce::File pluginPath;
+        juce::TextButton plugin {"Instrument"};
+        juce::TextButton mix {"Mix"};
+        EffectChain effects;
+        juce::Label preset;
+        juce::File pluginPath, candidatePath;
         std::unique_ptr<juce::AudioPluginInstance> instance;
         std::unique_ptr<juce::DocumentWindow> editor;
         bool loading = false;
+        bool playableInstrument = false;
+        std::optional<std::size_t> outputTrack;
+        int midiChannel = 1;
     };
     juce::MenuBarComponent menuBar_;
     juce::TextButton pianoButton_ {"Piano Roll"};
@@ -57,6 +98,11 @@ private:
     juce::TextButton playButton_ {"Play"}, stopButton_ {"Stop"}, recordButton_ {"Record MIDI"};
     juce::Label transportPosition_;
     juce::ComboBox trackPicker_;
+    juce::ComboBox performanceLane_;
+    juce::StringArray performanceLaneNames_;
+    MidiDragButton midiDrag_;
+    juce::TemporaryFile trackMidiFile_ {".mid"};
+    std::optional<std::size_t> pendingMidiDrag_;
     MixerPanel mixer_;
     std::unique_ptr<DeviceSettingsWindow> deviceSettings_;
     PreviewTransport transport_;
@@ -66,11 +112,26 @@ private:
     std::unique_ptr<juce::FileChooser> chooser_;
     std::unique_ptr<juce::FileChooser> pluginChooser_;
     std::unique_ptr<ostfstudio::OstfpPreview> project_;
+    juce::ApplicationProperties viewPreferences_;
+    unsigned timelineLaneMask_ = 0xff;
+    std::vector<ostfstudio::ArrangementLane> displayedGlobalLanes_;
     std::vector<juce::Rectangle<int>> trackRows_;
     juce::AudioPluginFormatManager pluginFormats_;
     std::unique_ptr<PluginBrowser> pluginBrowser_;
     std::vector<std::unique_ptr<TrackControls>> trackControls_;
+    struct OutputControl {
+        EffectChain effects;
+        juce::Slider volume;
+        juce::TextButton mute {"M"};
+    };
+    std::size_t visibleOutputCount() const;
+    std::optional<std::size_t> outputDropTrack(juce::Point<int> position) const;
+    std::array<juce::Rectangle<int>, PreviewTransport::outputCount> outputRows_;
+    std::optional<std::size_t> outputDropHighlight_;
+    std::array<OutputControl, PreviewTransport::outputCount> outputControls_;
+    bool showOutputTracks_ = true;
     std::size_t projectGeneration_ = 0;
     std::optional<std::size_t> selectedTrack_;
+    std::optional<std::size_t> pluginDropHighlight_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

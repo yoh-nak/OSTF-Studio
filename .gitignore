@@ -37,4 +37,5 @@ secrets.json
 # Local projects and archives
 *.ostfp
 !tests/fixtures/*.ostfp
+!examples/demo-songs/*.ostfp
 *.zip

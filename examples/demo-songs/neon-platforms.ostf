@@ -1,0 +1,2203 @@
+{
+  "format": "OSTF",
+  "version": "5.0.0",
+  "ppq": 960,
+  "song": {
+    "title": "Neon Platforms",
+    "genres": [
+      {
+        "id": "city-pop",
+        "name": "City Pop"
+      }
+    ],
+    "key": {
+      "state": "tonal",
+      "tonic": {
+        "step": "C",
+        "alter": 0
+      },
+      "mode": "major",
+      "label": "C major"
+    }
+  },
+  "timeline": {
+    "sections": [
+      {
+        "id": "part-1",
+        "name": "Station",
+        "start": 0,
+        "duration": 15360
+      },
+      {
+        "id": "part-2",
+        "name": "Night Train",
+        "start": 15360,
+        "duration": 15360
+      }
+    ],
+    "duration": 30720,
+    "tempoChanges": [
+      {
+        "at": 0,
+        "bpm": 106
+      }
+    ],
+    "meterChanges": [
+      {
+        "at": 0,
+        "numerator": 4,
+        "denominator": 4
+      }
+    ]
+  },
+  "harmony": {
+    "chords": [
+      {
+        "id": "chord-1",
+        "label": "Cmaj7",
+        "start": 0,
+        "duration": 3840,
+        "root": {
+          "step": "C",
+          "alter": 0
+        },
+        "intervals": [
+          0,
+          4,
+          7,
+          11
+        ],
+        "voicing": {
+          "pitches": [
+            59,
+            60,
+            64,
+            67
+          ],
+          "velocities": [
+            62,
+            66,
+            70,
+            74
+          ]
+        }
+      },
+      {
+        "id": "chord-2",
+        "label": "Am7",
+        "start": 3840,
+        "duration": 3840,
+        "root": {
+          "step": "A",
+          "alter": 0
+        },
+        "intervals": [
+          0,
+          3,
+          7,
+          10
+        ],
+        "voicing": {
+          "pitches": [
+            57,
+            60,
+            64,
+            67
+          ],
+          "velocities": [
+            62,
+            66,
+            70,
+            74
+          ]
+        }
+      },
+      {
+        "id": "chord-3",
+        "label": "Dm9",
+        "start": 7680,
+        "duration": 3840,
+        "root": {
+          "step": "D",
+          "alter": 0
+        },
+        "intervals": [
+          0,
+          2,
+          3,
+          7,
+          10
+        ],
+        "voicing": {
+          "pitches": [
+            57,
+            60,
+            62,
+            64,
+            65
+          ],
+          "velocities": [
+            62,
+            66,
+            70,
+            74,
+            78
+          ]
+        }
+      },
+      {
+        "id": "chord-4",
+        "label": "G13",
+        "start": 11520,
+        "duration": 3840,
+        "root": {
+          "step": "G",
+          "alter": 0
+        },
+        "intervals": [
+          0,
+          4,
+          7,
+          9,
+          10
+        ],
+        "voicing": {
+          "pitches": [
+            55,
+            59,
+            62,
+            64,
+            65
+          ],
+          "velocities": [
+            62,
+            66,
+            70,
+            74,
+            78
+          ]
+        }
+      },
+      {
+        "id": "chord-5",
+        "label": "Em7",
+        "start": 15360,
+        "duration": 3840,
+        "root": {
+          "step": "E",
+          "alter": 0
+        },
+        "intervals": [
+          0,
+          3,
+          7,
+          10
+        ],
+        "voicing": {
+          "pitches": [
+            55,
+            59,
+            62,
+            64
+          ],
+          "velocities": [
+            62,
+            66,
+            70,
+            74
+          ]
+        }
+      },
+      {
+        "id": "chord-6",
+        "label": "A7",
+        "start": 19200,
+        "duration": 3840,
+        "root": {
+          "step": "A",
+          "alter": 0
+        },
+        "intervals": [
+          0,
+          4,
+          7,
+          10
+        ],
+        "voicing": {
+          "pitches": [
+            55,
+            57,
+            61,
+            64
+          ],
+          "velocities": [
+            62,
+            66,
+            70,
+            74
+          ]
+        }
+      },
+      {
+        "id": "chord-7",
+        "label": "Dm9",
+        "start": 23040,
+        "duration": 3840,
+        "root": {
+          "step": "D",
+          "alter": 0
+        },
+        "intervals": [
+          0,
+          2,
+          3,
+          7,
+          10
+        ],
+        "voicing": {
+          "pitches": [
+            57,
+            60,
+            62,
+            64,
+            65
+          ],
+          "velocities": [
+            62,
+            66,
+            70,
+            74,
+            78
+          ]
+        }
+      },
+      {
+        "id": "chord-8",
+        "label": "Cmaj9",
+        "start": 26880,
+        "duration": 3840,
+        "root": {
+          "step": "C",
+          "alter": 0
+        },
+        "intervals": [
+          0,
+          2,
+          4,
+          7,
+          11
+        ],
+        "voicing": {
+          "pitches": [
+            59,
+            60,
+            62,
+            64,
+            67
+          ],
+          "velocities": [
+            62,
+            66,
+            70,
+            74,
+            78
+          ]
+        }
+      }
+    ],
+    "scales": [
+      {
+        "id": "ionian",
+        "label": "C Ionian",
+        "start": 0,
+        "duration": 30720,
+        "tonic": {
+          "step": "C",
+          "alter": 0
+        },
+        "intervals": [
+          0,
+          2,
+          4,
+          5,
+          7,
+          9,
+          11
+        ]
+      }
+    ]
+  },
+  "tracks": [
+    {
+      "id": "hook",
+      "name": "Electric Guitar Hook",
+      "role": "lead",
+      "trackType": "melodic",
+      "clips": [
+        {
+          "id": "hook-part-1",
+          "name": "Station",
+          "start": 0,
+          "duration": 15360,
+          "notes": [
+            {
+              "id": "hook-1-1",
+              "start": 480,
+              "duration": 336,
+              "pitch": 72,
+              "velocity": 91,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-1-2",
+              "start": 960,
+              "duration": 720,
+              "pitch": 76,
+              "velocity": 96,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-1-3",
+              "start": 2400,
+              "duration": 384,
+              "pitch": 79,
+              "velocity": 94,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-1-4",
+              "start": 2880,
+              "duration": 672,
+              "pitch": 76,
+              "velocity": 85,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-2-1",
+              "start": 4320,
+              "duration": 336,
+              "pitch": 72,
+              "velocity": 88,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-2-2",
+              "start": 4800,
+              "duration": 672,
+              "pitch": 76,
+              "velocity": 93,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-2-3",
+              "start": 6240,
+              "duration": 384,
+              "pitch": 81,
+              "velocity": 99,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-2-4",
+              "start": 6720,
+              "duration": 624,
+              "pitch": 79,
+              "velocity": 92,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-3-1",
+              "start": 7680,
+              "duration": 1152,
+              "pitch": 77,
+              "velocity": 91,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-3-2",
+              "start": 9360,
+              "duration": 384,
+              "pitch": 76,
+              "velocity": 85,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-3-3",
+              "start": 10080,
+              "duration": 864,
+              "pitch": 74,
+              "velocity": 88,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-4-1",
+              "start": 11520,
+              "duration": 1200,
+              "pitch": 71,
+              "velocity": 89,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-4-2",
+              "start": 13440,
+              "duration": 432,
+              "pitch": 74,
+              "velocity": 85,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-4-3",
+              "start": 13920,
+              "duration": 1056,
+              "pitch": 76,
+              "velocity": 91,
+              "releaseVelocity": 48
+            }
+          ]
+        },
+        {
+          "id": "hook-part-2",
+          "name": "Night Train",
+          "start": 15360,
+          "duration": 15360,
+          "notes": [
+            {
+              "id": "hook-5-1",
+              "start": 480,
+              "duration": 336,
+              "pitch": 76,
+              "velocity": 91,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-5-2",
+              "start": 960,
+              "duration": 720,
+              "pitch": 79,
+              "velocity": 97,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-5-3",
+              "start": 2400,
+              "duration": 384,
+              "pitch": 83,
+              "velocity": 99,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-5-4",
+              "start": 2880,
+              "duration": 624,
+              "pitch": 79,
+              "velocity": 89,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-6-1",
+              "start": 4320,
+              "duration": 336,
+              "pitch": 76,
+              "velocity": 88,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-6-2",
+              "start": 4800,
+              "duration": 672,
+              "pitch": 81,
+              "velocity": 96,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-6-3",
+              "start": 6240,
+              "duration": 384,
+              "pitch": 85,
+              "velocity": 102,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-6-4",
+              "start": 6720,
+              "duration": 624,
+              "pitch": 81,
+              "velocity": 90,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-7-1",
+              "start": 7680,
+              "duration": 816,
+              "pitch": 84,
+              "velocity": 94,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-7-2",
+              "start": 9120,
+              "duration": 336,
+              "pitch": 81,
+              "velocity": 89,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-7-3",
+              "start": 9600,
+              "duration": 672,
+              "pitch": 77,
+              "velocity": 92,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-7-4",
+              "start": 10560,
+              "duration": 624,
+              "pitch": 74,
+              "velocity": 85,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-8-1",
+              "start": 11520,
+              "duration": 720,
+              "pitch": 76,
+              "velocity": 90,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-8-2",
+              "start": 12480,
+              "duration": 528,
+              "pitch": 74,
+              "velocity": 83,
+              "releaseVelocity": 48
+            },
+            {
+              "id": "hook-8-3",
+              "start": 13440,
+              "duration": 1680,
+              "pitch": 72,
+              "velocity": 90,
+              "releaseVelocity": 48
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "keys",
+      "name": "Keys Voicing",
+      "role": "voicing",
+      "trackType": "melodic",
+      "clips": [
+        {
+          "id": "keys-part-1",
+          "name": "Station",
+          "start": 0,
+          "duration": 15360,
+          "notes": [
+            {
+              "id": "v1-1-1",
+              "start": 240,
+              "duration": 1800,
+              "pitch": 59,
+              "velocity": 63,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v1-1-2",
+              "start": 262,
+              "duration": 1778,
+              "pitch": 60,
+              "velocity": 66,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v1-1-3",
+              "start": 284,
+              "duration": 1756,
+              "pitch": 64,
+              "velocity": 69,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v1-1-4",
+              "start": 306,
+              "duration": 1734,
+              "pitch": 67,
+              "velocity": 72,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v1-2-1",
+              "start": 2160,
+              "duration": 1560,
+              "pitch": 59,
+              "velocity": 55,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v1-2-2",
+              "start": 2182,
+              "duration": 1538,
+              "pitch": 60,
+              "velocity": 58,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v1-2-3",
+              "start": 2204,
+              "duration": 1516,
+              "pitch": 64,
+              "velocity": 61,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v1-2-4",
+              "start": 2226,
+              "duration": 1494,
+              "pitch": 67,
+              "velocity": 64,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v2-1-1",
+              "start": 4080,
+              "duration": 1800,
+              "pitch": 57,
+              "velocity": 63,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v2-1-2",
+              "start": 4102,
+              "duration": 1778,
+              "pitch": 60,
+              "velocity": 66,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v2-1-3",
+              "start": 4124,
+              "duration": 1756,
+              "pitch": 64,
+              "velocity": 69,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v2-1-4",
+              "start": 4146,
+              "duration": 1734,
+              "pitch": 67,
+              "velocity": 72,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v2-2-1",
+              "start": 6000,
+              "duration": 1560,
+              "pitch": 57,
+              "velocity": 55,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v2-2-2",
+              "start": 6022,
+              "duration": 1538,
+              "pitch": 60,
+              "velocity": 58,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v2-2-3",
+              "start": 6044,
+              "duration": 1516,
+              "pitch": 64,
+              "velocity": 61,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v2-2-4",
+              "start": 6066,
+              "duration": 1494,
+              "pitch": 67,
+              "velocity": 64,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v3-1-1",
+              "start": 7920,
+              "duration": 1800,
+              "pitch": 57,
+              "velocity": 63,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v3-1-2",
+              "start": 7942,
+              "duration": 1778,
+              "pitch": 60,
+              "velocity": 66,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v3-1-3",
+              "start": 7964,
+              "duration": 1756,
+              "pitch": 62,
+              "velocity": 69,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v3-1-4",
+              "start": 7986,
+              "duration": 1734,
+              "pitch": 64,
+              "velocity": 72,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v3-1-5",
+              "start": 8008,
+              "duration": 1712,
+              "pitch": 65,
+              "velocity": 75,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v3-2-1",
+              "start": 9840,
+              "duration": 1560,
+              "pitch": 57,
+              "velocity": 55,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v3-2-2",
+              "start": 9862,
+              "duration": 1538,
+              "pitch": 60,
+              "velocity": 58,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v3-2-3",
+              "start": 9884,
+              "duration": 1516,
+              "pitch": 62,
+              "velocity": 61,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v3-2-4",
+              "start": 9906,
+              "duration": 1494,
+              "pitch": 64,
+              "velocity": 64,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v3-2-5",
+              "start": 9928,
+              "duration": 1472,
+              "pitch": 65,
+              "velocity": 67,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v4-1-1",
+              "start": 11760,
+              "duration": 1800,
+              "pitch": 55,
+              "velocity": 63,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v4-1-2",
+              "start": 11782,
+              "duration": 1778,
+              "pitch": 59,
+              "velocity": 66,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v4-1-3",
+              "start": 11804,
+              "duration": 1756,
+              "pitch": 62,
+              "velocity": 69,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v4-1-4",
+              "start": 11826,
+              "duration": 1734,
+              "pitch": 64,
+              "velocity": 72,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v4-1-5",
+              "start": 11848,
+              "duration": 1712,
+              "pitch": 65,
+              "velocity": 75,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v4-2-1",
+              "start": 13680,
+              "duration": 1560,
+              "pitch": 55,
+              "velocity": 55,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v4-2-2",
+              "start": 13702,
+              "duration": 1538,
+              "pitch": 59,
+              "velocity": 58,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v4-2-3",
+              "start": 13724,
+              "duration": 1516,
+              "pitch": 62,
+              "velocity": 61,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v4-2-4",
+              "start": 13746,
+              "duration": 1494,
+              "pitch": 64,
+              "velocity": 64,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v4-2-5",
+              "start": 13768,
+              "duration": 1472,
+              "pitch": 65,
+              "velocity": 67,
+              "releaseVelocity": 42
+            }
+          ]
+        },
+        {
+          "id": "keys-part-2",
+          "name": "Night Train",
+          "start": 15360,
+          "duration": 15360,
+          "notes": [
+            {
+              "id": "v5-1-1",
+              "start": 240,
+              "duration": 1800,
+              "pitch": 55,
+              "velocity": 63,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v5-1-2",
+              "start": 262,
+              "duration": 1778,
+              "pitch": 59,
+              "velocity": 66,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v5-1-3",
+              "start": 284,
+              "duration": 1756,
+              "pitch": 62,
+              "velocity": 69,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v5-1-4",
+              "start": 306,
+              "duration": 1734,
+              "pitch": 64,
+              "velocity": 72,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v5-2-1",
+              "start": 2160,
+              "duration": 1560,
+              "pitch": 55,
+              "velocity": 55,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v5-2-2",
+              "start": 2182,
+              "duration": 1538,
+              "pitch": 59,
+              "velocity": 58,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v5-2-3",
+              "start": 2204,
+              "duration": 1516,
+              "pitch": 62,
+              "velocity": 61,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v5-2-4",
+              "start": 2226,
+              "duration": 1494,
+              "pitch": 64,
+              "velocity": 64,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v6-1-1",
+              "start": 4080,
+              "duration": 1800,
+              "pitch": 55,
+              "velocity": 63,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v6-1-2",
+              "start": 4102,
+              "duration": 1778,
+              "pitch": 57,
+              "velocity": 66,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v6-1-3",
+              "start": 4124,
+              "duration": 1756,
+              "pitch": 61,
+              "velocity": 69,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v6-1-4",
+              "start": 4146,
+              "duration": 1734,
+              "pitch": 64,
+              "velocity": 72,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v6-2-1",
+              "start": 6000,
+              "duration": 1560,
+              "pitch": 55,
+              "velocity": 55,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v6-2-2",
+              "start": 6022,
+              "duration": 1538,
+              "pitch": 57,
+              "velocity": 58,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v6-2-3",
+              "start": 6044,
+              "duration": 1516,
+              "pitch": 61,
+              "velocity": 61,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v6-2-4",
+              "start": 6066,
+              "duration": 1494,
+              "pitch": 64,
+              "velocity": 64,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v7-1-1",
+              "start": 7920,
+              "duration": 1800,
+              "pitch": 57,
+              "velocity": 63,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v7-1-2",
+              "start": 7942,
+              "duration": 1778,
+              "pitch": 60,
+              "velocity": 66,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v7-1-3",
+              "start": 7964,
+              "duration": 1756,
+              "pitch": 62,
+              "velocity": 69,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v7-1-4",
+              "start": 7986,
+              "duration": 1734,
+              "pitch": 64,
+              "velocity": 72,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v7-1-5",
+              "start": 8008,
+              "duration": 1712,
+              "pitch": 65,
+              "velocity": 75,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v7-2-1",
+              "start": 9840,
+              "duration": 1560,
+              "pitch": 57,
+              "velocity": 55,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v7-2-2",
+              "start": 9862,
+              "duration": 1538,
+              "pitch": 60,
+              "velocity": 58,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v7-2-3",
+              "start": 9884,
+              "duration": 1516,
+              "pitch": 62,
+              "velocity": 61,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v7-2-4",
+              "start": 9906,
+              "duration": 1494,
+              "pitch": 64,
+              "velocity": 64,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v7-2-5",
+              "start": 9928,
+              "duration": 1472,
+              "pitch": 65,
+              "velocity": 67,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v8-1-1",
+              "start": 11760,
+              "duration": 1800,
+              "pitch": 59,
+              "velocity": 63,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v8-1-2",
+              "start": 11782,
+              "duration": 1778,
+              "pitch": 60,
+              "velocity": 66,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v8-1-3",
+              "start": 11804,
+              "duration": 1756,
+              "pitch": 62,
+              "velocity": 69,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v8-1-4",
+              "start": 11826,
+              "duration": 1734,
+              "pitch": 64,
+              "velocity": 72,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v8-1-5",
+              "start": 11848,
+              "duration": 1712,
+              "pitch": 67,
+              "velocity": 75,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v8-2-1",
+              "start": 13680,
+              "duration": 1560,
+              "pitch": 59,
+              "velocity": 55,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v8-2-2",
+              "start": 13702,
+              "duration": 1538,
+              "pitch": 60,
+              "velocity": 58,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v8-2-3",
+              "start": 13724,
+              "duration": 1516,
+              "pitch": 62,
+              "velocity": 61,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v8-2-4",
+              "start": 13746,
+              "duration": 1494,
+              "pitch": 64,
+              "velocity": 64,
+              "releaseVelocity": 42
+            },
+            {
+              "id": "v8-2-5",
+              "start": 13768,
+              "duration": 1472,
+              "pitch": 67,
+              "velocity": 67,
+              "releaseVelocity": 42
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bass",
+      "name": "Bass",
+      "role": "bassline",
+      "trackType": "melodic",
+      "clips": [
+        {
+          "id": "bass-part-1",
+          "name": "Station",
+          "start": 0,
+          "duration": 15360,
+          "notes": [
+            {
+              "id": "b1-1",
+              "start": 0,
+              "duration": 850,
+              "pitch": 36,
+              "velocity": 88
+            },
+            {
+              "id": "b1-2",
+              "start": 1680,
+              "duration": 340,
+              "pitch": 43,
+              "velocity": 72
+            },
+            {
+              "id": "b1-3",
+              "start": 1920,
+              "duration": 620,
+              "pitch": 36,
+              "velocity": 80
+            },
+            {
+              "id": "b1-4",
+              "start": 3360,
+              "duration": 260,
+              "pitch": 44,
+              "velocity": 68
+            },
+            {
+              "id": "b2-1",
+              "start": 3840,
+              "duration": 850,
+              "pitch": 45,
+              "velocity": 88
+            },
+            {
+              "id": "b2-2",
+              "start": 5520,
+              "duration": 340,
+              "pitch": 52,
+              "velocity": 72
+            },
+            {
+              "id": "b2-3",
+              "start": 5760,
+              "duration": 620,
+              "pitch": 45,
+              "velocity": 80
+            },
+            {
+              "id": "b2-4",
+              "start": 7200,
+              "duration": 260,
+              "pitch": 39,
+              "velocity": 68
+            },
+            {
+              "id": "b3-1",
+              "start": 7680,
+              "duration": 850,
+              "pitch": 38,
+              "velocity": 88
+            },
+            {
+              "id": "b3-2",
+              "start": 9360,
+              "duration": 340,
+              "pitch": 45,
+              "velocity": 72
+            },
+            {
+              "id": "b3-3",
+              "start": 9600,
+              "duration": 620,
+              "pitch": 38,
+              "velocity": 80
+            },
+            {
+              "id": "b3-4",
+              "start": 11040,
+              "duration": 260,
+              "pitch": 42,
+              "velocity": 68
+            },
+            {
+              "id": "b4-1",
+              "start": 11520,
+              "duration": 850,
+              "pitch": 43,
+              "velocity": 88
+            },
+            {
+              "id": "b4-2",
+              "start": 13200,
+              "duration": 340,
+              "pitch": 50,
+              "velocity": 72
+            },
+            {
+              "id": "b4-3",
+              "start": 13440,
+              "duration": 620,
+              "pitch": 43,
+              "velocity": 80
+            },
+            {
+              "id": "b4-4",
+              "start": 14880,
+              "duration": 260,
+              "pitch": 41,
+              "velocity": 68
+            }
+          ]
+        },
+        {
+          "id": "bass-part-2",
+          "name": "Night Train",
+          "start": 15360,
+          "duration": 15360,
+          "notes": [
+            {
+              "id": "b5-1",
+              "start": 0,
+              "duration": 850,
+              "pitch": 40,
+              "velocity": 88
+            },
+            {
+              "id": "b5-2",
+              "start": 1680,
+              "duration": 340,
+              "pitch": 47,
+              "velocity": 72
+            },
+            {
+              "id": "b5-3",
+              "start": 1920,
+              "duration": 620,
+              "pitch": 40,
+              "velocity": 80
+            },
+            {
+              "id": "b5-4",
+              "start": 3360,
+              "duration": 260,
+              "pitch": 44,
+              "velocity": 68
+            },
+            {
+              "id": "b6-1",
+              "start": 3840,
+              "duration": 850,
+              "pitch": 45,
+              "velocity": 88
+            },
+            {
+              "id": "b6-2",
+              "start": 5520,
+              "duration": 340,
+              "pitch": 52,
+              "velocity": 72
+            },
+            {
+              "id": "b6-3",
+              "start": 5760,
+              "duration": 620,
+              "pitch": 45,
+              "velocity": 80
+            },
+            {
+              "id": "b6-4",
+              "start": 7200,
+              "duration": 260,
+              "pitch": 39,
+              "velocity": 68
+            },
+            {
+              "id": "b7-1",
+              "start": 7680,
+              "duration": 850,
+              "pitch": 38,
+              "velocity": 88
+            },
+            {
+              "id": "b7-2",
+              "start": 9360,
+              "duration": 340,
+              "pitch": 45,
+              "velocity": 72
+            },
+            {
+              "id": "b7-3",
+              "start": 9600,
+              "duration": 620,
+              "pitch": 38,
+              "velocity": 80
+            },
+            {
+              "id": "b7-4",
+              "start": 11040,
+              "duration": 260,
+              "pitch": 37,
+              "velocity": 68
+            },
+            {
+              "id": "b8-1",
+              "start": 11520,
+              "duration": 850,
+              "pitch": 36,
+              "velocity": 88
+            },
+            {
+              "id": "b8-2",
+              "start": 13200,
+              "duration": 340,
+              "pitch": 43,
+              "velocity": 72
+            },
+            {
+              "id": "b8-3",
+              "start": 13440,
+              "duration": 620,
+              "pitch": 36,
+              "velocity": 80
+            },
+            {
+              "id": "b8-4",
+              "start": 14880,
+              "duration": 260,
+              "pitch": 35,
+              "velocity": 68
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "drums",
+      "name": "Drums",
+      "role": "drums",
+      "trackType": "drum",
+      "clips": [
+        {
+          "id": "drums-part-1",
+          "name": "Station",
+          "start": 0,
+          "duration": 15360,
+          "notes": [
+            {
+              "id": "d1-1-1",
+              "start": 0,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d1-1-2",
+              "start": 480,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d1-1-3",
+              "start": 0,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d1-2-1",
+              "start": 960,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d1-2-2",
+              "start": 1440,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d1-2-3",
+              "start": 974,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d1-3-1",
+              "start": 1920,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d1-3-2",
+              "start": 2400,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d1-3-3",
+              "start": 1920,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d1-4-1",
+              "start": 2880,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d1-4-2",
+              "start": 3360,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d1-4-3",
+              "start": 2894,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d2-1-1",
+              "start": 3840,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d2-1-2",
+              "start": 4320,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d2-1-3",
+              "start": 3840,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d2-2-1",
+              "start": 4800,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d2-2-2",
+              "start": 5280,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d2-2-3",
+              "start": 4814,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d2-3-1",
+              "start": 5760,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d2-3-2",
+              "start": 6240,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d2-3-3",
+              "start": 5760,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d2-4-1",
+              "start": 6720,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d2-4-2",
+              "start": 7200,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d2-4-3",
+              "start": 6734,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d3-1-1",
+              "start": 7680,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d3-1-2",
+              "start": 8160,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d3-1-3",
+              "start": 7680,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d3-2-1",
+              "start": 8640,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d3-2-2",
+              "start": 9120,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d3-2-3",
+              "start": 8654,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d3-3-1",
+              "start": 9600,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d3-3-2",
+              "start": 10080,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d3-3-3",
+              "start": 9600,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d3-4-1",
+              "start": 10560,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d3-4-2",
+              "start": 11040,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d3-4-3",
+              "start": 10574,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d4-1-1",
+              "start": 11520,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d4-1-2",
+              "start": 12000,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d4-1-3",
+              "start": 11520,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d4-2-1",
+              "start": 12480,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d4-2-2",
+              "start": 12960,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d4-2-3",
+              "start": 12494,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d4-3-1",
+              "start": 13440,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d4-3-2",
+              "start": 13920,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d4-3-3",
+              "start": 13440,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d4-4-1",
+              "start": 14400,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d4-4-2",
+              "start": 14880,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d4-4-3",
+              "start": 14414,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d4-4-4",
+              "start": 15120,
+              "duration": 120,
+              "soundSlotId": "tom",
+              "velocity": 83
+            }
+          ]
+        },
+        {
+          "id": "drums-part-2",
+          "name": "Night Train",
+          "start": 15360,
+          "duration": 15360,
+          "notes": [
+            {
+              "id": "d5-1-1",
+              "start": 0,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d5-1-2",
+              "start": 480,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d5-1-3",
+              "start": 0,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d5-2-1",
+              "start": 960,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d5-2-2",
+              "start": 1440,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d5-2-3",
+              "start": 974,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d5-3-1",
+              "start": 1920,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d5-3-2",
+              "start": 2400,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d5-3-3",
+              "start": 1920,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d5-4-1",
+              "start": 2880,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d5-4-2",
+              "start": 3360,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d5-4-3",
+              "start": 2894,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d6-1-1",
+              "start": 3840,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d6-1-2",
+              "start": 4320,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d6-1-3",
+              "start": 3840,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d6-2-1",
+              "start": 4800,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d6-2-2",
+              "start": 5280,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d6-2-3",
+              "start": 4814,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d6-3-1",
+              "start": 5760,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d6-3-2",
+              "start": 6240,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d6-3-3",
+              "start": 5760,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d6-4-1",
+              "start": 6720,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d6-4-2",
+              "start": 7200,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d6-4-3",
+              "start": 6734,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d7-1-1",
+              "start": 7680,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d7-1-2",
+              "start": 8160,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d7-1-3",
+              "start": 7680,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d7-2-1",
+              "start": 8640,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d7-2-2",
+              "start": 9120,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d7-2-3",
+              "start": 8654,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d7-3-1",
+              "start": 9600,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d7-3-2",
+              "start": 10080,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d7-3-3",
+              "start": 9600,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d7-4-1",
+              "start": 10560,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d7-4-2",
+              "start": 11040,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d7-4-3",
+              "start": 10574,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d8-1-1",
+              "start": 11520,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d8-1-2",
+              "start": 12000,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d8-1-3",
+              "start": 11520,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d8-2-1",
+              "start": 12480,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d8-2-2",
+              "start": 12960,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d8-2-3",
+              "start": 12494,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d8-3-1",
+              "start": 13440,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 50
+            },
+            {
+              "id": "d8-3-2",
+              "start": 13920,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d8-3-3",
+              "start": 13440,
+              "duration": 120,
+              "soundSlotId": "kick",
+              "velocity": 98
+            },
+            {
+              "id": "d8-4-1",
+              "start": 14400,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 54
+            },
+            {
+              "id": "d8-4-2",
+              "start": 14880,
+              "duration": 120,
+              "soundSlotId": "hat",
+              "velocity": 67
+            },
+            {
+              "id": "d8-4-3",
+              "start": 14414,
+              "duration": 120,
+              "soundSlotId": "snare",
+              "velocity": 96
+            },
+            {
+              "id": "d8-4-4",
+              "start": 15120,
+              "duration": 120,
+              "soundSlotId": "tom",
+              "velocity": 83
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "soundSlots": [
+    {
+      "id": "kick",
+      "name": "Kick",
+      "midiMapping": {
+        "standard": "gm1",
+        "note": 36
+      }
+    },
+    {
+      "id": "snare",
+      "name": "Snare",
+      "midiMapping": {
+        "standard": "gm1",
+        "note": 38
+      }
+    },
+    {
+      "id": "hat",
+      "name": "Closed Hat",
+      "midiMapping": {
+        "standard": "gm1",
+        "note": 42
+      }
+    },
+    {
+      "id": "open-hat",
+      "name": "Open Hat",
+      "midiMapping": {
+        "standard": "gm1",
+        "note": 46
+      }
+    },
+    {
+      "id": "clap",
+      "name": "Clap",
+      "midiMapping": {
+        "standard": "gm1",
+        "note": 39
+      }
+    },
+    {
+      "id": "tom",
+      "name": "Low Tom",
+      "midiMapping": {
+        "standard": "gm1",
+        "note": 45
+      }
+    }
+  ],
+  "lyrics": {
+    "documents": [],
+    "phrases": [],
+    "units": [],
+    "alignments": []
+  },
+  "resources": []
+}
