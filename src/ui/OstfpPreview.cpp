@@ -27,7 +27,7 @@ juce::MemoryBlock readMember(juce::ZipFile& zip, int index, int limit = maxBytes
     std::unique_ptr<juce::InputStream> stream(zip.createStreamForEntry(index));
     require(stream != nullptr, "Cannot read OSTFP member");
     juce::MemoryBlock bytes;
-    const auto size = stream->readIntoMemoryBlock(bytes, static_cast<juce::ssize_t>(entry->uncompressedSize + 1));
+    const auto size = stream->readIntoMemoryBlock(bytes, entry->uncompressedSize + 1);
     require(size == static_cast<std::size_t>(entry->uncompressedSize), "OSTFP member size mismatch");
     return bytes;
 }

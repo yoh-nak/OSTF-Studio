@@ -184,6 +184,12 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
+        if (args.size() == 1 && args[0] == "--asio-backend-smoke") {
+            std::unique_ptr<juce::AudioIODeviceType> backend(juce::AudioIODeviceType::createAudioIODeviceType_ASIO());
+            setApplicationReturnValue(backend && backend->getTypeName() == "ASIO" ? 0 : 1);
+            quit();
+            return;
+        }
         if (args.size() == 4 && args[0] == "--gm-plugin-smoke") {
             juce::MessageManager::callAsync([this, args] {
                 setApplicationReturnValue(checkGmPlugin(args[1], args[2], args[3]));

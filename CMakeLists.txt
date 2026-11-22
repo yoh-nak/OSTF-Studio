@@ -69,12 +69,6 @@ if (OSTF_STUDIO_BUILD_GUI)
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt"
                 "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources")
-        if(APPLE)
-            # Seal the complete VST3 bundle, including its newly copied SoundFont.
-            add_custom_command(TARGET OSTFGMSoundModule_VST3 POST_BUILD
-                COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:OSTFGMSoundModule_VST3>"
-                VERBATIM)
-        endif()
     endif()
 
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/DocumentTypes.plist" ostf_document_types)
@@ -113,6 +107,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         juce::juce_cryptography
         juce::juce_recommended_config_flags
     )
+    include(packaging/collect-notices.cmake)
 
     add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp)
     target_include_directories(ostf_studio_ostfp_tests PRIVATE src)
@@ -122,6 +117,10 @@ if (OSTF_STUDIO_BUILD_GUI)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
     add_test(NAME ostf_studio_demo_gallery COMMAND ostf_studio_ostfp_tests --gallery
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs")
+    if(WIN32 AND OSTF_STUDIO_ENABLE_ASIO)
+        add_test(NAME ostf_studio_asio_backend COMMAND OSTFStudio --asio-backend-smoke)
+        set_tests_properties(ostf_studio_asio_backend PROPERTIES TIMEOUT 15)
+    endif()
     if (WIN32 OR APPLE)
         add_test(NAME ostf_studio_startup COMMAND OSTFStudio --startup-smoke)
         add_test(NAME ostf_studio_open_project

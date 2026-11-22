@@ -518,7 +518,10 @@ void MainComponent::menuItemSelected(int item, int) {
             break;
         case showAbout:
             juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
-                "About OSTF Studio", "OSTF Studio " OSTF_STUDIO_DISPLAY_VERSION "\nOSTF 5.0 timeline, piano roll and session mixer.");
+                "About OSTF Studio", "OSTF Studio " OSTF_STUDIO_DISPLAY_VERSION
+                "\nOSTF 5.0 timeline, piano roll and session mixer.\n\n"
+                "Original Studio code: GNU GPL version 3. Provided without warranty. "
+                "See the included Licenses folder and the corresponding source on GitHub Releases.");
             break;
     }
 }

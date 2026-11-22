@@ -20,6 +20,7 @@ SetupIconFile=..\..\assets\AppIcon.ico
 WizardStyle=modern
 
 [Files]
+Source: "{#Licenses}\*"; DestDir: "{app}\Licenses"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\assets\OstfScore.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\assets\OstfpPackage.ico"; DestDir: "{app}"; Flags: ignoreversion

@@ -12,6 +12,7 @@ assets=(
   dist/OSTF_Studio_Windows_x64_Setup.exe
   dist/OSTF_Studio_Windows_x64_Portable.zip
   dist/OSTF_Studio_macOS_arm64.dmg
+  dist/OSTF_Studio_Corresponding_Source.tar.gz
 )
 for asset in "${assets[@]}"; do
   if [[ ! -s "$asset" ]]; then

@@ -16,6 +16,7 @@ $installer = Join-Path $PSScriptRoot 'OSTFStudio.iss'
 $GmBundle = (Get-Item -LiteralPath $GmBundle -ErrorAction Stop).FullName
 $ArrangerBundle = (Get-Item -LiteralPath $ArrangerBundle -ErrorAction Stop).FullName
 $GmLicense = (Get-Item -LiteralPath (Join-Path $PSScriptRoot '../../third_party/tinysoundfont/LICENSE.txt')).FullName
+$Licenses = (Get-Item -LiteralPath (Join-Path (Split-Path -Parent $AppExe) 'Licenses') -ErrorAction Stop).FullName
 if (!(Test-Path -LiteralPath (Join-Path $GmBundle 'Contents/x86_64-win/OSTF GM Sound Module.vst3') -PathType Leaf)) {
     throw "Missing Windows x64 GM Sound Module binary in $GmBundle"
 }
@@ -23,8 +24,8 @@ if (!(Test-Path -LiteralPath (Join-Path $GmBundle 'Contents/x86_64-win/OSTF GM S
 if (!(Test-Path -LiteralPath (Join-Path $ArrangerBundle 'Contents/x86_64-win/OSTF Arranger.vst3') -PathType Leaf)) {
     throw "Missing Windows x64 OSTF Arranger binary in $ArrangerBundle"
 }
-& $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DAppExe=$AppExe" "/DOutputDir=$OutputDir" "/DGmBundle=$GmBundle" "/DArrangerBundle=$ArrangerBundle" "/DGmLicense=$GmLicense" $installer
+& $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DAppExe=$AppExe" "/DOutputDir=$OutputDir" "/DGmBundle=$GmBundle" "/DArrangerBundle=$ArrangerBundle" "/DGmLicense=$GmLicense" "/DLicenses=$Licenses" $installer
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup exited with code $LASTEXITCODE" }
 
 $portableZip = Join-Path $OutputDir 'OSTF_Studio_Windows_x64_Portable.zip'
-Compress-Archive -LiteralPath @($AppExe, $GmBundle, $ArrangerBundle, $GmLicense) -DestinationPath $portableZip -Force
+Compress-Archive -LiteralPath @($AppExe, $GmBundle, $ArrangerBundle, $GmLicense, $Licenses) -DestinationPath $portableZip -Force

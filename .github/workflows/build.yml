@@ -28,7 +28,7 @@ jobs:
         include:
           - name: Windows-x64
             os: windows-2022
-            configure_args: '-G "Visual Studio 17 2022" -A x64 -DOSTF_STUDIO_ENABLE_ASIO=OFF'
+            configure_args: '-G "Visual Studio 17 2022" -A x64 -DOSTF_STUDIO_ENABLE_ASIO=ON'
           - name: macOS-arm64
             os: macos-15
             configure_args: '-DCMAKE_OSX_ARCHITECTURES=arm64'
@@ -57,7 +57,10 @@ jobs:
       - name: Configure (JUCE pinned tag 9.0.5)
         run: cmake -S . -B build ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=ON -DOSTF_STUDIO_DISPLAY_VERSION=${{ steps.version.outputs.display }}
       - name: Build
-        run: cmake --build build --config Release --parallel 2
+        shell: bash
+        run: |
+          test "$(git -C build/_deps/juce-src rev-parse HEAD)" = d60b7a78030661574a615b586d9325ba7a7fa7dd
+          cmake --build build --config Release --parallel 2
       - name: Run tests
         run: ctest --test-dir build -C Release --output-on-failure --no-tests=error
       - name: Package Windows installer and Portable ZIP
@@ -95,6 +98,10 @@ jobs:
             --version '${{ steps.version.outputs.binary }}' "$staging/Install OSTF Studio and VST3.pkg"
           hdiutil create -volname 'OSTF Studio' -srcfolder "$staging" -format UDZO "$dmg"
           hdiutil verify "$dmg"
+      - name: Package corresponding source and build inputs
+        if: runner.os == 'macOS'
+        shell: bash
+        run: bash packaging/package-source.sh
       - uses: actions/upload-artifact@v4
         with:
           name: OSTF-Studio-${{ matrix.name }}

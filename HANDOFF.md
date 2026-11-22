@@ -5,6 +5,7 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 ## Current state
 
 - The first public release target is `v1.0.0-alpha.1` for Windows x64 and macOS arm64. See [the release procedure](docs/RELEASING.md) for numbering and [GitHub Releases](https://github.com/yoh-nak/OSTF-Studio/releases) for publication status.
+- This alpha uses GPL-3.0-only for original app and plug-in code. Windows enables WASAPI and the ASIO SDK's GPLv3 option. JUCE uses its AGPLv3 option. Binary packages carry licenses and releases include the matching source archive. Physical ASIO and Core Audio playback still require separate verification.
 
 - The GM VST3 uses a sixteen-part editor with standard program names, MIDI activity and saved controls. Deployment builds package the checksum-pinned FluidR3 GM bank with its license notice. See README for development provisioning.
 - Demo scores now use varied chord lengths. The arrangement and piano roll have independent horizontal zoom and scroll controls. Demo files use regular Production Session instrument devices with VST3 class IDs. OSTF Core track MIDI channels and Program Change events select the GM programs. Standalone scores use the common Studio production settings. The original preview SF2 built into the VST3 uses four pitch zones and band-limited harmonic samples. A user SoundFont can still be loaded. Mixed meter, vocal synthesis and physical audio verification remain pending.
