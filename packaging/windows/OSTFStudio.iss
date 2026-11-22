@@ -15,6 +15,7 @@ CloseApplications=yes
 RestartApplications=no
 OutputDir={#OutputDir}
 OutputBaseFilename=OSTF_Studio_Windows_x64_Setup
+SetupIconFile=..\..\assets\AppIcon.ico
 WizardStyle=modern
 
 [Files]

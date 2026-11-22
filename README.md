@@ -6,13 +6,20 @@ OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical mu
 
 ## This starter contains
 - Portable C++20 timeline model with unit tests (internal only; not OSTF spec definitions)
-- JUCE 9.0.5 desktop window with **demonstration** global timeline and track arrangement lanes
+- JUCE 9.0.5 desktop window with a **32-bar demo** ruler, global musical lanes, and named arrangement regions aligned to the same bar positions
 - `.ostf` and `.json` **basic JSON object/array inspection** using JUCE, without OSTF schema validation
+- Read-only **OSTFP 1.0 preview** for a bounded subset of score-only OSTF 5.0.0 packages. **Open demo** loads the bundled official 16-bar song. **Open .ostfp / .ostf** can open the same package from disk.
+- Select an arrangement row to view its pitched notes in the read-only piano roll. The ruler shows song bar numbers and the keyboard follows the track's pitch range. Sound-slot percussion is outside the pitched view.
+- The official demo opens on startup with a pitched track selected. The transport plays pitched notes through a built-in preview instrument on the selected audio output. Volume, solo and mute affect that preview. Enable a MIDI input and use **Record MIDI** to capture notes into the selected track for the current session. Recording starts at the beginning and retains captured notes in memory on Stop. Audio recording, OSTFP save and plugin signal routing are pending.
+- Use **File** to open a project or the demo, **View** to switch editors, and **Settings → Audio / MIDI Devices** to select devices. On Windows, choose **ASIO** to use an installed manufacturer driver. `OSTF_STUDIO_ENABLE_ASIO` defaults to `ON` and affects Windows builds only.
+- Arrangement rows share volume, mute and solo with the Mixer. Use a track's **Plug-in** slot to select a local VST3, then choose **Load VST3** to open its parameter editor. The slot holds one instance for the current session. Plug-in audio routing and state persistence remain pending. On macOS, AU files can be assigned for the session.
+- The startup screen shows workspace preparation. **Plug-ins** opens a manufacturer-grouped VST3 browser. The first opening without a cache starts the scanner in a separate process and shows the current plug-in and scan progress. Subsequent openings use the saved local XML catalogue. Drag a plug-in onto an arrangement row to instantiate it without a new directory scan. **Scan VST3** checks for additions or changed files. Track slots display when an individual plug-in is loading.
+- The Mixer puts voicing-role, vocal-role and pitched tracks on the left. Source chord voicings are shown as Global Timeline context when present. Use **Out** for Master or Bus A/B, **Send** for per-return send levels, and **+ Return** to add up to eight returns. Buses and post-fader returns sum to Master. The pre-fader **C** switch sends to Cue, using the third and fourth enabled output channels. Cue remains silent when fewer than four outputs are active. These paths apply to the built-in preview instrument and carry no insert or send DSP yet.
 - GitHub Actions Windows + macOS **preview** builds, unsigned
 - `AGENTS.md` instructions for continuing in Codex
 - Architecture/roadmap/checklists
 
-**Not included:** licensed third-party plugins, real VST3 hosting, sound engine, OSTFP parser/writer, SMF/SVP exporters, network sync, real AI connection, signed binaries, official OSTF 5.0 schema/spec/assets. These must be implemented and verified separately.
+**Not included:** bundled third-party plugins, plug-in audio processing, full OSTFP conformance or writing, SMF/SVP exporters, network sync, AI connection or signed binaries.
 
 ## Resume development from GitHub
 
@@ -57,7 +64,7 @@ The [build workflow](.github/workflows/build.yml) runs standalone core tests and
 See the [development roadmap](docs/ARCHITECTURE.md#user-visible-milestones) for the official OSTF 5.0 intake requirements and the sequence for implementing DAW features.
 
 ## Important: OSTF 5.0 spec
-The canonical official OSTF 5.0 release archive was **not** attached to this starter. Import the actual final schema/spec/examples into `docs/vendor-spec/` only if redistribution is permitted, or provide Codex a path to them. Do not replace it with inferred fields from previous chat history.
+The preview is based on the [official OSTF 5.0.0 source release at commit `d8ce48c`](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.0/tree/d8ce48ca6c873a5a24a94bcc80d847bf33135b46). The bundled CC0 example and its SHA-256 are documented in [fixture provenance](tests/fixtures/README.md). The preview checks the package inventory and score hash, then displays supported source lanes. It currently requires a single meter, bar-aligned regions, and a score-only package. Full Schema validation, mixed meters, sub-bar events, profile documents, assets and playback remain future work.
 
 ## Licensing
 JUCE is subject to its own licensing; do not assume donation-supported freeware is automatically exempt. Review the licensing and redistribution conditions for the final project before public release. No separate OSS licence is assigned to user-developed files in this starter.

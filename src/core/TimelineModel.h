@@ -14,6 +14,19 @@ struct LoopRange {
     std::int64_t lastBar {8};  // inclusive
 };
 
+// Display ranges use one-based bars and a past-the-end boundary.
+struct BarSpan {
+    int firstBar;
+    int endBar;
+};
+
+struct TimelineExtent {
+    double start;
+    double end;
+};
+
+[[nodiscard]] std::optional<TimelineExtent> projectBarSpan(BarSpan span, BarSpan visible) noexcept;
+
 class TimelineModel {
 public:
     explicit TimelineModel(int beatsPerBar = 4) noexcept;
