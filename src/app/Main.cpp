@@ -245,7 +245,7 @@ public:
         startup_ = std::make_unique<StartupScreen>();
         juce::Timer::callAfterDelay(45, [this, startupSmoke] {
             if (!startup_) return;
-            startup_->setStage(TRANS("Preparing timeline and demo project..."), 0.65f);
+            startup_->setStage(TRANS("Preparing workspace..."), 0.65f);
             juce::Timer::callAfterDelay(45, [this, startupSmoke] {
                 if (!startup_) return;
                 mainWindow_ = std::make_unique<MainWindow>(getApplicationName());

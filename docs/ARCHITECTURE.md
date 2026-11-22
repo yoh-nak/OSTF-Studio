@@ -6,6 +6,10 @@
 - DAW runtime = audio device, hosting, transport, timeline, editors, clipboard, AI integration.
 - OS-local settings = hardware device IDs, auth, user-specific settings, plugins scanning paths.
 
+## Project lifecycle
+
+A new session reads the embedded empty OSTF template through the same reader as a standalone score. The six playable Studio demos use the OSTFP reader. The upstream comprehensive example remains a parser regression fixture. Launching a document from the operating system opens that document directly in the workspace.
+
 ## Independent modules
 
 The preview renderer publishes stereo sample peaks from the processed source audio, output stems and the independent Cue pair. The audio thread accumulates peaks in fixed-size lock-free mailboxes. The UI consumes each peak once per refresh and shares it with the mixer and arrangement. A shared instrument's combined audio is measured on the track that owns it. Track heights and vertical scrolling are view state scoped to the open song.

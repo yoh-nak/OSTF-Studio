@@ -47,7 +47,7 @@ private:
     juce::PopupMenu getMenuForIndex(int index, const juce::String&) override;
     void menuItemSelected(int item, int topLevelMenuIndex) override;
     void inspectOSTF();
-    void openDemo();
+    void newProject();
     bool openPreview(juce::InputStream& input, const juce::String& filename, bool plainScore = false, const juce::File& sourceFolder = {});
     void editSongInformation();
     void updateDocumentLabel();

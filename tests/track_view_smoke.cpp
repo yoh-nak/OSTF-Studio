@@ -21,6 +21,33 @@ int checkTrackView(const juce::File& fixture) {
     MainComponent main;
     main.setVisible(true);
     main.setSize(1450, 1200);
+    auto* document = dynamic_cast<juce::Label*>(main.findChildWithID("current-document"));
+    auto* tracks = findControl<juce::ComboBox>(main, TRANS("Arrangement track"));
+    juce::MenuBarComponent* menus = nullptr;
+    for (auto* child : main.getChildren())
+        if (auto* bar = dynamic_cast<juce::MenuBarComponent*>(child)) menus = bar;
+    if (!document || !document->getText().contains(TRANS("Unsaved project"))
+        || !tracks || tracks->getNumItems() != 0 || !menus || !menus->getModel()) return 13;
+    auto& model = *menus->getModel();
+    const auto fileMenu = model.getMenuForIndex(0, {});
+    bool newEnabled = false, saveScoreEnabled = false, savePackageEnabled = false;
+    juce::StringArray songs;
+    for (juce::PopupMenu::MenuItemIterator it(fileMenu, true); it.next();) {
+        const auto& item = it.getItem();
+        if (item.text == TRANS("New project")) newEnabled = item.isEnabled;
+        if (item.text == TRANS("Save as OSTF...")) saveScoreEnabled = item.isEnabled;
+        if (item.text == TRANS("Save as OSTFP...")) savePackageEnabled = item.isEnabled;
+        if (item.text == TRANS("Demo songs") && item.subMenu)
+            for (juce::PopupMenu::MenuItemIterator demo(*item.subMenu); demo.next();)
+                songs.add(demo.getItem().text);
+    }
+    if (!newEnabled || !saveScoreEnabled || !savePackageEnabled || songs.size() != 6
+        || !songs.contains("Copper Mile (Rock)") || !songs.contains("First Light Vector (Trance)")) return 14;
+    const auto trackMenu = model.getMenuForIndex(4, {});
+    for (juce::PopupMenu::MenuItemIterator it(trackMenu); it.next();)
+        if (it.getItem().text == TRANS("Add pitched track") && it.getItem().isEnabled)
+            model.menuItemSelected(it.getItem().itemID, 4);
+    if (tracks->getNumItems() != 1 || tracks->getSelectedId() != 1) return 15;
     if (!main.openDocument(fixture)) return 1;
     auto* guitar = findControl<TrackRowSize>(main, "Lead Guitar track height");
     auto* bass = findControl<TrackRowSize>(main, "Bass track height");

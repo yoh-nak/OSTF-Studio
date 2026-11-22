@@ -20,13 +20,11 @@ SetupIconFile=..\..\assets\AppIcon.ico
 WizardStyle=modern
 
 [Files]
-Source: "{#EffectsDir}\*"; DestDir: "{localappdata}\Programs\Common\VST3\OSTF Studio Effects"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PluginSetup}"; Flags: dontcopy nocompression
 Source: "{#Licenses}\*"; DestDir: "{app}\Licenses"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\assets\OstfScore.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\assets\OstfpPackage.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#GmBundle}\*"; DestDir: "{localappdata}\Programs\Common\VST3\OSTF GM Sound Module.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#ArrangerBundle}\*"; DestDir: "{localappdata}\Programs\Common\VST3\OSTF Arranger.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#GmLicense}"; DestDir: "{app}"; DestName: "TinySoundFont-License.txt"; Flags: ignoreversion
 
 [Icons]
@@ -45,6 +43,47 @@ Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project\DefaultIcon"; ValueType
 Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\OSTF Studio.exe"" ""%1"""
 
 [Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ExitCode: Integer;
+begin
+  Result := '';
+  ExtractTemporaryFile('OSTF-Studio-VST3-Setup.exe');
+  if not ShellExec('runas', ExpandConstant('{tmp}\OSTF-Studio-VST3-Setup.exe'),
+      '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-', '', SW_HIDE, ewWaitUntilTerminated, ExitCode)
+      or (ExitCode <> 0) then
+    Result := 'The shared VST3 plug-ins could not be installed. Close your DAWs, allow administrator access and retry. Error ' + IntToStr(ExitCode);
+end;
+
+procedure MigrateBundle(const LegacyFolder, BundleName, ProcessorCID: String);
+var
+  LegacyPath, BackupPath, BackupDir, NewPath: String;
+  Metadata: AnsiString;
+  Index: Integer;
+begin
+  LegacyPath := ExpandConstant('{localappdata}\Programs\Common\VST3\') + LegacyFolder + BundleName;
+  NewPath := ExpandConstant('{commoncf64}\VST3\OSTF Studio\') + BundleName;
+  if not DirExists(LegacyPath) or not DirExists(NewPath) then exit;
+  if not LoadStringFromFile(LegacyPath + '\Contents\Resources\moduleinfo.json', Metadata) then exit;
+  if (Pos(ProcessorCID, String(Metadata)) = 0) or (Pos('"OSTF Studio"', String(Metadata)) = 0) then exit;
+  BackupDir := ExpandConstant('{localappdata}\OSTF Studio\Previous VST3');
+  BackupPath := BackupDir + '\' + BundleName;
+  Index := 0;
+  while DirExists(BackupPath) do begin
+    Index := Index + 1;
+    BackupPath := BackupDir + '\' + IntToStr(Index) + '-' + BundleName;
+  end;
+  if not ForceDirectories(BackupDir) or not RenameFile(LegacyPath, BackupPath) then
+    SuppressibleMsgBox('Close any DAWs using the previous plug-in and run setup again to move this duplicate: ' + LegacyPath, mbInformation, MB_OK, IDOK);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then begin
+    #include MigrationList
+  end;
+end;
+
 function CanSetDefault(const Extension: String): Boolean;
 var
   Existing: String;

@@ -52,7 +52,7 @@ juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds) {
     return bounds;
 }
 
-enum MenuCommand { openFile = 1, openDemoSong, showPiano, showMixer, showDevices, showAbout, showPlugins,
+enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
                    exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation };
 constexpr int timelineMenuBase = 100;
@@ -62,6 +62,8 @@ constexpr struct { const char* title; const char* resource; } gallery[] {
     {"Blue Hour Waltz (Jazz Waltz)", "bluehourwaltz_ostfp"},
     {"Relay Circuit (Techno)", "relaycircuit_ostfp"},
     {"Paper Lantern Replies (R&B)", "paperlanternreplies_ostfp"},
+    {"Copper Mile (Rock)", "coppermile_ostfp"},
+    {"First Light Vector (Trance)", "firstlightvector_ostfp"},
 };
 using ostfstudio::TimelineLane;
 constexpr TimelineLane selectableTimelineLanes[] {TimelineLane::section, TimelineLane::chord, TimelineLane::voicing,
@@ -431,7 +433,7 @@ MainComponent::MainComponent() {
     statusLabel_.setColour(juce::Label::textColourId, juce::Colour(muted));
     statusLabel_.setFont(juce::FontOptions(13.0f));
     refreshTimelineLanes();
-    menuItemSelected(demoMenuBase, 0);
+    newProject();
 }
 
 juce::StringArray MainComponent::getMenuBarNames() { return {TRANS("File"), TRANS("View"), TRANS("Settings"), TRANS("Help"), TRANS("Track")}; }
@@ -448,12 +450,11 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
     juce::PopupMenu menu;
     switch (index) {
         case 0: {
+            menu.addItem(createProject, TRANS("New project"));
             menu.addItem(openFile, TRANS("Open OSTF / OSTFP..."));
             juce::PopupMenu demos;
             for (std::size_t i = 0; i < std::size(gallery); ++i)
                 demos.addItem(demoMenuBase + static_cast<int>(i), gallery[i].title);
-            demos.addSeparator();
-            demos.addItem(openDemoSong, TRANS("Official specification example"));
             menu.addSubMenu(TRANS("Demo songs"), demos);
             menu.addItem(showSongInformation, TRANS("Song information..."), project_ != nullptr);
             menu.addSeparator();
@@ -526,7 +527,15 @@ void MainComponent::menuItemSelected(int item, int) {
     }
     switch (item) {
         case openFile: inspectOSTF(); break;
-        case openDemoSong: openDemo(); break;
+        case createProject:
+            juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, TRANS("New project"),
+                TRANS("Start a new project? Unsaved changes in the open project will be lost."),
+                TRANS("New project"), TRANS("Cancel"), this,
+                juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<MainComponent>(this),
+                    generation = projectGeneration_](int answer) {
+                    if (answer && safe && safe->projectGeneration_ == generation) safe->newProject();
+                }));
+            break;
         case saveScore: saveDocument(SaveFormat::score); break;
         case showArrangement: setWorkspaceMode(WorkspaceMode::arrangement); break;
         case showLeadSheet: setWorkspaceMode(WorkspaceMode::leadSheet); break;
@@ -894,10 +903,12 @@ void MainComponent::timerCallback() {
     repaint();
 }
 
-void MainComponent::openDemo() {
-    juce::MemoryInputStream stream(BinaryData::_10comprehensivecore_ostfp,
-                                   BinaryData::_10comprehensivecore_ostfpSize, false);
-    openPreview(stream, BinaryData::getNamedResourceOriginalFilename("_10comprehensivecore_ostfp"));
+void MainComponent::newProject() {
+    juce::MemoryInputStream stream(BinaryData::NewProject_ostf, BinaryData::NewProject_ostfSize, false);
+    if (openPreview(stream, {}, true)) {
+        setWorkspaceMode(WorkspaceMode::arrangement);
+        statusLabel_.setText(TRANS("Add your first track from the Track menu."), juce::dontSendNotification);
+    }
 }
 
 void MainComponent::inspectOSTF() {
@@ -1062,7 +1073,8 @@ void MainComponent::saveDocument(SaveFormat format) {
 }
 
 void MainComponent::updateDocumentLabel() {
-    const auto name = project_->title + "   " + juce::String::charToString(0x00b7) + "   " + currentFilename_;
+    const auto name = project_->title + "   " + juce::String::charToString(0x00b7) + "   "
+        + (currentFilename_.isEmpty() ? TRANS("Unsaved project") : currentFilename_);
     documentLabel_.setText(name, juce::dontSendNotification);
     documentLabel_.setTooltip(name);
 }
@@ -2153,7 +2165,8 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     if (!selectedTrack_) {
         g.setColour(juce::Colour(muted));
         g.setFont(juce::FontOptions(13.0f));
-        g.drawText(TRANS("Select an arrangement track to inspect its notes."),
+        g.drawText(project_->trackLanes.empty() ? TRANS("Add your first track from the Track menu.")
+                                               : TRANS("Select an arrangement track to inspect its notes."),
                    area, juce::Justification::centred);
         return;
     }

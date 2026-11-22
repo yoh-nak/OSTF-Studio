@@ -42,9 +42,9 @@ On Windows, run the Setup executable or extract the portable ZIP. On an Apple si
 - Portable C++20 timeline model with unit tests (internal only; not OSTF spec definitions)
 - JUCE 9.0.5 desktop window with a **32-bar demo** ruler, global musical lanes, and named arrangement regions aligned to the same bar positions
 - `.ostf` and `.json` **basic JSON object/array inspection** using JUCE, without OSTF schema validation
-- **OSTF 5.0.0 and OSTFP 1.0** support a bounded score and mixer subset. **Open demo** loads the bundled official 16-bar song. **Open OSTF / OSTFP** opens supported files from disk.
+- **OSTF 5.0.0 and OSTFP 1.0** support a bounded score and mixer subset. **File → Demo songs** opens the Studio gallery, including Copper Mile (Rock) and First Light Vector (Trance). **Open OSTF / OSTFP** opens supported files from disk.
 - Select an arrangement row to view its pitched notes in the read-only piano roll. The ruler shows song bar numbers and the keyboard follows the track's pitch range. Sound-slot percussion is outside the pitched view.
-- The official demo opens on startup with a pitched track selected. The transport sends pitched notes to assigned VST3 instruments. Enable a MIDI input and use **Record MIDI** to capture notes into the selected track. Recording starts at the beginning, and Stop turns the captured notes into a clip that can be saved. Audio recording is pending.
+- Studio starts with an untitled, empty 32-bar project in 4/4 at 120 BPM. Add the first part from the Track menu. **File → New project** opens another blank session. The transport sends pitched notes to assigned VST3 instruments. Enable a MIDI input and use **Record MIDI** to capture notes into the selected track. Recording starts at the beginning, and Stop turns the captured notes into a clip that can be saved. Audio recording is pending.
 - Use **File** to open a project or demo, **View** to switch editors, and **Settings → Audio / MIDI Devices** to select devices. The Windows x64 alpha supports **Windows Audio (WASAPI)** and **ASIO** with a compatible manufacturer driver installed. Apple silicon Macs use **Core Audio**.
 - Arrangement rows have a horizontal volume fader, mute, solo, and an **Instrument** slot. **Mix** opens track-local volume, pan, output bus and return-send controls backed by the same mixer state. The row and Mix controls display the preset name when the plug-in reports it.
 - The startup screen shows workspace preparation. **Plug-ins** opens a manufacturer-grouped VST3 browser. The first opening without a cache starts the scanner in a separate process and shows the current plug-in and scan progress. Subsequent openings use the saved local XML catalogue. Drag a plug-in onto an arrangement row to instantiate it without a new directory scan. **Scan VST3** checks for additions or changed files. Track slots display when an individual plug-in is loading.
@@ -93,9 +93,9 @@ Use **Track** to add a pitched, drum/percussion or audio track, or to delete the
 
 Windows Setup registers a document icon for `.ostf` and a package icon for `.ostfp`. If another default app is already set, select **Open with → Choose another app → OSTF Studio → Always**. The Portable ZIP does not register file types. The macOS app bundle declares matching document icons.
 
-Windows Setup installs the VST3s under `%LOCALAPPDATA%\Programs\Common\VST3`. In Ableton Live, enable the VST3 custom folder and point it there if the installed plug-in does not appear after a rescan. The Portable ZIP includes the VST3 bundles for manual placement.
+In this development build, Windows Setup requests administrator approval to install both instruments and all nine effects in `%CommonProgramFiles%\VST3\OSTF Studio`. Other VST3 hosts can find them with their system-folder scan. Close DAWs before upgrading. Recognized copies from older per-user installs are moved to `%LOCALAPPDATA%\OSTF Studio\Previous VST3`. The shared plug-ins have their own uninstaller. The Portable ZIP keeps them beside the app.
 
-The macOS arm64 workflow places a combined app and VST3 installer in the DMG. Signing and notarization are pending.
+On macOS arm64, run **Install OSTF Studio and VST3.pkg** inside the DMG to install the plug-ins in `/Library/Audio/Plug-Ins/VST3`. Dragging just the app installs the application alone. Signing and notarization are pending.
 - GitHub Actions Windows + macOS **preview** builds, unsigned
 - `AGENTS.md` instructions for continuing in Codex
 - Architecture/roadmap/checklists

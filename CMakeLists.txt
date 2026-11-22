@@ -99,9 +99,10 @@ if (OSTF_STUDIO_BUILD_GUI)
         set_source_files_properties(${ostf_document_icons} PROPERTIES MACOSX_PACKAGE_LOCATION Resources HEADER_FILE_ONLY TRUE)
     endif()
     juce_add_binary_data(OSTFStudioAssets SOURCES
-        assets/AppIcon.png assets/Japanese.txt tests/fixtures/10-comprehensive-core.ostfp
+        assets/AppIcon.png assets/Japanese.txt assets/NewProject.ostf
         examples/demo-songs/neon-platforms.ostfp examples/demo-songs/blue-hour-waltz.ostfp
-        examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp)
+        examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp
+        examples/demo-songs/copper-mile.ostfp examples/demo-songs/first-light-vector.ostfp)
     juce_generate_juce_header(OSTFStudio)
     target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/OstfpPreview.cpp
         src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp

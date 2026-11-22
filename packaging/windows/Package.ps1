@@ -34,8 +34,29 @@ if (!(Test-Path -LiteralPath (Join-Path $GmBundle 'Contents/x86_64-win/OSTF GM S
 if (!(Test-Path -LiteralPath (Join-Path $ArrangerBundle 'Contents/x86_64-win/OSTF Arranger.vst3') -PathType Leaf)) {
     throw "Missing Windows x64 OSTF Arranger binary in $ArrangerBundle"
 }
-& $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DAppExe=$AppExe" "/DOutputDir=$OutputDir" "/DGmBundle=$GmBundle" "/DArrangerBundle=$ArrangerBundle" "/DEffectsDir=$EffectsDir" "/DGmLicense=$GmLicense" "/DLicenses=$Licenses" $installer
-if ($LASTEXITCODE -ne 0) { throw "Inno Setup exited with code $LASTEXITCODE" }
+$stage = (New-Item -ItemType Directory -Path (Join-Path ([IO.Path]::GetTempPath()) ('ostf-vst3-' + [guid]::NewGuid()))).FullName
+$pluginSetup = Join-Path $stage 'OSTF-Studio-VST3-Setup.exe'
+$migrationList = Join-Path $stage 'migrate.iss'
+try {
+    $migration = foreach ($bundle in (@($GmBundle, $ArrangerBundle) + $fxBundles)) {
+        $name = Split-Path -Leaf $bundle
+        $info = Get-Content -LiteralPath (Join-Path $bundle 'Contents/Resources/moduleinfo.json') -Raw
+        if ($info -notmatch '"CID"\s*:\s*"([A-Fa-f0-9]{32})"') { throw "Missing VST3 class ID in $name" }
+        $cid = $Matches[1]
+        $legacy = if ($bundle -in $fxBundles) { 'OSTF Studio Effects\' } else { '' }
+        "MigrateBundle('$legacy', '$name', '$cid');"
+    }
+    Set-Content -LiteralPath $migrationList -Value $migration -Encoding ascii
+    & $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DOutputDir=$stage" "/DGmBundle=$GmBundle" "/DArrangerBundle=$ArrangerBundle" "/DEffectsDir=$EffectsDir" (Join-Path $PSScriptRoot 'StudioVST3.iss')
+    if ($LASTEXITCODE -ne 0) { throw "VST3 installer build failed: $LASTEXITCODE" }
+    & $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DAppExe=$AppExe" "/DOutputDir=$OutputDir" "/DPluginSetup=$pluginSetup" "/DMigrationList=$migrationList" "/DGmLicense=$GmLicense" "/DLicenses=$Licenses" $installer
+    if ($LASTEXITCODE -ne 0) { throw "Application installer build failed: $LASTEXITCODE" }
+} finally {
+    foreach ($temporary in @($migrationList, $pluginSetup)) {
+        if (Test-Path -LiteralPath $temporary -PathType Leaf) { Remove-Item -LiteralPath $temporary }
+    }
+    [IO.Directory]::Delete($stage)
+}
 
 $portableZip = Join-Path $OutputDir 'OSTF_Studio_Windows_x64_Portable.zip'
 Compress-Archive -LiteralPath (@($AppExe, $GmBundle, $ArrangerBundle, $GmLicense, $Licenses) + $fxBundles) -DestinationPath $portableZip -Force

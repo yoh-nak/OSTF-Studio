@@ -57,6 +57,8 @@ def verify(path, spec, schemas, catalog):
         "neon-platforms": ("hook", ["OSTF Guitar Amp", "OSTF EQ"]),
         "relay-circuit": ("sub", ["OSTF Distortion", "OSTF EQ"]),
         "offset-bridges": ("lead", ["OSTF Distortion", "OSTF Guitar Amp"]),
+        "copper-mile": ("lead", ["OSTF Distortion", "OSTF Guitar Amp"]),
+        "first-light-vector": ("sub", ["OSTF Distortion", "OSTF EQ"]),
     }[path.stem]
     example = next(c for c in tracks if c["trackId"] == example_track)
     assert [devices[k]["plugin"]["name"] for k in example["deviceIds"][1:]] == ordered_fx
@@ -81,6 +83,9 @@ if __name__ == "__main__":
     schemas = {key: Draft202012Validator(json.loads((args.spec / "schema" / file).read_text(encoding="utf-8")))
                for key, file in {"score": "ostf-5.0.0.schema.json", "manifest": "ostf-package-manifest-1.0.schema.json",
                                  "production": "ostf-production-session-0.3.schema.json"}.items()}
+    blank = json.loads((directory.parents[1] / "assets/NewProject.ostf").read_text(encoding="utf-8"))
+    schemas["score"].validate(blank)
+    assert not (blank["tracks"] or blank["soundSlots"] or blank["harmony"]["chords"] or blank["timeline"]["sections"])
     covered = set()
     for path in sorted(directory.glob("*.ostfp")):
         covered.update(verify(path, args.spec, schemas, catalog))

@@ -8,6 +8,29 @@
 #include <string_view>
 
 static int checkGallery(const juce::File& directory) {
+    const auto templateFile = directory.getParentDirectory().getParentDirectory().getChildFile("assets/NewProject.ostf");
+    juce::FileInputStream templateStream(templateFile);
+    std::unique_ptr<ostfstudio::OstfpPreview> fresh;
+    const auto opened = ostfstudio::readOstfPreview(templateStream, fresh);
+    if (opened.failed() || !fresh->trackLanes.empty() || fresh->previewBpm != 120 || fresh->bars.endBar != 33) {
+        std::cerr << "Unexpected blank template: " << templateFile.getFullPathName() << " " << opened.getErrorMessage() << '\n';
+        return 2;
+    }
+    for (bool package : {false, true}) {
+        juce::MemoryOutputStream written;
+        const ostfstudio::SessionMix defaultMix;
+        const auto save = package ? ostfstudio::writeOstfpPreview(*fresh, defaultMix, written)
+                                  : ostfstudio::writeOstfPreview(*fresh, defaultMix, written);
+        juce::MemoryInputStream input(written.getData(), written.getDataSize(), false);
+        std::unique_ptr<ostfstudio::OstfpPreview> reopened;
+        const auto read = package ? ostfstudio::readOstfpPreview(input, reopened)
+                                  : ostfstudio::readOstfPreview(input, reopened);
+        if (save.failed() || read.failed() || !reopened->trackLanes.empty() || reopened->title != fresh->title) {
+            std::cerr << (package ? "OSTFP" : "OSTF") << " blank round trip: "
+                      << save.getErrorMessage() << " / " << read.getErrorMessage() << '\n';
+            return 2;
+        }
+    }
     struct Expectation { const char* file; int bars; int tracks; double bpm; };
     constexpr Expectation cases[] {
         {"neon-platforms.ostfp", 76, 8, 106.0},
@@ -15,6 +38,8 @@ static int checkGallery(const juce::File& directory) {
         {"relay-circuit.ostfp", 96, 8, 128.0},
         {"paper-lantern-replies.ostfp", 56, 8, 78.0},
         {"offset-bridges.ostfp", 0, 0, 0.0},
+        {"copper-mile.ostfp", 64, 6, 116.0},
+        {"first-light-vector.ostfp", 96, 6, 138.0},
     };
     for (const auto& expected : cases) {
         juce::FileInputStream input(directory.getChildFile(expected.file));
@@ -216,7 +241,7 @@ int main(int argc, char** argv) {
             && japanese.translate("Unknown string") == "Unknown string" ? 0 : 1;
     }
     if (argc == 3 && std::string_view(argv[1]) == "--gallery")
-        return checkGallery(juce::File::createFileWithoutCheckingPath(argv[2]));
+        return checkGallery(juce::File(juce::String::fromUTF8(argv[2])));
     if (argc != 2 && argc != 3) return 1;
     juce::FileInputStream input(juce::File::createFileWithoutCheckingPath(argv[1]));
     std::unique_ptr<ostfstudio::OstfpPreview> project;
