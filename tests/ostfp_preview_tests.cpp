@@ -1,4 +1,7 @@
 #include "ui/OstfpPreview.h"
+#include "ui/SongMidi.h"
+#include "ui/StudioLanguage.h"
+#include <juce_audio_basics/juce_audio_basics.h>
 #include <algorithm>
 #include <iostream>
 #include <string_view>
@@ -120,7 +123,62 @@ static int checkGallery(const juce::File& directory) {
     return 0;
 }
 
+static int checkSmf(const juce::File& demo) {
+    juce::FileInputStream input(demo);
+    std::unique_ptr<ostfstudio::OstfpPreview> project;
+    if (ostfstudio::readOstfPreview(input, project).failed()) return 1;
+    auto channels = project->sourceMidiChannels;
+    channels[0] = 15;
+    if (!project->addSessionClip(0, "MIDI export test", {{37, 175, 94, 63}})) return 2;
+    for (const auto format : {ostfstudio::SmfFormat::merged, ostfstudio::SmfFormat::multitrack}) {
+        juce::MemoryOutputStream output;
+        const auto result = ostfstudio::writeSongMidi(*project, format, channels, output);
+        if (result.failed()) { std::cerr << result.getErrorMessage() << '\n'; return 3; }
+        juce::MemoryInputStream data(output.getData(), output.getDataSize(), false);
+        juce::MidiFile file;
+        int type = -1;
+        if (!file.readFrom(data, false, &type) || type != static_cast<int>(format)
+            || file.getTimeFormat() != project->ppq || file.getNumTracks() != (type == 0 ? 1 : 9)
+            || file.getLastTimestamp() != (project->bars.endBar - 1) * project->ticksPerBar) return 4;
+        bool tempo = false, meter = false, on = false, off = false, drums = false, expression = false, program = false;
+        for (int i = 0; i < file.getNumTracks(); ++i) {
+            const auto& track = *file.getTrack(i);
+            for (const auto* event : track) {
+                const auto& m = event->message;
+                if (i == 0 && m.isTempoMetaEvent()) tempo |= std::abs(m.getTempoSecondsPerQuarterNote() - 60.0 / 78) < 1e-6;
+                if (i == 0 && m.isTimeSignatureMetaEvent()) {
+                    int n, d; m.getTimeSignatureInfo(n, d); meter |= n == 4 && d == 4;
+                }
+                if (type == 1 && i == 0 && !m.isMetaEvent()) return 5;
+                if ((i == 1 || type == 0) && m.isNoteOnOrOff() && m.getChannel() == 15 && m.getNoteNumber() == 94) {
+                    on |= m.isNoteOn() && m.getTimeStamp() == 37 && m.getVelocity() == 63;
+                    off |= m.isNoteOff() && m.getTimeStamp() == 175;
+                }
+                drums |= m.isNoteOn() && m.getChannel() == 10;
+                expression |= m.isController() && m.getControllerNumber() == 11;
+                program |= m.isProgramChange();
+            }
+        }
+        if (!(tempo && meter && on && off && drums && expression && program)) return 6;
+    }
+    project->ppq = 32768;
+    juce::MemoryOutputStream rejected;
+    return ostfstudio::writeSongMidi(*project, ostfstudio::SmfFormat::merged, {}, rejected).failed()
+        && rejected.getDataSize() == 0 ? 0 : 7;
+}
+
 int main(int argc, char** argv) {
+    if (argc == 3 && std::string_view(argv[1]) == "--smf")
+        return checkSmf(juce::File::createFileWithoutCheckingPath(argv[2]));
+    if (argc == 3 && std::string_view(argv[1]) == "--languages") {
+        using ostfstudio::resolvedLanguage;
+        juce::LocalisedStrings japanese(juce::File::createFileWithoutCheckingPath(argv[2]), false);
+        return resolvedLanguage("system", "ja-JP") == "ja" && resolvedLanguage("system", "JA_jp") == "ja"
+            && resolvedLanguage("system", "fr-CA") == "en" && resolvedLanguage("system", "") == "en"
+            && resolvedLanguage("ja", "de") == "ja" && resolvedLanguage("en", "ja") == "en"
+            && japanese.translate("File") != "File" && japanese.translate("Save as MIDI (SMF)") != "Save as MIDI (SMF)"
+            && japanese.translate("Unknown string") == "Unknown string" ? 0 : 1;
+    }
     if (argc == 3 && std::string_view(argv[1]) == "--gallery")
         return checkGallery(juce::File::createFileWithoutCheckingPath(argv[2]));
     if (argc != 2 && argc != 3) return 1;

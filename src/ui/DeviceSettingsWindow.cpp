@@ -17,9 +17,9 @@ public:
         const auto error = devices_.initialise(2, 2, saved.get(), true);
         status_.setText(error.isNotEmpty() ? error :
 #if JUCE_WINDOWS && JUCE_ASIO
-                        "For ASIO, choose ASIO and your interface's installed driver.",
+                        TRANS("For ASIO, choose ASIO and your interface's installed driver."),
 #else
-                        "Audio and MIDI settings are saved on this computer.",
+                        TRANS("Audio and MIDI settings are saved on this computer."),
 #endif
                         juce::dontSendNotification);
         status_.setTooltip("Select the audio driver and devices, and enable the MIDI ports you want to use.");
@@ -64,7 +64,7 @@ private:
 }
 
 DeviceSettingsWindow::DeviceSettingsWindow()
-    : DocumentWindow("Audio / MIDI Settings", juce::Colour(0xff1b2734), DocumentWindow::closeButton) {
+    : DocumentWindow(TRANS("Audio / MIDI Settings"), juce::Colour(0xff1b2734), DocumentWindow::closeButton) {
     setUsingNativeTitleBar(true);
     setContentOwned(new DeviceSettingsContent(), true);
     setResizable(true, true);

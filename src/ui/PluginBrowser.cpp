@@ -9,7 +9,7 @@ int browserCategory(const juce::PluginDescription& plugin) {
 }
 
 juce::String displayManufacturer(const juce::PluginDescription& plugin) {
-    return plugin.manufacturerName.isEmpty() ? "Unknown manufacturer" : plugin.manufacturerName;
+    return plugin.manufacturerName.isEmpty() ? TRANS("Unknown manufacturer") : plugin.manufacturerName;
 }
 
 juce::File statusFile(const juce::String& token) {
@@ -81,9 +81,9 @@ PluginBrowser::PluginBrowser() {
     addAndMakeVisible(scanButton_);
     addAndMakeVisible(scanOneButton_);
     addAndMakeVisible(filter_);
-    filter_.addItem("All plug-ins", 1);
-    filter_.addItem("Instruments", 2);
-    filter_.addItem("Effects", 3);
+    filter_.addItem(TRANS("All plug-ins"), 1);
+    filter_.addItem(TRANS("Instruments"), 2);
+    filter_.addItem(TRANS("Effects"), 3);
     filter_.setSelectedId(1, juce::dontSendNotification);
     filter_.onChange = [this] { refreshTree(); };
     scanOneButton_.onClick = [this] { choosePlugin(); };
@@ -94,8 +94,8 @@ PluginBrowser::PluginBrowser() {
     tree_.setDefaultOpenness(true);
     scanButton_.onClick = [this] {
         if (!scanProcess_) scan();
-        else if (scanProcess_->kill()) finishScan("Scan canceled; saved results retained");
-        else status_.setText("Could not stop the scanner", juce::dontSendNotification);
+        else if (scanProcess_->kill()) finishScan(TRANS("Scan canceled; saved results retained"));
+        else status_.setText(TRANS("Could not stop the scanner"), juce::dontSendNotification);
     };
     refreshTree();
 }
@@ -129,7 +129,7 @@ void PluginBrowser::scan() {
     skipped_ = 0;
     lastSkipped_.clear();
     if (!startScanner()) return;
-    scanButton_.setButtonText("Cancel scan");
+    scanButton_.setButtonText(TRANS("Cancel scan"));
     scanOneButton_.setEnabled(false);
     progress_.setVisible(true);
     resized();
@@ -147,7 +147,7 @@ void PluginBrowser::choosePlugin() {
         }
     }
     // The Windows native dialog cannot select both files and bundle directories.
-    chooser_ = std::make_unique<juce::FileChooser>("Select a VST3 file or bundle", start, "*.vst3", useNativeVst3Chooser);
+    chooser_ = std::make_unique<juce::FileChooser>(TRANS("Select a VST3 file or bundle"), start, "*.vst3", useNativeVst3Chooser);
     chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
                           | juce::FileBrowserComponent::canSelectDirectories,
                           [safe = juce::Component::SafePointer<PluginBrowser>(this)](const juce::FileChooser& chooser) {
@@ -155,7 +155,7 @@ void PluginBrowser::choosePlugin() {
         const auto file = chooser.getResult();
         if (file == juce::File{}) return;
         if (!file.exists() || !file.hasFileExtension("vst3")) {
-            safe->status_.setText("Select a .vst3 file or bundle", juce::dontSendNotification);
+            safe->status_.setText(TRANS("Select a .vst3 file or bundle"), juce::dontSendNotification);
             return;
         }
         safe->scanTarget_ = file.getFullPathName();
@@ -172,13 +172,13 @@ bool PluginBrowser::startScanner() {
                                "--scan-vst3", token};
     if (scanTarget_.isNotEmpty()) command.add(scanTarget_);
     if (!process->start(command, 0)) {
-        status_.setText("Could not start VST3 scanner", juce::dontSendNotification);
+        status_.setText(TRANS("Could not start VST3 scanner"), juce::dontSendNotification);
         return false;
     }
     scanProcess_ = std::move(process);
     lastStatusWrite_ = {};
     progressUpdatedAt_ = juce::Time::getMillisecondCounterHiRes();
-    lastScanMessage_ = skipped_ == 0 ? "Starting VST3 scan..." : "Resuming after " + lastSkipped_;
+    lastScanMessage_ = skipped_ == 0 ? TRANS("Starting VST3 scan...") : TRANS("Resuming after ") + lastSkipped_;
     status_.setText(lastScanMessage_, juce::dontSendNotification);
     scanProgress_ = -1.0;
     return true;
@@ -200,11 +200,11 @@ void PluginBrowser::timerCallback() {
     const bool loadingPlugin = lastScanMessage_.startsWith("Scanning: ");
     if (running && elapsed < (loadingPlugin ? 25000.0 : 60000.0)) {
         if (loadingPlugin && elapsed >= 6000.0)
-            status_.setText("Waiting: " + lastScanMessage_.substring(10), juce::dontSendNotification);
+            status_.setText(TRANS("Waiting: ") + lastScanMessage_.substring(10), juce::dontSendNotification);
         return;
     }
     if (running && !scanProcess_->kill()) {
-        status_.setText("Scanner did not respond to stop", juce::dontSendNotification);
+        status_.setText(TRANS("Scanner did not respond to stop"), juce::dontSendNotification);
         return;
     }
 
@@ -216,21 +216,21 @@ void PluginBrowser::timerCallback() {
         scanStatus_.deleteFile();
         scanProcess_.reset();
         if (startScanner()) return;
-        finishScan("Could not restart scanner; saved results retained");
+        finishScan(TRANS("Could not restart scanner; saved results retained"));
         return;
     }
-    finishScan(exit == 2 ? juce::String("Another VST3 scan is running")
-               : exit == 3 ? "No VST3 type found in " + juce::File(scanTarget_).getFileName()
-               : running || exit != 0 ? "Scan stopped: " + lastScanMessage_
+    finishScan(exit == 2 ? TRANS("Another VST3 scan is running")
+               : exit == 3 ? TRANS("No VST3 type found in ") + juce::File(scanTarget_).getFileName()
+               : running || exit != 0 ? TRANS("Scan stopped: ") + lastScanMessage_
                : lastScanMessage_.startsWith("Scan complete") ? lastScanMessage_
-               : skipped_ > 0 ? "Scan complete; skipped " + juce::String(skipped_) + " unresponsive plug-ins" : juce::String{});
+               : skipped_ > 0 ? TRANS("Scan complete; skipped ") + juce::String(skipped_) + TRANS(" unresponsive plug-ins") : juce::String{});
 }
 
 void PluginBrowser::finishScan(const juce::String& message) {
     stopTimer();
     scanProcess_.reset();
     scanStatus_.deleteFile();
-    scanButton_.setButtonText("Scan VST3");
+    scanButton_.setButtonText(TRANS("Scan VST3"));
     scanOneButton_.setEnabled(true);
     scanTarget_.clear();
     progress_.setVisible(false);
@@ -317,6 +317,6 @@ void PluginBrowser::refreshTree() {
     tree_.setRootItem(next.get());
     root_ = std::move(next);
     if (!scanProcess_)
-        status_.setText(types.isEmpty() ? "No VST3 in this view" : juce::String(types.size()) + " VST3 / drag to a track",
+        status_.setText(types.isEmpty() ? TRANS("No VST3 in this view") : juce::String(types.size()) + TRANS(" VST3 / drag to a track"),
                         juce::dontSendNotification);
 }

@@ -1,6 +1,7 @@
 #include <JuceHeader.h>
 #include <BinaryData.h>
 #include "ui/MainComponent.h"
+#include "ui/StudioLanguage.h"
 #include "ui/PluginRoles.h"
 #include <cmath>
 
@@ -171,7 +172,7 @@ public:
 
 private:
     juce::Image logo_;
-    juce::String stage_ {"Starting OSTF Studio..."};
+    juce::String stage_ {TRANS("Starting OSTF Studio...")};
     float progress_ = 0.2f;
 };
 }
@@ -204,13 +205,14 @@ public:
             });
             return;
         }
+        ostfstudio::loadStudioLanguage();
         const bool startupSmoke = !args.isEmpty() && args[0] == "--startup-smoke";
         if (const auto path = args[startupSmoke ? 1 : 0]; path.isNotEmpty())
             queueDocument(path);
         startup_ = std::make_unique<StartupScreen>();
         juce::Timer::callAfterDelay(45, [this, startupSmoke] {
             if (!startup_) return;
-            startup_->setStage("Preparing timeline and demo project...", 0.65f);
+            startup_->setStage(TRANS("Preparing timeline and demo project..."), 0.65f);
             juce::Timer::callAfterDelay(45, [this, startupSmoke] {
                 if (!startup_) return;
                 mainWindow_ = std::make_unique<MainWindow>(getApplicationName());

@@ -4,6 +4,10 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
+- The `feature/smf-language-toolbar` branch adds File → Save as MIDI (SMF) for merged format 0 and multitrack format 1. It exports the current score, including recorded or inserted clips, and uses explicit event channels or the current track channel. The visual chord-voicing projection is excluded from source-track export. Song MIDI readback and language fallback checks run in CTest.
+- Settings → Language stores `system`, `en` or `ja` in the local view preferences. The UI chooses its catalog before creating the splash screen. A new launch applies the preference. Maintain Japanese Studio strings in `assets/Japanese.txt`. External plug-in editors supply their own language. The icon toolbar shares commands and visibility state with View. English and Japanese READMEs link to each other and to the published installers.
+- Windows x64 Release passed all 10 CTests, including both SMF formats on Paper Lantern Replies, language resolution, startup, ASIO backend creation and GM plug-in processing. Interactive menu testing was interrupted. The macOS build and interactive checks for this feature are pending.
+
 - The first public release target is `v1.0.0-alpha.1` for Windows x64 and macOS arm64. See [the release procedure](docs/RELEASING.md) for numbering and [GitHub Releases](https://github.com/yoh-nak/OSTF-Studio/releases) for publication status.
 - This alpha uses GPL-3.0-only for original app and plug-in code. Windows enables WASAPI and the ASIO SDK's GPLv3 option. JUCE uses its AGPLv3 option. Binary packages carry licenses and releases include the matching source archive. Physical ASIO and Core Audio playback still require separate verification.
 

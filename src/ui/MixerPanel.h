@@ -51,7 +51,7 @@ private:
     void refreshAudibility();
 
     juce::Label caption_ {"", ""};
-    juce::TextButton addReturnButton_ {"+ Return"};
+    juce::TextButton addReturnButton_ {TRANS("+ Return")};
     juce::Component rack_;
     juce::Viewport viewport_;
     juce::Component outputRack_;

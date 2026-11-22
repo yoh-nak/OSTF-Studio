@@ -17,7 +17,7 @@
 | `DeviceGraph` | ASIO/WASAPI/CoreAudio multiple-device aggregation |
 | `AIEditEngine` | proposed edits, diff preview and approve-at-boundary |
 | `DistributedSession` | remote state synchronization with jitter strategies |
-| `Exchange` | SMF Type 1, SVP, text import/export and merge |
+| `Exchange` | Song export to SMF 0/1 and selected-track MIDI drag. Planned conversions include SVP and OSTF TEXT import/export and merge. |
 
 ## Principles
 1. Score/source coordinates must not be overwritten by playback loop/sync time.
