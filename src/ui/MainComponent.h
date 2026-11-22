@@ -8,7 +8,7 @@
 #include "ui/PreviewTransport.h"
 
 class MainComponent final : public juce::Component, public juce::DragAndDropContainer,
-                            public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer {
+                            public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
 public:
     MainComponent();
     ~MainComponent() override;
@@ -24,7 +24,11 @@ private:
     void itemDropped(const SourceDetails& details) override;
     std::optional<std::size_t> pluginDropTrack(juce::Point<int> position) const;
     void timerCallback() override;
+    void scrollBarMoved(juce::ScrollBar*, double) override { repaint(); }
+    void updateHorizontalRange(bool piano, bool reset = false);
+    ostfstudio::TimelineExtent horizontalRange(bool piano) const;
     void startTransport(bool recording);
+    void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
     void stopTransport();
     void updateTransportMix();
     void togglePluginBrowser();
@@ -32,6 +36,7 @@ private:
     int getArrangementHeight(int workspaceHeight) const;
     void refreshTimelineLanes();
     ostfstudio::ArrangementView currentArrangement() const;
+    std::vector<std::size_t> displayedTrackOrder() const;
     juce::StringArray getMenuBarNames() override;
     juce::PopupMenu getMenuForIndex(int index, const juce::String&) override;
     void menuItemSelected(int item, int topLevelMenuIndex) override;
@@ -47,7 +52,7 @@ private:
     void showTrackPluginMenu(std::size_t index);
     void scanTrackPlugin(std::size_t index);
     void discoverTrackPlugin(std::size_t index);
-    void loadTrackPlugin(std::size_t index, const juce::PluginDescription& description);
+    void loadTrackPlugin(std::size_t index, const juce::PluginDescription& description, bool restoring = false);
     void openTrackPluginEditor(std::size_t index);
     void linkAudio(std::size_t index);
     void setupOutputTracks();
@@ -78,7 +83,7 @@ private:
     struct TrackControls {
         juce::TextButton mute {"M"};
         juce::TextButton solo {"S"};
-        juce::Slider volume;
+        juce::Slider volume, pan;
         juce::TextButton plugin {"Instrument"};
         juce::TextButton mix {"Mix"};
         EffectChain effects;
@@ -90,6 +95,7 @@ private:
         bool playableInstrument = false;
         std::optional<std::size_t> outputTrack;
         int midiChannel = 1;
+        juce::var instrumentAssignment;
     };
     juce::MenuBarComponent menuBar_;
     juce::TextButton pianoButton_ {"Piano Roll"};
@@ -99,6 +105,8 @@ private:
     juce::Label transportPosition_;
     juce::ComboBox trackPicker_;
     juce::ComboBox performanceLane_;
+    juce::ComboBox arrangementZoom_, pianoZoom_;
+    juce::ScrollBar arrangementScroll_ {false}, pianoScroll_ {false};
     juce::StringArray performanceLaneNames_;
     MidiDragButton midiDrag_;
     juce::TemporaryFile trackMidiFile_ {".mid"};

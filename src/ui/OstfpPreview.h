@@ -7,13 +7,14 @@
 #include <vector>
 
 namespace ostfstudio {
-enum class MixerTrackGroup { voicing, vocal, pitched, other };
+enum class MixerTrackGroup { voicing, melody, vocal, pitched, other };
 
 struct PitchedNote {
     juce::int64 startTick;
     juce::int64 endTick;
     int pitch;
     std::optional<int> velocity;
+    bool enabled = true;
 };
 
 struct PerformanceCurve {
@@ -29,6 +30,7 @@ struct SessionMix {
     struct MidiRoute { int channel = 1; std::optional<std::size_t> destination; };
     std::vector<ChannelMix> tracks;
     std::vector<MidiRoute> midiRoutes;
+    std::vector<juce::var> instruments;
     MixerRouting routing;
     static constexpr std::size_t maxEffects = 8;
     std::array<juce::String, 3 + maxMixerReturns> insertIds;
@@ -54,11 +56,20 @@ struct OstfpPreview {
     juce::int64 ppq = 0;
     double previewBpm = 0.0; // A non-zero value denotes one fixed source tempo.
     std::vector<ArrangementLane> globalLanes, trackLanes;
-    std::vector<std::vector<PitchedNote>> pitchedNotes;
+    std::vector<std::vector<PitchedNote>> pitchedNotes, drumNotes;
+    struct ProgramChange { juce::int64 tick; int program; std::optional<int> channel; };
+    std::vector<std::vector<ProgramChange>> programChanges;
+    std::vector<int> sourceMidiChannels;
     std::vector<std::vector<PerformanceCurve>> performanceCurves;
     std::vector<MixerTrackGroup> mixerGroups;
     std::vector<TrackKind> trackKinds;
     int chordVoicings = 0;
+    std::optional<std::size_t> chordVoicingTrack;
+    std::size_t sourceTrackCount() const { return chordVoicingTrack.value_or(trackLanes.size()); }
+    bool isGlobalNoteTrack(std::size_t index) const {
+        const auto group = mixerGroups[index];
+        return chordVoicingTrack == index || group == MixerTrackGroup::melody || group == MixerTrackGroup::vocal;
+    }
     std::deque<std::vector<ArrangementRegion>> regions;
     std::vector<std::vector<ArrangementRegion>> editedTrackRegions;
     std::deque<juce::String> labels;

@@ -2,6 +2,7 @@
 #include <BinaryData.h>
 #include "ui/MainComponent.h"
 #include "ui/PluginRoles.h"
+#include <cmath>
 
 namespace {
 int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const juce::String& arrangerPath) {
@@ -10,9 +11,50 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const ju
     juce::OwnedArray<juce::PluginDescription> descriptions;
     formats.getFormat(0)->findAllTypesForFile(descriptions, juce::File(plugin).getFullPathName());
     if (descriptions.size() != 1) return 1;
+    juce::MemoryInputStream demo(BinaryData::neonplatforms_ostfp, BinaryData::neonplatforms_ostfpSize, false);
+    std::unique_ptr<ostfstudio::OstfpPreview> score;
+    if (ostfstudio::readOstfpPreview(demo, score).failed() || !score->savedMix || score->savedMix->instruments.empty()
+        || !matchesVst3Instrument(score->savedMix->instruments.front(), *descriptions[0])) return 39;
     juce::String error;
     auto instance = formats.createPluginInstance(*descriptions[0], 44100, 256, error);
     if (!instance || !PreviewTransport::supportsInstrument(*instance)) return 2;
+    const auto fluid = juce::File(plugin).getChildFile("Contents/Resources/FluidR3_GM.sf2");
+    if (fluid.existsAsFile()) {
+        juce::MemoryBlock state, component;
+        instance->getStateInformation(state);
+        const auto wrapper = juce::AudioProcessor::getXmlFromBinary(state.getData(), static_cast<int>(state.getSize()));
+        const auto* child = wrapper ? wrapper->getChildByName("IComponent") : nullptr;
+        if (!child || !component.fromBase64Encoding(child->getAllSubText())) return 40;
+        const auto xml = juce::AudioProcessor::getXmlFromBinary(component.getData(), static_cast<int>(component.getSize()));
+        if (!xml || xml->getStringAttribute("bankName") != "FluidR3 GM") return 41;
+    }
+    instance->prepareToPlay(44100, 2048);
+    const auto renderPreview = [&](int channel, int program, int pitch) {
+        instance->reset();
+        juce::AudioBuffer<float> audio(2, 2048);
+        audio.clear();
+        juce::MidiBuffer events;
+        events.addEvent(juce::MidiMessage::programChange(channel, program), 0);
+        events.addEvent(juce::MidiMessage::noteOn(channel, pitch, 0.9f), 1);
+        instance->processBlock(audio, events);
+        return audio;
+    };
+    const auto piano = renderPreview(1, 0, 60);
+    const auto bass = renderPreview(1, 33, 60);
+    const auto kick = renderPreview(10, 0, 36);
+    const auto snare = renderPreview(10, 0, 38);
+    instance->releaseResources();
+    auto differs = [](const auto& a, const auto& b) {
+        double squaredDifference = 0.0;
+        for (int sample = 0; sample < a.getNumSamples(); ++sample) {
+            const auto difference = a.getSample(0, sample) - b.getSample(0, sample);
+            squaredDifference += difference * difference;
+        }
+        return std::sqrt(squaredDifference / a.getNumSamples()) > 0.0005;
+    };
+    if (piano.getMagnitude(0, 2048) < 0.003f || bass.getMagnitude(0, 2048) < 0.003f || !differs(piano, bass)
+        || kick.getMagnitude(0, 2048) < 0.003f || snare.getMagnitude(0, 2048) < 0.003f || !differs(kick, snare))
+        return 38;
     juce::XmlElement state("OSTF_GM");
     state.setAttribute("bank", bank);
     state.setAttribute("p1", 1); // The test bank contains program 0 only.
@@ -36,6 +78,20 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const ju
     const auto channel2 = noteSounds(2);
     const auto channel3 = noteSounds(3);
     const auto drums = noteSounds(10);
+    auto* part = state.createNewChildElement("part");
+    part->setAttribute("channel", 0);
+    part->setAttribute("c6", 1);
+    auto applyState = [&](const juce::XmlElement& settings) {
+        juce::AudioProcessor::copyXmlToBinary(settings, component);
+        vst3State.getChildByName("IComponent")->deleteAllChildElements();
+        vst3State.getChildByName("IComponent")->addTextElement(component.toBase64Encoding());
+        juce::AudioProcessor::copyXmlToBinary(vst3State, binary);
+        instance->setStateInformation(binary.getData(), static_cast<int>(binary.getSize()));
+    };
+    applyState(state);
+    if (noteSounds(1) || !noteSounds(3)) return 42;
+    part->setAttribute("c6", 0);
+    applyState(state);
     juce::XmlElement arrangerState("OSTFArranger");
     arrangerState.addChildElement(descriptions[0]->createXml().release());
     juce::MemoryBlock hostedState;
@@ -105,7 +161,7 @@ public:
         g.drawText("OSTF Studio", 120, 34, 300, 39, juce::Justification::centredLeft);
         g.setFont(juce::FontOptions(13.0f));
         g.setColour(juce::Colour(0xffb1bfce));
-        g.drawText("DAW Preview", 121, 75, 300, 22, juce::Justification::centredLeft);
+        g.drawText(OSTF_STUDIO_DISPLAY_VERSION, 121, 75, 300, 22, juce::Justification::centredLeft);
         g.drawText(stage_, 32, 126, 396, 23, juce::Justification::centredLeft);
         g.setColour(juce::Colour(0xff46545f));
         g.fillRoundedRectangle(32.0f, 162.0f, 396.0f, 4.0f, 2.0f);
@@ -123,7 +179,7 @@ private:
 class OSTFStudioApplication final : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "OSTF Studio"; }
-    const juce::String getApplicationVersion() override { return "0.1.0-bootstrap"; }
+    const juce::String getApplicationVersion() override { return OSTF_STUDIO_DISPLAY_VERSION; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise(const juce::String&) override {

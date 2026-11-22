@@ -9,6 +9,7 @@ const char* groupName(ostfstudio::MixerTrackGroup group) {
     using enum ostfstudio::MixerTrackGroup;
     switch (group) {
         case voicing: return "Voicing";
+        case melody: return "Melody";
         case vocal: return "Vocal";
         case pitched: return "Pitched";
         case other: return "Arrangement";
@@ -252,11 +253,14 @@ void MixerPanel::setSoloed(std::size_t index, bool soloed) {
 }
 
 ostfstudio::SessionMix MixerPanel::snapshot() const {
-    return {channels_, {}, routing_};
+    ostfstudio::SessionMix mix;
+    mix.tracks = channels_;
+    mix.routing = routing_;
+    return mix;
 }
 
 void MixerPanel::restore(const ostfstudio::SessionMix& mix) {
-    if (mix.tracks.size() != channels_.size()) return;
+    if (mix.tracks.size() != channels_.size() && mix.tracks.size() + 1 != channels_.size()) return;
     while (routing_.returnCount < std::min(mix.routing.returnCount, ostfstudio::maxMixerReturns)) addReturn();
     routing_.masterDb = mix.routing.masterDb;
     routing_.cueDb = mix.routing.cueDb;
@@ -266,7 +270,7 @@ void MixerPanel::restore(const ostfstudio::SessionMix& mix) {
     cue_->volume.setValue(routing_.cueDb, juce::dontSendNotification);
     for (std::size_t i = 0; i < buses_.size(); ++i) buses_[i]->volume.setValue(routing_.busDb[i], juce::dontSendNotification);
     for (std::size_t i = 0; i < returns_.size(); ++i) returns_[i]->volume.setValue(routing_.returnDb[i], juce::dontSendNotification);
-    channels_ = mix.tracks;
+    std::copy(mix.tracks.begin(), mix.tracks.end(), channels_.begin());
     for (std::size_t i = 0; i < channels_.size(); ++i) {
         const auto& track = channels_[i];
         auto& strip = *strips_[i];

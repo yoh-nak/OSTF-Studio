@@ -2,21 +2,23 @@
 set -euo pipefail
 
 version=$(sed -nE 's/^project\(OSTFStudio VERSION ([0-9]+\.[0-9]+\.[0-9]+) .*/\1/p' CMakeLists.txt)
+alpha_number=$(sed -nE 's/^set\(OSTF_STUDIO_ALPHA_NUMBER ([1-9][0-9]*)\)[[:space:]]*$/\1/p' CMakeLists.txt)
 test -n "$version"
-display_version="$version-preview"
+test -n "$alpha_number"
+alpha_version="$version-alpha.$alpha_number"
+display_version="$alpha_version-dev"
 
 if [[ "$RELEASE_TYPE" != none ]]; then
   if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch || "$GITHUB_REF" != refs/heads/main ]]; then
     echo 'Releases require an explicit workflow dispatch on main.' >&2
     exit 1
   fi
-  suffix_pattern='^[0-9A-Za-z]+([.-][0-9A-Za-z]+)*$'
   case "$RELEASE_TYPE" in
     stable) [[ "$RELEASE_TAG" == "v$version" ]] ;;
-    prerelease) [[ "$RELEASE_TAG" == "v$version-"* && "${RELEASE_TAG#v$version-}" =~ $suffix_pattern ]] ;;
+    prerelease) [[ "$RELEASE_TAG" == "v$alpha_version" ]] ;;
     *) false ;;
   esac || {
-    echo 'The tag must match the CMake version. Use a suffix only for a pre-release.' >&2
+    echo "Expected v$alpha_version for an alpha or v$version for an explicitly authorized stable release." >&2
     exit 1
   }
   display_version="${RELEASE_TAG#v}"

@@ -27,6 +27,7 @@ Build a cross-platform, AI-native OSTF-based DAW. OSTF 5.0 is the canonical musi
 ## Builds, distribution and updates
 - Build Windows and macOS in GitHub Actions. Store development packages in Actions Artifacts for seven days. Artifact expiration applies only to those build outputs.
 - Publish only explicitly authorized releases, using a unique Git tag for each version. Preserve all previous tags, Releases, assets and release history. Reject duplicate releases. Support stable releases and explicit pre-releases.
+- Publish the current 1.0.0 series as numbered GitHub pre-releases, starting with `v1.0.0-alpha.1`. Increment the alpha number for the next authorized publication. Switch to a stable release only on explicit instruction.
 - Publish only after both platform builds and required tests succeed. Include Windows Setup.exe, Windows Portable ZIP, macOS DMG and release notes in the same Release. Track the product version, CI build number and publication date as described in `docs/RELEASING.md`.
 - Detect existing installs and update safely. Preserve OSTF, OSTFP, audio assets and local settings. Uninstall only installer-owned files and shortcuts. Preserve external plugins and user data. The Portable ZIP runs without installing OSTF Studio.
 - Document signing and validation for each platform. Track Windows Authenticode, macOS Developer ID and macOS notarization separately.

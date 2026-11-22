@@ -6,10 +6,10 @@
 static int checkGallery(const juce::File& directory) {
     struct Expectation { const char* file; int bars; int tracks; double bpm; };
     constexpr Expectation cases[] {
-        {"neon-platforms.ostfp", 8, 4, 106.0},
-        {"blue-hour-waltz.ostfp", 8, 3, 132.0},
-        {"relay-circuit.ostfp", 12, 3, 128.0},
-        {"paper-lantern-replies.ostfp", 8, 5, 78.0},
+        {"neon-platforms.ostfp", 76, 8, 106.0},
+        {"blue-hour-waltz.ostfp", 128, 7, 132.0},
+        {"relay-circuit.ostfp", 96, 8, 128.0},
+        {"paper-lantern-replies.ostfp", 56, 8, 78.0},
         {"offset-bridges.ostfp", 0, 0, 0.0},
     };
     for (const auto& expected : cases) {
@@ -19,12 +19,69 @@ static int checkGallery(const juce::File& directory) {
         const bool matches = expected.bars == 0
             ? result.getErrorMessage() == "Preview requires one meter starting at tick zero"
             : result.wasOk() && project->bars.endBar == expected.bars + 1
-              && project->trackLanes.size() == static_cast<std::size_t>(expected.tracks)
+              && project->sourceTrackCount() == static_cast<std::size_t>(expected.tracks)
+              && project->chordVoicingTrack == static_cast<std::size_t>(expected.tracks)
               && project->previewBpm == expected.bpm && !project->pitchedNotes.front().empty()
-              && project->chordVoicings == expected.bars;
+              && project->chordVoicings > 0
+              && std::all_of(project->trackLanes.begin(), project->trackLanes.end(),
+                             [](const auto& lane) { return lane.regions.size() >= 2; });
         if (!matches) {
             std::cerr << expected.file << ": unexpected preview result: " << result.getErrorMessage() << '\n';
             return 1;
+        }
+        if (expected.bars != 0) {
+            const auto index = *project->chordVoicingTrack;
+            if (std::count(project->mixerGroups.begin(), project->mixerGroups.end(),
+                           ostfstudio::MixerTrackGroup::voicing) != 1) return 1;
+            for (std::size_t i = 0; i < project->sourceTrackCount(); ++i) {
+                if (juce::String(project->trackLanes[i].label).containsIgnoreCase("voicing")) return 1;
+            }
+            if (std::string_view(expected.file) == "neon-platforms.ostfp") {
+                auto legacy = juce::JSON::parse(project->sourceScore.toString());
+                auto tracks = legacy["tracks"];
+                auto* piano = (*tracks.getArray())[1].getDynamicObject();
+                piano->setProperty("name", "Keys Voicing");
+                piano->setProperty("role", "voicing");
+                const auto json = juce::JSON::toString(legacy);
+                juce::MemoryInputStream source(json.toRawUTF8(), json.getNumBytesAsUTF8(), false);
+                std::unique_ptr<ostfstudio::OstfpPreview> old;
+                if (ostfstudio::readOstfPreview(source, old).failed() || old->isGlobalNoteTrack(1)
+                    || old->pitchedNotes[1].empty() || !old->isGlobalNoteTrack(*old->chordVoicingTrack)) return 1;
+            }
+            const auto& voicing = project->pitchedNotes[index];
+            if (!project->isGlobalNoteTrack(index) || !project->isGlobalNoteTrack(0)
+                || voicing.empty() || voicing.front().startTick != 0 || !voicing.front().velocity
+                || !juce::String(project->trackLanes[index].regions.front().label).containsAnyOf("ABCDEFG")
+                || project->addSessionClip(index, "Should not become a Core track", {{0, 120, 60, 80}})) return 1;
+            if (!project->savedMix || project->savedMix->instruments.size() != project->sourceTrackCount()) return 1;
+            for (std::size_t track = 0; track < project->sourceTrackCount(); ++track) {
+                const auto& plugin = project->savedMix->instruments[track];
+                const auto& events = project->programChanges[track];
+                if (plugin["format"] != "vst3" || plugin["name"] != "OSTF GM Sound Module" || events.empty()
+                    || events.front().channel != project->sourceMidiChannels[track]
+                    || project->savedMix->midiRoutes[track].channel != project->sourceMidiChannels[track]) return 1;
+            }
+            const auto regions = project->trackLanes[index].regions;
+            if (std::none_of(regions.begin(), regions.end(), [](const auto& region) {
+                    return region.exactBars && region.exactBars->end - region.exactBars->start < 1.0;
+                }) || std::none_of(regions.begin(), regions.end(), [](const auto& region) {
+                    return region.exactBars && region.exactBars->end - region.exactBars->start > 1.0;
+                })) return 1;
+            ostfstudio::SessionMix mix;
+            mix.tracks.resize(index + 1);
+            mix.midiRoutes.resize(index + 1);
+            mix.instruments = project->savedMix->instruments;
+            mix.tracks[index].pan = 0.35f;
+            mix.tracks[index].muted = true;
+            juce::MemoryOutputStream saved;
+            if (ostfstudio::writeOstfpPreview(*project, mix, saved).failed()) return 1;
+            juce::MemoryInputStream roundtrip(saved.getData(), saved.getDataSize(), false);
+            std::unique_ptr<ostfstudio::OstfpPreview> reopened;
+            if (ostfstudio::readOstfpPreview(roundtrip, reopened).failed() || !reopened->savedMix
+                || reopened->sourceTrackCount() != index || reopened->sourceScore != project->sourceScore
+                || reopened->savedMix->instruments.front()["pluginId"] != mix.instruments.front()["pluginId"]
+                || reopened->savedMix->tracks.size() != index + 1 || !reopened->savedMix->tracks[index].muted
+                || reopened->savedMix->tracks[index].pan != 0.35f) return 1;
         }
         if (std::string_view(expected.file) == "paper-lantern-replies.ostfp") {
             const auto& notes = project->pitchedNotes.front();
@@ -34,20 +91,29 @@ static int checkGallery(const juce::File& directory) {
             };
             const auto cc = lane("CC 11");
             const auto channel = lane("Channel Aftertouch");
-            const auto poly = lane("Poly Aftertouch / note 69");
+            const auto poly = lane("Poly Aftertouch / note " + juce::String(notes.front().pitch));
             const auto pitch = lane("Vocal / voice / Pitch (cents)");
-            if (notes.front().velocity != 88 || project->trackLanes.front().regions.front().noteCount != 12
-                || curves.size() != 9 || cc == curves.end() || cc->points.size() != 2
+            if (notes.size() < 160 || project->trackLanes.front().regions.size() != 6
+                || project->trackLanes.front().regions.front().bars.firstBar != 5
+                || cc == curves.end() || cc->points.size() < 40
                 || cc->points.front().tick != notes.front().startTick
-                || channel == curves.end() || channel->points.front().tick != notes.front().startTick + 720
-                || poly == curves.end() || poly->points.front().tick != notes.front().startTick + 480
-                || pitch == curves.end() || !pitch->cents || pitch->points.front().value != -30.0
-                || project->trackLanes[3].regions.size() != 1 || project->trackLanes[3].regions.front().bars.firstBar != 5)
+                || channel == curves.end() || channel->points.front().tick != notes.front().startTick + 200
+                || poly == curves.end() || poly->points.front().tick != notes.front().startTick + 200
+                || pitch == curves.end() || !pitch->cents || pitch->points.front().value != -24.0
+                || project->trackLanes[7].regions.size() != 2 || project->pitchedNotes[7].size() != 10)
                 return 1;
             for (const auto* parameter : {"dynamics", "breathiness", "tension", "brightness", "voicing"}) {
-                const auto expression = lane(juce::String("Vocal / voice / ") + parameter);
-                if (expression == curves.end() || expression->points.size() != 3) return 1;
+                const auto label = juce::String("Vocal / voice / ") + parameter;
+                if (std::count_if(curves.begin(), curves.end(), [&](const auto& curve) {
+                    return curve.label == label && curve.points.size() >= 6;
+                }) != 6) return 1;
             }
+            const auto score = juce::JSON::parse(project->sourceScore.toString());
+            const auto lyrics = score["lyrics"];
+            const auto units = lyrics["units"];
+            const auto alignments = lyrics["alignments"];
+            if (units.size() != static_cast<int>(notes.size() + project->pitchedNotes[7].size())
+                || alignments.size() != units.size() || lyrics["voices"].size() != 2) return 1;
         }
         std::cout << expected.file << (expected.bars == 0 ? ": mixed meter rejected as expected" : ": preview opened") << '\n';
     }

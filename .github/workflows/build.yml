@@ -11,7 +11,7 @@ on:
         options: [none, stable, prerelease]
         default: none
       release_tag:
-        description: New version tag for a release (for example v0.1.0 or v0.1.0-preview.1)
+        description: New release tag (for example v1.0.0-alpha.1)
         type: string
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
         include:
           - name: Windows-x64
             os: windows-2022
-            configure_args: '-G "Visual Studio 17 2022" -A x64'
+            configure_args: '-G "Visual Studio 17 2022" -A x64 -DOSTF_STUDIO_ENABLE_ASIO=OFF'
           - name: macOS-arm64
             os: macos-15
             configure_args: '-DCMAKE_OSX_ARCHITECTURES=arm64'
@@ -43,14 +43,19 @@ jobs:
           RELEASE_TYPE: ${{ inputs.release_type || 'none' }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: bash packaging/release-version.sh
+      - name: Test alpha release version policy
+        shell: bash
+        run: bash tests/release-version.sh
       - name: Configure standalone core
         run: cmake -S . -B build-core ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=OFF
       - name: Build standalone core
         run: cmake --build build-core --config Release --parallel 2
       - name: Test standalone core
         run: ctest --test-dir build-core -C Release --output-on-failure --no-tests=error
+      - name: Prepare licensed FluidR3 GM bank
+        run: python packaging/prepare_fluid_r3.py
       - name: Configure (JUCE pinned tag 9.0.5)
-        run: cmake -S . -B build ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=ON
+        run: cmake -S . -B build ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=ON -DOSTF_STUDIO_DISPLAY_VERSION=${{ steps.version.outputs.display }}
       - name: Build
         run: cmake --build build --config Release --parallel 2
       - name: Run tests

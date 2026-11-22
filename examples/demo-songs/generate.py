@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from copy import deepcopy
 from pathlib import Path
 from zipfile import ZipFile, ZipInfo
 
@@ -99,7 +100,7 @@ def score(title, genre, labels, lengths, progression, tonic, mode, tempo, meter)
             "lyrics": {"documents": [], "phrases": [], "units": [], "alignments": []}, "resources": []}, positions
 
 
-def harmony_track(progression, positions, offbeat=0):
+def harmony_track(progression, positions, name, offbeat=0):
     notes = []
     for i, pitches in enumerate(voiced_progression(progression)):
         width = positions[i + 1] - positions[i]
@@ -109,7 +110,7 @@ def harmony_track(progression, positions, offbeat=0):
                 spread = 22 * voice
                 notes.append(note(f"v{i + 1}-{hit + 1}-{voice + 1}", positions[i] + offset + spread,
                                   length - spread, pitch, 63 + accent + voice * 3, releaseVelocity=42))
-    return track("keys", "Keys Voicing", "voicing", positions[-1], notes)
+    return track("keys", name, "accompaniment", positions[-1], notes)
 
 
 def bass_track(progression, positions, swing=0, style="syncopated"):
@@ -187,7 +188,7 @@ def city_pop():
         [(0, 76, .75, 90), (1, 74, .55, 83), (2, 72, 1.75, 90)],
     ]
     song["tracks"] = [track("hook", "Electric Guitar Hook", "lead", bars[-1], phrase("hook", bars, hook)),
-                      harmony_track(progression, bars, 240), bass_track(progression, bars), drum_track(song, bars)]
+                      harmony_track(progression, bars, "Electric Piano Comp", 240), bass_track(progression, bars), drum_track(song, bars)]
     section_clips(song, "hook", "keys", "bass", "drums")
     return song
 
@@ -213,7 +214,7 @@ def jazz_waltz():
     melody[18].update(probability=0.8, velocityDeviation=-8)
     song["tracks"] = [track("horn", "Waltz Horn", "lead", bars[-1], melody,
                             directions=[phrasing(bars[-1], "contrast", 0.25, 2)]),
-                      harmony_track(progression, bars, 320), bass_track(progression, bars, style="walking")]
+                      harmony_track(progression, bars, "Acoustic Piano Comp", 320), bass_track(progression, bars, style="walking")]
     section_clips(song, "horn", "keys", "bass")
     visits = ["part-1", "part-2", "part-3", "part-4"]
     song["performancePlans"] = [{"id": "head-and-chorus", "name": "Head and open chorus", "mode": "orderedFinite",
@@ -253,24 +254,6 @@ def rhythm_and_blues():
     song, bars = score("Paper Lantern Replies", "Rhythm and Blues", [("Call", 0, 4), ("Reply", 4, 8)],
                       [4 * PPQ] * 8, progression, 57, "minor", [{"at": 0, "bpm": 78}],
                       [{"at": 0, "numerator": 4, "denominator": 4}])
-    song["lyrics"] = {"documents": [{"id": "lantern-text", "title": "Paper Lantern"}],
-        "phrases": [{"id": "call-a", "documentId": "lantern-text", "text": "Fold a little dawn into the blue"},
-                    {"id": "call-b", "documentId": "lantern-text", "text": "Leave a little light across the room"}],
-        "units": [], "alignments": [], "voices": [{"id": "voice", "trackId": "voice-track", "documentId": "lantern-text"}]}
-    melody = phrase("vocal", bars, [
-        [(1, 69, 1.25, 88), (2.5, 72, .35, 78), (3, 76, .76, 94)],
-        [(0, 77, 1.15, 96), (1.5, 76, .45, 85), (2.25, 72, 1.25, 83)],
-        [(.5, 74, .65, 88), (1.5, 77, 1.15, 98), (3, 76, .65, 86)],
-        [(0, 71, .85, 85), (1, 68, .5, 80), (2, 71, 1.55, 91)],
-        [], [], [], [],
-    ], release=35)
-    words = ["Fold", "a", "lit", "tle", "dawn", "in", "to", "the", "blue"]
-    for index, (word, event) in enumerate(zip(words, melody), start=1):
-        unit = f"lantern-unit-{index}"
-        targets = [item["id"] for item in (melody[index - 1:] if index == len(words) else [event])]
-        song["lyrics"]["units"].append({"id": unit, "phraseId": "call-a", "text": word})
-        song["lyrics"]["alignments"].append({"id": f"lantern-alignment-{index}", "voiceId": "voice",
-                                               "unitIds": [unit], "noteIds": targets})
     answers = [
         [], [], [], [],
         [(0, 72, .65, 84), (1, 76, 1.22, 91), (2.5, 77, .7, 93)],
@@ -278,46 +261,10 @@ def rhythm_and_blues():
         [(0, 76, .7, 84), (1, 74, .5, 82), (2, 71, 1.4, 86)],
         [(0, 72, .7, 87), (1, 69, 2.6, 88)],
     ]
-    song["tracks"] = [track("voice-track", "Lead Vocal Guide", "vocal", bars[-1], melody,
-        directions=[{"id": "reply-options", "type": "vocalFreedom", "start": bars[4], "duration": bars[-1] - bars[4],
-                     "parameters": {"voiceId": "voice", "textPolicy": "alternatives", "melodyPolicy": "open",
-                                    "candidatePhraseSets": [{"phraseIds": ["call-a"]}, {"phraseIds": ["call-b"]}],
-                                    "adherence": "preferred"}}]),
-        harmony_track(progression, bars, 320), bass_track(progression, bars, 160),
+    song["tracks"] = [track("voice-track", "Lead Vocal Guide", "vocal", bars[-1], []),
+        harmony_track(progression, bars, "Warm Electric Piano", 320), bass_track(progression, bars, 160),
         track("answer", "Electric Piano Reply", "countermelody", bars[-1], phrase("answer", bars, answers)),
         drum_track(song, bars)]
-    section_clips(song, "keys", "bass", "answer", "drums")
-    vocal_clip = song["tracks"][0]["clips"][0]
-    first_note = melody[0]["id"]
-    vocal_clip["midiEvents"] = [
-        {"id": "vocal-cc-start", "start": PPQ, "type": "controlChange", "controller": 11, "value": 70},
-        {"id": "vocal-cc-peak", "start": PPQ + 600, "type": "controlChange", "controller": 11, "value": 105},
-        {"id": "vocal-at-peak", "start": PPQ + 720, "type": "channelPressure", "value": 45},
-        {"id": "vocal-poly", "start": PPQ + 480, "type": "polyPressure", "pitch": melody[0]["pitch"],
-         "targetNoteId": first_note, "value": 32},
-        {"id": "vocal-bend", "start": PPQ + 240, "type": "pitchBend", "value14": 7900},
-        {"id": "vocal-bend-reset", "start": PPQ + 390, "type": "pitchBend", "value14": 8192},
-    ]
-    vocal_clip["midiEvents"].sort(key=lambda event: event["start"])
-    vocal_clip["vocalPerformances"] = [{
-        "id": "lantern-performance", "voiceId": "voice", "noteIds": [first_note],
-        "pitchCurves": [{"id": "lantern-pitch", "targetNoteId": first_note, "unit": "cents",
-                         "interpolation": "linear", "points": [{"at": PPQ, "value": -30},
-                                                            {"at": PPQ + 300, "value": 0}]}],
-        "expressionCurves": [{"id": "lantern-dynamics", "parameter": "dynamics", "interpolation": "linear",
-                              "points": [{"at": PPQ, "value": 0.35}, {"at": PPQ + 600, "value": 0.8},
-                                         {"at": PPQ + 1100, "value": 0.5}]}] + [
-            {"id": f"lantern-{parameter}", "parameter": parameter, "interpolation": "linear",
-             "points": [{"at": PPQ, "value": initial}, {"at": PPQ + 600, "value": peak},
-                        {"at": PPQ + 1100, "value": end}]}
-            for parameter, initial, peak, end in (("breathiness", .68, .28, .55), ("tension", .25, .53, .31),
-                                                   ("brightness", .37, .64, .42), ("voicing", .72, .95, .60))
-        ],
-        "techniques": [{"id": "lantern-scoop", "targetNoteId": first_note, "kind": "scoop",
-                        "start": PPQ, "duration": 300, "intensity": .35}],
-        "breathEvents": [{"id": "lantern-inhale", "kind": "inhale", "start": PPQ - 260,
-                          "duration": 190, "intensity": .3}],
-    }]
     return song
 
 
@@ -343,24 +290,465 @@ def progressive():
     return song
 
 
+def arrangement(song, form, layers):
+    """Expand the composed motifs into named sections with distinct orchestration."""
+    source = deepcopy(song)
+    song["performancePlans"] = []
+    song["timeline"] = {"sections": [], "meterChanges": [], "tempoChanges": []}
+    song["harmony"] = {"chords": [], "scales": []}
+    tracks = {lane["id"]: {**lane, "clips": [], "directions": []} for lane in source["tracks"]}
+    for lane_id, title, role, style in layers:
+        tracks[lane_id] = {"id": lane_id, "name": title, "role": role, "trackType": "melodic", "clips": []}
+    song["tracks"] = list(tracks.values())
+    original_chords = source["harmony"]["chords"]
+    source_events = {
+        lane["id"]: [(clip["start"] + event["start"], event)
+                     for clip in lane["clips"] for event in clip["notes"]]
+        for lane in source["tracks"]
+    }
+    tick = 0
+    for number, (name, bars, enabled, intensity) in enumerate(form, start=1):
+        section = {"id": f"part-{number}", "name": name, "start": tick, "duration": 0}
+        events = {lane_id: [] for lane_id in enabled.split()}
+        for position, source_bar in enumerate(bars):
+            chord = original_chords[source_bar]
+            start, length = chord["start"], chord["duration"]
+            for field in ("meterChanges", "tempoChanges"):
+                current = next(event for event in reversed(source["timeline"][field]) if event["at"] <= start)
+                previous = song["timeline"][field]
+                if not previous or {**previous[-1], "at": 0} != {**current, "at": 0}:
+                    previous.append({**current, "at": tick})
+            chord_id = f"chord-{len(song['harmony']['chords']) + 1}"
+            song["harmony"]["chords"].append({**chord, "id": chord_id, "start": tick})
+            for lane_id, output in events.items():
+                for at, original in source_events.get(lane_id, ()):
+                    if start <= at < start + length:
+                        velocity = original["velocity"] + intensity
+                        deviation = original.get("velocityDeviation", 0)
+                        velocity = max(1, 1 - deviation, min(110, 127 - deviation, velocity))
+                        output.append({**original, "id": f"{section['id']}-{original['id']}-{position + 1}",
+                                       "start": tick - section["start"] + at - start,
+                                       "duration": min(original["duration"], start + length - at),
+                                       "velocity": velocity})
+            for lane_id, _, _, style in layers:
+                if lane_id not in events:
+                    continue
+                pitches = chord["voicing"]["pitches"]
+                slots = layer_notes(style, pitches, length, position, len(bars))
+                for offset, held, pitch, velocity in slots:
+                    output = events[lane_id]
+                    output.append(note(f"{section['id']}-{lane_id}-{len(output) + 1}",
+                                       tick - section["start"] + offset, min(held, length - offset),
+                                       pitch, velocity + intensity))
+            tick += length
+        section["duration"] = tick - section["start"]
+        song["timeline"]["sections"].append(section)
+        for lane_id, output in events.items():
+            if output:
+                tracks[lane_id]["clips"].append({"id": f"{lane_id}-{section['id']}", "name": name,
+                    "start": section["start"], "duration": section["duration"],
+                    "notes": sorted(output, key=lambda event: event["start"])})
+    song["timeline"]["duration"] = tick
+    song["harmony"]["scales"] = [{**scale, "duration": tick} for scale in source["harmony"]["scales"]]
+    return song
+
+
+def layer_notes(style, tones, length, bar, section_bars):
+    if style == "pad":
+        return [(0, length - 160, pitch + 12, 56 + i * 3) for i, pitch in enumerate(tones[-3:])]
+    if style == "stabs":
+        return [(offset, 280, pitch, 76 - i * 3) for i, pitch in enumerate(tones[-3:])
+                for offset in (PPQ // 2, length - PPQ // 2)]
+    if style == "counter":
+        return [(length // 2, 410, tones[-1] + 12, 82), (length - PPQ // 2, 320, tones[-2] + 12, 70)] if bar % 2 else []
+    if style == "pulse":
+        return [(offset, 166, tones[(i + bar) % len(tones)] + 12, 52 + (i % 3) * 5)
+                for i, offset in enumerate(range(PPQ // 4, length, PPQ // 2))]
+    if style == "bass":
+        return [(0, length - 250, tones[0] - 12, 76)] if bar % 2 == 0 else [(PPQ, length - PPQ - 180, tones[0] - 12, 67)]
+    if style == "climax":
+        return [(0, length - 230, tones[-1] + 12, 88)] if bar % 4 < 3 else [
+            (0, length // 2 - 120, tones[-2] + 12, 94), (length // 2, length // 2 - 160, tones[-1] + 12, 93)]
+    if style == "fill":
+        return [(length - PPQ + i * PPQ // 4, 135, tones[-1 - i % len(tones)] + 12, 68 + i * 4)
+                for i in range(4)] if bar % 4 == 3 and bar + 1 < section_bars else []
+    raise ValueError(f"Unknown accompaniment style: {style}")
+
+
+def full_city_pop():
+    ostinato = [0, 1, 2, 3]
+    chorus = [4, 5, 6, 7]
+    return arrangement(city_pop(), [
+        ("Intro", ostinato, "keys bass pad", -11),
+        ("Verse 1", ostinato * 2, "hook keys bass drums comp", -7),
+        ("Pre-Chorus", chorus, "keys bass drums comp strings", -2),
+        ("Chorus", (ostinato + chorus) * 2, "hook keys bass drums pad comp brass strings", 3),
+        ("Verse 2", ostinato * 2, "hook keys bass drums comp brass", -4),
+        ("Bridge", [2, 3, 0, 1, 4, 5, 6, 3], "keys bass pad strings", -6),
+        ("Guitar Break", chorus * 2, "hook keys bass drums comp brass", 0),
+        ("Final Chorus", (ostinato + chorus) * 2, "hook keys bass drums pad comp brass strings", 6),
+        ("Outro", chorus, "keys bass pad strings", -10),
+    ], [("pad", "Analog Pad", "texture", "pad"), ("comp", "Muted Rhythm Guitar", "rhythm", "stabs"),
+        ("brass", "Brass Answers", "countermelody", "counter"), ("strings", "String Lift", "texture", "climax")])
+
+
+def full_waltz():
+    head = list(range(8))
+    turnaround = [4, 5, 2, 3, 0, 1, 6, 7]
+    song = jazz_waltz()
+    bars = [i * 3 * PPQ for i in range(9)]
+    song["soundSlots"] = [{"id": "ride", "name": "Ride Cymbal", "midiMapping": {"standard": "gm1", "note": 51}},
+                          {"id": "brush", "name": "Brush Accent", "midiMapping": {"standard": "gm1", "note": 38}}]
+    drums = []
+    for bar, start in enumerate(bars[:-1]):
+        for i, beat in enumerate((0, 1, 1.667, 2)):
+            drums.append({"id": f"ride-{bar + 1}-{i + 1}", "start": start + round(beat * PPQ),
+                          "duration": 104, "soundSlotId": "ride", "velocity": [68, 53, 48, 62][i]})
+        drums.append({"id": f"brush-{bar + 1}", "start": start + PPQ, "duration": 130,
+                      "soundSlotId": "brush", "velocity": 59 if bar % 2 else 43})
+    song["tracks"].append(track("ride-kit", "Ride and Brushes", "drums", bars[-1], drums, trackType="drum"))
+    arrangement(song, [
+        ("Piano Introduction", head[:4] * 2, "keys bass vibes", -10),
+        ("Head", head * 2, "horn keys bass ride-kit vibes", -4),
+        ("Piano Chorus", turnaround * 3, "keys bass ride-kit vibes organ", 0),
+        ("Horn Chorus", head * 3, "horn keys bass ride-kit guitar organ", 2),
+        ("Trading Fours", (turnaround + head) * 2, "horn bass ride-kit guitar vibes", 0),
+        ("Head Out", head * 2, "horn keys bass ride-kit vibes organ", 3),
+        ("Tag", [4, 5, 6, 7, 4, 5, 6, 7], "horn keys bass guitar organ", -9),
+    ], [("vibes", "Vibraphone Replies", "countermelody", "counter"),
+        ("organ", "Organ Guide Tones", "texture", "pad"), ("guitar", "Jazz Guitar Comp", "rhythm", "stabs")])
+    sections = song["timeline"]["sections"]
+    song["tracks"][0]["directions"] = [phrasing(song["timeline"]["duration"], "contrast", 0.25, 2)]
+    song["performancePlans"] = [{"id": "jazz-choruses", "name": "Fixed head, open horn chorus", "mode": "orderedFinite",
+        "defaultRealization": "fixed", "visits": [
+            {"id": f"visit-{i + 1}", "ordinal": i, "sourceSectionIds": [part["id"]],
+             "parts": [{"trackId": "horn", "realization": "open", "role": "solo"}] if i == 3 else []}
+            for i, part in enumerate(sections)]}]
+    return song
+
+
+def full_techno():
+    pulse = [0, 1, 2, 3]
+    build = [4, 5, 6, 7]
+    drop = [8, 9, 10, 11]
+    song = arrangement(techno(), [
+        ("DJ Intro", pulse * 2, "drums sub noise arp", -9),
+        ("Groove", pulse * 4, "drums bass sub arp chord", -4),
+        ("Breakdown", build * 3, "arp atmos chord noise", -10),
+        ("Build", build * 2, "drums arp noise atmos perc", 0),
+        ("First Drop", drop * 4, "drums bass sub arp chord perc", 3),
+        ("Second Break", build * 2, "arp chord atmos noise", -6),
+        ("Final Drop", drop * 5, "drums bass sub arp chord atmos perc noise", 7),
+        ("DJ Outro", pulse * 2, "drums sub noise", -9),
+    ], [("sub", "Sub Bass Sustain", "bassline", "bass"), ("chord", "Chord Stabs", "rhythm", "stabs"),
+        ("atmos", "Atmosphere Synth", "texture", "pad"), ("perc", "Metallic Sequencer", "rhythm", "pulse"),
+        ("noise", "Transition Synth", "texture", "fill")])
+    song["tracks"][0]["directions"] = [phrasing(song["timeline"]["duration"], "repetition", 1, 4)]
+    return song
+
+
+def full_progressive():
+    odd = [0, 1, 2, 3]
+    straight = [4, 5, 6, 7]
+    song = progressive()
+    song["soundSlots"] = [{"id": slot, "name": name, "midiMapping": {"standard": "gm1", "note": pitch}}
+                          for slot, name, pitch in (("kick", "Kick", 36), ("snare", "Snare", 38),
+                                                    ("hat", "Closed Hat", 42), ("crash", "Crash", 49))]
+    drums = []
+    for bar, chord in enumerate(song["harmony"]["chords"]):
+        odd_meter = bar < 4
+        accents = (0, 2, 4) if odd_meter else (0, 4)
+        backbeats = (2, 6)
+        for step in range(7 if odd_meter else 8):
+            for slot, velocity in ([("hat", 75 if step in accents else 55)]
+                                   + ([("kick", 104)] if step in accents else [])
+                                   + ([("snare", 102)] if step in backbeats else [])
+                                   + ([("crash", 98)] if step == 0 and bar in (0, 4) else [])):
+                drums.append({"id": f"rock-{bar + 1}-{step + 1}-{slot}", "start": chord["start"] + step * PPQ // 2,
+                              "duration": 170, "soundSlotId": slot, "velocity": velocity})
+    song["tracks"].append(track("kit", "Rock Drum Kit", "drums", song["timeline"]["duration"], drums, trackType="drum"))
+    return arrangement(song, [
+        ("Seven Steps", odd * 3, "guitar bass organ pulse kit", -4),
+        ("Wide Theme", straight * 4, "guitar bass rhythm organ strings kit", 1),
+        ("Odd-Meter Interlude", odd * 3, "bass organ pulse lead", -7),
+        ("Development", (odd + straight) * 3, "guitar bass rhythm organ strings lead pulse kit", 3),
+        ("Recapitulation", straight * 3, "guitar bass rhythm organ strings lead kit", 7),
+        ("Coda", straight, "guitar bass organ strings", -3),
+    ], [("rhythm", "Rhythm Guitar", "rhythm", "stabs"), ("organ", "Organ Chords", "accompaniment", "pad"),
+        ("strings", "Mellotron Strings", "texture", "climax"), ("lead", "Lead Guitar Replies", "countermelody", "counter"),
+        ("pulse", "Clockwork Synth", "rhythm", "pulse")])
+
+
+PAPER_LANTERN_LYRICS = {
+    "Verse 1": (
+        "Rain counts the change in my coat",
+        "Trains pull the night down the line",
+        "I cup the last of the glow",
+        "And keep your side of the light",
+    ),
+    "Pre-Chorus": (
+        "If the street lights all go out",
+        "Look for the flame in my hands",
+    ),
+    "Chorus": (
+        "Fold a lit-tle dawn in-to the blue",
+        "Leave a lit-tle light a-cross the room",
+        "When the ci-ty falls a-sleep a-gain",
+        "My pa-per lan-tern shines for you",
+    ),
+    "Verse 2": (
+        "Steam on the glass hides the road",
+        "I trace the shape of your name",
+        "Dawn puts a hand on the roofs",
+        "But I still shel-ter the flame",
+    ),
+    "Bridge": (
+        "One breath can bend the light",
+        "One word can lift the shade",
+        "Let all the doors swing wide",
+        "I will not turn a-way",
+    ),
+}
+PAPER_LANTERN_LYRICS["Final Chorus"] = PAPER_LANTERN_LYRICS["Chorus"] + (
+    "Let the morn-ing find us by the door",
+    "My pa-per lan-tern shines for you",
+)
+
+
+def sing_lantern(song):
+    """Write section-local lyric phrasing, harmony and continuous expression."""
+    lyrics = {"documents": [{"id": "lantern-text", "title": "Paper Lantern Replies"},
+                            {"id": "lantern-backing-text", "title": "Wordless backing vocals"}],
+              "phrases": [], "units": [], "alignments": [],
+              "voices": [{"id": "voice", "trackId": "voice-track", "documentId": "lantern-text"},
+                         {"id": "backing-voice", "trackId": "backing", "documentId": "lantern-backing-text"}]}
+    song["lyrics"] = lyrics
+    lead = song["tracks"][0]
+    backing = next(lane for lane in song["tracks"] if lane["id"] == "backing")
+    chords = song["harmony"]["chords"]
+    for section in song["timeline"]["sections"]:
+        name = section["name"]
+        if name not in PAPER_LANTERN_LYRICS:
+            continue
+        refrain = "Chorus" in name and name != "Pre-Chorus"
+        prefix = f"vocal-{section['id']}"
+        lead_notes, pitch_curves, techniques, breaths, controllers, backing_notes = [], [], [], [], [], []
+        parameters = {name: [] for name in ("dynamics", "breathiness", "tension", "brightness", "voicing")}
+        for line, text in enumerate(PAPER_LANTERN_LYRICS[name]):
+            line_id = f"{prefix}-line-{line + 1}"
+            words = text.split()
+            syllables = [syllable for word in words for syllable in word.split("-")]
+            lyrics["phrases"].append({"id": line_id, "documentId": "lantern-text", "text": text.replace("-", "")})
+            offsets = ([.5, 1, 1.5, 2.25, 3, 3.5, 4.25, 5, 5.5, 6.25, 6.75, 7.25] if refrain else
+                       [.5, 1.25, 2, 2.5, 3, 3.5, 4.5, 5.25, 5.75, 6.25, 6.75, 7.25])
+            shape = ([1, 2, 3, 2, 1, 2, 4, 3, 2, 1, 1, 0] if refrain else
+                     [1, 2, 1, 0, 2, 1, 2, 3, 2, 1, 1, 0])
+            if line % 2:
+                offsets = [beat + .25 if i % 3 == 0 and beat <= 6.75 else beat
+                           for i, beat in enumerate(offsets)]
+                shape = [max(0, degree - (i % 2)) for i, degree in enumerate(shape)]
+            if name == "Bridge":
+                shape = [min(5, degree + 1) for degree in shape]
+            start = line * 8 * PPQ
+            breaths.append({"id": f"{line_id}-inhale", "start": start + 80, "duration": 245,
+                            "kind": "inhale", "intensity": .42 if refrain else .26})
+            for i, syllable in enumerate(syllables):
+                offset = round(offsets[i] * PPQ)
+                following = round((offsets[i + 1] if i + 1 < len(syllables) else 7.8) * PPQ)
+                held = following - offset - (60 if i + 1 < len(syllables) else 180)
+                at = section["start"] + start + offset
+                chord = chords[at // (4 * PPQ)]
+                pool = sorted({pitch for tone in chord["voicing"]["pitches"] for pitch in range(62, 84)
+                               if pitch % 12 == tone % 12})
+                tone = min(len(pool) - 1, shape[i] + (2 if refrain else 1))
+                if i + 1 == len(syllables):
+                    tone = min(len(pool) - 1, 2 if refrain else 1)
+                note_id = f"{line_id}-note-{i + 1}"
+                unit_id = f"{line_id}-unit-{i + 1}"
+                vel = (89 if refrain else 76) + [3, -2, 6, 0][i % 4]
+                lead_notes.append(note(note_id, start + offset, held, pool[tone], vel, releaseVelocity=48 if refrain else 33))
+                lyrics["units"].append({"id": unit_id, "phraseId": line_id, "text": syllable, "start": at, "duration": held})
+                lyrics["alignments"].append({"id": f"{unit_id}-alignment", "voiceId": "voice",
+                                             "unitIds": [unit_id], "noteIds": [note_id]})
+                if i == 0 or i + 1 == len(syllables):
+                    attack = min(200, held // 3)
+                    pitch_curves.append({"id": f"{note_id}-pitch", "targetNoteId": note_id, "unit": "cents",
+                        "interpolation": "linear", "points": [{"at": start + offset, "value": -24 if i == 0 else -12},
+                                                             {"at": start + offset + attack, "value": 0}]})
+                    techniques.append({"id": f"{note_id}-technique", "start": start + offset, "duration": held,
+                        "kind": "vibrato" if i > 0 and held > PPQ else "scoop", "targetNoteId": note_id,
+                        "intensity": .44 if refrain else .29})
+                    controllers.extend([
+                        {"id": f"{note_id}-cc", "start": start + offset, "type": "controlChange",
+                         "controller": 11, "value": 104 if refrain else 78},
+                        {"id": f"{note_id}-pressure", "start": start + offset + attack, "type": "polyPressure",
+                         "targetNoteId": note_id, "pitch": pool[tone], "value": 45 if refrain else 29},
+                        {"id": f"{note_id}-aftertouch", "start": start + offset + attack, "type": "channelPressure",
+                         "value": 42 if refrain else 23},
+                        {"id": f"{note_id}-bend", "start": start + offset + 1, "type": "pitchBend", "value14": 8050},
+                        {"id": f"{note_id}-bend-reset", "start": start + offset + attack, "type": "pitchBend", "value14": 8192},
+                    ])
+                if refrain and i + 1 == len(syllables):
+                    harmony = note(f"{line_id}-backing", start + offset, held, pool[max(0, tone - 2)], vel - 21, releaseVelocity=32)
+                    backing_notes.append(harmony)
+                    lyric = f"{line_id}-ah"
+                    lyrics["phrases"].append({"id": lyric, "documentId": "lantern-backing-text", "text": "Ah"})
+                    lyrics["units"].append({"id": f"{lyric}-unit", "phraseId": lyric, "text": "Ah", "start": at, "duration": held})
+                    lyrics["alignments"].append({"id": f"{lyric}-alignment", "voiceId": "backing-voice",
+                                                "unitIds": [f"{lyric}-unit"], "noteIds": [harmony["id"]]})
+            for parameter, values in {
+                "dynamics": (.35, .88, .52) if refrain else (.30, .65, .38),
+                "breathiness": (.65, .27, .56) if refrain else (.58, .38, .62),
+                "tension": (.26, .71, .35) if refrain else (.20, .42, .27),
+                "brightness": (.42, .77, .55) if refrain else (.28, .53, .38),
+                "voicing": (.72, .97, .64) if refrain else (.58, .89, .57),
+            }.items():
+                for beat, value in zip((.5, 3.5, 7.5), values):
+                    parameters[parameter].append({"at": start + round(beat * PPQ), "value": value})
+        lead["clips"].append({"id": prefix, "name": name, "start": section["start"], "duration": section["duration"],
+            "notes": lead_notes, "midiEvents": sorted(controllers, key=lambda event: event["start"]), "vocalPerformances": [{
+                "id": f"{prefix}-performance", "voiceId": "voice", "noteIds": [event["id"] for event in lead_notes],
+                "pitchCurves": pitch_curves, "techniques": techniques, "breathEvents": breaths,
+                "expressionCurves": [{"id": f"{prefix}-{parameter}", "parameter": parameter,
+                     "interpolation": "linear", "points": points} for parameter, points in parameters.items()],
+            }]})
+        if backing_notes:
+            backing["clips"].append({"id": f"{prefix}-backing", "name": name, "start": section["start"],
+                                     "duration": section["duration"], "notes": backing_notes})
+
+
+def full_lantern():
+    verse = [0, 1, 2, 3, 0, 1, 2, 3]
+    chorus = [4, 5, 6, 7, 4, 5, 6, 7]
+    song = arrangement(rhythm_and_blues(), [
+        ("Intro", [0, 1, 2, 3], "keys bass strings", -10),
+        ("Verse 1", verse, "keys bass drums nylon", -6),
+        ("Pre-Chorus", [4, 5, 2, 3], "keys bass drums nylon strings", -2),
+        ("Chorus", chorus, "keys bass drums answer nylon strings", 1),
+        ("Verse 2", verse, "keys bass drums nylon answer", -3),
+        ("Bridge", [2, 3, 4, 5, 0, 1, 2, 3], "keys strings nylon answer", -9),
+        ("Final Chorus", chorus + [4, 5, 6, 7], "keys bass drums answer nylon strings", 4),
+        ("Outro", [4, 5, 6, 7], "keys answer strings", -10),
+    ], [("nylon", "Nylon Guitar", "rhythm", "stabs"), ("strings", "Chamber Strings", "texture", "pad"),
+        ("backing", "Backing Vocal Harmony", "vocal", "pad")])
+    sing_lantern(song)
+    return song
+
+
+def vary_harmonic_rhythm(song):
+    """Hold harmony in introductions and anticipate cadences in instrumental passages."""
+    harmony = song["harmony"]
+    original = harmony["chords"]
+    revised = []
+    altered = []
+    for section_index, section in enumerate(song["timeline"]["sections"]):
+        start = section["start"]
+        end = start + section["duration"]
+        chords = [chord for chord in original if start <= chord["start"] < end]
+        instrumental = not any(track["role"] == "vocal" and any(clip["start"] == start for clip in track["clips"])
+                               for track in song["tracks"])
+        if instrumental and len(chords) >= 4:
+            if section_index == 0 or "Break" in section["name"] or "Intro" in section["name"]:
+                first, second = chords[:2]
+                chords = [{**first, "duration": first["duration"] + second["duration"]}, *chords[2:]]
+                altered.append((second["start"], second["start"] + second["duration"], first))
+            # Lead into the last chord early, especially at turnarounds and section ends.
+            approach, resolution = chords[-2:]
+            anticipation = {3 * PPQ: PPQ, 7 * PPQ // 2: 3 * PPQ // 2}.get(
+                approach["duration"], approach["duration"] // 2)
+            change = resolution["start"] - anticipation
+            chords[-2:] = [{**approach, "duration": approach["duration"] - anticipation},
+                           {**resolution, "start": change, "duration": resolution["duration"] + anticipation}]
+            altered.append((change, resolution["start"], resolution))
+        revised.extend(chords)
+    harmony["chords"] = revised
+    for lane in song["tracks"]:
+        if lane["role"] == "vocal":
+            continue
+        for clip in lane["clips"]:
+            events = []
+            for event in clip["notes"]:
+                at = clip["start"] + event["start"]
+                end = at + event["duration"]
+                for start, limit, chord in altered:
+                    if "pitch" not in event or end <= start or at >= limit:
+                        continue
+                    if at < start:
+                        events.append({**event, "duration": start - at})
+                        event = {**event, "id": f"{event['id']}-change", "start": start - clip["start"],
+                                 "duration": end - start}
+                        at = start
+                    allowed = {pitch % 12 for pitch in chord["voicing"]["pitches"]}
+                    pitch = event["pitch"]
+                    event = {**event, "pitch": min((p for p in range(max(0, pitch-6), min(127, pitch+6)+1)
+                                                   if p % 12 in allowed), key=lambda p: (abs(p-pitch), p))}
+                events.append(event)
+            clip["notes"] = sorted(events, key=lambda item: item["start"])
+
+
+def production_session(song):
+    programs = {
+        "hook": 27, "horn": 65, "arp": 81, "voice-track": 53, "backing": 52, "keys": 4, "bass": 33,
+        "answer": 5, "nylon": 24, "strings": 48, "comp": 28, "brass": 61, "pad": 89, "vibes": 11,
+        "organ": 16, "guitar": 27, "rhythm": 29, "lead": 30, "pulse": 81, "sub": 38, "chord": 62,
+        "atmos": 90, "perc": 12, "noise": 99, "drums": 0, "kit": 0, "ride-kit": 0,
+    }
+    if song["song"]["title"] == "Blue Hour Waltz":
+        programs.update(keys=0, guitar=26, bass=32)
+    def channel(identifier, kind, **fields):
+        return {"id": identifier, "kind": kind, "audioChannels": 2, "gainDb": 0, "pan": 0,
+                "mute": False, "solo": False, "soloSafe": False, "deviceIds": [], **fields}
+
+    channels = [channel("master", "master", gainDb=-3)]
+    devices = []
+    for index, lane in enumerate(song["tracks"], start=1):
+        midi_channel = 10 if lane["trackType"] == "drum" else index
+        lane["midi"] = {"mode": "singleChannel", "channel": midi_channel}
+        clip = lane["clips"][0]
+        clip.setdefault("midiEvents", []).insert(0, {"id": f"{lane['id']}-program", "type": "programChange",
+            "start": 0, "channel": midi_channel, "program": programs[lane["id"]]})
+        device = f"instrument-{index}"
+        devices.append({"id": device, "role": "instrument", "enabled": True, "bypass": False,
+            "onUnavailable": "reportAndPreserve", "plugin": {
+                "format": "vst3", "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
+                "name": "OSTF GM Sound Module", "vendor": "OSTF Studio",
+            }})
+        channels.append(channel(f"track-{index}", "track", trackId=lane["id"], outputChannelId="master",
+                                deviceIds=[device], gainDb=-5 if lane["role"] in ("texture", "rhythm") else -2))
+    return {"channels": channels, "devices": devices}
+
+
 def json_bytes(document):
     return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
 def write_song(stem, document):
+    vary_harmonic_rhythm(document)
+    production = production_session(document)
+    document.setdefault("extensions", {})["org.ostf.studio"] = {
+        "version": "1.0", "status": "current", "dependencies": {"scope": "document"}, "data": production,
+    }
     data = json_bytes(document)
+    digest = hashlib.sha256(data).hexdigest()
+    session = json_bytes({**production, "profile": "OSTF-Production-Session", "profileVersion": "0.3.0",
+                          "score": {"formatVersion": "5.0.0", "sha256": digest}})
+    session_path = "session/studio.production.json"
     (DESTINATION / f"{stem}.ostf").write_bytes(data)
     manifest = {"packageFormat": "OSTFP", "packageVersion": "1.0.0", "projectId": stem,
                 "title": document["song"]["title"],
                 "score": {"path": "score/song.ostf", "format": "OSTF", "version": "5.0.0",
-                          "sha256": hashlib.sha256(data).hexdigest()}, "documents": [], "assets": [], "bindings": []}
+                          "sha256": digest}, "assets": [], "bindings": [],
+                "documents": [{"id": "studio-production", "role": "productionSession", "path": session_path,
+                               "family": "OSTF-Production-Session", "version": "0.3.0",
+                               "sha256": hashlib.sha256(session).hexdigest()}]}
     with ZipFile(DESTINATION / f"{stem}.ostfp", "w") as archive:
         for path, payload in (("mimetype", b"application/vnd.ostf-project+zip"),
-                              ("manifest.json", json_bytes(manifest)), ("score/song.ostf", data)):
+                              ("manifest.json", json_bytes(manifest)), ("score/song.ostf", data), (session_path, session)):
             archive.writestr(ZipInfo(path), payload)
 
 
 if __name__ == "__main__":
-    for name, author in (("neon-platforms", city_pop), ("blue-hour-waltz", jazz_waltz), ("relay-circuit", techno),
-                         ("paper-lantern-replies", rhythm_and_blues), ("offset-bridges", progressive)):
+    for name, author in (("neon-platforms", full_city_pop), ("blue-hour-waltz", full_waltz),
+                         ("relay-circuit", full_techno), ("paper-lantern-replies", full_lantern),
+                         ("offset-bridges", full_progressive)):
         write_song(name, author())

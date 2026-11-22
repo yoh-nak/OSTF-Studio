@@ -74,19 +74,27 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const os
             && tracks[outputTrack].instrument->acceptsMidi()
             ? &instruments_[outputTrack].timeline : nullptr;
         if (!midi) continue;
-        auto addNote = [&](juce::int64 start, juce::int64 end, int pitch, int velocity) {
+        for (const auto& change : project.programChanges[track]) {
+            const auto at = static_cast<int>(std::llround(static_cast<double>(change.tick) * samplesPerTick_));
+            midi->addEvent(juce::MidiMessage::programChange(change.channel.value_or(setup.midiChannel), change.program), at);
+        }
+        auto addNote = [&](juce::int64 start, juce::int64 end, int pitch, int velocity, int channel) {
             if (noteCount >= 20000) return false;
             const auto first = static_cast<int>(std::llround(static_cast<double>(start) * samplesPerTick_));
             const auto last = static_cast<int>(std::llround(static_cast<double>(end) * samplesPerTick_));
             if (last <= first) return true;
             ++noteCount;
-            midi->addEvent(juce::MidiMessage::noteOn(setup.midiChannel, pitch, static_cast<juce::uint8>(velocity)), first);
-            midi->addEvent(juce::MidiMessage::noteOff(setup.midiChannel, pitch), last);
+            midi->addEvent(juce::MidiMessage::noteOn(channel, pitch, static_cast<juce::uint8>(velocity)), first);
+            midi->addEvent(juce::MidiMessage::noteOff(channel, pitch), last);
             return true;
         };
         for (const auto& note : project.pitchedNotes[track])
-            if (!addNote(note.startTick, note.endTick, note.pitch, note.velocity.value_or(92)))
-                return juce::Result::fail("Preview transport supports up to 20,000 pitched notes.");
+            if (note.enabled && !addNote(note.startTick, note.endTick, note.pitch, note.velocity.value_or(92), setup.midiChannel))
+                return juce::Result::fail("Preview transport supports up to 20,000 notes.");
+        if (track < project.drumNotes.size())
+            for (const auto& note : project.drumNotes[track])
+                if (note.enabled && !addNote(note.startTick, note.endTick, note.pitch, note.velocity.value_or(92), 10))
+                    return juce::Result::fail("Preview transport supports up to 20,000 notes.");
     }
     for (const auto& setup : tracks)
         if (setup.instrument)

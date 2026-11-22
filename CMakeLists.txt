@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
-project(OSTFStudio VERSION 0.1.0 LANGUAGES C CXX)
+project(OSTFStudio VERSION 1.0.0 LANGUAGES C CXX)
+set(OSTF_STUDIO_ALPHA_NUMBER 1)
+if(NOT DEFINED OSTF_STUDIO_DISPLAY_VERSION)
+    set(OSTF_STUDIO_DISPLAY_VERSION "${PROJECT_VERSION}-alpha.${OSTF_STUDIO_ALPHA_NUMBER}")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -56,7 +60,22 @@ if (OSTF_STUDIO_BUILD_GUI)
     target_sources(OSTFGMSoundModule PRIVATE src/plugins/GMSoundModule.cpp)
     target_include_directories(OSTFGMSoundModule PRIVATE third_party/tinysoundfont)
     target_compile_definitions(OSTFGMSoundModule PRIVATE JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_USE_CURL=0)
-    target_link_libraries(OSTFGMSoundModule PRIVATE juce::juce_audio_processors juce::juce_recommended_config_flags)
+    juce_add_binary_data(OSTFGMPreviewBank HEADER_NAME GMPreviewData.h NAMESPACE GMPreviewData SOURCES assets/StudioPreview.sf2)
+    target_link_libraries(OSTFGMSoundModule PRIVATE OSTFGMPreviewBank juce::juce_audio_processors juce::juce_recommended_config_flags)
+    set(OSTF_FLUID_R3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build-tools/fluid-r3")
+    if(EXISTS "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" AND EXISTS "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt")
+        add_custom_command(TARGET OSTFGMSoundModule_VST3 POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt"
+                "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources")
+        if(APPLE)
+            # Seal the complete VST3 bundle, including its newly copied SoundFont.
+            add_custom_command(TARGET OSTFGMSoundModule_VST3 POST_BUILD
+                COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:OSTFGMSoundModule_VST3>"
+                VERBATIM)
+        endif()
+    endif()
 
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/DocumentTypes.plist" ostf_document_types)
     juce_add_gui_app(OSTFStudio
@@ -79,9 +98,10 @@ if (OSTF_STUDIO_BUILD_GUI)
     target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/OstfpPreview.cpp
         src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp)
     target_include_directories(OSTFStudio PRIVATE src)
+    target_compile_definitions(OSTFStudio PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
     target_compile_definitions(OSTFStudio PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
-    if (WIN32 AND OSTF_STUDIO_ENABLE_ASIO)
-        target_compile_definitions(OSTFStudio PRIVATE JUCE_ASIO=1)
+    if (WIN32)
+        target_compile_definitions(OSTFStudio PRIVATE JUCE_ASIO=$<BOOL:${OSTF_STUDIO_ENABLE_ASIO}>)
     endif()
     target_link_libraries(OSTFStudio PRIVATE
         ostf_studio_core
@@ -100,7 +120,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
     add_test(NAME ostf_studio_demo_gallery COMMAND ostf_studio_ostfp_tests --gallery
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs")
-    if (WIN32)
+    if (WIN32 OR APPLE)
         add_test(NAME ostf_studio_startup COMMAND OSTFStudio --startup-smoke)
         add_test(NAME ostf_studio_open_project
             COMMAND OSTFStudio --startup-smoke "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")

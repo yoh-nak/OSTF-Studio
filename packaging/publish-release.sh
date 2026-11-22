@@ -19,6 +19,8 @@ for asset in "${assets[@]}"; do
     exit 1
   fi
 done
+notes="docs/releases/$RELEASE_TAG.md"
+test -s "$notes" || { echo "Missing release notes: $notes" >&2; exit 1; }
 
 repo_api="repos/$GITHUB_REPOSITORY"
 tag_ref="refs/tags/$RELEASE_TAG"
@@ -33,4 +35,4 @@ fi
 gh api --method POST "$repo_api/git/refs" -f "ref=$tag_ref" -f "sha=$GITHUB_SHA" --silent
 gh release create "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" \
   --verify-tag "${release_flags[@]}" --title "OSTF Studio $RELEASE_TAG" --generate-notes \
-  --notes 'The macOS app has no Developer ID signature or notarization.'
+  --notes-file "$notes"

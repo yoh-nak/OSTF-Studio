@@ -93,40 +93,64 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
         out->regions.push_back(std::move(regions));
         lanes.push_back({out->keepLabel(std::move(title)), out->regions.back(), kind});
     };
-    auto intervals = [&](const juce::var& value, const char* labelField, bool countNotes = false) {
+    auto intervals = [&](const juce::var& value, const char* labelField, bool countNotes = false, bool exact = false) {
         std::vector<ArrangementRegion> result;
         if (value.isVoid()) return result;
         for (const auto& event : array(value)) {
             const auto start = integer(event["start"]);
             const auto length = integer(event["duration"]);
-            const auto firstBar = bar(start);
-            require(length > 0 && length <= duration - start, "Invalid OSTF region duration");
+            require(start >= 0 && start < duration && length > 0 && length <= duration - start, "Invalid OSTF region duration");
+            const auto finish = start + length;
+            const auto firstBar = exact ? static_cast<int>(start / ticksPerBar) + 1 : bar(start);
+            const auto endBar = exact ? static_cast<int>((finish - 1) / ticksPerBar) + 2 : bar(finish);
+            std::optional<TimelineExtent> position;
+            if (exact) position = TimelineExtent{1.0 + static_cast<double>(start) / ticksPerBar, 1.0 + static_cast<double>(finish) / ticksPerBar};
             auto label = countNotes ? event["name"].toString() : juce::String{};
             if (label.isEmpty()) label = event[labelField].toString();
             const auto notes = countNotes ? event["notes"] : juce::var{};
-            result.push_back({{firstBar, bar(start + length)}, out->keepLabel(label.isNotEmpty() ? label : event["id"].toString()),
-                              notes.isArray() ? array(notes).size() : 0});
+            result.push_back({{firstBar, endBar}, out->keepLabel(label.isNotEmpty() ? label : event["id"].toString()),
+                              notes.isArray() ? array(notes).size() : 0, position});
         }
         return result;
     };
 
     addLane(out->globalLanes, "SECTION", intervals(timeline["sections"], "name"), TimelineLane::section);
     const auto chords = score["harmony"]["chords"];
-    const auto chordRegions = intervals(chords, "label");
+    const auto chordRegions = intervals(chords, "label", false, true);
     addLane(out->globalLanes, "CHORD", chordRegions, TimelineLane::chord);
     std::vector<ArrangementRegion> voicings;
+    std::vector<PitchedNote> voicingNotes;
     if (chords.isArray()) {
         const auto& entries = array(chords);
         for (int i = 0; i < entries.size(); ++i) {
-            const auto pitches = entries[i]["voicing"]["pitches"];
+            const auto voicing = entries[i]["voicing"];
+            const auto pitches = voicing["pitches"];
             if (!pitches.isArray()) continue;
+            const auto velocities = voicing["velocities"];
             juce::StringArray values;
-            for (const auto& pitch : array(pitches)) values.add(pitch.toString());
-            voicings.push_back({chordRegions[static_cast<std::size_t>(i)].bars, out->keepLabel(values.joinIntoString(", "))});
+            const auto start = integer(entries[i]["start"]);
+            const auto end = start + integer(entries[i]["duration"]);
+            const auto& notes = array(pitches);
+            for (int voice = 0; voice < notes.size(); ++voice) {
+                const auto pitch = integer(notes[voice]);
+                require(pitch >= 0 && pitch <= 127, "Invalid chord voicing pitch");
+                std::optional<int> velocity;
+                if (velocities.isArray() && voice < velocities.size() && !velocities[voice].isVoid()) {
+                    const auto value = integer(velocities[voice]);
+                    require(value >= 1 && value <= 127, "Invalid chord voicing velocity");
+                    velocity = static_cast<int>(value);
+                }
+                constexpr const char* pitchClasses[] {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+                values.add(juce::String(pitchClasses[pitch % 12]) + juce::String(pitch / 12 - 1));
+                voicingNotes.push_back({start, end, static_cast<int>(pitch), velocity});
+            }
+            if (!values.isEmpty())
+                voicings.push_back({chordRegions[static_cast<std::size_t>(i)].bars, out->keepLabel(values.joinIntoString("  ")),
+                                    0, chordRegions[static_cast<std::size_t>(i)].exactBars});
         }
     }
+    std::stable_sort(voicingNotes.begin(), voicingNotes.end(), [](const auto& a, const auto& b) { return a.startTick < b.startTick; });
     out->chordVoicings = static_cast<int>(voicings.size());
-    if (!voicings.empty()) addLane(out->globalLanes, "VOICING", std::move(voicings), TimelineLane::voicing);
 
     std::vector<ArrangementRegion> keys;
     auto key = score["song"]["key"]["label"].toString();
@@ -181,14 +205,31 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
     const auto trackData = score["tracks"];
     const auto& tracks = array(trackData);
     require(static_cast<std::size_t>(tracks.size()) <= OstfpPreview::maxTracks, "Preview supports at most eight arrangement tracks");
+    std::vector<std::pair<juce::String, int>> drumMappings;
+    if (const auto slots = score["soundSlots"]; slots.isArray()) {
+        for (const auto& slot : array(slots)) {
+            const auto mapping = slot["midiMapping"];
+            if (mapping["standard"] == "gm1" && mapping["note"].isInt()) {
+                const auto pitch = static_cast<int>(mapping["note"]);
+                if (pitch >= 0 && pitch <= 127) drumMappings.emplace_back(slot["id"].toString(), pitch);
+            }
+        }
+    }
     for (const auto& track : tracks) {
-        addLane(out->trackLanes, track["name"].toString(), intervals(track["clips"], "id", true));
+        addLane(out->trackLanes, track["name"].toString(), intervals(track["clips"], "id", true, true));
         out->trackKinds.push_back(track["trackType"] == "drum" ? TrackKind::drum : TrackKind::pitched);
         const auto role = track["role"].toString();
-        auto& group = out->mixerGroups.emplace_back(role.equalsIgnoreCase("voicing") ? MixerTrackGroup::voicing
-                             : role.equalsIgnoreCase("vocal") || role.equalsIgnoreCase("vocals") ? MixerTrackGroup::vocal
+        auto& group = out->mixerGroups.emplace_back(
+                               role.equalsIgnoreCase("vocal") || role.equalsIgnoreCase("vocals") ? MixerTrackGroup::vocal
+                             : role.equalsIgnoreCase("melody") || role.equalsIgnoreCase("lead") ? MixerTrackGroup::melody
                              : MixerTrackGroup::other);
         auto& notes = out->pitchedNotes.emplace_back();
+        auto& drums = out->drumNotes.emplace_back();
+        auto& programs = out->programChanges.emplace_back();
+        const auto midiSetup = track["midi"];
+        const auto sourceChannel = static_cast<int>(midiSetup["channel"]);
+        out->sourceMidiChannels.push_back(midiSetup["mode"] == "singleChannel" && sourceChannel >= 1 && sourceChannel <= 16
+                                          ? sourceChannel : (track["trackType"] == "drum" ? 10 : 1));
         auto& curves = out->performanceCurves.emplace_back();
         const auto clips = track["clips"];
         if (clips.isVoid()) continue;
@@ -197,8 +238,11 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
             const auto clipLength = integer(clip["duration"]);
             const auto events = clip["notes"];
             if (events.isArray()) for (const auto& event : array(events)) {
-                if (event["pitch"].isVoid()) continue;
-                const auto pitch = integer(event["pitch"]);
+                const auto slot = event["soundSlotId"].toString();
+                const auto drum = std::find_if(drumMappings.begin(), drumMappings.end(), [&](const auto& mapping) { return mapping.first == slot; });
+                const bool pitched = !event["pitch"].isVoid();
+                if (!pitched && drum == drumMappings.end()) continue;
+                const auto pitch = pitched ? integer(event["pitch"]) : drum->second;
                 const auto local = integer(event["start"]);
                 const auto length = integer(event["duration"]);
                 require(pitch >= 0 && pitch <= 127 && local >= 0 && local < clipLength && length > 0
@@ -209,11 +253,27 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
                     require(value >= 1 && value <= 127, "Invalid OSTF note velocity");
                     velocity = static_cast<int>(value);
                 }
-                notes.push_back({clipStart + local, clipStart + local + length, static_cast<int>(pitch), velocity});
+                auto& target = pitched ? notes : drums;
+                target.push_back({clipStart + local, clipStart + local + length, static_cast<int>(pitch), velocity,
+                                  event["enabled"].isVoid() || static_cast<bool>(event["enabled"])});
             }
             const auto midi = clip["midiEvents"];
             if (midi.isArray()) for (const auto& event : array(midi)) {
                 const auto type = event["type"].toString();
+                if (type == "programChange") {
+                    const auto time = integer(event["start"]);
+                    const auto number = integer(event["program"]);
+                    require(time >= -clipStart && time < duration - clipStart && number >= 0 && number <= 127,
+                            "Invalid OSTF MIDI program change");
+                    std::optional<int> channel;
+                    if (!event["channel"].isVoid()) {
+                        const auto value = integer(event["channel"]);
+                        require(value >= 1 && value <= 16, "Invalid OSTF MIDI channel");
+                        channel = static_cast<int>(value);
+                    }
+                    programs.push_back({clipStart + time, static_cast<int>(number), channel});
+                    continue;
+                }
                 juce::String label;
                 if (type == "controlChange") label = "CC " + event["controller"].toString();
                 else if (type == "channelPressure") label = "Channel Aftertouch";
@@ -254,6 +314,17 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
         for (auto& curve : curves)
             std::stable_sort(curve.points.begin(), curve.points.end(), [](const auto& a, const auto& b) { return a.tick < b.tick; });
         if (group == MixerTrackGroup::other && !notes.empty()) group = MixerTrackGroup::pitched;
+    }
+    if (!voicingNotes.empty()) {
+        out->chordVoicingTrack = out->trackLanes.size();
+        addLane(out->trackLanes, "Chord Voicing", std::move(voicings), TimelineLane::voicing);
+        out->pitchedNotes.push_back(std::move(voicingNotes));
+        out->drumNotes.emplace_back();
+        out->programChanges.emplace_back();
+        out->sourceMidiChannels.push_back(1);
+        out->performanceCurves.emplace_back();
+        out->trackKinds.push_back(TrackKind::pitched);
+        out->mixerGroups.push_back(MixerTrackGroup::voicing);
     }
     return out;
 }
@@ -317,8 +388,11 @@ juce::var mixChannel(const juce::String& id, const char* kind, double gain) {
 juce::var productionMix(const juce::var& score, const SessionMix& mix) {
     const auto scoreTracks = score["tracks"];
     const auto& tracks = array(scoreTracks);
-    require(mix.tracks.size() == static_cast<std::size_t>(tracks.size()), "Mixer does not match the score");
-    juce::Array<juce::var> channels, routes;
+    const auto sourceCount = static_cast<std::size_t>(tracks.size());
+    require(mix.tracks.size() == sourceCount || mix.tracks.size() == sourceCount + 1, "Mixer does not match the score");
+    juce::var voicingMix;
+    juce::var voicingRoute;
+    juce::Array<juce::var> channels, routes, devices;
     auto master = mixChannel("master", "master", mix.routing.masterDb);
     master.getDynamicObject()->setProperty("mute", mix.routing.outputMuted[0]);
     channels.add(master);
@@ -334,8 +408,9 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix) {
         channel.getDynamicObject()->setProperty("outputChannelId", "master");
         channels.add(std::move(channel));
     }
-    for (int i = 0; i < tracks.size(); ++i) {
-        const auto id = tracks[i]["id"].toString();
+    for (int i = 0; i < static_cast<int>(mix.tracks.size()); ++i) {
+        const bool isVoicing = i == tracks.size();
+        const auto id = isVoicing ? juce::String("studio-chord-voicing") : tracks[i]["id"].toString();
         require(id.isNotEmpty(), "A track is missing its OSTF ID");
         const auto index = static_cast<std::size_t>(i);
         const auto& settings = mix.tracks[index];
@@ -353,10 +428,17 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix) {
                 sends.add(object({{"id", "send-" + juce::String(i + 1) + "-" + juce::String(static_cast<int>(r + 1))},
                                   {"targetChannelId", returnId(r)}, {"gainDb", 20.0 * std::log10(settings.returnSends[r])},
                                   {"preFader", false}, {"enabled", true}}));
+        if (!isVoicing && index < mix.instruments.size() && mix.instruments[index].isObject()) {
+            const auto device = "instrument-" + juce::String(i + 1);
+            model->setProperty("deviceIds", juce::Array<juce::var>{device});
+            devices.add(object({{"id", device}, {"role", "instrument"}, {"plugin", mix.instruments[index]},
+                                {"enabled", true}, {"bypass", false}, {"onUnavailable", "reportAndPreserve"}}));
+        }
         model->setProperty("sends", sends);
-        channels.add(std::move(channel));
+        if (isVoicing) voicingMix = channel;
+        else channels.add(std::move(channel));
         auto local = object({{"trackId", id}, {"midiChannel", midi.channel}, {"cue", settings.cue}});
-        if (midi.destination && *midi.destination < mix.tracks.size())
+        if (midi.destination && *midi.destination < sourceCount)
             local.getDynamicObject()->setProperty("destinationTrackId", tracks[static_cast<int>(*midi.destination)]["id"]);
         if (index < mix.audioTracks.size() && mix.audioTracks[index])
             local.getDynamicObject()->setProperty("audioTrack", true);
@@ -365,7 +447,8 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix) {
             for (const auto& id : mix.trackEffects[index]) fx.add(id);
             local.getDynamicObject()->setProperty("effects", fx);
         }
-        routes.add(std::move(local));
+        if (isVoicing) voicingRoute = local;
+        else routes.add(std::move(local));
     }
     juce::Array<juce::var> hostData, inserts;
     for (const auto& id : mix.insertIds) inserts.add(id);
@@ -376,16 +459,17 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix) {
         outputEffects.add(fx);
     }
     hostData.add(object({{"namespace", mixNamespace}, {"version", "1.0"},
-                        {"data", object({{"tracks", routes}, {"cueDb", mix.routing.cueDb}, {"inserts", inserts}, {"outputEffects", outputEffects}})}}));
-    return object({{"channels", channels}, {"hostExtensions", hostData}});
+                        {"data", object({{"tracks", routes}, {"cueDb", mix.routing.cueDb}, {"inserts", inserts}, {"outputEffects", outputEffects}, {"chordVoicingMix", voicingMix}, {"chordVoicingRoute", voicingRoute}})}}));
+    return object({{"channels", channels}, {"devices", devices}, {"hostExtensions", hostData}});
 }
 
 SessionMix readMix(const juce::var& score, const juce::var& production) {
     const auto host = production["hostExtensions"];
-    const auto& extensions = array(host);
-    require(extensions.size() == 1 && extensions[0]["namespace"] == mixNamespace && extensions[0]["version"] == "1.0",
+    const auto extensions = host.isVoid() ? juce::Array<juce::var>{} : array(host);
+    require(extensions.isEmpty() || (extensions.size() == 1 && extensions[0]["namespace"] == mixNamespace
+            && extensions[0]["version"] == "1.0"),
             "This production document is outside the Studio mixer preview");
-    for (const auto* field : {"devices", "assets", "automation", "audioRegions", "sidechainConnections"})
+    for (const auto* field : {"assets", "automation", "audioRegions", "sidechainConnections"})
         require(production[field].isVoid() || array(production[field]).isEmpty(), "Unsupported OSTFP production content");
     const auto sourceTracks = score["tracks"];
     const auto& tracks = array(sourceTracks);
@@ -394,16 +478,32 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
             if (tracks[i]["id"] == id) return i;
         return -1;
     };
+    const auto local = extensions.isEmpty() ? juce::var{} : extensions[0]["data"];
+    const auto voicingMix = local["chordVoicingMix"];
+    const auto voicingRoute = local["chordVoicingRoute"];
+    const auto voicingIndex = static_cast<std::size_t>(tracks.size());
     auto gain = [](const juce::var& value) {
         const auto v = static_cast<double>(value);
         require(std::isfinite(v), "Invalid mixer gain");
         return std::clamp(v, -60.0, 6.0);
     };
     SessionMix mix;
-    mix.tracks.resize(static_cast<std::size_t>(tracks.size()));
+    mix.tracks.resize(voicingIndex + static_cast<std::size_t>(voicingMix.isObject()));
     mix.midiRoutes.resize(mix.tracks.size());
+    mix.instruments.resize(mix.tracks.size());
+    for (int i = 0; i < tracks.size(); ++i) {
+        const auto midi = tracks[i]["midi"];
+        const auto channel = static_cast<int>(midi["channel"]);
+        mix.midiRoutes[static_cast<std::size_t>(i)].channel =
+            midi["mode"] == "singleChannel" && channel >= 1 && channel <= 16
+            ? channel : (tracks[i]["trackType"] == "drum" ? 10 : 1);
+    }
+    const auto deviceData = production["devices"];
+    const auto devices = deviceData.isVoid() ? juce::Array<juce::var>{} : array(deviceData);
     const auto channelData = production["channels"];
-    for (const auto& entry : array(channelData)) {
+    auto channels = array(channelData);
+    if (voicingMix.isObject()) channels.add(voicingMix);
+    for (const auto& entry : channels) {
         const auto id = entry["id"].toString();
         if (id == "master") {
             mix.routing.masterDb = gain(entry["gainDb"]);
@@ -420,9 +520,19 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
             mix.routing.outputMuted[3 + static_cast<std::size_t>(index)] = static_cast<bool>(entry["mute"]);
             mix.routing.returnCount = std::max(mix.routing.returnCount, static_cast<std::size_t>(index + 1));
         } else {
-            const auto i = trackIndex(entry["trackId"]);
-            require(i >= 0 && entry["kind"] == "track" && array(entry["deviceIds"]).isEmpty(),
-                    "Unsupported OSTFP mixer track");
+            const auto i = entry == voicingMix ? static_cast<int>(voicingIndex) : trackIndex(entry["trackId"]);
+            require(i >= 0 && entry["kind"] == "track", "Unsupported OSTFP mixer track");
+            const auto ids = entry["deviceIds"];
+            if (ids.isArray() && ids.size() > 0) {
+                require(ids.size() == 1, "Preview supports one Production Session instrument per track");
+                const auto found = std::find_if(devices.begin(), devices.end(), [&](const auto& device) {
+                    return device["id"] == ids[0];
+                });
+                require(found != devices.end() && (*found)["role"] == "instrument"
+                    && (*found)["stateAssetId"].isVoid(), "Unsupported Production Session instrument");
+                if (static_cast<bool>((*found)["enabled"]) && !static_cast<bool>((*found)["bypass"]))
+                    mix.instruments[static_cast<std::size_t>(i)] = (*found)["plugin"];
+            }
             auto& settings = mix.tracks[static_cast<std::size_t>(i)];
             settings.volumeDb = gain(entry["gainDb"]);
             const auto pan = static_cast<float>(entry["pan"]);
@@ -442,7 +552,6 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
             }
         }
     }
-    const auto local = extensions[0]["data"];
     const auto insertData = local["inserts"];
     if (insertData.isArray()) {
         const auto& ids = array(insertData);
@@ -462,9 +571,11 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
     mix.trackEffects.resize(mix.tracks.size());
     mix.audioTracks.resize(mix.tracks.size());
     mix.routing.cueDb = gain(local["cueDb"]);
-    const auto routes = local["tracks"];
-    for (const auto& route : array(routes)) {
-        const auto i = trackIndex(route["trackId"]);
+    const auto routeData = local["tracks"];
+    auto routes = routeData.isVoid() ? juce::Array<juce::var>{} : array(routeData);
+    if (voicingMix.isObject() && voicingRoute.isObject()) routes.add(voicingRoute);
+    for (const auto& route : routes) {
+        const auto i = route == voicingRoute ? static_cast<int>(voicingIndex) : trackIndex(route["trackId"]);
         const auto midiChannel = integer(route["midiChannel"]);
         require(i >= 0 && midiChannel >= 1 && midiChannel <= 16, "Invalid OSTFP MIDI route");
         const auto index = static_cast<std::size_t>(i);
@@ -584,7 +695,7 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
         next->sourceScore = jsonBytes(score);
         next->trackKinds = trackKinds;
         if (remove) next->trackKinds.erase(next->trackKinds.begin() + static_cast<std::ptrdiff_t>(*remove));
-        else next->trackKinds.push_back(kind);
+        else next->trackKinds.insert(next->trackKinds.begin() + static_cast<std::ptrdiff_t>(sourceTrackCount()), kind);
         for (const auto& item : audio) {
             if (remove && item.track == *remove) continue;
             next->audio.push_back(item);
@@ -598,7 +709,7 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
 }
 
 bool OstfpPreview::insertGeneratorPattern(std::size_t track, int bar) {
-    if (track >= trackKinds.size() || trackKinds[track] != TrackKind::pitched || track >= pitchedNotes.size() || track >= trackLanes.size() || bar < bars.firstBar || bar >= bars.endBar
+    if (track >= sourceTrackCount() || trackKinds[track] != TrackKind::pitched || track >= pitchedNotes.size() || track >= trackLanes.size() || bar < bars.firstBar || bar >= bars.endBar
         || ppq < 2 || ticksPerBar <= 0) return false;
     const auto length = static_cast<juce::int64>(generatorPitches.size()) * ppq;
     if (length > (bars.endBar - bar) * ticksPerBar) return false;
@@ -612,7 +723,7 @@ bool OstfpPreview::insertGeneratorPattern(std::size_t track, int bar) {
 }
 
 bool OstfpPreview::addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes) {
-    if (track >= pitchedNotes.size() || notes.empty() || ticksPerBar <= 0) return false;
+    if (track >= sourceTrackCount() || notes.empty() || ticksPerBar <= 0) return false;
     auto firstTick = notes.front().startTick;
     auto lastTick = notes.front().endTick;
     const auto endTick = (bars.endBar - bars.firstBar) * ticksPerBar;
@@ -652,7 +763,8 @@ juce::Result readOstfPreview(juce::InputStream& input, std::unique_ptr<OstfpPrev
         readAudioReferences(score, *next);
         if (next->savedMix)
             for (std::size_t i = 0; i < next->trackKinds.size(); ++i)
-                if (next->savedMix->audioTracks[i]) next->trackKinds[i] = TrackKind::audio;
+                if (i < next->sourceTrackCount() && i < next->savedMix->audioTracks.size() && next->savedMix->audioTracks[i])
+                    next->trackKinds[i] = TrackKind::audio;
         next->sourceScore = std::move(bytes);
         result = std::move(next);
         return juce::Result::ok();
@@ -731,7 +843,8 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
         }
         if (next->savedMix)
             for (std::size_t i = 0; i < next->trackKinds.size(); ++i)
-                if (next->savedMix->audioTracks[i]) next->trackKinds[i] = TrackKind::audio;
+                if (i < next->sourceTrackCount() && i < next->savedMix->audioTracks.size() && next->savedMix->audioTracks[i])
+                    next->trackKinds[i] = TrackKind::audio;
         next->sourceScore = std::move(scoreBytes);
         next->sourceManifest = manifest;
         result = std::move(next);
