@@ -68,7 +68,7 @@ private:
     }
 
     void browse() {
-        chooser_ = std::make_unique<juce::FileChooser>("Choose a VST3 instrument", juce::File{}, "*.vst3", !JUCE_WINDOWS);
+        chooser_ = std::make_unique<juce::FileChooser>("Choose a VST3 instrument", juce::File{}, "*.vst3", useNativeVst3Chooser);
         chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
                                   | juce::FileBrowserComponent::canSelectDirectories,
             [safe = juce::Component::SafePointer<PatternEditor>(this)](const juce::FileChooser& picker) {

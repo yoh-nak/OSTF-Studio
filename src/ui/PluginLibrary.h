@@ -3,6 +3,13 @@
 #include <juce_core/juce_core.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
+// The Windows native dialog cannot select both single files and VST3 bundle folders.
+#if JUCE_WINDOWS
+inline constexpr bool useNativeVst3Chooser = false;
+#else
+inline constexpr bool useNativeVst3Chooser = true;
+#endif
+
 inline juce::File pluginDataDirectory() {
     return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("OSTF Studio");
 }

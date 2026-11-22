@@ -147,7 +147,7 @@ void PluginBrowser::choosePlugin() {
         }
     }
     // The Windows native dialog cannot select both files and bundle directories.
-    chooser_ = std::make_unique<juce::FileChooser>("Select a VST3 file or bundle", start, "*.vst3", !JUCE_WINDOWS);
+    chooser_ = std::make_unique<juce::FileChooser>("Select a VST3 file or bundle", start, "*.vst3", useNativeVst3Chooser);
     chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
                           | juce::FileBrowserComponent::canSelectDirectories,
                           [safe = juce::Component::SafePointer<PluginBrowser>(this)](const juce::FileChooser& chooser) {
