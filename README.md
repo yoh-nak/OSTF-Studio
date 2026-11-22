@@ -16,9 +16,9 @@ OSTF Studio is in active development. If a demo makes you want to write a song w
 
 ## Notation and import in the development build
 
-Open **View → Lead sheet** for a printable chart of sections, chord changes and lyrics. Set the number of bars per line, choose a lyric part, or follow playback. **View → Score** opens the selected part. Choose treble, alto, bass, grand staff, six-string guitar TAB, four-string bass TAB or percussion. Each track remembers its staff choice while the song is open.
+The first three buttons on the view bar switch the main workspace between **Arrangement**, **Lead sheet** and **Score**. The View menu opens the same modes. Playback and the transport stay available as you switch. The moving gold line marks the current position. **Follow playback** advances the bars in view. Turn it off to browse another section during playback.
 
-**PDF / Print** saves the displayed layout as A4 pages and opens the PDF for printing. In the score view, **MusicXML** exports the selected part for further engraving in a notation editor.
+In the lead sheet, switch chords, scales and lyrics on or off independently. Choose 1, 2, 4, 8 or 16 bars per line. For songs with timed lyrics, select the voice and display text, pronunciation or both. Pronunciation comes from the OSTF lyric unit, with its text as a fallback. In Score, choose a track and its treble, alto, bass, grand staff, guitar TAB, bass TAB or percussion notation. **PDF / Print** lays out the chosen content on A4 pages for printing. **MusicXML** exports the selected score part for a notation editor.
 
 **File → Import and transcription** creates a new project from a MIDI performance (SMF 0 or 1) or a WAV recording. WAV import keeps the recording alongside the score. The experimental melody mode adds draft notes from up to two minutes of isolated single-note audio. Review the result in the piano roll. These features are in the development build following alpha 2.
 

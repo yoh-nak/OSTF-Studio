@@ -8,7 +8,7 @@
 #include "ui/PreviewTransport.h"
 #include "ui/ViewButton.h"
 #include "ui/TrackRowSize.h"
-#include "ui/ScoreWindow.h"
+#include "ui/ScoreView.h"
 
 class MainComponent final : public juce::Component, public juce::DragAndDropContainer,
                             public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
@@ -16,6 +16,7 @@ public:
     MainComponent();
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
+    void displayTransportPosition(juce::int64 tick);
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& event) override;
@@ -83,6 +84,9 @@ private:
     void showTrackMix(std::size_t index);
     void updatePresetLabel(std::size_t index);
     void refreshEditor();
+    enum class WorkspaceMode { arrangement, leadSheet, score };
+    void setWorkspaceMode(WorkspaceMode);
+    WorkspaceMode workspaceMode_ = WorkspaceMode::arrangement;
     bool canExportTrack(std::size_t track) const;
     bool writeTrackMidi(std::size_t track, juce::OutputStream& stream) const;
     void drawArrangement(juce::Graphics& g, juce::Rectangle<int> area, const ostfstudio::ArrangementView& view);
@@ -109,9 +113,10 @@ private:
     juce::MenuBarComponent menuBar_;
     ViewButton pianoButton_ {ViewButton::Icon::piano}, mixerButton_ {ViewButton::Icon::mixer},
                pluginBrowserButton_ {ViewButton::Icon::plugins}, outputButton_ {ViewButton::Icon::outputs},
-               lanesButton_ {ViewButton::Icon::lanes};
+               lanesButton_ {ViewButton::Icon::lanes}, arrangementButton_ {ViewButton::Icon::arrangement},
+               leadButton_ {ViewButton::Icon::leadSheet}, scoreButton_ {ViewButton::Icon::score};
     juce::TooltipWindow tooltips_ {this};
-    bool editorVisible_ = true;
+    bool editorVisible_ = true, mixerSelected_ = false;
     juce::TextButton playButton_ {TRANS("Play")}, stopButton_ {TRANS("Stop")}, recordButton_ {TRANS("Record MIDI")};
     juce::Label transportPosition_;
     juce::ComboBox trackPicker_;
@@ -126,7 +131,7 @@ private:
     std::optional<std::size_t> pendingMidiDrag_;
     MixerPanel mixer_;
     std::unique_ptr<DeviceSettingsWindow> deviceSettings_;
-    std::unique_ptr<ScoreWindow> scoreWindow_;
+    std::unique_ptr<ScoreView> scoreView_;
     std::unique_ptr<juce::DocumentWindow> importWindow_;
     PreviewTransport transport_;
     bool transportActive_ = false;

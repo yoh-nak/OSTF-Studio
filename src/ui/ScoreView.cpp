@@ -1,82 +1,85 @@
-#include "ui/ScoreWindow.h"
+#include "ui/ScoreView.h"
 #include "ui/MediaImport.h"
 
 using namespace ostfstudio;
 namespace {
 constexpr auto dark = 0xff202a30;
-constexpr auto workspace = 0xff344047;
-void present(juce::DocumentWindow& w) {
-    w.setVisible(true);
-    w.toFront(true);
-}
-class Paper final : public juce::Component {
+class ReadingGrid final : public juce::Component {
   public:
     std::function<void(juce::Graphics&)> draw;
     void paint(juce::Graphics& g) override {
-        g.fillAll(juce::Colour(workspace));
-        const auto paper = juce::Rectangle<float>(0, 0, 595, 842);
-        const auto fit = juce::RectanglePlacement(juce::RectanglePlacement::centred)
-                             .getTransformToFit(paper, getLocalBounds().reduced(10).toFloat());
-        g.addTransform(fit);
-        g.reduceClipRegion(paper.toNearestInt());
         if (draw)
             draw(g);
     }
 };
 } // namespace
-class ScoreWindow::Panel final : public juce::Component {
+class ScoreView::Panel final : public juce::Component {
   public:
     Panel() {
-        for (auto* c : std::array<juce::Component*, 13>{&paper, &mode, &track, &staff, &previous, &next, &counter, &pdf,
-                                                        &xml, &status, &density, &voices, &follow})
+        for (auto* c : std::array<juce::Component*, 18>{&grid, &title, &position, &track, &staff, &previous, &next,
+                                                        &counter, &pdf, &xml, &status, &density, &voices, &follow,
+                                                        &chords, &scales, &lyrics, &wording})
             addAndMakeVisible(c);
-        mode.addItem(TRANS("Lead sheet"), 1);
-        mode.addItem(TRANS("Score"), 2);
+        title.setFont(juce::FontOptions(22.f, juce::Font::bold));
+        position.setComponentID("reading-position");
+        position.setJustificationType(juce::Justification::centredRight);
+        position.setColour(juce::Label::textColourId, juce::Colour(0xffb6ced0));
+        grid.setComponentID("reading-grid");
+        counter.setComponentID("reading-bar-range");
+        previous.setTitle(TRANS("Previous bars"));
+        next.setTitle(TRANS("Next bars"));
+        chords.setToggleState(options.showChords, juce::dontSendNotification);
+        lyrics.setToggleState(options.showLyrics, juce::dontSendNotification);
+        scales.setToggleState(options.showScales, juce::dontSendNotification);
+        for (auto* toggle : {&chords, &lyrics, &scales})
+            toggle->onClick = [this] {
+                options.showChords = chords.getToggleState();
+                options.showLyrics = lyrics.getToggleState();
+                options.showScales = scales.getToggleState();
+                update();
+            };
+        wording.setTitle(TRANS("Lyric display"));
+        for (const auto* label : {"Lyric text", "Pronunciation", "Text and pronunciation"})
+            wording.addItem(juce::translate(label), wording.getNumItems() + 1);
+        wording.setSelectedId(1, juce::dontSendNotification);
+        wording.onChange = [this] {
+            options.lyricDisplay = static_cast<LyricDisplay>(wording.getSelectedId() - 1);
+            grid.repaint();
+        };
         for (int i = 1; i <= 7; ++i)
             staff.addItem(juce::translate(staffName(static_cast<StaffStyle>(i))), i);
         track.setTitle(TRANS("Score track"));
         staff.setTitle(TRANS("Staff type"));
-        for (int n : {1, 2, 4, 8})
+        density.setTitle(TRANS("Bars per line"));
+        for (int n : {1, 2, 4, 8, 16})
             density.addItem(juce::String(n) + " " + TRANS("bars / line"), n);
         density.setSelectedId(4, juce::dontSendNotification);
         density.onChange = [this] {
             options.barsPerLine = density.getSelectedId();
-            page = 0;
-            updatePage();
+            resized();
         };
         voices.setTitle(TRANS("Lyric voice"));
         voices.onChange = [this] {
             options.lyricVoice = voices.getSelectedId() > 1 ? voices.getText() : juce::String{};
-            paper.repaint();
+            grid.repaint();
         };
         follow.setToggleState(true, juce::dontSendNotification);
-        mode.onChange = [this] {
-            lead = mode.getSelectedId() == 1;
-            page = 0;
-            update();
-        };
-        track.onChange = [this] {
-            page = 0;
-            update();
-        };
+        follow.onClick = [this] { updatePage(); };
+        track.onChange = [this] { update(); };
         staff.onChange = [this] {
             if (index() >= 0)
                 styles[score.parts[index()].id] = static_cast<StaffStyle>(staff.getSelectedId());
-            page = 0;
             update();
         };
-        previous.onClick = [this] {
-            --page;
-            updatePage();
-        };
-        next.onClick = [this] {
-            ++page;
-            updatePage();
-        };
+        previous.onClick = [this] { step(-1); };
+        next.onClick = [this] { step(1); };
         pdf.onClick = [this] { save(true); };
         xml.onClick = [this] { save(false); };
-        paper.draw = [this](juce::Graphics& g) {
-            drawSheetPage(g, score, index(), style(), notes, lead, page, options, tick);
+        grid.draw = [this](juce::Graphics& g) {
+            if (!lead && index() < 0)
+                return;
+            drawReadingGrid(g, grid.getLocalBounds(), score, style(), notes, lead, firstBar, columns, rows, options,
+                            tick);
         };
         counter.setJustificationType(juce::Justification::centred);
     }
@@ -84,6 +87,7 @@ class ScoreWindow::Panel final : public juce::Component {
         auto selected =
             index() >= 0 && index() < static_cast<int>(score.parts.size()) ? score.parts[index()].id : juce::String{};
         score = notationScore(project);
+        title.setText(score.title, juce::dontSendNotification);
         juce::StringArray names;
         for (const auto& mark : score.lyrics)
             if (mark.voice.isNotEmpty())
@@ -97,9 +101,7 @@ class ScoreWindow::Panel final : public juce::Component {
         voices.setSelectedId(names.indexOf(options.lyricVoice) + 2, juce::dontSendNotification);
         if (switchMode) {
             lead = *switchMode;
-            page = 0;
         }
-        mode.setSelectedId(lead ? 1 : 2, juce::dontSendNotification);
         track.clear(juce::dontSendNotification);
         int choice = 0, part = 0;
         for (std::size_t i = 0; i < project.trackKinds.size(); ++i) {
@@ -110,10 +112,13 @@ class ScoreWindow::Panel final : public juce::Component {
                 choice = part;
             track.addItem(p.name, ++part);
         }
-        if (preferred && *preferred < project.trackKinds.size() && project.trackKinds[*preferred] != TrackKind::audio)
+        if (preferred && (selected.isEmpty() || preferred != arrangementTrack) &&
+            *preferred < project.trackKinds.size() && project.trackKinds[*preferred] != TrackKind::audio)
             choice = static_cast<int>(std::count_if(
                 project.trackKinds.begin(), project.trackKinds.begin() + static_cast<std::ptrdiff_t>(*preferred),
                 [](auto k) { return k != TrackKind::audio; }));
+        if (preferred)
+            arrangementTrack = preferred;
         if (!score.parts.empty())
             track.setSelectedId(choice + 1, juce::dontSendNotification);
         update();
@@ -122,37 +127,51 @@ class ScoreWindow::Panel final : public juce::Component {
         if (value == tick)
             return;
         tick = value;
-        if (tick >= 0 && follow.getToggleState() && score.barTicks > 0) {
-            const int newPage = static_cast<int>(tick / score.barTicks) / barsPerPage(lead, style(), options);
-            if (newPage != page) {
-                page = newPage;
-                updatePage();
-                return;
-            }
+        if (tick >= 0 && follow.getToggleState() && score.barTicks > 0 &&
+            (tick < firstBar * score.barTicks || tick >= (firstBar + columns * rows) * score.barTicks))
+            updatePage();
+        else {
+            updatePosition();
+            grid.repaint();
         }
-        paper.repaint();
     }
     void paint(juce::Graphics& g) override { g.fillAll(juce::Colour(dark)); }
     void resized() override {
-        auto area = getLocalBounds().reduced(8);
-        auto top = area.removeFromTop(31);
-        mode.setBounds(top.removeFromLeft(120).reduced(2, 1));
-        follow.setBounds(top.removeFromRight(116).reduced(2, 1));
-        if (!lead) {
-            track.setBounds(top.removeFromLeft(std::min(200, top.getWidth() / 2)).reduced(2, 1));
-            staff.setBounds(top.removeFromLeft(155).reduced(2, 1));
-        } else {
-            density.setBounds(top.removeFromLeft(std::min(118, top.getWidth() / 2)).reduced(2, 1));
-            voices.setBounds(top.removeFromLeft(std::min(178, top.getWidth())).reduced(2, 1));
-        }
-        auto bottom = area.removeFromBottom(32);
-        previous.setBounds(bottom.removeFromLeft(40).reduced(1, 1));
-        counter.setBounds(bottom.removeFromLeft(64));
-        next.setBounds(bottom.removeFromLeft(40).reduced(1, 1));
-        pdf.setBounds(bottom.removeFromRight(148).reduced(2, 1));
-        xml.setBounds(bottom.removeFromRight(125).reduced(2, 1));
-        status.setBounds(area.removeFromBottom(22));
-        paper.setBounds(area.reduced(0, 4));
+        auto area = getLocalBounds().reduced(10, 6);
+        auto top = area.removeFromTop(34);
+        follow.setBounds(top.removeFromRight(135));
+        position.setBounds(top.removeFromRight(std::min(360, top.getWidth() / 2)));
+        title.setBounds(top);
+        juce::Rectangle<int> line;
+        auto place = [&](juce::Component& c, int width) {
+            if (!c.isVisible())
+                return;
+            if (line.getWidth() < width)
+                line = area.removeFromTop(32);
+            c.setBounds(line.removeFromLeft(width).reduced(2, 2));
+        };
+        place(density, 112);
+        place(chords, 85);
+        place(scales, 85);
+        place(lyrics, 85);
+        place(voices, 160);
+        place(wording, 155);
+        place(track, 195);
+        place(staff, 170);
+        auto bottom = area.removeFromBottom(33);
+        pdf.setBounds(bottom.removeFromRight(131).reduced(2));
+        if (!lead)
+            xml.setBounds(bottom.removeFromRight(105).reduced(2));
+        previous.setBounds(bottom.removeFromLeft(32).reduced(1));
+        counter.setBounds(bottom.removeFromLeft(std::min(155, std::max(0, bottom.getWidth() - 32))));
+        next.setBounds(bottom.removeFromLeft(32).reduced(1));
+        status.setBounds(area.removeFromBottom(status.getText().isNotEmpty() ? 22 : 0));
+        grid.setBounds(area.reduced(0, 4));
+        columns = lead ? options.barsPerLine : std::clamp(grid.getWidth() / 330, 1, 4);
+        const int rowHeight =
+            lead ? (options.showLyrics && options.showScales ? 128 : 106) : (style() == StaffStyle::grand ? 192 : 132);
+        rows = std::max(1, grid.getHeight() / rowHeight);
+        updatePage();
     }
 
   private:
@@ -168,8 +187,13 @@ class ScoreWindow::Panel final : public juce::Component {
         const bool has = index() >= 0;
         track.setVisible(!lead);
         staff.setVisible(!lead);
-        density.setVisible(lead);
-        voices.setVisible(lead && !score.lyrics.empty());
+        for (auto* c : std::array<juce::Component*, 4>{&density, &chords, &scales, &lyrics})
+            c->setVisible(lead);
+        voices.setVisible(lead && options.showLyrics && !score.lyrics.empty());
+        wording.setVisible(voices.isVisible());
+        lyrics.setEnabled(!score.lyrics.empty());
+        chords.setEnabled(!score.chords.empty());
+        scales.setEnabled(!score.scales.empty());
         staff.setEnabled(has);
         staff.setSelectedId(static_cast<int>(style()), juce::dontSendNotification);
         pdf.setEnabled(!busy && (lead || has));
@@ -179,15 +203,49 @@ class ScoreWindow::Panel final : public juce::Component {
         status.setText(!lead && !has ? TRANS("No note tracks in this project.") : juce::String{},
                        juce::dontSendNotification);
         resized();
+    }
+    void step(int direction) {
+        if (tick >= 0)
+            follow.setToggleState(false, juce::dontSendNotification);
+        firstBar += direction * columns * rows;
         updatePage();
     }
     void updatePage() {
-        const int pages = sheetPages(score, lead, style(), options);
-        page = juce::jlimit(0, pages - 1, page);
-        counter.setText(juce::String(page + 1) + " / " + juce::String(pages), juce::dontSendNotification);
-        previous.setEnabled(page > 0);
-        next.setEnabled(page + 1 < pages);
-        paper.repaint();
+        const int count = columns * rows;
+        const int anchor =
+            tick >= 0 && follow.getToggleState() && score.barTicks > 0 ? int(tick / score.barTicks) : firstBar;
+        firstBar = std::clamp(anchor, 0, std::max(0, score.bars - 1)) / count * count;
+        counter.setText(juce::String(firstBar + 1) + " - " + juce::String(std::min(firstBar + count, score.bars)) +
+                            " / " + juce::String(score.bars),
+                        juce::dontSendNotification);
+        previous.setEnabled(firstBar > 0);
+        next.setEnabled(firstBar + count < score.bars);
+        updatePosition();
+        grid.repaint();
+    }
+    void updatePosition() {
+        if (score.barTicks <= 0 || score.beats <= 0 || score.bars == 0)
+            return;
+        const auto at =
+            std::clamp<juce::int64>(tick >= 0 ? tick : firstBar * score.barTicks, 0, score.bars * score.barTicks - 1);
+        auto key = score.key;
+        for (const auto& change : score.keys)
+            if (change.at <= at)
+                key = change.text;
+        juce::StringArray values;
+        if (key.isNotEmpty())
+            values.add(key);
+        values.add(juce::String(score.beats) + "/" + juce::String(score.beatType));
+        juce::String tempo;
+        for (const auto& change : score.tempos)
+            if (change.at <= at)
+                tempo = change.text;
+        if (tempo.isNotEmpty())
+            values.add(tempo + " BPM");
+        if (tick >= 0)
+            values.add(TRANS("Bar ") + juce::String(1 + at / score.barTicks) + "." +
+                       juce::String(1 + at % score.barTicks * score.beats / score.barTicks));
+        position.setText(values.joinIntoString("   "), juce::dontSendNotification);
     }
     void save(bool asPdf) {
         const auto ext = asPdf ? ".pdf" : ".musicxml";
@@ -212,6 +270,7 @@ class ScoreWindow::Panel final : public juce::Component {
                 safe->pdf.setEnabled(false);
                 safe->xml.setEnabled(false);
                 safe->status.setText(TRANS("Writing pages..."), juce::dontSendNotification);
+                safe->resized();
                 safe->worker.addJob([safe, asPdf, dest, document, part, notation, bars, isLead, layout] {
                     juce::TemporaryFile temp(dest);
                     juce::Result result = juce::Result::ok();
@@ -238,6 +297,7 @@ class ScoreWindow::Panel final : public juce::Component {
                                 msg = TRANS("PDF saved. Print from your PDF viewer.");
                         }
                         safe->status.setText(msg, juce::dontSendNotification);
+                        safe->resized();
                     });
                 });
             });
@@ -245,32 +305,31 @@ class ScoreWindow::Panel final : public juce::Component {
     NotationScore score;
     MeasureNotes notes;
     std::map<juce::String, StaffStyle> styles;
+    std::optional<std::size_t> arrangementTrack;
     bool lead = true, busy = false;
-    int page = 0;
+    int firstBar = 0, columns = 4, rows = 1;
     juce::int64 tick = -1;
     SheetOptions options;
-    juce::ComboBox mode, track, staff, density, voices;
+    juce::ComboBox track, staff, density, voices, wording;
+    juce::ToggleButton chords{TRANS("Chords")}, scales{TRANS("Scales")}, lyrics{TRANS("Lyrics")};
     juce::ToggleButton follow{TRANS("Follow playback")};
     juce::TextButton previous{"<"}, next{">"}, pdf{TRANS("PDF / Print...")}, xml{"MusicXML..."};
-    juce::Label counter, status;
-    Paper paper;
+    juce::Label title, position, counter, status;
+    ReadingGrid grid;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::ThreadPool worker{1};
 };
-ScoreWindow::ScoreWindow()
-    : DocumentWindow(TRANS("Lead sheet and score"), juce::Colour(dark), allButtons), panel_(new Panel()) {
-    setUsingNativeTitleBar(true);
-    setResizable(true, true);
-    setResizeLimits(480, 380, 2400, 2200);
-    setContentOwned(panel_, false);
-    centreWithSize(735, 795);
+ScoreView::ScoreView() : panel_(std::make_unique<Panel>()) {
+    setComponentID("notation-workspace");
+    addAndMakeVisible(*panel_);
 }
-void ScoreWindow::showScore(const OstfpPreview& p, bool lead, std::optional<std::size_t> track) {
+ScoreView::~ScoreView() = default;
+void ScoreView::resized() { panel_->setBounds(getLocalBounds()); }
+void ScoreView::showScore(const OstfpPreview& p, bool lead, std::optional<std::size_t> track) {
     panel_->setSong(p, track, lead);
-    present(*this);
 }
-void ScoreWindow::refresh(const OstfpPreview& p) { panel_->setSong(p, {}, {}); }
-void ScoreWindow::playbackPosition(juce::int64 t) { panel_->playbackPosition(t); }
+void ScoreView::refresh(const OstfpPreview& p) { panel_->setSong(p, {}, {}); }
+void ScoreView::playbackPosition(juce::int64 t) { panel_->playbackPosition(t); }
 
 namespace {
 class ImportPanel final : public juce::Component {

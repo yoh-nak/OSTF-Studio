@@ -91,13 +91,20 @@ NotationScore notationScore(const OstfpPreview& project) {
             if (item["start"].isVoid())
                 continue;
             const Tick start = item["start"];
-            result.push_back({start, start + static_cast<Tick>(item["duration"]), item[label].toString()});
+            result.push_back({start, start + static_cast<Tick>(item["duration"]),
+                              item[label].toString().isNotEmpty() ? item[label].toString() : item["id"].toString()});
         }
         std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.at < b.at; });
         return result;
     };
     s.sections = marks(timeline["sections"], "name");
     s.chords = marks(doc["harmony"]["chords"], "label");
+    s.scales = marks(doc["harmony"]["scales"], "label");
+    if (s.scales.empty()) {
+        const auto scale = doc["song"]["scale"]["label"].toString();
+        if (scale.isNotEmpty())
+            s.scales.push_back({0, s.bars * s.barTicks, scale});
+    }
     std::map<juce::String, std::pair<Tick, Tick>> noteTimes;
     for (const auto& track : items(doc["tracks"]))
         for (const auto& clip : items(track["clips"]))
@@ -126,12 +133,18 @@ NotationScore notationScore(const OstfpPreview& project) {
             mark.end = mark.at + static_cast<Tick>(unit["duration"]);
         }
         mark.text = unit["text"].toString();
+        mark.pronunciation = unit["pronunciation"].toString();
         if (mark.at >= 0 && mark.text.isNotEmpty())
             s.lyrics.push_back(std::move(mark));
     }
     std::stable_sort(s.lyrics.begin(), s.lyrics.end(), [](const auto& a, const auto& b) { return a.at < b.at; });
     for (const auto& tempo : items(timeline["tempoChanges"]))
         s.tempos.push_back({static_cast<Tick>(tempo["at"]), 0, tempo["bpm"].toString()});
+    for (const auto& change : items(timeline["keyChanges"])) {
+        const auto label = change["key"]["label"].toString();
+        if (label.isNotEmpty())
+            s.keys.push_back({static_cast<Tick>(change["at"]), 0, label});
+    }
     for (std::size_t i = 0; i < project.trackLanes.size(); ++i) {
         if (project.trackKinds[i] == TrackKind::audio)
             continue;
@@ -492,16 +505,147 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
         }
     }
 }
+// Both the responsive performance chart and the A4 chart place harmony by its source ticks.
+void drawLeadContents(juce::Graphics& g, const NotationScore& song, Tick from, juce::Rectangle<float> area,
+                      const SheetOptions& options, bool live, Tick tick) {
+    if (area.isEmpty() || song.barTicks <= 0)
+        return;
+    const Tick to = from + song.barTicks;
+    const auto drawLane = [&](const std::vector<SheetMark>& marks, juce::Rectangle<float> lane, juce::Colour colour,
+                              float size, bool bold) {
+        for (const auto& mark : marks) {
+            if (mark.at >= to)
+                break;
+            if (mark.end <= from)
+                continue;
+            const auto xAt = [&](Tick t) {
+                return lane.getX() + lane.getWidth() * float(double(t - from) / song.barTicks);
+            };
+            const float x = xAt(std::max(from, mark.at)), end = xAt(std::min(to, mark.end));
+            if (tick >= from && tick < to && mark.at <= tick && tick < mark.end) {
+                g.setColour(juce::Colour(0xff345e62));
+                g.fillRoundedRectangle(x + 1, lane.getY(), std::max(0.f, end - x - 2), lane.getHeight(), 3);
+            }
+            g.setColour(colour);
+            text(g, mark.text, x + 3, lane.getY(), std::max(1.f, end - x - 6), lane.getHeight(), size, bold);
+        }
+    };
+    if (options.showChords)
+        drawLane(song.chords, area.removeFromTop(live ? 29.f : 21.f), live ? juce::Colours::white : ink,
+                 live ? 23.f : 16.f, true);
+    if (options.showScales)
+        drawLane(song.scales, area.removeFromTop(live ? 21.f : 14.f), live ? juce::Colour(0xff87dfd1) : accent,
+                 live ? 15.f : 10.f, false);
+    if (!options.showLyrics || area.isEmpty())
+        return;
+    juce::AttributedString line;
+    const auto normal = live ? juce::Colour(0xffced9e3) : soft;
+    const juce::Font font(juce::FontOptions(live ? 16.f : 10.f));
+    for (const auto& unit : song.lyrics) {
+        if (unit.at >= to)
+            break;
+        if (unit.end <= from || (!options.lyricVoice.isEmpty() && unit.voice != options.lyricVoice))
+            continue;
+        auto wording = unit.text;
+        if (options.lyricDisplay != LyricDisplay::text && unit.pronunciation.isNotEmpty()) {
+            if (options.lyricDisplay == LyricDisplay::pronunciation)
+                wording = unit.pronunciation;
+            else if (unit.pronunciation != wording)
+                wording += " (" + unit.pronunciation + ")";
+        }
+        if (line.getText().isNotEmpty())
+            line.append(" ", font, normal);
+        const bool active = tick >= from && tick < to && unit.at <= tick && tick < unit.end;
+        line.append(wording, active ? font.boldened() : font, active ? juce::Colour(0xffffcf77) : normal);
+    }
+    juce::Graphics::ScopedSaveState saved(g);
+    g.reduceClipRegion(area.toNearestInt());
+    line.setWordWrap(juce::AttributedString::byWord);
+    line.draw(g, area.reduced(3, 0));
+}
 } // namespace
+
+void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const NotationScore& song, StaffStyle style,
+                     const MeasureNotes& notes, bool lead, int firstBar, int columns, int rows,
+                     const SheetOptions& options, Tick tick) {
+    if (bounds.isEmpty() || song.barTicks <= 0 || columns < 1 || rows < 1)
+        return;
+    const auto cellWidth = float(bounds.getWidth()) / columns;
+    const auto cellHeight = float(bounds.getHeight()) / rows;
+    const auto cursor = juce::Colour(0xffe9ae56);
+    for (int i = 0; i < columns * rows && firstBar + i < song.bars; ++i) {
+        const int bar = firstBar + i;
+        const Tick from = bar * song.barTicks, to = from + song.barTicks;
+        const bool current = tick >= from && tick < to;
+        const juce::Rectangle<float> cell(bounds.getX() + (i % columns) * cellWidth,
+                                          bounds.getY() + (i / columns) * cellHeight, cellWidth - (lead ? 2 : 0),
+                                          cellHeight - 3);
+        juce::Graphics::ScopedSaveState clipped(g);
+        g.reduceClipRegion(cell.toNearestInt());
+        g.setColour(juce::Colour(lead ? (current ? 0xff263d43 : 0xff242f39) : (current ? 0xffe3f1ec : 0xfff6f7f3)));
+        if (lead)
+            g.fillRoundedRectangle(cell, 4);
+        else
+            g.fillRect(cell);
+        auto body = cell.reduced(6, 3);
+        auto heading = body.removeFromTop(22);
+        juce::String label(bar + 1);
+        for (const auto& section : song.sections)
+            if (section.at >= from && section.at < to)
+                label += "    " + section.text;
+        g.setColour(lead ? juce::Colour(0xff9bc8c5) : accent);
+        text(g, label, heading.getX(), heading.getY(), heading.getWidth(), heading.getHeight(), 13, true);
+        float left = body.getX(), right = body.getRight();
+        if (lead) {
+            drawLeadContents(g, song, from, body, options, true, tick);
+        } else if (bar < static_cast<int>(notes.size())) {
+            body = body.withX(cell.getX()).withWidth(cell.getWidth());
+            left = body.getX();
+            right = body.getRight();
+            const bool beginsLine = i % columns == 0;
+            const float noteStart = beginsLine ? 24.f : 0.f;
+            const float scale =
+                juce::jlimit(.65f, 1.65f, body.getHeight() / (style == StaffStyle::grand ? 114.f : 68.f));
+            const auto& strings = tuning(style);
+            const int lines = strings.empty() ? 5 : static_cast<int>(strings.size());
+            const float width = body.getWidth() / scale,
+                        top = body.getHeight() / (2 * scale) - (style == StaffStyle::grand ? 35.f : 10.f);
+            {
+                juce::Graphics::ScopedSaveState staffState(g);
+                g.addTransform(juce::AffineTransform::scale(scale).translated(body.getX(), body.getY()));
+                staffLines(g, 0, width, top, lines);
+                if (beginsLine)
+                    drawClef(g, style == StaffStyle::grand ? StaffStyle::treble : style, 1, top);
+                if (style == StaffStyle::grand) {
+                    staffLines(g, 0, width, top + 51, 5);
+                    if (beginsLine)
+                        drawClef(g, StaffStyle::bass, 1, top + 51);
+                }
+                g.setColour(soft);
+                g.drawLine(width - 1, top, width - 1, top + (style == StaffStyle::grand ? 71 : 5 * (lines - 1)), .9f);
+                drawNotes(g, notes[bar], song, style, noteStart, width, top);
+            }
+            left += (noteStart + 8) * scale;
+            right -= 8 * scale;
+        }
+        if (current) {
+            const float x = left + (right - left) * float(double(tick - from) / song.barTicks);
+            g.setColour(cursor);
+            g.fillRect(cell.getX(), cell.getY(), cell.getWidth(), 2.f);
+            g.drawLine(x, body.getY(), x, body.getBottom(), 2.f);
+        }
+    }
+}
+
 int barsPerPage(bool lead, StaffStyle style, const SheetOptions& options) {
-    return lead ? 8 * juce::jlimit(1, 8, options.barsPerLine) : style == StaffStyle::grand ? 8 : 10;
+    return lead ? 8 * juce::jlimit(1, 16, options.barsPerLine) : style == StaffStyle::grand ? 8 : 10;
 }
 int sheetPages(const NotationScore& s, bool lead, StaffStyle style, const SheetOptions& options) {
     const int count = barsPerPage(lead, style, options);
     return std::max(1, (s.bars + count - 1) / count);
 }
 void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffStyle style, const MeasureNotes& notes,
-                   bool lead, int page, const SheetOptions& options, Tick playingTick) {
+                   bool lead, int page, const SheetOptions& options) {
     g.fillAll(juce::Colours::white);
     g.setColour(accent);
     const auto heading = lead ? TRANS("Lead sheet") : (part >= 0 ? s.parts[part].name : TRANS("Score"));
@@ -519,7 +663,7 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
     g.setColour(soft);
     text(g, meta.joinIntoString("    /    "), 34, 89, 527, 19, 12);
     g.drawLine(33, 117, 562, 117, 1);
-    const int cols = lead ? juce::jlimit(1, 8, options.barsPerLine) : 2, per = barsPerPage(lead, style, options),
+    const int cols = lead ? juce::jlimit(1, 16, options.barsPerLine) : 2, per = barsPerPage(lead, style, options),
               first = page * per;
     const float rowH = 640.f / (per / cols);
     for (int r = 0; r < per / cols && first + r * cols < s.bars; ++r) {
@@ -541,10 +685,6 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
                 break;
             const float x = startX + c * width;
             const Tick from = bar * s.barTicks, to = from + s.barTicks;
-            if (playingTick >= from && playingTick < to) {
-                g.setColour(juce::Colour(0xffdaf3e9));
-                g.fillRect(x + 1, y, width - 2, lead ? rowH - 7 : 17.f);
-            }
             juce::StringArray labels;
             for (const auto& section : s.sections)
                 if (section.at >= from && section.at < to)
@@ -558,25 +698,7 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
                 g.setColour(juce::Colour(0xffcad4d1));
                 g.drawLine(x, y + 20, x, y + rowH - 7, .7f);
                 g.drawLine(x, y + 19, x + width, y + 19, .7f);
-                for (const auto& chord : s.chords) {
-                    if (chord.end <= from || chord.at >= to)
-                        continue;
-                    const float a = static_cast<float>(double(std::max(from, chord.at) - from) / s.barTicks);
-                    const float b = static_cast<float>(double(std::min(to, chord.end) - from) / s.barTicks);
-                    if (chord.at <= playingTick && playingTick < chord.end && playingTick >= from && playingTick < to) {
-                        g.setColour(juce::Colour(0xff9bdbc6));
-                        g.fillRect(x + width * a, y + 21, width * (b - a), 22.f);
-                    }
-                    g.setColour(ink);
-                    text(g, chord.text, x + width * a + 3, y + 21, std::max(1.f, width * (b - a) - 4), 22, 16, true);
-                }
-                juce::StringArray words;
-                for (const auto& unit : s.lyrics)
-                    if (unit.at >= from && unit.at < to &&
-                        (options.lyricVoice.isEmpty() || options.lyricVoice == unit.voice))
-                        words.add(unit.text);
-                g.setColour(soft);
-                text(g, words.joinIntoString(" "), x + 4, y + 43, width - 8, rowH - 51, 11, false, 2);
+                drawLeadContents(g, s, from, {x, y + 21, width, rowH - 28}, options, false, -1);
             } else {
                 g.setColour(ink);
                 g.drawLine(x + width, top, x + width, top + (style == StaffStyle::grand ? 71 : 5 * (lines - 1)), .8f);
@@ -593,7 +715,7 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
 
 juce::Result writeSheetPdf(juce::OutputStream& out, const NotationScore& s, int part, StaffStyle style,
                            const MeasureNotes& notes, bool lead, const SheetOptions& options) {
-    // Each A4 page embeds a lossless grayscale rendering of the same graphics as the view.
+    // Each A4 page embeds a lossless grayscale rendering of the selected musical content.
     // This includes local font fallback for Japanese, without requiring a PDF viewer font.
     bool ok = true;
     auto ascii = [&](const juce::String& str) { ok &= out.write(str.toRawUTF8(), str.getNumBytesAsUTF8()); };

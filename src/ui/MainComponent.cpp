@@ -52,7 +52,7 @@ juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds) {
 
 enum MenuCommand { openFile = 1, openDemoSong, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia };
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement };
 constexpr int timelineMenuBase = 100;
 constexpr int demoMenuBase = 300;
 constexpr struct { const char* title; const char* resource; } gallery[] {
@@ -357,6 +357,9 @@ MainComponent::MainComponent() {
     addView(pluginBrowserButton_, "Plug-in Browser", showPlugins);
     addView(outputButton_, "Output Tracks", showOutputs);
     addView(lanesButton_, "Global Timeline Lanes", 0);
+    addView(arrangementButton_, "Arrangement", showArrangement);
+    addView(leadButton_, "Lead sheet", showLeadSheet);
+    addView(scoreButton_, "Score", showPartScore);
     lanesButton_.onClick = [this] {
         timelineMenu().showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&lanesButton_),
             [safe = juce::Component::SafePointer<MainComponent>(this)](int id) { if (safe && id) safe->menuItemSelected(id, 1); });
@@ -463,14 +466,15 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             break;
         }
         case 1: {
+            menu.addItem(showArrangement, TRANS("Arrangement"), true, workspaceMode_ == WorkspaceMode::arrangement);
             menu.addItem(showPiano, TRANS("Piano Roll"), project_ != nullptr, pianoButton_.getToggleState());
-            menu.addItem(showMixer, TRANS("Mixer"), project_ != nullptr, mixerButton_.getToggleState());
+            menu.addItem(showMixer, TRANS("Mixer"), project_ != nullptr, mixer_.isVisible());
             menu.addItem(showPlugins, TRANS("Plug-in Browser"), true, pluginBrowserButton_.getToggleState());
-            menu.addItem(showOutputs, TRANS("Output Tracks"), project_ != nullptr, showOutputTracks_);
-            menu.addSubMenu(TRANS("Global Timeline Lanes"), timelineMenu());
+            menu.addItem(showOutputs, TRANS("Output Tracks"), outputButton_.isEnabled(), outputButton_.getToggleState());
+            menu.addSubMenu(TRANS("Global Timeline Lanes"), timelineMenu(), lanesButton_.isEnabled());
             menu.addSeparator();
-            menu.addItem(showLeadSheet, TRANS("Lead sheet"), project_ != nullptr);
-            menu.addItem(showPartScore, TRANS("Score"), project_ != nullptr);
+            menu.addItem(showLeadSheet, TRANS("Lead sheet"), project_ != nullptr, leadButton_.getToggleState());
+            menu.addItem(showPartScore, TRANS("Score"), project_ != nullptr, scoreButton_.getToggleState());
             break;
         }
         case 2: {
@@ -522,14 +526,9 @@ void MainComponent::menuItemSelected(int item, int) {
         case openFile: inspectOSTF(); break;
         case openDemoSong: openDemo(); break;
         case saveScore: saveDocument(SaveFormat::score); break;
-        case showLeadSheet:
-        case showPartScore:
-            if (project_) {
-                if (!scoreWindow_)
-                    scoreWindow_ = std::make_unique<ScoreWindow>();
-                scoreWindow_->showScore(*project_, item == showLeadSheet, selectedTrack_);
-            }
-            break;
+        case showArrangement: setWorkspaceMode(WorkspaceMode::arrangement); break;
+        case showLeadSheet: setWorkspaceMode(WorkspaceMode::leadSheet); break;
+        case showPartScore: setWorkspaceMode(WorkspaceMode::score); break;
         case importMedia:
             if (!importWindow_)
                 importWindow_ = makeMediaImportWindow([this](const juce::File& file) { openDocument(file); });
@@ -552,8 +551,10 @@ void MainComponent::menuItemSelected(int item, int) {
         }
         case showPiano:
         case showMixer:
-            editorVisible_ = !(item == showMixer ? mixerButton_ : pianoButton_).getToggleState();
-            mixerButton_.setToggleState(editorVisible_ && item == showMixer, juce::dontSendNotification);
+            editorVisible_ = workspaceMode_ != WorkspaceMode::arrangement
+                          || !(item == showMixer ? mixerButton_ : pianoButton_).getToggleState();
+            workspaceMode_ = WorkspaceMode::arrangement;
+            mixerSelected_ = editorVisible_ && item == showMixer;
             refreshEditor();
             break;
         case showDevices:
@@ -683,7 +684,8 @@ std::vector<std::size_t> MainComponent::displayedTrackOrder() const {
 
 bool MainComponent::isInterestedInDragSource(const SourceDetails& details) {
     const auto id = details.description.toString();
-    return project_ && (id == generatorDragId || (pluginBrowser_ && id.startsWith("ostf-vst3:")));
+    return workspaceMode_ == WorkspaceMode::arrangement && project_
+        && (id == generatorDragId || (pluginBrowser_ && id.startsWith("ostf-vst3:")));
 }
 
 std::optional<std::size_t> MainComponent::pluginDropTrack(juce::Point<int> position) const {
@@ -852,26 +854,30 @@ void MainComponent::stopTransport() {
     transportActive_ = false;
     playButton_.setToggleState(false, juce::dontSendNotification);
     recordButton_.setToggleState(false, juce::dontSendNotification);
-    transportPosition_.setText(TRANS("Bar 1"), juce::dontSendNotification);
+    displayTransportPosition(-1);
     stopTimer();
     for (auto& track : trackControls_) track->meter.clear();
     for (auto& output : outputControls_) output.meter.clear();
     mixer_.clearMeters();
-    if (scoreWindow_) scoreWindow_->playbackPosition(-1);
     repaint();
+}
+
+void MainComponent::displayTransportPosition(juce::int64 tick) {
+    if (scoreView_ && scoreView_->isVisible()) scoreView_->playbackPosition(tick);
+    const auto bar = project_ && tick >= 0 ? 1 + tick / project_->ticksPerBar : 1;
+    transportPosition_.setText(TRANS("Bar ") + juce::String(bar), juce::dontSendNotification);
 }
 
 void MainComponent::timerCallback() {
     if (!transport_.isRunning()) { stopTransport(); return; }
     const auto frame = transport_.takeMeters();
-    if (scoreWindow_ && scoreWindow_->isVisible()) scoreWindow_->playbackPosition(transport_.positionTick());
+    displayTransportPosition(transport_.positionTick());
     const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
     for (std::size_t i = 0; i < std::min(trackControls_.size(), frame.tracks.size()); ++i)
         trackControls_[i]->meter.update(frame.tracks[i], now);
     for (std::size_t i = 0; i < outputControls_.size(); ++i)
         outputControls_[i].meter.update(frame.outputs[i], now);
     mixer_.updateMeters(frame, now);
-    transportPosition_.setText(TRANS("Bar ") + juce::String(1 + transport_.positionTick() / project_->ticksPerBar), juce::dontSendNotification);
     repaint();
 }
 
@@ -911,7 +917,7 @@ bool MainComponent::openPreview(juce::InputStream& input, bool plainScore, const
     const auto result = plainScore ? ostfstudio::readOstfPreview(input, next) : ostfstudio::readOstfpPreview(input, next);
     if (result.wasOk()) {
         stopTransport();
-        scoreWindow_.reset();
+        scoreView_.reset();
         project_ = std::move(next);
         updateHorizontalRange(false, true);
         updateHorizontalRange(true, true);
@@ -956,7 +962,7 @@ bool MainComponent::openPreview(juce::InputStream& input, bool plainScore, const
         else if (!project_->trackLanes.empty())
             selectTrack(0);
         else {
-            mixerButton_.setToggleState(false, juce::dontSendNotification);
+            mixerSelected_ = false;
             refreshEditor();
         }
     }
@@ -1595,7 +1601,7 @@ void MainComponent::loadEffect(bool output, std::size_t index, std::size_t posit
 
 void MainComponent::mouseDown(const juce::MouseEvent& event) {
     pendingMidiDrag_.reset();
-    if (!rowOverlay_.getBounds().contains(event.getPosition())) return;
+    if (!rowOverlay_.isVisible() || !rowOverlay_.getBounds().contains(event.getPosition())) return;
     for (std::size_t i = 0; i < trackRows_.size(); ++i) {
         if (trackRows_[i].contains(event.getPosition())) {
             if (event.mods.isLeftButtonDown() && trackRows_[i].withWidth(trackNameWidth).contains(event.getPosition())
@@ -1621,18 +1627,47 @@ void MainComponent::selectTrack(std::size_t index) {
     editorVisible_ = true;
     selectedTrack_ = index;
     trackPicker_.setSelectedId(static_cast<int>(index + 1), juce::dontSendNotification);
-    mixerButton_.setToggleState(false, juce::dontSendNotification);
+    mixerSelected_ = false;
+    refreshEditor();
+}
+
+void MainComponent::setWorkspaceMode(WorkspaceMode mode) {
+    if (mode != WorkspaceMode::arrangement && !project_) return;
+    if (workspaceMode_ == mode) return;
+    workspaceMode_ = mode;
     refreshEditor();
 }
 
 void MainComponent::refreshEditor() {
-    if (scoreWindow_ && scoreWindow_->isVisible() && project_) scoreWindow_->refresh(*project_);
-    const bool showMixer = mixerButton_.getToggleState();
-    const bool piano = project_ && editorVisible_ && !showMixer;
+    const bool arranging = workspaceMode_ == WorkspaceMode::arrangement;
+    const bool reading = project_ && !arranging;
+    if (reading && !scoreView_) {
+        scoreView_ = std::make_unique<ScoreView>();
+        addChildComponent(*scoreView_);
+    }
+    if (scoreView_) {
+        if (reading) {
+            const bool lead = workspaceMode_ == WorkspaceMode::leadSheet;
+            if (!scoreView_->isVisible() || lead != leadButton_.getToggleState())
+                scoreView_->showScore(*project_, lead, selectedTrack_);
+            else
+                scoreView_->refresh(*project_);
+            scoreView_->playbackPosition(transportActive_ ? transport_.positionTick() : -1);
+        }
+        scoreView_->setVisible(reading);
+    }
+    arrangementButton_.setToggleState(arranging, juce::dontSendNotification);
+    leadButton_.setToggleState(reading && workspaceMode_ == WorkspaceMode::leadSheet, juce::dontSendNotification);
+    scoreButton_.setToggleState(reading && workspaceMode_ == WorkspaceMode::score, juce::dontSendNotification);
+    const bool showMixer = arranging && mixerSelected_;
+    mixerButton_.setToggleState(showMixer, juce::dontSendNotification);
+    const bool piano = arranging && project_ && editorVisible_ && !showMixer;
     pianoButton_.setToggleState(piano, juce::dontSendNotification);
-    outputButton_.setToggleState(showOutputTracks_, juce::dontSendNotification);
-    for (auto* button : {&pianoButton_, &mixerButton_, &outputButton_}) button->setEnabled(project_ != nullptr);
-    trackPicker_.setVisible(project_ && editorVisible_);
+    outputButton_.setToggleState(arranging && showOutputTracks_, juce::dontSendNotification);
+    for (auto* button : {&pianoButton_, &mixerButton_, &leadButton_, &scoreButton_}) button->setEnabled(project_ != nullptr);
+    outputButton_.setEnabled(arranging && project_ != nullptr);
+    lanesButton_.setEnabled(arranging);
+    trackPicker_.setVisible(arranging && project_ && editorVisible_);
     performanceLane_.setVisible(piano && selectedTrack_);
     const auto previous = performanceLaneNames_[performanceLane_.getSelectedId() - 1];
     performanceLaneNames_ = juce::StringArray{"Velocity"};
@@ -1642,13 +1677,13 @@ void MainComponent::refreshEditor() {
     performanceLane_.clear(juce::dontSendNotification);
     for (int i = 0; i < performanceLaneNames_.size(); ++i) performanceLane_.addItem(juce::translate(performanceLaneNames_[i]), i + 1);
     performanceLane_.setSelectedId(std::max(1, performanceLaneNames_.indexOf(previous) + 1), juce::dontSendNotification);
-    arrangementZoom_.setVisible(project_ != nullptr);
-    arrangementScroll_.setVisible(project_ != nullptr);
+    arrangementZoom_.setVisible(arranging && project_ != nullptr);
+    arrangementScroll_.setVisible(arranging && project_ != nullptr);
     pianoZoom_.setVisible(piano);
     pianoScroll_.setVisible(piano);
     midiDrag_.setVisible(piano);
     midiDrag_.setEnabled(selectedTrack_ && canExportTrack(*selectedTrack_));
-    mixer_.setVisible(project_ != nullptr && showMixer);
+    mixer_.setVisible(arranging && project_ != nullptr && showMixer);
     resized();
     repaint();
 }
@@ -1677,7 +1712,8 @@ bool MainComponent::writeTrackMidi(std::size_t track, juce::OutputStream& stream
 void MainComponent::resized() {
     menuBar_.setBounds(getLocalBounds().removeFromTop(menuHeight));
     auto viewBar = getLocalBounds().withTrimmedTop(menuHeight).removeFromTop(viewBarHeight).withTrimmedLeft(18);
-    for (auto* button : {&pianoButton_, &mixerButton_, &pluginBrowserButton_, &outputButton_, &lanesButton_})
+    for (auto* button : {&arrangementButton_, &leadButton_, &scoreButton_, &pianoButton_, &mixerButton_,
+                         &pluginBrowserButton_, &outputButton_, &lanesButton_})
         button->setBounds(viewBar.removeFromLeft(39).reduced(2, 2));
     auto transportRow = getLocalBounds().withTrimmedTop(menuHeight + viewBarHeight + 14).removeFromTop(28).withTrimmedLeft(221).withTrimmedRight(18);
     playButton_.setBounds(transportRow.removeFromLeft(54).reduced(2, 0));
@@ -1689,6 +1725,12 @@ void MainComponent::resized() {
     if (pluginBrowser_) {
         const auto full = workspaceBounds(getLocalBounds());
         pluginBrowser_->setBounds(full.withLeft(editor.getRight() + 8));
+    }
+    if (workspaceMode_ != WorkspaceMode::arrangement) {
+        rowOverlay_.setVisible(false);
+        verticalScroll_.setVisible(false);
+        if (scoreView_) scoreView_->setBounds(editor);
+        return;
     }
     const auto arrangerHeight = getArrangementHeight(editor.getHeight());
     auto arrangement = editor.withHeight(arrangerHeight).reduced(13);
@@ -1829,7 +1871,11 @@ void MainComponent::paint(juce::Graphics& g) {
     g.drawText("OSTF Studio", title.removeFromTop(29), juce::Justification::centredLeft);
     g.setColour(juce::Colour(muted));
     g.setFont(juce::FontOptions(12.0f));
-    g.drawFittedText(project_ ? TRANS("GLOBAL MUSICAL TIMELINE") : TRANS("GLOBAL MUSICAL TIMELINE / DEMO"), title, juce::Justification::centredLeft, 1);
+    const auto section = workspaceMode_ == WorkspaceMode::leadSheet ? TRANS("Lead sheet")
+                       : workspaceMode_ == WorkspaceMode::score ? TRANS("Score")
+                       : project_ ? TRANS("GLOBAL MUSICAL TIMELINE") : TRANS("GLOBAL MUSICAL TIMELINE / DEMO");
+    g.drawFittedText(section, title, juce::Justification::centredLeft, 1);
+    if (workspaceMode_ != WorkspaceMode::arrangement) return;
     area = getWorkspace();
     if (!project_) {
         drawArrangement(g, area, currentArrangement());

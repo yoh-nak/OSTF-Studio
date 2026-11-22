@@ -1,4 +1,4 @@
-#include "ui/ScoreWindow.h"
+#include "ui/MainComponent.h"
 #include "ui/MediaImport.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 
@@ -113,11 +113,28 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
     if (!save(dir.getChildFile("part.pdf"),
               [&](auto& out) { return writeSheetPdf(out, s, index, StaffStyle::grand, notes, false); }))
         return 5;
-    ScoreWindow window;
-    window.showScore(*p, false, 0);
-    if (!window.isVisible() || !window.createComponentSnapshot(window.getLocalBounds()).isValid())
+    MainComponent main;
+    main.setSize(1280, 800);
+    main.setVisible(true);
+    if (!main.openDocument(fixture))
         return 6;
-    auto* content = window.getContentComponent();
+    auto viewButton = [&](const char* label) -> juce::Button* {
+        for (auto* child : main.getChildren())
+            if (auto* b = dynamic_cast<ViewButton*>(child); b && b->getTitle() == juce::translate(label))
+                return b;
+        return nullptr;
+    };
+    auto* score = viewButton("Score");
+    auto* lead = viewButton("Lead sheet");
+    auto* arrangement = viewButton("Arrangement");
+    if (!score || !lead || !arrangement)
+        return 6;
+    score->onClick();
+    auto* view = dynamic_cast<ScoreView*>(main.findChildWithID("notation-workspace"));
+    if (!view || view->getParentComponent() != &main || !view->isVisible() || !score->getToggleState() ||
+        lead->getToggleState())
+        return 6;
+    auto* content = view->getChildComponent(0);
     auto combo = [&](const juce::String& title) -> juce::ComboBox* {
         for (auto* child : content->getChildren())
             if (child->getTitle() == title)
@@ -134,14 +151,107 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
     track->setSelectedId(first, juce::sendNotificationSync);
     if (staff->getSelectedId() != static_cast<int>(StaffStyle::alto))
         return 15;
-    window.showScore(*p, true, 0);
+    lead->onClick();
     auto* lyrics = combo(TRANS("Lyric voice"));
     if (staff->isVisible() || !lyrics || !lyrics->isVisible() || lyrics->getNumItems() < 2)
         return 16;
-    window.playbackPosition(40 * s.barTicks);
-    if (!window.createComponentSnapshot(window.getLocalBounds()).isValid())
+    if (!lead->getToggleState() || score->getToggleState())
         return 17;
-    window.closeButtonPressed();
+    auto* range = dynamic_cast<juce::Label*>(content->findChildWithID("reading-bar-range"));
+    auto* grid = content->findChildWithID("reading-grid");
+    if (!range || !grid || grid->getWidth() < 1000)
+        return 18;
+    auto toggle = [&](const char* name) -> juce::ToggleButton* {
+        for (auto* child : content->getChildren())
+            if (auto* b = dynamic_cast<juce::ToggleButton*>(child); b && b->getButtonText() == juce::translate(name))
+                return b;
+        return nullptr;
+    };
+    auto* scale = toggle("Scales");
+    auto* words = toggle("Lyrics");
+    auto* follow = toggle("Follow playback");
+    if (!scale || !words || !follow)
+        return 19;
+    auto choose = [](juce::ToggleButton& b, bool state) {
+        b.setToggleState(state, juce::dontSendNotification);
+        b.onClick();
+    };
+    if (scale->isEnabled() != !s.scales.empty())
+        return 30;
+    choose(*words, false);
+    if (lyrics->isVisible())
+        return 20;
+    choose(*words, true);
+    const auto opening = range->getText();
+    PreviewTransport playback;
+    juce::AudioBuffer<float> block(2, 1024);
+    if (playback.preparePlayback(*p, {}, {}, 8000, block.getNumSamples()).failed())
+        return 27;
+    while (playback.isRunning() && playback.positionTick() < 40 * s.barTicks + s.ppq) {
+        playback.renderBlock(block.getArrayOfWritePointers(), 2, block.getNumSamples());
+        main.displayTransportPosition(playback.positionTick());
+    }
+    auto* position = dynamic_cast<juce::Label*>(content->findChildWithID("reading-position"));
+    if (!position || !position->getText().contains("41.2"))
+        return 28;
+    playback.stop();
+    const auto after = range->getText();
+    if (after == opening)
+        return 21;
+    choose(*follow, false);
+    main.displayTransportPosition(0);
+    if (range->getText() != after)
+        return 22;
+    choose(*follow, true);
+    if (range->getText() != opening)
+        return 23;
+    auto snapshot = [&](const char* name) {
+        auto image = main.createComponentSnapshot(main.getLocalBounds());
+        return save(dir.getChildFile(name), [&](auto& out) {
+            return juce::PNGImageFormat().writeImageToStream(image, out) ? juce::Result::ok()
+                                                                         : juce::Result::fail("PNG");
+        });
+    };
+    main.displayTransportPosition(s.barTicks * 4 + s.ppq);
+    if (!snapshot("lead-workspace.png"))
+        return 24;
+    score->onClick();
+    track->setSelectedId(index + 1, juce::sendNotificationSync);
+    main.displayTransportPosition(0);
+    const auto firstSystem = range->getText();
+    main.displayTransportPosition(40 * s.barTicks + s.ppq);
+    if (range->getText() == firstSystem)
+        return 29;
+    main.displayTransportPosition(4 * s.barTicks + s.ppq);
+    if (!snapshot("score-workspace.png"))
+        return 25;
+    arrangement->onClick();
+    if (view->isVisible() || !arrangement->getToggleState() || score->getToggleState())
+        return 26;
+    if (!main.openDocument(fixture.getSiblingFile("neon-platforms.ostfp")))
+        return 31;
+    lead->onClick();
+    view = dynamic_cast<ScoreView*>(main.findChildWithID("notation-workspace"));
+    if (!view)
+        return 32;
+    content = view->getChildComponent(0);
+    scale = toggle("Scales");
+    grid = content->findChildWithID("reading-grid");
+    if (!scale || !scale->isEnabled() || !grid)
+        return 33;
+    auto noScale = grid->createComponentSnapshot(grid->getLocalBounds());
+    choose(*scale, true);
+    auto withScale = grid->createComponentSnapshot(grid->getLocalBounds());
+    int changed = 0;
+    for (int y = 0; y < withScale.getHeight(); y += 2)
+        for (int x = 0; x < withScale.getWidth(); x += 2)
+            if (withScale.getPixelAt(x, y) != noScale.getPixelAt(x, y))
+                ++changed;
+    if (changed < 30)
+        return 34;
+    main.displayTransportPosition(s.barTicks + s.ppq);
+    if (!snapshot("scale-workspace.png"))
+        return 35;
     // A chord across a barline requires separate string assignments, two voices and ties.
     s.bars = 2;
     s.parts[index].notes = {{s.barTicks - 120, s.barTicks + 120, 64, 90}, {s.barTicks - 120, s.barTicks + 240, 60, 80}};
