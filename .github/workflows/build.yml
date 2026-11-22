@@ -78,16 +78,16 @@ jobs:
           mkdir -p dist
           app='build/OSTFStudio_artefacts/Release/OSTF Studio.app'
           test -d "$app"
-          lipo -verify_arch arm64 "$app/Contents/MacOS/OSTF Studio"
+          lipo "$app/Contents/MacOS/OSTF Studio" -verify_arch arm64
           /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist"
           dmg='dist/OSTF_Studio_macOS_arm64.dmg'
           staging=$(mktemp -d)
           ditto "$app" "$staging/OSTF Studio.app"
           ln -s /Applications "$staging/Applications"
           gm='build/OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3'
-          lipo -verify_arch arm64 "$gm/Contents/MacOS/OSTF GM Sound Module"
+          lipo "$gm/Contents/MacOS/OSTF GM Sound Module" -verify_arch arm64
           arranger='build/OSTFArranger_artefacts/Release/VST3/OSTF Arranger.vst3'
-          lipo -verify_arch arm64 "$arranger/Contents/MacOS/OSTF Arranger"
+          lipo "$arranger/Contents/MacOS/OSTF Arranger" -verify_arch arm64
           pkgroot=$(mktemp -d)
           mkdir -p "$pkgroot/Applications" "$pkgroot/Library/Audio/Plug-Ins/VST3"
           ditto "$app" "$pkgroot/Applications/OSTF Studio.app"
