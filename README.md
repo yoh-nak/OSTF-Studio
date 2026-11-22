@@ -4,6 +4,14 @@
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
 
+## ☕ Buy Me a Coffee で開発を応援する
+
+OSTF Studioは現在も開発を続けています。デモ曲を聴いて「このDAWで曲を作ってみたい」と感じたら、コーヒー1杯分のご支援をいただけるとうれしいです。GM音源の音づくりや、Windows・macOSの両方で安心して曲を開いて再生できるよう、改良と検証を続ける励みになります。
+
+OSTF Studio is in active development. If a demo makes you want to write a song with it, buying me a coffee helps me keep refining the GM instruments and testing playback on Windows and macOS.
+
+**[☕ Buy Me a Coffee で支援する / Support OSTF Studio](https://buymeacoffee.com/yohsukenak)**
+
 ## This starter contains
 - Portable C++20 timeline model with unit tests (internal only; not OSTF spec definitions)
 - JUCE 9.0.5 desktop window with **demonstration** global timeline and track arrangement lanes
