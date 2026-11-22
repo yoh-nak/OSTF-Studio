@@ -82,6 +82,10 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
     auto out = std::make_unique<OstfpPreview>();
     out->ticksPerBar = ticksPerBar;
     out->ppq = ppq;
+    require(denominator <= std::numeric_limits<int>::max(), "Unsupported meter denominator");
+    out->meterBeats = static_cast<int>(numerator);
+    out->beatUnit = static_cast<int>(denominator);
+    out->clock = TempoMap(ppq);
     out->title = score["song"]["title"].toString();
     require(out->title.isNotEmpty(), "Missing song title");
     out->bars.endBar = static_cast<int>(duration / ticksPerBar) + 1;
@@ -153,34 +157,48 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
     std::stable_sort(voicingNotes.begin(), voicingNotes.end(), [](const auto& a, const auto& b) { return a.startTick < b.startTick; });
     out->chordVoicings = static_cast<int>(voicings.size());
 
+    auto region = [&](juce::int64 start, juce::int64 end, const juce::String& label) -> ArrangementRegion {
+        return {{static_cast<int>(start / ticksPerBar + 1), static_cast<int>((end - 1) / ticksPerBar + 2)},
+                out->keepLabel(label), 0, TimelineExtent{1.0 + double(start) / ticksPerBar, 1.0 + double(end) / ticksPerBar}};
+    };
+    auto keyName = [](const juce::var& value) {
+        auto label = value["label"].toString();
+        if (label.isNotEmpty()) return label;
+        if (value["state"].toString() != "tonal") return value["state"].toString();
+        const auto tonic = value["tonic"];
+        const int alter = std::clamp(static_cast<int>(tonic["alter"]), -2, 2);
+        return tonic["step"].toString() + juce::String::repeatedString(alter < 0 ? "b" : "#", std::min(2, std::abs(alter)))
+            + " " + value["mode"].toString();
+    };
     std::vector<ArrangementRegion> keys;
-    auto key = score["song"]["key"]["label"].toString();
-    int keyStart = 1;
+    auto key = keyName(score["song"]["key"]);
+    juce::int64 keyStart = 0;
     if (const auto keyChanges = timeline["keyChanges"]; keyChanges.isArray()) {
         for (const auto& change : array(keyChanges)) {
             const auto tick = integer(change["at"]);
-            if (tick <= 0 || tick >= duration || tick % ticksPerBar != 0) continue;
-            const auto nextBar = bar(tick);
-            if (nextBar <= keyStart) continue;
-            if (key.isNotEmpty()) keys.push_back({{keyStart, nextBar}, out->keepLabel(key)});
-            keyStart = nextBar;
-            key = change["key"]["label"].toString();
+            if (tick <= keyStart || tick >= duration) continue;
+            if (key.isNotEmpty()) keys.push_back(region(keyStart, tick, key));
+            keyStart = tick;
+            key = keyName(change["key"]);
             if (key.isEmpty()) key = change["label"].toString();
         }
     }
-    if (key.isNotEmpty()) keys.push_back({{keyStart, out->bars.endBar}, out->keepLabel(key)});
+    if (key.isNotEmpty()) keys.push_back(region(keyStart, duration, key));
     if (!keys.empty()) addLane(out->globalLanes, "KEY", std::move(keys), TimelineLane::key);
 
     std::vector<ArrangementRegion> scales;
+    const auto songScale = score["song"]["scale"];
+    out->defaultScale = songScale.getProperty("label", songScale["id"]).toString();
     if (const auto timed = score["harmony"]["scales"]; timed.isArray()) {
         for (const auto& entry : array(timed)) {
             const auto start = integer(entry["start"]);
             const auto length = integer(entry["duration"]);
-            if (start < 0 || start >= duration || length <= 0 || length > duration - start
-                || start % ticksPerBar != 0 || length % ticksPerBar != 0) continue;
+            if (start < 0 || start >= duration || length <= 0 || length > duration - start) continue;
             auto label = entry["label"].toString();
             if (label.isEmpty()) label = entry["id"].toString();
-            scales.push_back({{bar(start), bar(start + length)}, out->keepLabel(std::move(label))});
+            auto item = region(start, start + length, label);
+            item.isScoped = entry.hasProperty("targets");
+            scales.push_back(item);
         }
     }
     if (scales.empty()) {
@@ -196,10 +214,11 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
         out->previewBpm = static_cast<double>(changes[0]["bpm"]);
     std::vector<ArrangementRegion> tempos;
     for (int i = 0; i < changes.size(); ++i) {
-        const auto first = bar(integer(changes[i]["at"]));
-        const auto last = i + 1 < changes.size() ? bar(integer(changes[i + 1]["at"])) : out->bars.endBar;
-        require(first < last, "Tempo changes must be ordered within the score");
-        tempos.push_back({{first, last}, out->keepLabel(changes[i]["bpm"].toString())});
+        const auto first = integer(changes[i]["at"]);
+        const auto last = i + 1 < changes.size() ? integer(changes[i + 1]["at"]) : duration;
+        require(first < last && last <= duration && out->clock.append(first, static_cast<double>(changes[i]["bpm"])),
+                "Invalid OSTF tempo map");
+        tempos.push_back(region(first, last, changes[i]["bpm"].toString()));
     }
     addLane(out->globalLanes, "BPM", std::move(tempos), TimelineLane::tempo);
 
@@ -714,6 +733,102 @@ juce::MemoryBlock audioBytes(const ProjectAudio& audio) {
     require(audio.localFile.loadFileAsData(bytes) && bytes.getSize() == static_cast<std::size_t>(length), "Could not read a referenced WAV");
     return bytes;
 }
+}
+
+juce::String OstfpPreview::contextAt(TimelineLane kind, juce::int64 tick) const {
+    if (ticksPerBar <= 0) return {};
+    const double at = 1.0 + double(tick) / ticksPerBar;
+    juce::StringArray labelsAtTick;
+    for (const auto& lane : globalLanes) {
+        if (lane.kind != kind) continue;
+        for (const auto& item : lane.regions) {
+            if (item.isScoped) continue;
+            const auto begin = item.exactBars ? item.exactBars->start : item.bars.firstBar;
+            const auto end = item.exactBars ? item.exactBars->end : item.bars.endBar;
+            if (at >= begin && at < end) labelsAtTick.addIfNotAlreadyThere(juce::String::fromUTF8(item.label));
+        }
+    }
+    if (labelsAtTick.isEmpty() && kind == TimelineLane::scale && at < bars.endBar) return defaultScale;
+    return labelsAtTick.joinIntoString(" / ");
+}
+
+SongInformation OstfpPreview::songInformation() const {
+    const auto score = parseObject(sourceScore);
+    const auto song = score["song"];
+    SongInformation info{song["title"].toString(), song["subtitle"].toString(), song["description"].toString(), {}};
+    std::map<juce::String, juce::String> names;
+    if (const auto* people = score["contributors"].getArray())
+        for (const auto& p : *people) names[p["id"].toString()] = p["name"].toString();
+    if (const auto* credits = song["credits"].getArray())
+        for (const auto& c : *credits) {
+            auto who = c["contributorId"].toString();
+            info.credits.push_back({c["id"].toString(), who, c["role"].toString(), names[who]});
+        }
+    return info;
+}
+
+juce::Result OstfpPreview::applySongInformation(const SongInformation& info) {
+    if (info.title.trim().isEmpty()) return juce::Result::fail("Enter a song title.");
+    const auto beforeEdit = savedScore(*this);
+    auto score = parseObject(beforeEdit);
+    auto* song = score["song"].getDynamicObject();
+    song->setProperty("title", info.title);
+    auto optionalText = [&](const char* key, const juce::String& value) {
+        if (value.isNotEmpty()) song->setProperty(key, value);
+        else if (song->getProperty(key).toString().isNotEmpty()) song->removeProperty(key);
+    };
+    optionalText("subtitle", info.subtitle);
+    optionalText("description", info.description);
+    auto people = score.getProperty("contributors", juce::Array<juce::var>{});
+    if (!people.isArray()) return juce::Result::fail("Invalid contributor list.");
+    auto originals = song->getProperty("credits");
+    juce::Array<juce::var> credits;
+    std::map<juce::String, juce::String> editedNames;
+    for (const auto& row : info.credits) {
+        if (row.name.trim().isEmpty() || row.role.isEmpty() || !row.role.substring(0, 1).containsOnly("abcdefghijklmnopqrstuvwxyz")
+            || !row.role.containsOnly("abcdefghijklmnopqrstuvwxyz0123456789.-"))
+            return juce::Result::fail("Each credit needs a name and a lowercase role such as composer.");
+        juce::var person;
+        for (const auto& p : *people.getArray()) {
+            if (row.contributorId.isNotEmpty() ? p["id"].toString() == row.contributorId : p["name"].toString() == row.name) {
+                person = p;
+                break;
+            }
+        }
+        if (!person.isObject()) {
+            person = object({{"id", "person-" + juce::Uuid().toString()}, {"name", row.name}});
+            people.getArray()->add(person);
+        }
+        const auto who = person["id"].toString();
+        if (editedNames.contains(who) && editedNames[who] != row.name)
+            return juce::Result::fail("Use the same name for a shared contributor.");
+        editedNames[who] = row.name;
+        person.getDynamicObject()->setProperty("name", row.name);
+        juce::var credit;
+        if (originals.isArray() && row.id.isNotEmpty())
+            for (const auto& c : *originals.getArray()) if (c["id"].toString() == row.id) { credit = c; break; }
+        if (!credit.isObject()) credit = object({{"id", "credit-" + juce::Uuid().toString()}});
+        credit.getDynamicObject()->setProperty("contributorId", who);
+        credit.getDynamicObject()->setProperty("role", row.role);
+        credits.add(credit);
+    }
+    if (score.hasProperty("contributors") || !people.getArray()->isEmpty()) score.getDynamicObject()->setProperty("contributors", people);
+    if (originals.isArray() || !credits.isEmpty()) song->setProperty("credits", credits);
+    if (juce::JSON::toString(score) == juce::JSON::toString(parseObject(beforeEdit))) return juce::Result::ok();
+    if (auto* document = score["document"].getDynamicObject()) {
+        juce::Array<juce::var> parents;
+        parents.add(object({{"documentId", document->getProperty("id")}, {"revisionId", document->getProperty("revisionId")},
+                            {"sha256", juce::SHA256(beforeEdit).toHexString()}}));
+        document->setProperty("parents", parents);
+        document->setProperty("revisionId", "metadata-" + juce::Uuid().toString());
+        document->setProperty("modifiedBy", object({{"name", "OSTF Studio"}}));
+    }
+    auto bytes = jsonBytes(score);
+    if (bytes.getSize() > maxBytes) return juce::Result::fail("OSTF score is too large.");
+    sourceScore = std::move(bytes);
+    addedClips.clear();
+    title = info.title;
+    return juce::Result::ok();
 }
 
 const char* OstfpPreview::keepLabel(juce::String label) {

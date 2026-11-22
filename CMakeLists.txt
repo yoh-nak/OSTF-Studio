@@ -106,7 +106,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/OstfpPreview.cpp
         src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
         src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/MediaImport.cpp
-        tests/stock_effects_smoke.cpp tests/track_view_smoke.cpp tests/notation_smoke.cpp)
+        tests/stock_effects_smoke.cpp tests/track_view_smoke.cpp tests/notation_smoke.cpp tests/transport_smoke.cpp)
     target_include_directories(OSTFStudio PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(OSTFStudio PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
     target_compile_definitions(OSTFStudio PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
@@ -143,6 +143,9 @@ if (OSTF_STUDIO_BUILD_GUI)
     endif()
     if (WIN32 OR APPLE)
         add_test(NAME ostf_studio_startup COMMAND OSTFStudio --startup-smoke)
+        add_test(NAME ostf_studio_transport COMMAND OSTFStudio --transport-smoke
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp" "${CMAKE_CURRENT_BINARY_DIR}/transport-check")
+        set_tests_properties(ostf_studio_transport PROPERTIES TIMEOUT 90)
         add_test(NAME ostf_studio_notation COMMAND OSTFStudio --notation-smoke
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostfp" "${CMAKE_CURRENT_BINARY_DIR}/notation-check")
         set_tests_properties(ostf_studio_notation PROPERTIES TIMEOUT 120)

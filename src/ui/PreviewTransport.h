@@ -34,6 +34,8 @@ public:
     void setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb);
     void setOutputMix(const ostfstudio::MixerRouting& mix);
     bool isRunning() const { return running_.load(); }
+    struct Cursor { juce::int64 tick; double seconds; };
+    Cursor cursor() const;
     juce::int64 positionTick() const;
 
 private:
@@ -71,8 +73,9 @@ private:
     std::atomic<bool> running_ {false};
     std::atomic<juce::int64> sample_ {0};
     double sampleRate_ = 0.0;
-    double samplesPerTick_ = 0.0;
-    double bpm_ = 0.0;
+    ostfstudio::TempoMap clock_;
+    juce::int64 ppq_ = 1;
+    int meterBeats_ = 4, beatUnit_ = 4;
     juce::int64 lastSample_ = 0;
     juce::int64 scoreTicks_ = 0;
     bool recording_ = false;

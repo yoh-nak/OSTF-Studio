@@ -2,6 +2,7 @@
 
 #include "ui/ArrangementView.h"
 #include "core/MixerState.h"
+#include "core/TempoMap.h"
 #include <juce_core/juce_core.h>
 #include <deque>
 #include <map>
@@ -57,6 +58,14 @@ struct ProjectAudio {
 
 enum class TrackKind { pitched, drum, audio };
 
+struct SongCredit {
+    juce::String id, contributorId, role, name;
+};
+struct SongInformation {
+    juce::String title, subtitle, description;
+    std::vector<SongCredit> credits;
+};
+
 struct OstfpPreview {
     static constexpr std::size_t maxTracks = 8;
     juce::String title;
@@ -64,6 +73,12 @@ struct OstfpPreview {
     juce::int64 ticksPerBar = 0;
     juce::int64 ppq = 0;
     double previewBpm = 0.0; // A non-zero value denotes one fixed source tempo.
+    TempoMap clock;
+    int meterBeats = 4, beatUnit = 4;
+    juce::String defaultScale;
+    juce::String contextAt(TimelineLane kind, juce::int64 tick) const;
+    SongInformation songInformation() const;
+    juce::Result applySongInformation(const SongInformation&);
     std::vector<ArrangementLane> globalLanes, trackLanes;
     std::vector<std::vector<PitchedNote>> pitchedNotes, drumNotes;
     struct ProgramChange { juce::int64 tick; int program; std::optional<int> channel; };

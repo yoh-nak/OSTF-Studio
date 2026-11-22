@@ -14,6 +14,12 @@ OSTF Studio is in active development. If a demo makes you want to write a song w
 
 **[Buy me a coffee](https://buymeacoffee.com/yohsukenak)**
 
+## Transport and song information in the development build
+
+The transport shows bar, beat and tick alongside elapsed timecode at 30 fps. Its tempo, meter, key, scale and chord follow the audio clock, including chord and tempo changes within a bar. The gold playhead crosses both the notes and the controller lane of the piano roll. A zoomed piano roll follows it into the next visible range. The view toolbar shows the current song title and filename.
+
+Open **File → Song information** to edit the title, subtitle, description and ordered credits. Enter a contributor name and role for each credit (for example, `composer`, `lyricist` or `arranger`). Apply the changes, then save as OSTF or OSTFP. Both formats retain the credit assignments.
+
 ## Notation and import in the development build
 
 The first three buttons on the view bar switch the main workspace between **Arrangement**, **Lead sheet** and **Score**. The View menu opens the same modes. Playback and the transport stay available as you switch. The moving gold line marks the current position. **Follow playback** advances the bars in view. Turn it off to browse another section during playback.

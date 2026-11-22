@@ -9,6 +9,7 @@
 #include "ui/ViewButton.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
+#include "ui/TransportPanel.h"
 
 class MainComponent final : public juce::Component, public juce::DragAndDropContainer,
                             public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
@@ -16,7 +17,7 @@ public:
     MainComponent();
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
-    void displayTransportPosition(juce::int64 tick);
+    void displayTransportPosition(juce::int64 tick, double seconds = -1);
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& event) override;
@@ -47,7 +48,9 @@ private:
     void menuItemSelected(int item, int topLevelMenuIndex) override;
     void inspectOSTF();
     void openDemo();
-    bool openPreview(juce::InputStream& input, bool plainScore = false, const juce::File& sourceFolder = {});
+    bool openPreview(juce::InputStream& input, const juce::String& filename, bool plainScore = false, const juce::File& sourceFolder = {});
+    void editSongInformation();
+    void updateDocumentLabel();
     enum class SaveFormat { score, package, midi0, midi1 };
     void saveDocument(SaveFormat);
     juce::PopupMenu timelineMenu() const;
@@ -117,8 +120,10 @@ private:
                leadButton_ {ViewButton::Icon::leadSheet}, scoreButton_ {ViewButton::Icon::score};
     juce::TooltipWindow tooltips_ {this};
     bool editorVisible_ = true, mixerSelected_ = false;
-    juce::TextButton playButton_ {TRANS("Play")}, stopButton_ {TRANS("Stop")}, recordButton_ {TRANS("Record MIDI")};
-    juce::Label transportPosition_;
+    TransportPanel deck_;
+    juce::Label documentLabel_;
+    juce::String currentFilename_;
+    juce::int64 cursorTick_ = -1;
     juce::ComboBox trackPicker_;
     juce::ComboBox performanceLane_;
     juce::ComboBox arrangementZoom_, pianoZoom_;

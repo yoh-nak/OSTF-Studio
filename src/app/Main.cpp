@@ -180,6 +180,7 @@ private:
 int checkStockEffects(const juce::StringArray&);
 int checkTrackView(const juce::File&);
 int checkNotation(const juce::File&, const juce::File&);
+int checkTransport(const juce::File&, const juce::File&);
 
 class OSTFStudioApplication final : public juce::JUCEApplication {
 public:
@@ -189,6 +190,13 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
+        if (args.size() == 3 && args[0] == "--transport-smoke") {
+            juce::MessageManager::callAsync([this, args] {
+                setApplicationReturnValue(checkTransport(juce::File(args[1]), juce::File(args[2])));
+                quit();
+            });
+            return;
+        }
         if (args.size()==3 && args[0]=="--notation-smoke") {
             juce::MessageManager::callAsync([this,args]{
                 setApplicationReturnValue(checkNotation(juce::File(args[1]),juce::File(args[2])));

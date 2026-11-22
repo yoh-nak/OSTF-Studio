@@ -26,8 +26,6 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const os
     auto* device = devices.getCurrentAudioDevice();
     if (!device || !device->isOpen() || device->getActiveOutputChannels().isZero())
         return juce::Result::fail("Select an active audio output in Settings first.");
-    if (!std::isfinite(project.previewBpm) || project.previewBpm <= 0.0)
-        return juce::Result::fail("Preview transport requires a single tempo.");
     if (record) {
         bool enabled = false;
         for (const auto& input : juce::MidiInput::getAvailableDevices())
@@ -49,10 +47,13 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     if (!std::isfinite(sampleRate) || sampleRate <= 0 || blockSize < 1)
         return juce::Result::fail("Invalid audio configuration");
     sampleRate_ = sampleRate;
-    bpm_ = project.previewBpm;
-    samplesPerTick_ = sampleRate_ * 60.0 / (bpm_ * static_cast<double>(project.ppq));
+    if (project.clock.empty()) return juce::Result::fail("The song needs an initial tempo.");
+    clock_ = project.clock;
+    ppq_ = project.ppq;
+    meterBeats_ = project.meterBeats;
+    beatUnit_ = project.beatUnit;
     scoreTicks_ = static_cast<juce::int64>(project.bars.endBar - 1) * project.ticksPerBar;
-    const auto total = static_cast<double>(scoreTicks_) * samplesPerTick_;
+    const auto total = clock_.secondsAt(scoreTicks_) * sampleRate_;
     if (!std::isfinite(total) || total < 1.0 || total > sampleRate_ * 3600.0
         || total > std::numeric_limits<int>::max() - 1)
         return juce::Result::fail("Preview transport supports songs up to one hour.");
@@ -89,13 +90,13 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
             ? &instruments_[outputTrack].timeline : nullptr;
         if (!midi) continue;
         for (const auto& change : project.programChanges[track]) {
-            const auto at = static_cast<int>(std::llround(static_cast<double>(change.tick) * samplesPerTick_));
+            const auto at = static_cast<int>(std::llround(clock_.secondsAt(change.tick) * sampleRate_));
             midi->addEvent(juce::MidiMessage::programChange(change.channel.value_or(setup.midiChannel), change.program), at);
         }
         auto addNote = [&](juce::int64 start, juce::int64 end, int pitch, int velocity, int channel) {
             if (noteCount >= 20000) return false;
-            const auto first = static_cast<int>(std::llround(static_cast<double>(start) * samplesPerTick_));
-            const auto last = static_cast<int>(std::llround(static_cast<double>(end) * samplesPerTick_));
+            const auto first = static_cast<int>(std::llround(clock_.secondsAt(start) * sampleRate_));
+            const auto last = static_cast<int>(std::llround(clock_.secondsAt(end) * sampleRate_));
             if (last <= first) return true;
             ++noteCount;
             midi->addEvent(juce::MidiMessage::noteOn(channel, pitch, static_cast<juce::uint8>(velocity)), first);
@@ -176,10 +177,12 @@ std::vector<ostfstudio::PitchedNote> PreviewTransport::stop() {
     return std::exchange(recorded_, {});
 }
 
-juce::int64 PreviewTransport::positionTick() const {
-    if (samplesPerTick_ <= 0) return 0;
-    return std::min(scoreTicks_, static_cast<juce::int64>(static_cast<double>(sample_.load()) / samplesPerTick_));
+PreviewTransport::Cursor PreviewTransport::cursor() const {
+    const auto seconds = sampleRate_ > 0 ? sample_.load() / sampleRate_ : 0.0;
+    return {std::min(scoreTicks_, static_cast<juce::int64>(clock_.tickAt(seconds) + 1e-9)), seconds};
 }
+
+juce::int64 PreviewTransport::positionTick() const { return cursor().tick; }
 
 void PreviewTransport::setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb) {
     if (track >= gains_.size()) return;
@@ -208,9 +211,14 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PreviewTransport::getPosition(
     PositionInfo position;
     const auto sample = sample_.load();
     position.setTimeInSamples(sample);
-    position.setTimeInSeconds(static_cast<double>(sample) / sampleRate_);
-    position.setPpqPosition(static_cast<double>(sample) * bpm_ / (sampleRate_ * 60.0));
-    position.setBpm(bpm_);
+    const double seconds = sampleRate_ > 0 ? sample / sampleRate_ : 0.0;
+    const double tick = clock_.tickAt(seconds);
+    position.setTimeInSeconds(seconds);
+    position.setPpqPosition(tick / ppq_);
+    position.setBpm(clock_.bpmAt(static_cast<juce::int64>(tick + 1e-9)));
+    position.setTimeSignature(TimeSignature{meterBeats_, beatUnit_});
+    const auto barPpq = meterBeats_ * 4.0 / beatUnit_;
+    position.setPpqPositionOfLastBarStart(std::floor(tick / ppq_ / barPpq) * barPpq);
     position.setIsPlaying(running_);
     return position;
 }
