@@ -34,6 +34,14 @@ The nine stock audio effects use separate VST3 component classes and share a JUC
 7. Windows-first verification, macOS cloud compile; no Mac real-hardware claims absent independent test.
 8. Test actual plugin/device compatibility instead of asserting it.
 
+## Notation and transcription
+
+The notation view reads a projection of the open song. Source ticks define bar boundaries, note durations, lyrics and chord changes. The derived chord voicing is available as a part. Staff and TAB choices belong to the open view. The native lead sheet takes its cue from the OSTF Player chart, including page density, lyric part selection and following playback. Screen and PDF use the same page renderer. PDF export snapshots the song and renders A4 grayscale pages off the message thread. MusicXML 4.0 exports one selected part, preserving tick durations and splitting sustained notes across bar lines with ties. Standard tunings are E–A–D–G–B–E and E–A–D–G, low to high. Fingering is indicative.
+
+Media import first builds a new OSTF candidate, runs it through the Studio reader, and offers an explicit save. WAV references use the existing relative media writer. Optional monophonic transcription estimates pitch in short windows, drops unstable segments and keeps the original recording alongside the draft. Its 120 BPM, 4/4 grid is a guide. MIDI import splits each SMF track by MIDI channel and maps channel 10 to percussion sound slots. It currently accepts PPQ type 0/1, a fixed meter and the supported project size. Controller and program events are future import work.
+
+Next engraving milestones are rhythmic spelling and beams, enharmonic spelling in context, better percussion mapping and editable fingerings, followed by a combined score and round trips in external notation editors. For transcription, measure onset and pitch accuracy against annotated recordings before adding tempo inference or attempting polyphonic separation. Keep estimates inspectable before the user saves them. Exercise changes with the notation smoke test, independently validate MusicXML against the [W3C 4.0 schema](https://www.w3.org/2021/06/musicxml40/), and validate imported OSTF against the pinned Core schema.
+
 ## User-visible milestones
 
 | Milestone | Deliverable and verification |

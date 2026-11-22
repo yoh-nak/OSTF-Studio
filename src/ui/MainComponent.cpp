@@ -52,7 +52,7 @@ juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds) {
 
 enum MenuCommand { openFile = 1, openDemoSong, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese };
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia };
 constexpr int timelineMenuBase = 100;
 constexpr int demoMenuBase = 300;
 constexpr struct { const char* title; const char* resource; } gallery[] {
@@ -458,6 +458,8 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             midi.addItem(exportMidi0, TRANS("Format 0 - single track"));
             midi.addItem(exportMidi1, TRANS("Format 1 - separate tracks"));
             menu.addSubMenu(TRANS("Save as MIDI (SMF)"), midi, project_ != nullptr);
+            menu.addSeparator();
+            menu.addItem(importMedia, TRANS("Import and transcription"));
             break;
         }
         case 1: {
@@ -466,6 +468,9 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(showPlugins, TRANS("Plug-in Browser"), true, pluginBrowserButton_.getToggleState());
             menu.addItem(showOutputs, TRANS("Output Tracks"), project_ != nullptr, showOutputTracks_);
             menu.addSubMenu(TRANS("Global Timeline Lanes"), timelineMenu());
+            menu.addSeparator();
+            menu.addItem(showLeadSheet, TRANS("Lead sheet"), project_ != nullptr);
+            menu.addItem(showPartScore, TRANS("Score"), project_ != nullptr);
             break;
         }
         case 2: {
@@ -517,6 +522,20 @@ void MainComponent::menuItemSelected(int item, int) {
         case openFile: inspectOSTF(); break;
         case openDemoSong: openDemo(); break;
         case saveScore: saveDocument(SaveFormat::score); break;
+        case showLeadSheet:
+        case showPartScore:
+            if (project_) {
+                if (!scoreWindow_)
+                    scoreWindow_ = std::make_unique<ScoreWindow>();
+                scoreWindow_->showScore(*project_, item == showLeadSheet, selectedTrack_);
+            }
+            break;
+        case importMedia:
+            if (!importWindow_)
+                importWindow_ = makeMediaImportWindow([this](const juce::File& file) { openDocument(file); });
+            importWindow_->setVisible(true);
+            importWindow_->toFront(true);
+            break;
         case saveProject: saveDocument(SaveFormat::package); break;
         case exportMidi0: saveDocument(SaveFormat::midi0); break;
         case exportMidi1: saveDocument(SaveFormat::midi1); break;
@@ -838,12 +857,14 @@ void MainComponent::stopTransport() {
     for (auto& track : trackControls_) track->meter.clear();
     for (auto& output : outputControls_) output.meter.clear();
     mixer_.clearMeters();
+    if (scoreWindow_) scoreWindow_->playbackPosition(-1);
     repaint();
 }
 
 void MainComponent::timerCallback() {
     if (!transport_.isRunning()) { stopTransport(); return; }
     const auto frame = transport_.takeMeters();
+    if (scoreWindow_ && scoreWindow_->isVisible()) scoreWindow_->playbackPosition(transport_.positionTick());
     const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
     for (std::size_t i = 0; i < std::min(trackControls_.size(), frame.tracks.size()); ++i)
         trackControls_[i]->meter.update(frame.tracks[i], now);
@@ -890,6 +911,7 @@ bool MainComponent::openPreview(juce::InputStream& input, bool plainScore, const
     const auto result = plainScore ? ostfstudio::readOstfPreview(input, next) : ostfstudio::readOstfpPreview(input, next);
     if (result.wasOk()) {
         stopTransport();
+        scoreWindow_.reset();
         project_ = std::move(next);
         updateHorizontalRange(false, true);
         updateHorizontalRange(true, true);
@@ -1604,6 +1626,7 @@ void MainComponent::selectTrack(std::size_t index) {
 }
 
 void MainComponent::refreshEditor() {
+    if (scoreWindow_ && scoreWindow_->isVisible() && project_) scoreWindow_->refresh(*project_);
     const bool showMixer = mixerButton_.getToggleState();
     const bool piano = project_ && editorVisible_ && !showMixer;
     pianoButton_.setToggleState(piano, juce::dontSendNotification);

@@ -8,6 +8,7 @@
 #include "ui/PreviewTransport.h"
 #include "ui/ViewButton.h"
 #include "ui/TrackRowSize.h"
+#include "ui/ScoreWindow.h"
 
 class MainComponent final : public juce::Component, public juce::DragAndDropContainer,
                             public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
@@ -125,6 +126,8 @@ private:
     std::optional<std::size_t> pendingMidiDrag_;
     MixerPanel mixer_;
     std::unique_ptr<DeviceSettingsWindow> deviceSettings_;
+    std::unique_ptr<ScoreWindow> scoreWindow_;
+    std::unique_ptr<juce::DocumentWindow> importWindow_;
     PreviewTransport transport_;
     bool transportActive_ = false;
     std::optional<std::size_t> recordTrack_;

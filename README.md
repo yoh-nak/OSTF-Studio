@@ -14,6 +14,14 @@ OSTF Studio is in active development. If a demo makes you want to write a song w
 
 **[Buy me a coffee](https://buymeacoffee.com/yohsukenak)**
 
+## Notation and import in the development build
+
+Open **View → Lead sheet** for a printable chart of sections, chord changes and lyrics. Set the number of bars per line, choose a lyric part, or follow playback. **View → Score** opens the selected part. Choose treble, alto, bass, grand staff, six-string guitar TAB, four-string bass TAB or percussion. Each track remembers its staff choice while the song is open.
+
+**PDF / Print** saves the displayed layout as A4 pages and opens the PDF for printing. In the score view, **MusicXML** exports the selected part for further engraving in a notation editor.
+
+**File → Import and transcription** creates a new project from a MIDI performance (SMF 0 or 1) or a WAV recording. WAV import keeps the recording alongside the score. The experimental melody mode adds draft notes from up to two minutes of isolated single-note audio. Review the result in the piano roll. These features are in the development build following alpha 2.
+
 ## Install OSTF Studio
 
 On Windows, run the Setup executable or extract the portable ZIP. On an Apple silicon Mac, open the DMG and run **Install OSTF Studio and VST3.pkg**. Public installers and matching source archives are listed under **Assets** on each [GitHub Release](https://github.com/yoh-nak/OSTF-Studio/releases). Development packages are available for seven days under **Actions → build run → Artifacts**.
