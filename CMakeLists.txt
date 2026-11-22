@@ -1,11 +1,16 @@
 cmake_minimum_required(VERSION 3.22)
-project(OSTFStudio VERSION 0.1.0 LANGUAGES C CXX)
+project(OSTFStudio VERSION 1.0.0 LANGUAGES C CXX)
+set(OSTF_STUDIO_ALPHA_NUMBER 1)
+if(NOT DEFINED OSTF_STUDIO_DISPLAY_VERSION)
+    set(OSTF_STUDIO_DISPLAY_VERSION "${PROJECT_VERSION}-alpha.${OSTF_STUDIO_ALPHA_NUMBER}")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(OSTF_STUDIO_BUILD_GUI "Build JUCE desktop UI prototype" ON)
+option(OSTF_STUDIO_ENABLE_ASIO "Compile the Windows ASIO backend using JUCE's bundled headers" ON)
 
 enable_testing()
 add_library(ostf_studio_core STATIC src/core/TimelineModel.cpp)
@@ -26,18 +31,109 @@ if (OSTF_STUDIO_BUILD_GUI)
     )
     FetchContent_MakeAvailable(JUCE)
 
+    juce_add_plugin(OSTFArranger
+        COMPANY_NAME "OSTF Studio"
+        BUNDLE_ID "org.ostf.arranger"
+        PLUGIN_MANUFACTURER_CODE Ostf
+        PLUGIN_CODE Oar1
+        PRODUCT_NAME "OSTF Arranger"
+        FORMATS VST3
+        IS_SYNTH TRUE
+        VST3_CATEGORIES Instrument Tools
+    )
+    target_sources(OSTFArranger PRIVATE src/plugins/Arranger.cpp)
+    target_include_directories(OSTFArranger PRIVATE src)
+    target_compile_definitions(OSTFArranger PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_USE_CURL=0)
+    target_link_libraries(OSTFArranger PRIVATE juce::juce_audio_processors juce::juce_recommended_config_flags)
+
+    juce_add_plugin(OSTFGMSoundModule
+        COMPANY_NAME "OSTF Studio"
+        BUNDLE_ID "org.ostf.gmsoundmodule"
+        PLUGIN_MANUFACTURER_CODE Ostf
+        PLUGIN_CODE Ogm1
+        PRODUCT_NAME "OSTF GM Sound Module"
+        FORMATS VST3
+        IS_SYNTH TRUE
+        NEEDS_MIDI_INPUT TRUE
+        VST3_CATEGORIES Instrument Synth
+    )
+    target_sources(OSTFGMSoundModule PRIVATE src/plugins/GMSoundModule.cpp)
+    target_include_directories(OSTFGMSoundModule PRIVATE third_party/tinysoundfont)
+    target_compile_definitions(OSTFGMSoundModule PRIVATE JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_USE_CURL=0)
+    juce_add_binary_data(OSTFGMPreviewBank HEADER_NAME GMPreviewData.h NAMESPACE GMPreviewData SOURCES assets/StudioPreview.sf2)
+    target_link_libraries(OSTFGMSoundModule PRIVATE OSTFGMPreviewBank juce::juce_audio_processors juce::juce_recommended_config_flags)
+    set(OSTF_FLUID_R3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build-tools/fluid-r3")
+    if(EXISTS "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" AND EXISTS "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt")
+        add_custom_command(TARGET OSTFGMSoundModule_VST3 POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt"
+                "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources")
+    endif()
+
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/DocumentTypes.plist" ostf_document_types)
     juce_add_gui_app(OSTFStudio
         PRODUCT_NAME "OSTF Studio"
         COMPANY_NAME "OSTF"
         BUNDLE_ID "org.ostf.studio"
+        MICROPHONE_PERMISSION_ENABLED TRUE
+        MICROPHONE_PERMISSION_TEXT "OSTF Studio uses the selected audio input to show its level in Audio / MIDI Settings."
+        ICON_BIG "assets/AppIcon.png"
+        PLIST_TO_MERGE "${ostf_document_types}"
     )
+    if (APPLE)
+        set(ostf_document_icons assets/OstfScore.icns assets/OstfpPackage.icns)
+        target_sources(OSTFStudio PRIVATE ${ostf_document_icons})
+        set_source_files_properties(${ostf_document_icons} PROPERTIES MACOSX_PACKAGE_LOCATION Resources HEADER_FILE_ONLY TRUE)
+    endif()
+    juce_add_binary_data(OSTFStudioAssets SOURCES
+        assets/AppIcon.png tests/fixtures/10-comprehensive-core.ostfp
+        examples/demo-songs/neon-platforms.ostfp examples/demo-songs/blue-hour-waltz.ostfp
+        examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp)
     juce_generate_juce_header(OSTFStudio)
-    target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp)
+    target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/OstfpPreview.cpp
+        src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp)
     target_include_directories(OSTFStudio PRIVATE src)
-    target_compile_definitions(OSTFStudio PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_compile_definitions(OSTFStudio PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
+    target_compile_definitions(OSTFStudio PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
+    if (WIN32)
+        target_compile_definitions(OSTFStudio PRIVATE JUCE_ASIO=$<BOOL:${OSTF_STUDIO_ENABLE_ASIO}>)
+    endif()
     target_link_libraries(OSTFStudio PRIVATE
         ostf_studio_core
+        OSTFStudioAssets
         juce::juce_gui_extra
+        juce::juce_audio_utils
+        juce::juce_cryptography
         juce::juce_recommended_config_flags
     )
+    include(packaging/collect-notices.cmake)
+
+    add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp)
+    target_include_directories(ostf_studio_ostfp_tests PRIVATE src)
+    target_compile_definitions(ostf_studio_ostfp_tests PRIVATE JUCE_USE_CURL=0)
+    target_link_libraries(ostf_studio_ostfp_tests PRIVATE juce::juce_cryptography)
+    add_test(NAME ostf_studio_ostfp_tests COMMAND ostf_studio_ostfp_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
+    add_test(NAME ostf_studio_demo_gallery COMMAND ostf_studio_ostfp_tests --gallery
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs")
+    if(WIN32 AND OSTF_STUDIO_ENABLE_ASIO)
+        add_test(NAME ostf_studio_asio_backend COMMAND OSTFStudio --asio-backend-smoke)
+        set_tests_properties(ostf_studio_asio_backend PROPERTIES TIMEOUT 15)
+    endif()
+    if (WIN32 OR APPLE)
+        add_test(NAME ostf_studio_startup COMMAND OSTFStudio --startup-smoke)
+        add_test(NAME ostf_studio_open_project
+            COMMAND OSTFStudio --startup-smoke "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
+        add_test(NAME ostf_studio_open_score
+            COMMAND OSTFStudio --startup-smoke "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostf")
+        set_tests_properties(ostf_studio_open_project ostf_studio_open_score PROPERTIES TIMEOUT 15)
+        set_tests_properties(ostf_studio_startup PROPERTIES TIMEOUT 15)
+        add_test(NAME ostf_studio_gm_plugin
+            COMMAND OSTFStudio --gm-plugin-smoke
+            "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../.."
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tinysoundfont-saw.sf2"
+            "$<TARGET_FILE_DIR:OSTFArranger_VST3>/../..")
+        set_tests_properties(ostf_studio_gm_plugin PROPERTIES TIMEOUT 20)
+    endif()
 endif()

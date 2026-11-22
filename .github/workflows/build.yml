@@ -4,6 +4,15 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_type:
+        description: Build artifacts only, or explicitly publish a release
+        type: choice
+        options: [none, stable, prerelease]
+        default: none
+      release_tag:
+        description: New release tag (for example v1.0.0-alpha.1)
+        type: string
 
 permissions:
   contents: read
@@ -19,7 +28,7 @@ jobs:
         include:
           - name: Windows-x64
             os: windows-2022
-            configure_args: '-G "Visual Studio 17 2022" -A x64'
+            configure_args: '-G "Visual Studio 17 2022" -A x64 -DOSTF_STUDIO_ENABLE_ASIO=ON'
           - name: macOS-arm64
             os: macos-15
             configure_args: '-DCMAKE_OSX_ARCHITECTURES=arm64'
@@ -27,36 +36,100 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Resolve package version
+        id: version
+        shell: bash
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type || 'none' }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: bash packaging/release-version.sh
+      - name: Test alpha release version policy
+        shell: bash
+        run: bash tests/release-version.sh
       - name: Configure standalone core
         run: cmake -S . -B build-core ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=OFF
       - name: Build standalone core
         run: cmake --build build-core --config Release --parallel 2
       - name: Test standalone core
         run: ctest --test-dir build-core -C Release --output-on-failure --no-tests=error
+      - name: Prepare licensed FluidR3 GM bank
+        run: python packaging/prepare_fluid_r3.py
       - name: Configure (JUCE pinned tag 9.0.5)
-        run: cmake -S . -B build ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=ON
+        run: cmake -S . -B build ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=ON -DOSTF_STUDIO_DISPLAY_VERSION=${{ steps.version.outputs.display }}
       - name: Build
-        run: cmake --build build --config Release --parallel 2
+        shell: bash
+        run: |
+          test "$(git -C build/_deps/juce-src rev-parse HEAD)" = d60b7a78030661574a615b586d9325ba7a7fa7dd
+          cmake --build build --config Release --parallel 2
       - name: Run tests
         run: ctest --test-dir build -C Release --output-on-failure --no-tests=error
-      - name: Package Windows preview
+      - name: Package Windows installer and Portable ZIP
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.version.outputs.display }}
+          BINARY_VERSION: ${{ steps.version.outputs.binary }}
         run: |
-          New-Item -Path dist -ItemType Directory -Force | Out-Null
-          $exe = 'build/OSTFStudio_artefacts/Release/OSTF Studio.exe'
-          if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Missing build output: $exe" }
-          Compress-Archive -LiteralPath $exe -DestinationPath 'dist/OSTF_Studio_Windows_x64.zip' -Force
-      - name: Package macOS preview (unsigned)
+          ./packaging/windows/Package.ps1 -AppVersion $env:APP_VERSION -BinaryVersion $env:BINARY_VERSION
+      - name: Package macOS DMG
         if: runner.os == 'macOS'
         shell: bash
         run: |
           mkdir -p dist
           app='build/OSTFStudio_artefacts/Release/OSTF Studio.app'
           test -d "$app"
-          ditto -c -k --sequesterRsrc --keepParent "$app" dist/OSTF_Studio_macOS_arm64_unsigned.zip
+          lipo "$app/Contents/MacOS/OSTF Studio" -verify_arch arm64
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist"
+          dmg='dist/OSTF_Studio_macOS_arm64.dmg'
+          staging=$(mktemp -d)
+          ditto "$app" "$staging/OSTF Studio.app"
+          ln -s /Applications "$staging/Applications"
+          gm='build/OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3'
+          lipo "$gm/Contents/MacOS/OSTF GM Sound Module" -verify_arch arm64
+          arranger='build/OSTFArranger_artefacts/Release/VST3/OSTF Arranger.vst3'
+          lipo "$arranger/Contents/MacOS/OSTF Arranger" -verify_arch arm64
+          pkgroot=$(mktemp -d)
+          mkdir -p "$pkgroot/Applications" "$pkgroot/Library/Audio/Plug-Ins/VST3"
+          ditto "$app" "$pkgroot/Applications/OSTF Studio.app"
+          ditto "$gm" "$pkgroot/Library/Audio/Plug-Ins/VST3/OSTF GM Sound Module.vst3"
+          ditto "$arranger" "$pkgroot/Library/Audio/Plug-Ins/VST3/OSTF Arranger.vst3"
+          cp third_party/tinysoundfont/LICENSE.txt "$staging/TinySoundFont-License.txt"
+          pkgbuild --root "$pkgroot" --install-location / --identifier org.ostf.studio.installer \
+            --version '${{ steps.version.outputs.binary }}' "$staging/Install OSTF Studio and VST3.pkg"
+          hdiutil create -volname 'OSTF Studio' -srcfolder "$staging" -format UDZO "$dmg"
+          hdiutil verify "$dmg"
+      - name: Package corresponding source and build inputs
+        if: runner.os == 'macOS'
+        shell: bash
+        run: bash packaging/package-source.sh
       - uses: actions/upload-artifact@v4
         with:
           name: OSTF-Studio-${{ matrix.name }}
-          path: dist/*.zip
+          path: dist/
+          retention-days: 7
           if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && (inputs.release_type == 'stable' || inputs.release_type == 'prerelease')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: OSTF-Studio-*
+          path: dist
+          merge-multiple: true
+      - name: Create version tag and publish both platforms
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: bash packaging/publish-release.sh
