@@ -23,6 +23,7 @@ constexpr int trackHeaderWidth = 410;
 constexpr int timelineNavigationHeight = 24;
 constexpr int trackNameWidth = 95;
 constexpr int arrangementHeadingHeight = 24;
+constexpr int globalRowHeight = 28;
 
 juce::String outputName(std::size_t index) {
     if (index == 0) return TRANS("Master");
@@ -392,6 +393,13 @@ MainComponent::MainComponent() {
     midiDrag_.writeMidi = [this](juce::OutputStream& stream) { return selectedTrack_ && writeTrackMidi(*selectedTrack_, stream); };
     midiDrag_.reportError = [this](const juce::String& error) { statusLabel_.setText(error, juce::dontSendNotification); };
     addChildComponent(mixer_);
+    rowOverlay_.setInterceptsMouseClicks(false, true);
+    addAndMakeVisible(rowOverlay_);
+    verticalScroll_.setAutoHide(false);
+    verticalScroll_.setComponentID("arrangement-vertical-scroll");
+    verticalScroll_.setSingleStepSize(32);
+    verticalScroll_.addListener(this);
+    addChildComponent(verticalScroll_);
     setupOutputTracks();
     pluginFormats_.addFormat(std::make_unique<juce::VST3PluginFormat>());
     trackPicker_.setTitle(TRANS("Arrangement track"));
@@ -589,12 +597,21 @@ juce::Rectangle<int> MainComponent::getWorkspace() const {
 
 int MainComponent::getArrangementHeight(int workspaceHeight) const {
     if (!editorVisible_) return workspaceHeight;
-    const auto view = currentArrangement();
-    const auto outputs = visibleOutputCount();
-    const auto rows = 1 + static_cast<int>(view.globalLanes.size() + view.trackLanes.size() + outputs);
-    const auto target = mixerButton_.getToggleState() ? workspaceHeight / 2 : workspaceHeight * 3 / 5;
-    return std::max(target, 26 + (project_ ? timelineNavigationHeight : 0) + arrangementHeadingHeight + rows * 12
-                   + (outputs ? arrangementHeadingHeight : 0));
+    return mixerButton_.getToggleState() ? workspaceHeight / 2 : workspaceHeight * 3 / 5;
+}
+
+void MainComponent::scrollBarMoved(juce::ScrollBar* bar, double) {
+    if (bar == &verticalScroll_) resized();
+    repaint();
+}
+
+void MainComponent::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) {
+    if (verticalScroll_.isVisible() && rowOverlay_.getBounds().contains(event.getPosition())
+        && std::abs(wheel.deltaY) > std::abs(wheel.deltaX)) {
+        verticalScroll_.mouseWheelMove(event.getEventRelativeTo(&verticalScroll_), wheel);
+        return;
+    }
+    Component::mouseWheelMove(event, wheel);
 }
 
 void MainComponent::updateHorizontalRange(bool piano, bool reset) {
@@ -651,6 +668,7 @@ bool MainComponent::isInterestedInDragSource(const SourceDetails& details) {
 }
 
 std::optional<std::size_t> MainComponent::pluginDropTrack(juce::Point<int> position) const {
+    if (!rowOverlay_.getBounds().contains(position)) return std::nullopt;
     for (std::size_t i = 0; i < std::min(trackRows_.size(), trackControls_.size()); ++i)
         if (trackRows_[i].contains(position) && !trackControls_[i]->loading) return i;
     return std::nullopt;
@@ -661,6 +679,7 @@ std::size_t MainComponent::visibleOutputCount() const {
 }
 
 std::optional<std::size_t> MainComponent::outputDropTrack(juce::Point<int> position) const {
+    if (!rowOverlay_.getBounds().contains(position)) return std::nullopt;
     for (std::size_t i = 0; i < visibleOutputCount(); ++i)
         if (outputRows_[i].contains(position) && outputControls_[i].effects.loading == 0) return i;
     return std::nullopt;
@@ -816,11 +835,21 @@ void MainComponent::stopTransport() {
     recordButton_.setToggleState(false, juce::dontSendNotification);
     transportPosition_.setText(TRANS("Bar 1"), juce::dontSendNotification);
     stopTimer();
+    for (auto& track : trackControls_) track->meter.clear();
+    for (auto& output : outputControls_) output.meter.clear();
+    mixer_.clearMeters();
     repaint();
 }
 
 void MainComponent::timerCallback() {
     if (!transport_.isRunning()) { stopTransport(); return; }
+    const auto frame = transport_.takeMeters();
+    const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+    for (std::size_t i = 0; i < std::min(trackControls_.size(), frame.tracks.size()); ++i)
+        trackControls_[i]->meter.update(frame.tracks[i], now);
+    for (std::size_t i = 0; i < outputControls_.size(); ++i)
+        outputControls_[i].meter.update(frame.outputs[i], now);
+    mixer_.updateMeters(frame, now);
     transportPosition_.setText(TRANS("Bar ") + juce::String(1 + transport_.positionTick() / project_->ticksPerBar), juce::dontSendNotification);
     repaint();
 }
@@ -875,6 +904,8 @@ bool MainComponent::openPreview(juce::InputStream& input, bool plainScore, const
         ++projectGeneration_;
         selectedTrack_.reset();
         trackRows_.clear();
+        verticalScroll_.setCurrentRangeStart(0, juce::dontSendNotification);
+        for (auto& output : outputControls_) output.size.resetSize();
         trackPicker_.clear(juce::dontSendNotification);
         for (std::size_t i = 0; i < project_->trackLanes.size(); ++i)
             trackPicker_.addItem(juce::String::fromUTF8(project_->trackLanes[i].label), static_cast<int>(i + 1));
@@ -1008,7 +1039,9 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         previous.erase(previous.begin() + static_cast<std::ptrdiff_t>(*remove));
         mix.tracks.erase(mix.tracks.begin() + static_cast<std::ptrdiff_t>(*remove));
     } else {
-        mix.tracks.insert(mix.tracks.begin() + static_cast<std::ptrdiff_t>(project_->sourceTrackCount() - 1), ostfstudio::ChannelMix{});
+        const auto added = static_cast<std::ptrdiff_t>(project_->sourceTrackCount() - 1);
+        mix.tracks.insert(mix.tracks.begin() + added, ostfstudio::ChannelMix{});
+        previous.insert(previous.begin() + added, nullptr);
     }
     refreshTimelineLanes();
     selectedTrack_.reset();
@@ -1022,8 +1055,10 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
     mixer_.setTracks(*project_);
     rebuildTrackControls();
     for (std::size_t i = 0; i < previous.size(); ++i) {
+        if (!previous[i]) continue;
         auto& old = *previous[i];
         auto& track = *trackControls_[i];
+        track.size.copySize(old.size);
         old.editor.reset();
         track.instance = std::move(old.instance);
         track.pluginPath = old.pluginPath;
@@ -1035,6 +1070,8 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         if (remove && track.outputTrack) {
             if (*track.outputTrack == *remove) track.outputTrack.reset();
             else if (*track.outputTrack > *remove) --*track.outputTrack;
+        } else if (!remove && track.outputTrack && *track.outputTrack >= project_->sourceTrackCount() - 1) {
+            ++*track.outputTrack;
         }
         track.effects.slots = std::move(old.effects.slots);
         updateEffectButton(track.effects);
@@ -1053,6 +1090,7 @@ void MainComponent::rebuildTrackControls() {
     for (std::size_t i = 0; i < project_->trackLanes.size(); ++i) {
         auto controls = std::make_unique<TrackControls>();
         const auto name = juce::String::fromUTF8(project_->trackLanes[i].label);
+        controls->size.setTitle(name + " " + TRANS("track height"));
         controls->mute.setTitle(name + " mute");
         controls->mute.setTooltip(TRANS("Mute ") + name);
         controls->mute.setClickingTogglesState(true);
@@ -1088,16 +1126,13 @@ void MainComponent::rebuildTrackControls() {
         controls->preset.setFont(juce::FontOptions(10.0f));
         controls->preset.setColour(juce::Label::textColourId, juce::Colour(muted));
         controls->preset.setInterceptsMouseClicks(false, false);
-        addAndMakeVisible(controls->mute);
-        addAndMakeVisible(controls->solo);
-        addAndMakeVisible(controls->volume);
-        addAndMakeVisible(controls->pan);
-        addAndMakeVisible(controls->plugin);
-        addAndMakeVisible(controls->mix);
-        addAndMakeVisible(controls->preset);
+        controls->size.changed = [this] { resized(); repaint(); };
+        for (auto* part : std::array<juce::Component*, 9>{&controls->mute, &controls->solo, &controls->volume,
+                 &controls->pan, &controls->plugin, &controls->mix, &controls->preset, &controls->meter, &controls->size})
+            rowOverlay_.addAndMakeVisible(part);
         controls->effects.button.onClick = [this, i] { showEffects(false, i); };
         updateEffectButton(controls->effects);
-        addAndMakeVisible(controls->effects.button);
+        rowOverlay_.addAndMakeVisible(controls->effects.button);
         controls->midiChannel = project_->sourceMidiChannels[i];
         if (project_->trackKinds[i] == ostfstudio::TrackKind::audio) {
             controls->plugin.setButtonText(TRANS("Link WAV"));
@@ -1364,7 +1399,11 @@ void MainComponent::setupOutputTracks() {
         auto& control = outputControls_[i];
         control.effects.button.onClick = [this, i] { showEffects(true, i); };
         updateEffectButton(control.effects);
-        addChildComponent(control.effects.button);
+        control.size.changed = [this] { resized(); repaint(); };
+        control.size.setTitle(outputName(i) + " " + TRANS("track height"));
+        rowOverlay_.addChildComponent(control.size);
+        rowOverlay_.addChildComponent(control.meter);
+        rowOverlay_.addChildComponent(control.effects.button);
         auto& volume = control.volume;
         volume.setName(outputName(i) + " volume");
         volume.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -1374,12 +1413,12 @@ void MainComponent::setupOutputTracks() {
         volume.setValue(0.0, juce::dontSendNotification);
         volume.setDoubleClickReturnValue(true, 0.0);
         volume.onValueChange = [this, i] { mixer_.setOutputVolume(i, outputControls_[i].volume.getValue()); };
-        addChildComponent(volume);
+        rowOverlay_.addChildComponent(volume);
         control.mute.setClickingTogglesState(true);
         control.mute.setTooltip(TRANS("Mute ") + outputName(i));
         control.mute.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffa94f43));
         control.mute.onClick = [this, i] { mixer_.setOutputMuted(i, outputControls_[i].mute.getToggleState()); };
-        addChildComponent(control.mute);
+        rowOverlay_.addChildComponent(control.mute);
     }
 }
 
@@ -1534,6 +1573,7 @@ void MainComponent::loadEffect(bool output, std::size_t index, std::size_t posit
 
 void MainComponent::mouseDown(const juce::MouseEvent& event) {
     pendingMidiDrag_.reset();
+    if (!rowOverlay_.getBounds().contains(event.getPosition())) return;
     for (std::size_t i = 0; i < trackRows_.size(); ++i) {
         if (trackRows_[i].contains(event.getPosition())) {
             if (event.mods.isLeftButtonDown() && trackRows_[i].withWidth(trackNameWidth).contains(event.getPosition())
@@ -1637,32 +1677,82 @@ void MainComponent::resized() {
     }
     const auto outputs = visibleOutputCount();
     for (std::size_t i = 0; i < outputControls_.size(); ++i) {
+        outputControls_[i].size.setVisible(i < outputs);
+        outputControls_[i].meter.setVisible(i < outputs);
         outputControls_[i].effects.button.setVisible(i < outputs);
         outputControls_[i].volume.setVisible(i < outputs);
         outputControls_[i].mute.setVisible(i < outputs);
     }
+    rowOverlay_.setVisible(project_ != nullptr);
+    if (!project_) verticalScroll_.setVisible(false);
     if (project_) {
         const auto view = currentArrangement();
-        const auto height = arrangementLaneHeight(arrangement, view, outputs);
-        const int trackY = arrangement.getY() + (1 + static_cast<int>(view.globalLanes.size())) * height;
-        int y = trackY;
+        const auto order = displayedTrackOrder();
+        const int globalHeight = (1 + static_cast<int>(view.globalLanes.size())) * globalRowHeight;
+        int contentHeight = globalHeight + (outputs ? arrangementHeadingHeight : 0);
+        if (std::any_of(order.begin(), order.end(), [this](auto i) { return !project_->isGlobalNoteTrack(i); }))
+            contentHeight += arrangementHeadingHeight;
+        for (auto i : order) contentHeight += trackControls_[i]->size.height();
+        for (std::size_t i = 0; i < outputs; ++i) contentHeight += outputControls_[i].size.height();
+        const auto viewportHeight = std::max(0, arrangement.getHeight());
+        verticalScroll_.setRangeLimits(0, std::max(viewportHeight, contentHeight), juce::dontSendNotification);
+        verticalScroll_.setCurrentRange(verticalScroll_.getCurrentRangeStart(), viewportHeight, juce::dontSendNotification);
+        verticalScroll_.setVisible(contentHeight > viewportHeight);
+        if (verticalScroll_.isVisible()) verticalScroll_.setBounds(arrangement.removeFromRight(14).withTrimmedLeft(2));
+        rowOverlay_.setBounds(arrangement);
+        int y = arrangement.getY() + globalHeight - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
         bool arrangementHeading = false;
         trackRows_.assign(trackControls_.size(), {});
-        for (const auto i : displayedTrackOrder()) {
+        for (const auto i : order) {
             if (!project_->isGlobalNoteTrack(i) && !arrangementHeading) {
                 arrangementHeading = true;
                 y += arrangementHeadingHeight;
             }
-            trackRows_[i] = {arrangement.getX(), y, arrangement.getWidth(), height - 4};
+            const int height = trackControls_[i]->size.height();
+            trackRows_[i] = {arrangement.getX(), y, arrangement.getWidth(), height - TrackRowSize::grip};
             y += height;
         }
+        auto placeGrip = [this](TrackRowSize& size, juce::Rectangle<int> bounds) {
+            bounds = rowOverlay_.getLocalArea(this, bounds);
+            size.setBounds(bounds.withY(bounds.getBottom()).withHeight(TrackRowSize::grip));
+        };
         for (std::size_t i = 0; i < trackControls_.size(); ++i) {
-            auto row = trackRows_[i].withTrimmedLeft(trackNameWidth).withWidth(trackHeaderWidth - trackNameWidth - 3);
             const bool visible = !trackRows_[i].isEmpty();
             auto& strip = *trackControls_[i];
-            for (auto* control : std::array<juce::Component*, 8>{&strip.mute, &strip.solo, &strip.volume,
-                     &strip.pan, &strip.mix, &strip.effects.button, &strip.preset, &strip.plugin}) control->setVisible(visible);
+            for (auto* control : std::array<juce::Component*, 5>{&strip.mute, &strip.solo, &strip.effects.button,
+                    &strip.size, &strip.meter}) control->setVisible(visible);
+            for (auto* control : std::array<juce::Component*, 5>{&strip.volume, &strip.pan, &strip.mix,
+                    &strip.preset, &strip.plugin}) control->setVisible(visible && !strip.size.compact());
             if (!visible) continue;
+            placeGrip(strip.size, trackRows_[i]);
+            auto header = rowOverlay_.getLocalArea(this, trackRows_[i]).withWidth(trackHeaderWidth - 3);
+            if (strip.size.compact()) {
+                header.removeFromLeft(trackNameWidth);
+                strip.mute.setBounds(header.removeFromLeft(29).reduced(2, 0));
+                strip.solo.setBounds(header.removeFromLeft(29).reduced(2, 0));
+                strip.effects.button.setBounds(header.removeFromRight(48).reduced(2, 0));
+                strip.meter.setBounds(header.reduced(8, 0).withSizeKeepingCentre(header.getWidth() - 16, 9));
+                continue;
+            }
+            if (strip.size.expanded()) {
+                auto top = header.removeFromTop(26);
+                top.removeFromLeft(trackNameWidth);
+                strip.mute.setBounds(top.removeFromLeft(29).reduced(2, 1));
+                strip.solo.setBounds(top.removeFromLeft(29).reduced(2, 1));
+                strip.effects.button.setBounds(top.removeFromRight(50).reduced(2, 1));
+                strip.plugin.setBounds(top.reduced(2, 1));
+                auto middle = header.removeFromTop(24);
+                middle.removeFromLeft(trackNameWidth);
+                strip.volume.setBounds(middle.removeFromLeft(128).reduced(3, 0));
+                strip.pan.setBounds(middle.removeFromLeft(98).reduced(3, 0));
+                strip.mix.setBounds(middle.reduced(2, 1));
+                auto meter = header.removeFromLeft(171).reduced(6, 0);
+                strip.meter.setBounds(meter.withHeight(meter.getHeight() >= 26 ? 24 : 10));
+                strip.preset.setBounds(header.reduced(4, 0).withHeight(16));
+                continue;
+            }
+            strip.meter.setBounds(header.withWidth(trackNameWidth).removeFromBottom(10).reduced(5, 1));
+            auto row = header.withTrimmedLeft(trackNameWidth);
             strip.mute.setBounds(row.removeFromLeft(29).reduced(2));
             strip.solo.setBounds(row.removeFromLeft(29).reduced(2));
             strip.volume.setBounds(row.removeFromLeft(65).reduced(2, 0));
@@ -1673,13 +1763,20 @@ void MainComponent::resized() {
             strip.preset.setBounds(instrument.removeFromBottom(std::min(13, instrument.getHeight() / 2)));
             strip.plugin.setBounds(instrument);
         }
-        const int outputY = y + arrangementHeadingHeight;
+        y += arrangementHeadingHeight;
         for (std::size_t i = 0; i < outputs; ++i) {
-            outputRows_[i] = {arrangement.getX(), outputY + static_cast<int>(i) * height, arrangement.getWidth(), height - 4};
-            auto header = outputRows_[i].withTrimmedLeft(trackNameWidth).withWidth(trackHeaderWidth - trackNameWidth);
-            outputControls_[i].mute.setBounds(header.removeFromLeft(29).reduced(2));
-            outputControls_[i].volume.setBounds(header.removeFromLeft(145).reduced(4, 0));
-            outputControls_[i].effects.button.setBounds(header.removeFromRight(54).reduced(2, 1));
+            auto& strip = outputControls_[i];
+            outputRows_[i] = {arrangement.getX(), y, arrangement.getWidth(), strip.size.height() - TrackRowSize::grip};
+            y += strip.size.height();
+            placeGrip(strip.size, outputRows_[i]);
+            auto header = rowOverlay_.getLocalArea(this, outputRows_[i]).withWidth(trackHeaderWidth);
+            auto top = header.removeFromTop(std::min(34, header.getHeight())).withTrimmedLeft(trackNameWidth);
+            strip.mute.setBounds(top.removeFromLeft(29).reduced(2, 1));
+            strip.effects.button.setBounds(top.removeFromRight(54).reduced(2, 1));
+            strip.volume.setVisible(!strip.size.compact());
+            if (!strip.size.compact()) strip.volume.setBounds(top.removeFromLeft(140).reduced(4, 0));
+            strip.meter.setBounds(strip.size.expanded() ? header.reduced(6, 2).withHeight(24)
+                              : top.reduced(5, 0).withSizeKeepingCentre(top.getWidth() - 10, 9));
         }
     }
     editor.removeFromTop(arrangerHeight + 8);
@@ -1736,18 +1833,25 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                                           juce::Colour(panel), 0.0f, static_cast<float>(area.getBottom()), false));
     g.fillRoundedRectangle(area.toFloat(), 10.0f);
     area.reduce(13, 13);
-    if (project_) area.removeFromBottom(timelineNavigationHeight);
+    juce::Graphics::ScopedSaveState clipped(g);
+    if (project_) {
+        area = rowOverlay_.getBounds();
+        g.reduceClipRegion(area);
+        area.translate(0, -juce::roundToInt(verticalScroll_.getCurrentRangeStart()));
+    }
     const auto outputs = visibleOutputCount();
-    const int laneHeight = arrangementLaneHeight(area, view, outputs);
+    const int laneHeight = project_ ? globalRowHeight : arrangementLaneHeight(area, view, outputs);
     auto labels = area.removeFromLeft(project_ ? trackHeaderWidth : 108);
     if (laneHeight < 12 || area.getWidth() < 40) return;
-    const int rowHeight = laneHeight - 4;
+    int rowHeight = laneHeight - 4;
 
     auto drawRow = [&](const juce::String& label, int y) {
         g.setColour(juce::Colour(muted));
         g.setFont(juce::FontOptions(11.0f));
+        const int labelHeight = project_ && rowHeight >= TrackRowSize::normal - TrackRowSize::grip
+                              ? std::min(27, rowHeight - 10) : rowHeight;
         g.drawFittedText(label,
-                         {labels.getX() + 5, y, trackNameWidth - 10, rowHeight},
+                         {labels.getX() + 5, y, trackNameWidth - 10, labelHeight},
                          juce::Justification::centredLeft, 1);
         const auto row = juce::Rectangle<int>(area.getX(), y, area.getWidth(), rowHeight);
         g.setColour(juce::Colour(0xff233443));
@@ -1799,7 +1903,9 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             g.setColour(juce::Colours::white.withAlpha(0.93f));
             auto label = juce::String::fromUTF8(region.label);
             if (region.noteCount > 0) label = "[" + juce::String(region.noteCount) + TRANS(" notes] ") + label;
-            g.drawFittedText(label, bounds.reduced(4, 0), juce::Justification::centredLeft, 1);
+            auto caption = bounds.reduced(4, 0);
+            if (rowHeight >= 70 - TrackRowSize::grip) caption = caption.removeFromTop(18);
+            g.drawFittedText(label, caption, juce::Justification::centredLeft, 1);
         }
     };
 
@@ -1819,6 +1925,15 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         y += arrangementHeadingHeight;
     };
     auto drawTrack = [&](std::size_t i) {
+        if (project_) {
+            if (i >= trackRows_.size()) return;
+            y = trackRows_[i].getY();
+            rowHeight = trackRows_[i].getHeight();
+            if (!trackRows_[i].intersects(g.getClipBounds())) {
+                y += trackControls_[i]->size.height();
+                return;
+            }
+        }
         const auto channel = juce::Rectangle<int>(labels.getX(), y, labels.getWidth(), rowHeight);
         g.setColour(juce::Colour(0xff353d45));
         g.fillRoundedRectangle(channel.toFloat().reduced(1.0f), 3.0f);
@@ -1826,6 +1941,29 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         g.drawHorizontalLine(y + 1, static_cast<float>(channel.getX() + 4), static_cast<float>(channel.getRight() - 4));
         drawLane(view.trackLanes[i], y, juce::Colour(trackColours[i % std::size(trackColours)]));
         if (project_) {
+            if (trackControls_[i]->size.expanded()) {
+                g.setColour(juce::Colour(muted));
+                g.drawFittedText(TRANS("Volume / Pan"), channel.withWidth(trackNameWidth).withY(y + 26)
+                                 .withHeight(24).reduced(5, 0), juce::Justification::centredLeft, 1);
+                const auto& notes = project_->trackKinds[i] == ostfstudio::TrackKind::drum
+                                  ? project_->drumNotes[i] : project_->pitchedNotes[i];
+                if (!notes.empty() && project_->ticksPerBar > 0) {
+                    const auto pitches = std::minmax_element(notes.begin(), notes.end(),
+                        [](const auto& a, const auto& b) { return a.pitch < b.pitch; });
+                    const auto low = pitches.first->pitch, high = pitches.second->pitch;
+                    const int top = y + 22, space = std::max(1, rowHeight - 28);
+                    const auto timeline = trackRows_[i].withTrimmedLeft(trackHeaderWidth);
+                    g.setColour(juce::Colour(0xffb3ebdc));
+                    for (const auto& note : notes) {
+                        if (note.endTick <= (visible.start - 1) * project_->ticksPerBar
+                            || note.startTick >= (visible.end - 1) * project_->ticksPerBar) continue;
+                        const auto noteRect = clipBounds({1.0 + static_cast<double>(note.startTick) / project_->ticksPerBar,
+                                                          1.0 + static_cast<double>(note.endTick) / project_->ticksPerBar}, timeline);
+                        const int noteY = top + (high == low ? space / 2 : space * (high - note.pitch) / (high - low));
+                        g.fillRect(noteRect.getX(), noteY, std::max(1, noteRect.getWidth() - 1), 2);
+                    }
+                }
+            }
             const auto audio = std::find_if(project_->audio.begin(), project_->audio.end(), [i](const auto& item) { return item.track == i; });
             if (audio != project_->audio.end()) {
                 const auto label = audio->embedded.isEmpty() && !audio->localFile.existsAsFile() ? TRANS("Missing WAV") : "WAV";
@@ -1842,7 +1980,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                 g.drawRoundedRectangle(hit.toFloat().reduced(1.5f), 4.0f, 2.5f);
             }
         }
-        y += laneHeight;
+        y += project_ ? trackControls_[i]->size.height() : laneHeight;
     };
     if (project_) {
         bool arrangementHeading = false;
@@ -1869,7 +2007,8 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             g.fillRoundedRectangle(row.toFloat(), 4.0f);
             g.setColour(juce::Colour(hardwareAmber));
             g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-            g.drawFittedText(outputName(i), row.withWidth(trackNameWidth).reduced(5, 0), juce::Justification::centredLeft, 1);
+            g.drawFittedText(outputName(i), row.withWidth(trackNameWidth).withHeight(std::min(34, row.getHeight())).reduced(5, 0),
+                             juce::Justification::centredLeft, 1);
             g.setColour(juce::Colour(muted));
             g.drawFittedText(i == 0 ? TRANS("Out 1-2") : TRANS("To Master"), row.withTrimmedLeft(trackHeaderWidth).reduced(8, 0),
                              juce::Justification::centredLeft, 1);
@@ -1877,7 +2016,16 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                 g.setColour(juce::Colour(hardwareAmber));
                 g.drawRoundedRectangle(row.toFloat().reduced(1.0f), 4.0f, 2.0f);
             }
-            y += laneHeight;
+            if (outputControls_[i].size.expanded()) {
+                juce::StringArray names;
+                for (const auto& slot : outputControls_[i].effects.slots) {
+                    auto fields = juce::StringArray::fromTokens(slot.id, "|", "");
+                    if (fields.size() >= 3) names.add(fields[2]);
+                }
+                g.drawFittedText(names.joinIntoString("  >  "), row.withTrimmedTop(61).withWidth(trackHeaderWidth).reduced(6, 0),
+                                 juce::Justification::topLeft, 1);
+            }
+            y = row.getBottom() + TrackRowSize::grip;
         }
     }
     if (transportActive_ && project_) {

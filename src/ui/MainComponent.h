@@ -7,6 +7,7 @@
 #include "ui/PluginBrowser.h"
 #include "ui/PreviewTransport.h"
 #include "ui/ViewButton.h"
+#include "ui/TrackRowSize.h"
 
 class MainComponent final : public juce::Component, public juce::DragAndDropContainer,
                             public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
@@ -18,6 +19,7 @@ public:
     void resized() override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 private:
     bool isInterestedInDragSource(const SourceDetails& details) override;
     void itemDragMove(const SourceDetails& details) override;
@@ -25,7 +27,7 @@ private:
     void itemDropped(const SourceDetails& details) override;
     std::optional<std::size_t> pluginDropTrack(juce::Point<int> position) const;
     void timerCallback() override;
-    void scrollBarMoved(juce::ScrollBar*, double) override { repaint(); }
+    void scrollBarMoved(juce::ScrollBar*, double) override;
     void updateHorizontalRange(bool piano, bool reset = false);
     ostfstudio::TimelineExtent horizontalRange(bool piano) const;
     void startTransport(bool recording);
@@ -85,6 +87,8 @@ private:
     void drawArrangement(juce::Graphics& g, juce::Rectangle<int> area, const ostfstudio::ArrangementView& view);
     void drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) const;
     struct TrackControls {
+        LevelMeter meter;
+        TrackRowSize size;
         juce::TextButton mute {"M"};
         juce::TextButton solo {"S"};
         juce::Slider volume, pan;
@@ -113,6 +117,8 @@ private:
     juce::ComboBox performanceLane_;
     juce::ComboBox arrangementZoom_, pianoZoom_;
     juce::ScrollBar arrangementScroll_ {false}, pianoScroll_ {false};
+    juce::Component rowOverlay_;
+    juce::ScrollBar verticalScroll_ {true};
     juce::StringArray performanceLaneNames_;
     MidiDragButton midiDrag_;
     juce::TemporaryFile trackMidiFile_ {".mid"};
@@ -134,6 +140,8 @@ private:
     std::unique_ptr<PluginBrowser> pluginBrowser_;
     std::vector<std::unique_ptr<TrackControls>> trackControls_;
     struct OutputControl {
+        LevelMeter meter;
+        TrackRowSize size;
         EffectChain effects;
         juce::Slider volume;
         juce::TextButton mute {"M"};

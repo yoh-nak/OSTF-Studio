@@ -245,3 +245,6 @@ countries: jp
 " (missing)" = "（未検出）"
 " (unavailable)" = "（利用できません）"
 "Waiting for instruments and effects to finish loading" = "音源とエフェクトの読み込みが完了するまでお待ちください"
+"Drag to resize track. Double-click to fold or restore." = "ドラッグで高さを変更。ダブルクリックで折りたたみ・復元。"
+"Volume / Pan" = "音量 / パン"
+"track height" = "トラックの高さ"

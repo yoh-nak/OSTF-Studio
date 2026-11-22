@@ -38,6 +38,7 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
     addAndMakeVisible(name);
     addAndMakeVisible(classification);
     addAndMakeVisible(volume);
+    addAndMakeVisible(meter);
     addAndMakeVisible(status);
     mute.setTitle(title + " mute");
     if (group != "MONITOR") addAndMakeVisible(mute);
@@ -86,7 +87,25 @@ void MixerPanel::Strip::resized() {
         solo.setBounds(switches.removeFromLeft(switches.getWidth() / 2));
         cue.setBounds(switches);
     }
+    meter.setBounds(area.removeFromRight(36).withTrimmedBottom(20).reduced(0, 2));
     volume.setBounds(area);
+}
+
+void MixerPanel::updateMeters(const ostfstudio::MeterFrame& frame, double now) {
+    for (std::size_t i = 0; i < std::min(strips_.size(), frame.tracks.size()); ++i)
+        strips_[i]->meter.update(frame.tracks[i], now);
+    for (std::size_t i = 0; i < buses_.size(); ++i) buses_[i]->meter.update(frame.outputs[1 + i], now);
+    for (std::size_t i = 0; i < returns_.size(); ++i) returns_[i]->meter.update(frame.outputs[3 + i], now);
+    if (master_) master_->meter.update(frame.outputs[0], now);
+    if (cue_) cue_->meter.update(frame.cue, now);
+}
+
+void MixerPanel::clearMeters() {
+    for (auto& strip : strips_) strip->meter.clear();
+    for (auto& strip : buses_) strip->meter.clear();
+    for (auto& strip : returns_) strip->meter.clear();
+    if (master_) master_->meter.clear();
+    if (cue_) cue_->meter.clear();
 }
 
 void MixerPanel::Strip::paint(juce::Graphics& g) {
@@ -303,7 +322,8 @@ void MixerPanel::resized() {
     outputViewport_.setBounds(area.removeFromRight(groupWidth));
     area.removeFromRight(12);
     viewport_.setBounds(area);
-    const auto height = std::max(160, area.getHeight() - viewport_.getScrollBarThickness());
+    // Keep a usable fader and meter below the routing controls in a shallow mixer pane.
+    const auto height = std::max(264, area.getHeight() - viewport_.getScrollBarThickness());
     rack_.setSize(stripWidth * static_cast<int>(strips_.size()), height);
     outputRack_.setSize(stripWidth * outputCount, height);
     auto rackBounds = rack_.getLocalBounds();

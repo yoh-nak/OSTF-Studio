@@ -2,6 +2,7 @@
 
 #include "core/MixerState.h"
 #include "ui/OstfpPreview.h"
+#include "ui/LevelMeter.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <vector>
 
@@ -10,6 +11,8 @@ public:
     MixerPanel();
     void setTracks(const ostfstudio::OstfpPreview& project);
     void resized() override;
+    void updateMeters(const ostfstudio::MeterFrame& frame, double now);
+    void clearMeters();
     const ostfstudio::ChannelMix& channel(std::size_t index) const { return channels_[index]; }
     bool isAudible(std::size_t index) const { return ostfstudio::channelIsAudible(channels_, index); }
     ostfstudio::MixGains gains(std::size_t index) const { return ostfstudio::mixGains(channels_, index, routing_); }
@@ -38,6 +41,7 @@ private:
         juce::Label name;
         juce::Label classification;
         juce::Slider volume, pan;
+        LevelMeter meter {true};
         juce::ToggleButton mute {"M"};
         juce::ToggleButton solo {"S"};
         juce::ToggleButton cue {"C"};

@@ -93,7 +93,8 @@ int checkStockEffects(const juce::StringArray& args) {
     };
     if (!restore(mix.trackEffects[piano], PreviewTransport::outputCount + piano)) return 24;
     for (std::size_t i = 0; i < mix.outputEffects.size(); ++i) if (!restore(mix.outputEffects[i], i)) return 25;
-    auto render = [&](bool bus, bool room, bool send, bool master) {
+    bool metersMatchAudio = true;
+    auto render = [&](bool bus, bool room, bool send, bool master, bool cueOnly = false) {
         PreviewTransport transport;
         auto routing = mix.routing;
         routing.outputMuted[2] = !bus;
@@ -102,16 +103,34 @@ int checkStockEffects(const juce::StringArray& args) {
         transport.setOutputMix(routing);
         auto channel = mix.tracks[piano];
         if (!send) channel.returnSends[0] = 0;
-        transport.setChannelMix(piano, channel, true, 0);
+        channel.cue = true;
+        if (cueOnly) channel.pan = 1.0f;
+        transport.setChannelMix(piano, channel, !cueOnly, 0);
         if (transport.preparePlayback(*song, tracks, inserts, 48000, 256).failed()) return -1.0;
-        juce::AudioBuffer<float> audio(2, 256);
+        juce::AudioBuffer<float> audio(cueOnly ? 4 : 2, 256);
+        std::array<float, 4> actualPeak{};
         double energy = 0;
         for (int block = 0; block < 375; ++block) {
-            transport.renderBlock(audio.getArrayOfWritePointers(), 2, 256);
+            transport.renderBlock(audio.getArrayOfWritePointers(), audio.getNumChannels(), 256);
+            for (int c = 0; c < audio.getNumChannels(); ++c)
+                actualPeak[c] = std::max(actualPeak[c], audio.getMagnitude(c, 0, 256));
             energy += audio.getRMSLevel(0, 0, 256);
         }
+        const auto frame = transport.takeMeters();
+        for (int c = 0; c < 2; ++c) {
+            metersMatchAudio &= std::abs(std::min(1.0f, frame.outputs[0][c]) - actualPeak[c]) < .00001f
+                && std::abs(std::min(1.0f, frame.cue[c]) - actualPeak[c + 2]) < .00001f;
+            metersMatchAudio &= (frame.tracks[piano][c] > 0.00001f) == !cueOnly;
+            metersMatchAudio &= (frame.outputs[2][c] > 0.00001f) == (bus && !cueOnly);
+            metersMatchAudio &= (frame.outputs[3][c] > 0.00001f) == (room && send && !cueOnly);
+        }
+        if (cueOnly) metersMatchAudio &= frame.cue[0] == 0 && frame.cue[1] > .00001f;
+        const auto drained = transport.takeMeters();
+        metersMatchAudio &= drained.tracks[piano] == ostfstudio::StereoPeak{} && drained.outputs[0] == ostfstudio::StereoPeak{}
+                         && drained.cue == ostfstudio::StereoPeak{};
         return energy;
     };
     return render(true, false, true, true) > .001 && render(false, true, true, true) > .0001
-        && render(false, true, false, true) == 0 && render(true, true, true, false) == 0 ? 0 : 26;
+        && render(false, true, false, true) == 0 && render(true, true, true, false) == 0
+        && render(true, true, true, true, true) == 0 && metersMatchAudio ? 0 : 26;
 }

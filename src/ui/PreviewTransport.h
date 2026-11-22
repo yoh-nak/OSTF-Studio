@@ -2,6 +2,7 @@
 
 #include "ui/OstfpPreview.h"
 #include "core/MixerState.h"
+#include "ui/AudioMeters.h"
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
@@ -11,8 +12,8 @@
 class PreviewTransport final : private juce::AudioIODeviceCallback, private juce::MidiInputCallback,
                                private juce::AudioPlayHead {
 public:
-    static constexpr std::size_t maxTracks = 16;
-    static constexpr std::size_t outputCount = 3 + ostfstudio::maxMixerReturns;
+    static constexpr std::size_t maxTracks = std::tuple_size_v<decltype(ostfstudio::MeterFrame::tracks)>;
+    static constexpr std::size_t outputCount = std::tuple_size_v<decltype(ostfstudio::MeterFrame::outputs)>;
     using Chain = std::array<juce::AudioPluginInstance*, ostfstudio::SessionMix::maxEffects>;
     using Inserts = std::array<Chain, outputCount + maxTracks>;
     struct TrackSetup {
@@ -29,6 +30,7 @@ public:
     juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
                                  double sampleRate, int blockSize);
     void renderBlock(float* const* output, int channels, int samples);
+    ostfstudio::MeterFrame takeMeters() noexcept;
     void setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb);
     void setOutputMix(const ostfstudio::MixerRouting& mix);
     bool isRunning() const { return running_.load(); }
@@ -51,6 +53,9 @@ private:
         std::array<std::atomic<float>, ostfstudio::maxMixerReturns> sends {};
     };
     std::array<ChannelGains, maxTracks> gains_ {};
+    std::array<ostfstudio::PeakMailbox, maxTracks> trackMeters_;
+    std::array<ostfstudio::PeakMailbox, outputCount> outputMeters_;
+    ostfstudio::PeakMailbox cueMeter_;
     struct InstrumentTrack {
         juce::AudioPluginInstance* instance = nullptr;
         juce::MidiBuffer timeline;

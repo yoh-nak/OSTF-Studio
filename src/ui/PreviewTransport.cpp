@@ -172,6 +172,7 @@ std::vector<ostfstudio::PitchedNote> PreviewTransport::stop() {
     }
     recording_ = false;
     sample_ = 0;
+    takeMeters();
     return std::exchange(recorded_, {});
 }
 
@@ -261,6 +262,7 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
             const auto balance = ostfstudio::stereoBalance(mix.pan.load(), channel == 1);
             const auto gain = mix.level.load() * balance;
             const auto* data = block.getReadPointer(channel);
+            trackMeters_[track].publish(channel, block.getMagnitude(channel, 0, audible) * gain);
             stems_[static_cast<std::size_t>(mix.bus.load())].addFrom(channel, 0, data, audible, gain);
             for (std::size_t r = 0; r < mix.sends.size(); ++r) {
                 const auto send = mix.sends[r].load();
@@ -274,11 +276,30 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
         const auto gain = outputGains_[i].load();
         processEffects(inserts_[i], stems_[i], count);
         if (gain == 0.0f) continue;
-        for (int c = 0; c < 2; ++c) stems_[0].addFrom(c, 0, stems_[i], c, 0, audible, gain);
+        for (int c = 0; c < 2; ++c) {
+            outputMeters_[i].publish(c, stems_[i].getMagnitude(c, 0, audible) * gain);
+            stems_[0].addFrom(c, 0, stems_[i], c, 0, audible, gain);
+        }
     }
     processEffects(inserts_[0], stems_[0], count);
-    for (int c = 0; c < std::min(2, channels); ++c)
-        if (output[c]) juce::FloatVectorOperations::addWithMultiply(output[c], stems_[0].getReadPointer(c), outputGains_[0].load(), audible);
+    const float masterGain = outputGains_[0].load();
+    for (int c = 0; c < 2; ++c) {
+        outputMeters_[0].publish(c, stems_[0].getMagnitude(c, 0, audible) * masterGain);
+        if (c < channels && output[c])
+            juce::FloatVectorOperations::addWithMultiply(output[c], stems_[0].getReadPointer(c), masterGain, audible);
+        if (channels >= 4 && output[c + 2] && audible > 0) {
+            auto range = juce::FloatVectorOperations::findMinAndMax(output[c + 2], audible);
+            cueMeter_.publish(c, std::max(std::abs(range.getStart()), std::abs(range.getEnd())));
+        }
+    }
+}
+
+ostfstudio::MeterFrame PreviewTransport::takeMeters() noexcept {
+    ostfstudio::MeterFrame frame;
+    for (std::size_t i = 0; i < trackMeters_.size(); ++i) frame.tracks[i] = trackMeters_[i].take();
+    for (std::size_t i = 0; i < outputMeters_.size(); ++i) frame.outputs[i] = outputMeters_[i].take();
+    frame.cue = cueMeter_.take();
+    return frame;
 }
 
 void PreviewTransport::audioDeviceIOCallbackWithContext(const float* const*, int, float* const* output, int channels,

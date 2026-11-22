@@ -178,6 +178,7 @@ private:
 }
 
 int checkStockEffects(const juce::StringArray&);
+int checkTrackView(const juce::File&);
 
 class OSTFStudioApplication final : public juce::JUCEApplication {
 public:
@@ -187,6 +188,13 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
+        if (args.size() == 2 && args[0] == "--track-view-smoke") {
+            juce::MessageManager::callAsync([this, args] {
+                setApplicationReturnValue(checkTrackView(juce::File(args[1])));
+                quit();
+            });
+            return;
+        }
         if (args.size() == 4 && args[0] == "--stock-effects-smoke") {
             juce::MessageManager::callAsync([this, args] {
                 setApplicationReturnValue(checkStockEffects(args));
