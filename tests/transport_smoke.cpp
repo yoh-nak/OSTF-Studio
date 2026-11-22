@@ -102,9 +102,26 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     const auto first = pianoCursorX(main);
     main.displayTransportPosition(5760);
     if (first < 0 || pianoCursorX(main) <= first || !savePng(dir.getChildFile("transport-piano.png"), main)) return 14;
-    for (auto* child : main.getChildren())
-        if (auto* zoom = dynamic_cast<juce::ComboBox*>(child); zoom && zoom->getTitle() == TRANS("Piano roll horizontal zoom"))
-            zoom->setSelectedId(3, juce::sendNotificationSync);
+    juce::Slider* pianoZoom = nullptr;
+    juce::Slider* arrangementZoom = nullptr;
+    for (auto* child : main.getChildren()) {
+        auto* slider = dynamic_cast<juce::Slider*>(child);
+        if (slider && slider->getTitle() == TRANS("Piano roll horizontal zoom")) pianoZoom = slider;
+        if (slider && slider->getTitle() == TRANS("Arrangement horizontal zoom")) arrangementZoom = slider;
+    }
+    auto* pianoScroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("piano-horizontal-scroll"));
+    auto* arrangementScroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-horizontal-scroll"));
+    if (!pianoZoom || !arrangementZoom || !pianoScroll || !arrangementScroll) return 19;
+    const auto full = pianoScroll->getCurrentRangeSize();
+    pianoZoom->setValue(0.63, juce::sendNotificationSync);
+    const auto span = pianoScroll->getCurrentRangeSize();
+    if (std::abs(span - std::pow(full, 0.37)) > 0.001 || arrangementScroll->getCurrentRangeSize() != full) return 20;
+    arrangementZoom->setValue(1, juce::sendNotificationSync);
+    arrangementScroll->setCurrentRangeStart(full, juce::sendNotificationSync);
+    if (arrangementScroll->getCurrentRangeSize() != 1 || pianoScroll->getCurrentRangeSize() != span) return 21;
+    arrangementZoom->setValue(0, juce::sendNotificationSync);
+    if (arrangementScroll->getCurrentRangeStart() != 1 || arrangementScroll->getCurrentRangeSize() != full
+        || arrangementScroll->isEnabled()) return 22;
     main.displayTransportPosition(10 * song->ticksPerBar + 960);
     if (pianoCursorX(main) < 0) return 15;
     main.setSize(680, 550);

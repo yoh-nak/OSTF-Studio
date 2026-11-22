@@ -54,7 +54,7 @@ On Windows, run the Setup executable or extract the portable ZIP. On an Apple si
 
 In the development build, each track header and mixer strip shows left and right sample peaks after its effects, pan and fader. The mixer also meters buses, returns, Master and the independent Cue output. The red indicator holds for one second when the signal reaches 0 dBFS.
 
-Drag the lower edge of a track to change its height. Double-click the edge to fold the track or restore its previous height. Compact rows keep mute, solo, FX and metering within reach. Taller rows show more instrument and mix controls and display the notes inside their clips. Use the vertical scrollbar to reach the remaining tracks.
+At the bottom of the arrangement, choose a track type beside **Height** and drag the adjacent slider to resize the group. You can target all tracks, a section, or a type such as drums, buses or returns. **Mixed** means the rows currently have different heights. The arrangement and piano roll each have a **Zoom** slider. Drag right to zoom in, double-click to fit the song, and use the adjacent scrollbar to move through it. Drag the lower edge of a track to change its height individually. Double-click the edge to fold the track or restore its previous height. Compact rows keep mute, solo, FX and metering within reach. Taller rows show more instrument and mix controls and display the notes inside their clips. Use the vertical scrollbar to reach the remaining tracks.
 
 ### Global note tracks
 

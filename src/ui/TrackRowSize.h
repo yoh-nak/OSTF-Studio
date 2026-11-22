@@ -14,11 +14,18 @@ public:
     bool expanded() const { return height_ >= 70; }
     void copySize(const TrackRowSize& other) { height_ = other.height_; restore_ = other.restore_; }
     void resetSize() { height_ = normal; restore_ = normal; }
+    bool assignHeight(int requested) {
+        const int next = juce::jlimit(minimum, maximum, requested);
+        if (next == height_) return false;
+        if (!compact() && next < 40) restore_ = height_;
+        height_ = next;
+        return true;
+    }
     void mouseDown(const juce::MouseEvent& e) override { start_ = height_; screenY_ = e.getScreenY(); }
     void mouseDrag(const juce::MouseEvent& e) override { setHeight(start_ + e.getScreenY() - screenY_); }
     void mouseDoubleClick(const juce::MouseEvent&) override {
         if (compact()) setHeight(restore_);
-        else { restore_ = height_; setHeight(minimum); }
+        else setHeight(minimum);
     }
     void mouseEnter(const juce::MouseEvent&) override { repaint(); }
     void mouseExit(const juce::MouseEvent&) override { repaint(); }
@@ -29,10 +36,7 @@ public:
     std::function<void()> changed;
 private:
     void setHeight(int requested) {
-        const int next = juce::jlimit(minimum, maximum, requested);
-        if (next == height_) return;
-        height_ = next;
-        if (changed) changed();
+        if (assignHeight(requested) && changed) changed();
     }
     int height_ = normal, restore_ = normal, start_ = normal, screenY_ = 0;
 };

@@ -43,11 +43,26 @@ int checkTrackView(const juce::File& fixture) {
     }
     if (!newEnabled || !saveScoreEnabled || !savePackageEnabled || songs.size() != 6
         || !songs.contains("Copper Mile (Rock)") || !songs.contains("First Light Vector (Trance)")) return 14;
+    auto* group = findControl<juce::ComboBox>(main, TRANS("Track height group"));
+    auto* height = findControl<juce::Slider>(main, TRANS("Group track height"));
+    if (!group || !height) return 16;
+    const auto choose = [&](const juce::String& title) {
+        for (int i = 0; i < group->getNumItems(); ++i)
+            if (group->getItemText(i) == title) {
+                group->setSelectedItemIndex(i, juce::sendNotificationSync);
+                return true;
+            }
+        return false;
+    };
+    if (!choose(TRANS("Pitched tracks"))) return 17;
+    height->setValue(84, juce::sendNotificationSync);
     const auto trackMenu = model.getMenuForIndex(4, {});
     for (juce::PopupMenu::MenuItemIterator it(trackMenu); it.next();)
         if (it.getItem().text == TRANS("Add pitched track") && it.getItem().isEnabled)
             model.menuItemSelected(it.getItem().itemID, 4);
     if (tracks->getNumItems() != 1 || tracks->getSelectedId() != 1) return 15;
+    auto* addedGrip = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
+    if (!addedGrip || addedGrip->height() != 84) return 18;
     if (!main.openDocument(fixture)) return 1;
     auto* guitar = findControl<TrackRowSize>(main, "Lead Guitar track height");
     auto* bass = findControl<TrackRowSize>(main, "Bass track height");
@@ -80,6 +95,28 @@ int checkTrackView(const juce::File& fixture) {
     master->mouseDown(pointer(*master, 2));
     master->mouseDrag(pointer(*master, 55));
     if (!master->expanded() || !guitar->expanded()) return 10;
+
+    auto* busA = findControl<TrackRowSize>(main, "Bus A track height");
+    auto* busB = findControl<TrackRowSize>(main, "Bus B track height");
+    auto* drums = findControl<TrackRowSize>(main, "Drums track height");
+    if (!busA || !busB || !drums || !choose(TRANS("Output tracks"))) return 19;
+    if (height->getTextFromValue(height->getValue()) != TRANS("Mixed")) return 20;
+    height->setValue(94, juce::sendNotificationSync);
+    if (master->height() != 94 || busA->height() != 94 || busB->height() != 94 || !guitar->expanded()) return 21;
+    if (!choose(TRANS("Buses"))) return 22;
+    height->setValue(38, juce::sendNotificationSync);
+    if (master->height() != 94 || busA->height() != 38 || busB->height() != 38) return 23;
+    if (!choose(TRANS("Drum tracks"))) return 24;
+    height->setValue(79, juce::sendNotificationSync);
+    if (drums->height() != 79 || bass->height() != TrackRowSize::normal) return 25;
+    if (!choose(TRANS("Timeline lanes"))) return 26;
+    scroll->setCurrentRangeStart(0, juce::sendNotificationSync);
+    const int beforeLanes = bass->getY();
+    height->setValue(62, juce::sendNotificationSync);
+    if (bass->getY() <= beforeLanes || bass->height() != TrackRowSize::normal) return 27;
+    if (!choose(TRANS("All tracks"))) return 28;
+    height->setValue(35, juce::sendNotificationSync);
+    if (!guitar->compact() || !drums->compact() || !master->compact() || !bass->compact()) return 29;
 
     // Paint independent L/R peaks and confirm silence and overload colours in both orientations.
     for (bool vertical : {false, true}) {

@@ -378,16 +378,58 @@ MainComponent::MainComponent() {
     performanceLane_.setTitle(TRANS("Performance lane"));
     performanceLane_.onChange = [this] { repaint(); };
     for (auto* zoom : {&arrangementZoom_, &pianoZoom_}) {
-        zoom->addItem(TRANS("Fit song"), 1);
-        for (int bars : {1, 2, 4, 8, 16, 32, 64}) zoom->addItem(juce::String(bars) + (bars == 1 ? TRANS(" bar") : TRANS(" bars")), bars + 1);
-        zoom->setSelectedId(1, juce::dontSendNotification);
         const bool piano = zoom == &pianoZoom_;
+        zoom->setSliderStyle(juce::Slider::LinearHorizontal);
+        zoom->setRange(0.0, 1.0);
+        zoom->setDoubleClickReturnValue(true, 0.0);
+        zoom->textFromValueFunction = [this](double value) {
+            if (!project_ || value == 0.0) return TRANS("Fit song");
+            const double span = std::pow(project_->bars.endBar - project_->bars.firstBar, 1.0 - value);
+            return juce::String(span, std::abs(span - std::round(span)) < 0.05 ? 0 : 1)
+                + (span < 1.05 ? TRANS(" bar") : TRANS(" bars"));
+        };
+        zoom->setTextBoxStyle(juce::Slider::TextBoxRight, true, 72, 18);
         zoom->setTitle(piano ? TRANS("Piano roll horizontal zoom") : TRANS("Arrangement horizontal zoom"));
-        zoom->setTooltip(piano ? TRANS("Set how many bars are visible in the piano roll") : TRANS("Set how many bars are visible in the arrangement"));
-        zoom->onChange = [this, piano] { updateHorizontalRange(piano); repaint(); };
+        zoom->setTooltip(TRANS("Drag right to zoom in. Double-click to fit the song."));
+        zoom->onValueChange = [this, piano] { updateHorizontalRange(piano); repaint(); };
         addChildComponent(zoom);
     }
+    for (auto* label : {&arrangementZoomLabel_, &pianoZoomLabel_, &heightLabel_}) {
+        label->setText(label == &heightLabel_ ? TRANS("Height") : TRANS("Zoom"), juce::dontSendNotification);
+        label->setFont(juce::FontOptions(12.0f));
+        addChildComponent(label);
+    }
+    const std::pair<HeightGroup, const char*> scopes[] {
+        {HeightGroup::all, "All tracks"}, {HeightGroup::global, "Global tracks"}, {HeightGroup::lanes, "Timeline lanes"},
+        {HeightGroup::voicing, "Voicing"}, {HeightGroup::melody, "Melody"}, {HeightGroup::vocal, "Vocal"},
+        {HeightGroup::arrangement, "Arrangement tracks"}, {HeightGroup::pitched, "Pitched tracks"},
+        {HeightGroup::drums, "Drum tracks"}, {HeightGroup::audio, "Audio tracks"},
+        {HeightGroup::outputs, "Output tracks"}, {HeightGroup::master, "Master"},
+        {HeightGroup::bus, "Buses"}, {HeightGroup::returns, "Returns"}
+    };
+    for (const auto& [group, name] : scopes) {
+        if (group == HeightGroup::global || group == HeightGroup::arrangement || group == HeightGroup::outputs)
+            heightScope_.addSeparator();
+        heightScope_.addItem(juce::translate(name), static_cast<int>(group));
+    }
+    heightScope_.setTitle(TRANS("Track height group"));
+    heightScope_.setTooltip(TRANS("Choose which tracks to resize together."));
+    heightScope_.setSelectedId(static_cast<int>(HeightGroup::all), juce::dontSendNotification);
+    heightScope_.onChange = [this] { refreshGroupHeight(); };
+    addChildComponent(heightScope_);
+    groupHeight_.setTitle(TRANS("Group track height"));
+    groupHeight_.setTooltip(TRANS("Set all rows in the selected group to the same height."));
+    groupHeight_.setRange(TrackRowSize::minimum, TrackRowSize::maximum, 1);
+    groupHeight_.setSliderStyle(juce::Slider::LinearHorizontal);
+    groupHeight_.textFromValueFunction = [this](double value) {
+        return mixedHeights_ ? TRANS("Mixed") : juce::String(juce::roundToInt(value)) + " px";
+    };
+    groupHeight_.setTextBoxStyle(juce::Slider::TextBoxRight, true, 50, 18);
+    groupHeight_.onValueChange = [this] { applyGroupHeight(); };
+    groupHeight_.onDragEnd = [this] { if (mixedHeights_) applyGroupHeight(); };
+    addChildComponent(groupHeight_);
     for (auto* scroll : {&arrangementScroll_, &pianoScroll_}) {
+        scroll->setComponentID(scroll == &pianoScroll_ ? "piano-horizontal-scroll" : "arrangement-horizontal-scroll");
         scroll->setAutoHide(false);
         scroll->setSingleStepSize(1.0);
         scroll->addListener(this);
@@ -429,7 +471,7 @@ MainComponent::MainComponent() {
         }
         updateTransportMix();
     };
-    mixer_.returnsChanged = [this] { updateTransportMix(); resized(); repaint(); };
+    mixer_.returnsChanged = [this] { updateTransportMix(); refreshGroupHeight(); resized(); repaint(); };
     statusLabel_.setColour(juce::Label::textColourId, juce::Colour(muted));
     statusLabel_.setFont(juce::FontOptions(13.0f));
     refreshTimelineLanes();
@@ -652,16 +694,88 @@ void MainComponent::updateHorizontalRange(bool piano, bool reset) {
     auto& scroll = piano ? pianoScroll_ : arrangementScroll_;
     const auto song = project_->bars;
     const auto length = song.endBar - song.firstBar;
-    const auto visible = zoom.getSelectedId() <= 1 ? length : std::min(length, zoom.getSelectedId() - 1);
-    const auto start = reset ? static_cast<double>(song.firstBar) : scroll.getCurrentRangeStart();
+    if (reset && zoom.getValue() > 0.0 && scroll.getCurrentRangeSize() > 0.0) {
+        const double previous = juce::jlimit(1.0, double(length), scroll.getCurrentRangeSize());
+        zoom.setValue(length > 1 ? 1.0 - std::log(previous) / std::log(length) : 0.0, juce::dontSendNotification);
+    }
+    const double visible = std::pow(length, 1.0 - zoom.getValue());
+    double start = reset ? double(song.firstBar) : scroll.getCurrentRangeStart();
+    if (!reset && cursorTick_ >= 0 && project_->ticksPerBar > 0) {
+        const double cursor = song.firstBar + double(cursorTick_) / project_->ticksPerBar;
+        const auto previous = scroll.getCurrentRange();
+        if (previous.contains(cursor))
+            start = cursor - (cursor - previous.getStart()) * visible / previous.getLength();
+    }
     scroll.setRangeLimits(song.firstBar, song.endBar, juce::dontSendNotification);
     scroll.setCurrentRange(start, visible, juce::dontSendNotification);
     scroll.setEnabled(visible < length);
+    zoom.setEnabled(length > 1);
+    zoom.updateText();
 }
 
 ostfstudio::TimelineExtent MainComponent::horizontalRange(bool piano) const {
     const auto& scroll = piano ? pianoScroll_ : arrangementScroll_;
     return {scroll.getCurrentRangeStart(), scroll.getCurrentRange().getEnd()};
+}
+
+MainComponent::HeightGroup MainComponent::trackHeightGroup(std::size_t index) const {
+    if (project_->chordVoicingTrack == index) return HeightGroup::voicing;
+    if (project_->mixerGroups[index] == ostfstudio::MixerTrackGroup::melody) return HeightGroup::melody;
+    if (project_->mixerGroups[index] == ostfstudio::MixerTrackGroup::vocal) return HeightGroup::vocal;
+    if (project_->trackKinds[index] == ostfstudio::TrackKind::drum) return HeightGroup::drums;
+    if (project_->trackKinds[index] == ostfstudio::TrackKind::audio) return HeightGroup::audio;
+    return HeightGroup::pitched;
+}
+
+MainComponent::HeightGroup MainComponent::outputHeightGroup(std::size_t index) {
+    if (index == 0) return HeightGroup::master;
+    return index < 3 ? HeightGroup::bus : HeightGroup::returns;
+}
+
+bool MainComponent::includesHeightGroup(HeightGroup scope, HeightGroup group) {
+    switch (scope) {
+        case HeightGroup::all: return true;
+        case HeightGroup::global: return group >= HeightGroup::global && group <= HeightGroup::vocal;
+        case HeightGroup::arrangement: return group >= HeightGroup::arrangement && group <= HeightGroup::audio;
+        case HeightGroup::outputs: return group >= HeightGroup::outputs && group <= HeightGroup::returns;
+        default: return scope == group;
+    }
+}
+
+void MainComponent::applyGroupHeight() {
+    if (!project_) return;
+    const auto scope = static_cast<HeightGroup>(heightScope_.getSelectedId());
+    const int height = juce::roundToInt(groupHeight_.getValue());
+    for (std::size_t i = 1; i < groupDefaults_.size(); ++i)
+        if (includesHeightGroup(scope, static_cast<HeightGroup>(i))) groupDefaults_[i] = height;
+    for (std::size_t i = 0; i < trackControls_.size(); ++i)
+        if (includesHeightGroup(scope, trackHeightGroup(i))) trackControls_[i]->size.assignHeight(height);
+    for (std::size_t i = 0; i < outputControls_.size(); ++i)
+        if (includesHeightGroup(scope, outputHeightGroup(i))) outputControls_[i].size.assignHeight(height);
+    mixedHeights_ = false;
+    groupHeight_.updateText();
+    resized();
+    repaint();
+}
+
+void MainComponent::refreshGroupHeight() {
+    if (!project_) return;
+    const auto scope = static_cast<HeightGroup>(heightScope_.getSelectedId());
+    groupHeight_.setRange(scope == HeightGroup::lanes ? 18 : TrackRowSize::minimum, TrackRowSize::maximum, 1);
+    int first = 0;
+    mixedHeights_ = false;
+    auto measure = [&](HeightGroup group, int height) {
+        if (!includesHeightGroup(scope, group)) return;
+        if (first == 0) first = height;
+        else if (first != height) mixedHeights_ = true;
+    };
+    measure(HeightGroup::lanes, groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)]);
+    for (std::size_t i = 0; i < trackControls_.size(); ++i)
+        measure(trackHeightGroup(i), trackControls_[i]->size.height());
+    for (std::size_t i = 0; i < 3 + mixer_.returnCount(); ++i)
+        measure(outputHeightGroup(i), outputControls_[i].size.height());
+    groupHeight_.setValue(first ? first : groupDefaults_[static_cast<std::size_t>(scope)], juce::dontSendNotification);
+    groupHeight_.updateText();
 }
 
 void MainComponent::refreshTimelineLanes() {
@@ -960,6 +1074,8 @@ bool MainComponent::openPreview(juce::InputStream& input, const juce::String& fi
         selectedTrack_.reset();
         trackRows_.clear();
         verticalScroll_.setCurrentRangeStart(0, juce::dontSendNotification);
+        groupDefaults_.fill(TrackRowSize::normal);
+        groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)] = globalRowHeight;
         for (auto& output : outputControls_) output.size.resetSize();
         trackPicker_.clear(juce::dontSendNotification);
         for (std::size_t i = 0; i < project_->trackLanes.size(); ++i)
@@ -1177,6 +1293,7 @@ void MainComponent::rebuildTrackControls() {
     trackControls_.clear();
     for (std::size_t i = 0; i < project_->trackLanes.size(); ++i) {
         auto controls = std::make_unique<TrackControls>();
+        controls->size.assignHeight(groupDefaults_[static_cast<std::size_t>(trackHeightGroup(i))]);
         const auto name = juce::String::fromUTF8(project_->trackLanes[i].label);
         controls->size.setTitle(name + " " + TRANS("track height"));
         controls->mute.setTitle(name + " mute");
@@ -1214,7 +1331,7 @@ void MainComponent::rebuildTrackControls() {
         controls->preset.setFont(juce::FontOptions(10.0f));
         controls->preset.setColour(juce::Label::textColourId, juce::Colour(muted));
         controls->preset.setInterceptsMouseClicks(false, false);
-        controls->size.changed = [this] { resized(); repaint(); };
+        controls->size.changed = [this] { refreshGroupHeight(); resized(); repaint(); };
         for (auto* part : std::array<juce::Component*, 9>{&controls->mute, &controls->solo, &controls->volume,
                  &controls->pan, &controls->plugin, &controls->mix, &controls->preset, &controls->meter, &controls->size})
             rowOverlay_.addAndMakeVisible(part);
@@ -1487,7 +1604,7 @@ void MainComponent::setupOutputTracks() {
         auto& control = outputControls_[i];
         control.effects.button.onClick = [this, i] { showEffects(true, i); };
         updateEffectButton(control.effects);
-        control.size.changed = [this] { resized(); repaint(); };
+        control.size.changed = [this] { refreshGroupHeight(); resized(); repaint(); };
         control.size.setTitle(outputName(i) + " " + TRANS("track height"));
         rowOverlay_.addChildComponent(control.size);
         rowOverlay_.addChildComponent(control.meter);
@@ -1738,8 +1855,14 @@ void MainComponent::refreshEditor() {
     for (int i = 0; i < performanceLaneNames_.size(); ++i) performanceLane_.addItem(juce::translate(performanceLaneNames_[i]), i + 1);
     performanceLane_.setSelectedId(std::max(1, performanceLaneNames_.indexOf(previous) + 1), juce::dontSendNotification);
     arrangementZoom_.setVisible(arranging && project_ != nullptr);
+    arrangementZoomLabel_.setVisible(arrangementZoom_.isVisible());
+    heightLabel_.setVisible(arrangementZoom_.isVisible());
+    heightScope_.setVisible(arrangementZoom_.isVisible());
+    groupHeight_.setVisible(arrangementZoom_.isVisible());
+    refreshGroupHeight();
     arrangementScroll_.setVisible(arranging && project_ != nullptr);
     pianoZoom_.setVisible(piano);
+    pianoZoomLabel_.setVisible(piano);
     pianoScroll_.setVisible(piano);
     midiDrag_.setVisible(piano);
     midiDrag_.setEnabled(selectedTrack_ && canExportTrack(*selectedTrack_));
@@ -1792,10 +1915,16 @@ void MainComponent::resized() {
     const auto arrangerHeight = getArrangementHeight(editor.getHeight());
     auto arrangement = editor.withHeight(arrangerHeight).reduced(13);
     if (project_) {
-        auto navigation = arrangement.removeFromBottom(timelineNavigationHeight).reduced(0, 2);
-        arrangementZoom_.setBounds(navigation.removeFromLeft(116));
-        navigation.removeFromLeft(std::max(4, trackHeaderWidth - 116));
-        arrangementScroll_.setBounds(navigation.reduced(0, 3));
+        const bool stacked = arrangement.getWidth() < 720;
+        auto navigation = arrangement.removeFromBottom(timelineNavigationHeight * (stacked ? 2 : 1));
+        auto heights = (stacked ? navigation.removeFromTop(timelineNavigationHeight) : navigation.removeFromLeft(325)).reduced(0, 2);
+        heightLabel_.setBounds(heights.removeFromLeft(48));
+        heightScope_.setBounds(heights.removeFromLeft(145));
+        groupHeight_.setBounds(heights.removeFromLeft(128));
+        navigation.reduce(0, 2);
+        arrangementZoomLabel_.setBounds(navigation.removeFromLeft(44));
+        arrangementZoom_.setBounds(navigation.removeFromLeft(162));
+        arrangementScroll_.setBounds(navigation.withTrimmedLeft(8).reduced(0, 3));
     }
     const auto outputs = visibleOutputCount();
     for (std::size_t i = 0; i < outputControls_.size(); ++i) {
@@ -1810,7 +1939,8 @@ void MainComponent::resized() {
     if (project_) {
         const auto view = currentArrangement();
         const auto order = displayedTrackOrder();
-        const int globalHeight = (1 + static_cast<int>(view.globalLanes.size())) * globalRowHeight;
+        const int globalHeight = globalRowHeight + static_cast<int>(view.globalLanes.size())
+            * groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)];
         int contentHeight = globalHeight + (outputs ? arrangementHeadingHeight : 0);
         if (std::any_of(order.begin(), order.end(), [this](auto i) { return !project_->isGlobalNoteTrack(i); }))
             contentHeight += arrangementHeadingHeight;
@@ -1911,7 +2041,8 @@ void MainComponent::resized() {
     performanceLane_.setBounds(toolbar.removeFromLeft(250).withTrimmedRight(4));
     mixer_.setBounds(editor);
     auto pianoNavigation = editor.removeFromBottom(timelineNavigationHeight).reduced(7, 2);
-    pianoZoom_.setBounds(pianoNavigation.removeFromLeft(116));
+    pianoZoomLabel_.setBounds(pianoNavigation.removeFromLeft(44));
+    pianoZoom_.setBounds(pianoNavigation.removeFromLeft(162));
     pianoScroll_.setBounds(pianoNavigation.withTrimmedLeft(8).reduced(0, 3));
 }
 
@@ -2023,10 +2154,12 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
     };
 
     int y = area.getY() + laneHeight;
+    const int globalLaneHeight = project_ ? groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)] : laneHeight;
+    rowHeight = globalLaneHeight - 4;
     const juce::uint32 globalColours[] {0xff314d72, 0xff493c64, 0xff31495a, 0xff31404e, 0xff31404e, 0xff2c6058};
     for (std::size_t i = 0; i < view.globalLanes.size(); ++i) {
         drawLane(view.globalLanes[i], y, juce::Colour(globalColours[i % std::size(globalColours)]));
-        y += laneHeight;
+        y += globalLaneHeight;
     }
 
     const juce::uint32 trackColours[] {0xff2a657d, 0xff265e57, 0xff4b517f, 0xff744366, 0xff526070};

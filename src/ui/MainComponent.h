@@ -32,6 +32,13 @@ private:
     void timerCallback() override;
     void scrollBarMoved(juce::ScrollBar*, double) override;
     void updateHorizontalRange(bool piano, bool reset = false);
+    enum class HeightGroup { all = 1, global, lanes, voicing, melody, vocal, arrangement, pitched, drums, audio,
+                             outputs, master, bus, returns, count };
+    HeightGroup trackHeightGroup(std::size_t index) const;
+    static HeightGroup outputHeightGroup(std::size_t index);
+    static bool includesHeightGroup(HeightGroup scope, HeightGroup group);
+    void applyGroupHeight();
+    void refreshGroupHeight();
     ostfstudio::TimelineExtent horizontalRange(bool piano) const;
     void startTransport(bool recording);
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
@@ -126,7 +133,11 @@ private:
     juce::int64 cursorTick_ = -1;
     juce::ComboBox trackPicker_;
     juce::ComboBox performanceLane_;
-    juce::ComboBox arrangementZoom_, pianoZoom_;
+    juce::Slider arrangementZoom_, pianoZoom_, groupHeight_;
+    juce::ComboBox heightScope_;
+    juce::Label heightLabel_, arrangementZoomLabel_, pianoZoomLabel_;
+    std::array<int, static_cast<std::size_t>(HeightGroup::count)> groupDefaults_ {};
+    bool mixedHeights_ = false;
     juce::ScrollBar arrangementScroll_ {false}, pianoScroll_ {false};
     juce::Component rowOverlay_;
     juce::ScrollBar verticalScroll_ {true};
