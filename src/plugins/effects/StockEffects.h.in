@@ -1,0 +1,22 @@
+#pragma once
+#include <juce_core/juce_core.h>
+
+namespace ostfstudio {
+struct StockEffect {
+    const char* name;
+    const char* code;
+    juce::String classId() const {
+        juce::String id = "ABCDEF019182FAEB4F737466";
+        for (const char* c = code; *c; ++c) id += juce::String::toHexString(static_cast<int>(*c)).paddedLeft('0', 2);
+        return id.toUpperCase();
+    }
+    juce::String chainId() const {
+        const auto id = classId();
+        std::uint32_t hash = 0;
+        for (int i = 0; i < 32; i += 8) hash = hash * 31u + static_cast<std::uint32_t>(id.substring(i, i + 8).getHexValue32());
+        return "VST3|OSTF Studio|" + juce::String(name) + "|" + juce::String(static_cast<juce::int32>(hash));
+    }
+};
+inline constexpr StockEffect stockEffects[] {
+@stock_names@};
+}

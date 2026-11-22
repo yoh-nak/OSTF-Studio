@@ -7,6 +7,9 @@
 - OS-local settings = hardware device IDs, auth, user-specific settings, plugins scanning paths.
 
 ## Independent modules
+
+The nine stock audio effects use separate VST3 component classes and share a JUCE DSP library. The demo generator, packaging checks and Studio's VST3 identity mapping use the same effect catalog. The Production Session describes owned instruments and stock effects in processing order, bus destinations, gains, pan and post-fader sends. The Studio host extension carries edited stock effect state and accommodates legacy insert lists. The synthetic chord-voicing row keeps its settings in the extension. The offline audio test runs the same render path as the device callback.
+
 | Module | Responsibility |
 |---|---|
 | `ScoreDocument` (future) | exact official OSTF 5.0 parsing/validation; no invented fields |

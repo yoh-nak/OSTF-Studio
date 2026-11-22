@@ -20,7 +20,7 @@ foreach(notice IN LISTS juce_notices)
 endforeach()
 file(WRITE "${ostf_licenses}/JUCE-Third-Party-Notices.txt" "${notice_text}")
 
-foreach(target IN ITEMS OSTFStudio OSTFArranger_VST3 OSTFGMSoundModule_VST3)
+function(ostf_attach_notices target)
     if(WIN32 AND target STREQUAL "OSTFStudio")
         set(destination "$<TARGET_FILE_DIR:${target}>/Licenses")
     else()
@@ -32,4 +32,8 @@ foreach(target IN ITEMS OSTFStudio OSTFArranger_VST3 OSTFGMSoundModule_VST3)
         add_custom_command(TARGET ${target} POST_BUILD
             COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:${target}>" VERBATIM)
     endif()
+endfunction()
+
+foreach(target IN ITEMS OSTFStudio OSTFArranger_VST3 OSTFGMSoundModule_VST3)
+    ostf_attach_notices(${target})
 endforeach()

@@ -82,6 +82,10 @@ The macOS arm64 workflow places a combined app and VST3 installer in the DMG. Si
 
 Pending work includes full OSTFP conformance, SVP export, network sync, AI connection and signed binaries.
 
+## Stock effects and mixed demos (development build)
+
+The development build includes nine stereo VST3 effects by OSTF Studio. Open **File → Demo songs → Paper Lantern Replies** and inspect the lead vocal's **EQ → Compressor** chain. Drums and bass share Bus A. Accompaniment shares Bus B. Individual post-fader sends feed a fully wet reverb on Return 1, which returns to Master. Both file formats recall the mix. The demo gallery lists starting points for listening and testing each song. [Demo mixes](examples/demo-songs/README.md)
+
 ## Resume development from GitHub
 
 ```bash

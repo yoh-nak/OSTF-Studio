@@ -26,6 +26,9 @@ public:
     juce::Result start(juce::AudioDeviceManager& devices, const ostfstudio::OstfpPreview& project,
                        bool record, std::span<const TrackSetup> tracks, const Inserts& inserts = {});
     std::vector<ostfstudio::PitchedNote> stop();
+    juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
+                                 double sampleRate, int blockSize);
+    void renderBlock(float* const* output, int channels, int samples);
     void setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb);
     void setOutputMix(const ostfstudio::MixerRouting& mix);
     bool isRunning() const { return running_.load(); }

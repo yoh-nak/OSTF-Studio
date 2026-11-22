@@ -244,3 +244,4 @@ countries: jp
 " notes] " = " ノート] "
 " (missing)" = "（未検出）"
 " (unavailable)" = "（利用できません）"
+"Waiting for instruments and effects to finish loading" = "音源とエフェクトの読み込みが完了するまでお待ちください"

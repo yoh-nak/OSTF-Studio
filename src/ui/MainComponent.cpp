@@ -4,6 +4,7 @@
 #include "ui/PluginRoles.h"
 #include "ui/StudioLanguage.h"
 #include "ui/SongMidi.h"
+#include "StockEffects.h"
 #include <BinaryData.h>
 #include <algorithm>
 #include <cmath>
@@ -443,8 +444,8 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             demos.addItem(openDemoSong, TRANS("Official specification example"));
             menu.addSubMenu(TRANS("Demo songs"), demos);
             menu.addSeparator();
-            menu.addItem(saveScore, TRANS("Save as OSTF..."), project_ != nullptr);
-            menu.addItem(saveProject, TRANS("Save as OSTFP..."), project_ != nullptr);
+            menu.addItem(saveScore, TRANS("Save as OSTF..."), canEditTracks());
+            menu.addItem(saveProject, TRANS("Save as OSTFP..."), canEditTracks());
             juce::PopupMenu midi;
             midi.addItem(exportMidi0, TRANS("Format 0 - single track"));
             midi.addItem(exportMidi1, TRANS("Format 1 - separate tracks"));
@@ -753,8 +754,8 @@ void MainComponent::startTransport(bool recording) {
     }
     if (transportActive_) stopTransport();
     if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
-    if (std::any_of(trackControls_.begin(), trackControls_.end(), [](const auto& track) { return track->loading; })) {
-        statusLabel_.setText(TRANS("Waiting for track instruments to finish loading"), juce::dontSendNotification);
+    if (!canEditTracks()) {
+        statusLabel_.setText(TRANS("Waiting for instruments and effects to finish loading"), juce::dontSendNotification);
         return;
     }
     updateTransportMix();
@@ -949,12 +950,25 @@ void MainComponent::saveDocument(SaveFormat format) {
                         mix.midiRoutes.push_back({track->midiChannel, track->outputTrack});
                         mix.instruments.push_back(track->instrumentAssignment);
                     }
+                    auto saveChain = [&](const EffectChain& chain, juce::StringArray& ids, bool output, std::size_t index) {
+                        for (const auto& slot : chain.slots) {
+                            const auto key = ostfstudio::SessionMix::effectSlot(output, index, ids.size());
+                            ids.add(slot.id);
+                            for (const auto& fx : ostfstudio::stockEffects) if (slot.id == fx.chainId()) {
+                                juce::MemoryBlock state;
+                                if (slot.effect) slot.effect->getStateInformation(state);
+                                auto encoded = state.isEmpty() ? slot.savedState : state.toBase64Encoding();
+                                if (encoded.isNotEmpty()) mix.stockEffectStates[key] = encoded;
+                                break;
+                            }
+                        }
+                    };
                     for (std::size_t i = 0; i < safe->outputControls_.size(); ++i)
-                        for (const auto& slot : safe->outputControls_[i].effects.slots) mix.outputEffects[i].add(slot.id);
+                        saveChain(safe->outputControls_[i].effects, mix.outputEffects[i], true, i);
                     for (const auto kind : safe->project_->trackKinds) mix.audioTracks.push_back(kind == ostfstudio::TrackKind::audio);
                     mix.trackEffects.resize(safe->trackControls_.size());
                     for (std::size_t i = 0; i < safe->trackControls_.size(); ++i)
-                        for (const auto& slot : safe->trackControls_[i]->effects.slots) mix.trackEffects[i].add(slot.id);
+                        saveChain(safe->trackControls_[i]->effects, mix.trackEffects[i], false, i);
                     result = package ? ostfstudio::writeOstfpPreview(*safe->project_, mix, output)
                                      : ostfstudio::writeOstfPreview(*safe->project_, mix, file, output);
                 }
@@ -1479,7 +1493,11 @@ void MainComponent::restoreEffects(bool output, std::size_t index, const juce::S
     const auto types = ensurePluginBrowser().types();
     chain.slots.resize(static_cast<std::size_t>(ids.size()));
     for (int i = 0; i < ids.size(); ++i) {
-        chain.slots[static_cast<std::size_t>(i)].id = ids[i];
+        auto& slot = chain.slots[static_cast<std::size_t>(i)];
+        slot.id = ids[i];
+        const auto& states = project_->savedMix->stockEffectStates;
+        if (const auto state = states.find(ostfstudio::SessionMix::effectSlot(output, index, i)); state != states.end())
+            slot.savedState = state->second;
         for (const auto& type : types)
             if (effectId(type) == ids[i]) { loadEffect(output, index, static_cast<std::size_t>(i), type); break; }
     }
@@ -1504,6 +1522,9 @@ void MainComponent::loadEffect(bool output, std::size_t index, std::size_t posit
                                            juce::dontSendNotification);
             } else {
                 safe->stopTransport();
+                juce::MemoryBlock state;
+                if (slot.savedState.isNotEmpty() && state.fromBase64Encoding(slot.savedState))
+                    effect->setStateInformation(state.getData(), static_cast<int>(state.getSize()));
                 slot.effect = std::move(effect);
                 slot.id = effectId(description);
             }

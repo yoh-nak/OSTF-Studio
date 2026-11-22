@@ -61,6 +61,7 @@ private:
     void setupOutputTracks();
     struct EffectSlot {
         juce::String id;
+        juce::String savedState;
         std::unique_ptr<juce::AudioPluginInstance> effect;
         std::unique_ptr<juce::DocumentWindow> editor;
     };

@@ -20,6 +20,7 @@ SetupIconFile=..\..\assets\AppIcon.ico
 WizardStyle=modern
 
 [Files]
+Source: "{#EffectsDir}\*"; DestDir: "{localappdata}\Programs\Common\VST3\OSTF Studio Effects"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Licenses}\*"; DestDir: "{app}\Licenses"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\assets\OstfScore.ico"; DestDir: "{app}"; Flags: ignoreversion

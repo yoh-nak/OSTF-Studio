@@ -34,7 +34,21 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const os
             enabled = enabled || devices.isMidiInputDeviceEnabled(input.identifier);
         if (!enabled) return juce::Result::fail("Enable a MIDI input in Settings before recording.");
     }
-    sampleRate_ = device->getCurrentSampleRate();
+    const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples());
+    if (result.failed()) return result;
+    recording_ = record;
+    devices_ = &devices;
+    devices.addAudioCallback(this);
+    if (record) devices.addMidiInputDeviceCallback({}, this);
+    return result;
+}
+
+juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& project, std::span<const TrackSetup> tracks,
+                                             const Inserts& inserts, double sampleRate, int blockSize) {
+    stop();
+    if (!std::isfinite(sampleRate) || sampleRate <= 0 || blockSize < 1)
+        return juce::Result::fail("Invalid audio configuration");
+    sampleRate_ = sampleRate;
     bpm_ = project.previewBpm;
     samplesPerTick_ = sampleRate_ * 60.0 / (bpm_ * static_cast<double>(project.ppq));
     scoreTicks_ = static_cast<juce::int64>(project.bars.endBar - 1) * project.ticksPerBar;
@@ -103,7 +117,6 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const os
     for (const auto& chain : inserts) for (auto* effect : chain) if (effect) outputChannels = std::max(outputChannels, 2);
     pluginAudio_.setSize(0, 0);
     if (outputChannels > 0) {
-        const auto blockSize = device->getCurrentBufferSizeSamples();
         pluginAudio_.setSize(std::max(2, outputChannels), blockSize);
         for (auto& stem : stems_) stem.setSize(2, blockSize);
         pluginMidi_.ensureSize(1024 * 1024);
@@ -126,11 +139,8 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const os
     pressed_.fill(-1);
     recorded_.clear();
     sample_ = 0;
-    recording_ = record;
-    devices_ = &devices;
+    recording_ = false;
     running_ = true;
-    devices.addAudioCallback(this);
-    if (record) devices.addMidiInputDeviceCallback({}, this);
     return juce::Result::ok();
 }
 
@@ -273,6 +283,10 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
 
 void PreviewTransport::audioDeviceIOCallbackWithContext(const float* const*, int, float* const* output, int channels,
                                                         int count, const juce::AudioIODeviceCallbackContext&) {
+    renderBlock(output, channels, count);
+}
+
+void PreviewTransport::renderBlock(float* const* output, int channels, int count) {
     for (int c = 0; c < channels; ++c)
         if (output[c]) juce::FloatVectorOperations::clear(output[c], count);
     if (!running_) return;

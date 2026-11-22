@@ -177,6 +177,8 @@ private:
 };
 }
 
+int checkStockEffects(const juce::StringArray&);
+
 class OSTFStudioApplication final : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "OSTF Studio"; }
@@ -185,6 +187,13 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
+        if (args.size() == 4 && args[0] == "--stock-effects-smoke") {
+            juce::MessageManager::callAsync([this, args] {
+                setApplicationReturnValue(checkStockEffects(args));
+                quit();
+            });
+            return;
+        }
         if (args.size() == 1 && args[0] == "--asio-backend-smoke") {
             std::unique_ptr<juce::AudioIODeviceType> backend(juce::AudioIODeviceType::createAudioIODeviceType_ASIO());
             setApplicationReturnValue(backend && backend->getTypeName() == "ASIO" ? 0 : 1);

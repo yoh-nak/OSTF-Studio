@@ -1,0 +1,24 @@
+# Each VST3 wrapper has distinct JUCE metadata. Its JUCE module objects are
+# supplied by the common DSP library compiled in the parent directory.
+file(GLOB module_units "${JUCE_MODULES_DIR}/juce_*/*.cpp" "${JUCE_MODULES_DIR}/juce_*/*.mm" "${JUCE_MODULES_DIR}/juce_*/*.c")
+list(FILTER module_units EXCLUDE REGEX "/juce_audio_plugin_client/")
+set_source_files_properties(${module_units} PROPERTIES HEADER_FILE_ONLY TRUE)
+set(stock_names "")
+foreach(i RANGE 0 ${last_effect})
+    foreach(key type name code category)
+        string(JSON ${key} GET "${effects}" ${i} ${key})
+    endforeach()
+    set(target "OSTFFx${type}")
+    juce_add_plugin(${target}
+        COMPANY_NAME "OSTF Studio" BUNDLE_ID "org.ostf.fx.${code}"
+        PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE "${code}" PRODUCT_NAME "${name}"
+        FORMATS VST3 VST3_CATEGORIES Fx "${category}"
+        VST3_COPY_DIR "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" COPY_PLUGIN_AFTER_BUILD FALSE)
+    target_sources(${target} PRIVATE Factory.cpp)
+    target_compile_definitions(${target} PRIVATE OSTF_EFFECT_TYPE="${type}" JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_USE_CURL=0)
+    target_link_libraries(${target} PRIVATE ostf_effect_dsp juce::juce_recommended_config_flags)
+    ostf_attach_notices(${target}_VST3)
+    juce_enable_copy_plugin_step(${target})
+    string(APPEND stock_names "    {\"${name}\", \"${code}\"},\n")
+endforeach()
+set(stock_names "${stock_names}" PARENT_SCOPE)

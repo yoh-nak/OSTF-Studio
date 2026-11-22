@@ -30,4 +30,20 @@ OSTF Studio向けに作曲した5曲です。各 `.ostf` は楽譜データ、�
 
 ## 再生成と検証
 
+### ミックスを聴き比べる
+
+各演奏トラックの音源は OSTF GM Sound Module 1台です。FX は音源の後に並び、一覧の上から順に音声を処理します。各曲で音量とパンを設定し、ドラムやベースを **Bus A**、伴奏を **Bus B** にまとめています。両バスと **Return 1** は Master に戻ります。
+
+| 曲 | 開いて確認する箇所 |
+|---|---|
+| Paper Lantern Replies | リードボーカルの FX は **EQ → Compressor**。リードから Return 1 へ −13 dB、バックコーラスから −11 dB で送ります。ボーカルガイドの音色で違いを確認できます。 |
+| Blue Hour Waltz | 冒頭のピアノの出力は Bus B、ルームへのセンドは −14 dB。ピアノをソロにして再生し、Bus B をミュートすると残響だけ、Return 1 をミュートすると直接音だけを確認できます。 |
+| Neon Platforms | ギターフックの **Guitar Amp → EQ**、リズムバスのコンプレッサー、マスターのリミッターを確認できます。 |
+| Relay Circuit | サブベースの **Distortion → EQ** とシンセのモジュレーションを確認できます。サブベースには残響を送りません。 |
+| Offset Bridges | リードの **Distortion → Guitar Amp** を含む変拍子のファイル検証用デモです。 |
+
+**Return 1** の OSTF Reverb は初期値がウェット100%です。各トラックの送り量を上げると残響が増えます。センドはポストフェーダーなので、トラックフェーダーを下げると送りも下がります。FX ウィンドウでは挿入順の変更、パラメーター編集ができます。個々のVST3は **Plug-ins → Effects → OSTF Studio** から追加できます。
+
+固定した公式仕様のチェックアウトを用意し、検証用Python環境に `jsonschema==4.25.1` をインストールして `python examples/demo-songs/verify.py <仕様リポジトリのパス>` を実行します。5曲について Score・Manifest・Production Session の各Schema、SHA-256、デバイスの参照と順序、バス・センドの接続、単体版と同梱版の一致を確認します。9種類のVST3の音声処理とバス／センドの実際の出力はGUIビルドのCTestで検証します。
+
 リポジトリのルートで `python examples/demo-songs/generate.py` を実行します。生成はPython標準ライブラリのみを使います。ZIPの先頭は非圧縮の `mimetype` で、パッケージ中のスコアは対応する `.ostf` と同一バイトです。検証には固定リビジョンの公式Score／Manifest Schemaと `tools/ostfp.py validate` を使います。GUI有効ビルドの `ostf_studio_demo_gallery` は4曲の読み込み、歌唱レーンの値、混合拍子の拒否を確認します。

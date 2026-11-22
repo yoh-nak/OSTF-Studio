@@ -19296,48 +19296,106 @@
             "id": "master",
             "kind": "master",
             "audioChannels": 2,
+            "gainDb": -1,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "master-limiter"
+            ]
+          },
+          {
+            "id": "bus-1",
+            "kind": "bus",
+            "audioChannels": 2,
+            "gainDb": -2,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "bus-1-compressor"
+            ],
+            "name": "Rhythm",
+            "outputChannelId": "master"
+          },
+          {
+            "id": "bus-2",
+            "kind": "bus",
+            "audioChannels": 2,
+            "gainDb": -1.5,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "bus-2-eq"
+            ],
+            "name": "Harmony",
+            "outputChannelId": "master"
+          },
+          {
+            "id": "return-1",
+            "kind": "bus",
+            "audioChannels": 2,
             "gainDb": -3,
             "pan": 0,
             "mute": false,
             "solo": false,
             "soloSafe": false,
-            "deviceIds": []
+            "deviceIds": [
+              "return-1-reverb"
+            ],
+            "name": "Room",
+            "outputChannelId": "master"
           },
           {
             "id": "track-1",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -2,
-            "pan": 0,
+            "gainDb": -11,
+            "pan": 0.29,
             "mute": false,
             "solo": false,
             "soloSafe": false,
             "deviceIds": [
-              "instrument-1"
+              "instrument-1",
+              "track-1-amp"
             ],
             "trackId": "guitar",
-            "outputChannelId": "master"
+            "outputChannelId": "bus-2",
+            "sends": [
+              {
+                "id": "send-1-room",
+                "targetChannelId": "return-1",
+                "gainDb": -17,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           },
           {
             "id": "track-2",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -2,
+            "gainDb": -6,
             "pan": 0,
             "mute": false,
             "solo": false,
             "soloSafe": false,
             "deviceIds": [
-              "instrument-2"
+              "instrument-2",
+              "track-2-compressor"
             ],
             "trackId": "bass",
-            "outputChannelId": "master"
+            "outputChannelId": "bus-1"
           },
           {
             "id": "track-3",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -2,
+            "gainDb": -7,
             "pan": 0,
             "mute": false,
             "solo": false,
@@ -19346,44 +19404,73 @@
               "instrument-3"
             ],
             "trackId": "kit",
-            "outputChannelId": "master"
+            "outputChannelId": "bus-1",
+            "sends": [
+              {
+                "id": "send-3-room",
+                "targetChannelId": "return-1",
+                "gainDb": -23,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           },
           {
             "id": "track-4",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -5,
-            "pan": 0,
+            "gainDb": -10,
+            "pan": -0.38,
             "mute": false,
             "solo": false,
             "soloSafe": false,
             "deviceIds": [
-              "instrument-4"
+              "instrument-4",
+              "track-4-amp"
             ],
             "trackId": "rhythm",
-            "outputChannelId": "master"
+            "outputChannelId": "bus-2",
+            "sends": [
+              {
+                "id": "send-4-room",
+                "targetChannelId": "return-1",
+                "gainDb": -20,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           },
           {
             "id": "track-5",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -2,
-            "pan": 0,
+            "gainDb": -12,
+            "pan": -0.32,
             "mute": false,
             "solo": false,
             "soloSafe": false,
             "deviceIds": [
-              "instrument-5"
+              "instrument-5",
+              "track-5-phaser"
             ],
             "trackId": "organ",
-            "outputChannelId": "master"
+            "outputChannelId": "bus-2",
+            "sends": [
+              {
+                "id": "send-5-room",
+                "targetChannelId": "return-1",
+                "gainDb": -17,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           },
           {
             "id": "track-6",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -5,
-            "pan": 0,
+            "gainDb": -13,
+            "pan": 0.24,
             "mute": false,
             "solo": false,
             "soloSafe": false,
@@ -19391,40 +19478,122 @@
               "instrument-6"
             ],
             "trackId": "strings",
-            "outputChannelId": "master"
+            "outputChannelId": "bus-2",
+            "sends": [
+              {
+                "id": "send-6-room",
+                "targetChannelId": "return-1",
+                "gainDb": -12,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           },
           {
             "id": "track-7",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -2,
-            "pan": 0,
+            "gainDb": -6,
+            "pan": 0.08,
             "mute": false,
             "solo": false,
             "soloSafe": false,
             "deviceIds": [
-              "instrument-7"
+              "instrument-7",
+              "track-7-distortion",
+              "track-7-amp"
             ],
             "trackId": "lead",
-            "outputChannelId": "master"
+            "outputChannelId": "master",
+            "sends": [
+              {
+                "id": "send-7-room",
+                "targetChannelId": "return-1",
+                "gainDb": -16,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           },
           {
             "id": "track-8",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -5,
-            "pan": 0,
+            "gainDb": -9,
+            "pan": -0.22,
             "mute": false,
             "solo": false,
             "soloSafe": false,
             "deviceIds": [
-              "instrument-8"
+              "instrument-8",
+              "track-8-flanger"
             ],
             "trackId": "pulse",
-            "outputChannelId": "master"
+            "outputChannelId": "bus-2",
+            "sends": [
+              {
+                "id": "send-8-room",
+                "targetChannelId": "return-1",
+                "gainDb": -19,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           }
         ],
         "devices": [
+          {
+            "id": "master-limiter",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663035",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Limiter"
+            }
+          },
+          {
+            "id": "bus-1-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
+          },
+          {
+            "id": "bus-2-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "return-1-reverb",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663031",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Reverb"
+            }
+          },
           {
             "id": "instrument-1",
             "role": "instrument",
@@ -19439,6 +19608,19 @@
             }
           },
           {
+            "id": "track-1-amp",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663039",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Guitar Amp"
+            }
+          },
+          {
             "id": "instrument-2",
             "role": "instrument",
             "enabled": true,
@@ -19449,6 +19631,19 @@
               "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
               "name": "OSTF GM Sound Module",
               "vendor": "OSTF Studio"
+            }
+          },
+          {
+            "id": "track-2-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
             }
           },
           {
@@ -19478,6 +19673,19 @@
             }
           },
           {
+            "id": "track-4-amp",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663039",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Guitar Amp"
+            }
+          },
+          {
             "id": "instrument-5",
             "role": "instrument",
             "enabled": true,
@@ -19488,6 +19696,19 @@
               "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
               "name": "OSTF GM Sound Module",
               "vendor": "OSTF Studio"
+            }
+          },
+          {
+            "id": "track-5-phaser",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663036",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Phaser"
             }
           },
           {
@@ -19517,6 +19738,32 @@
             }
           },
           {
+            "id": "track-7-distortion",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663038",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Distortion"
+            }
+          },
+          {
+            "id": "track-7-amp",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663039",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Guitar Amp"
+            }
+          },
+          {
             "id": "instrument-8",
             "role": "instrument",
             "enabled": true,
@@ -19527,6 +19774,19 @@
               "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
               "name": "OSTF GM Sound Module",
               "vendor": "OSTF Studio"
+            }
+          },
+          {
+            "id": "track-8-flanger",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663037",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Flanger"
             }
           }
         ]

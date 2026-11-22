@@ -4,6 +4,7 @@
 #include "core/MixerState.h"
 #include <juce_core/juce_core.h>
 #include <deque>
+#include <map>
 #include <vector>
 
 namespace ostfstudio {
@@ -36,6 +37,14 @@ struct SessionMix {
     std::array<juce::String, 3 + maxMixerReturns> insertIds;
     std::array<juce::StringArray, 3 + maxMixerReturns> outputEffects;
     std::vector<juce::StringArray> trackEffects;
+    // Normalized to the displayed channel and slot when reading a production document.
+    std::map<juce::String, juce::String> stockEffectStates;
+    static juce::String effectSlot(bool output, std::size_t channel, int slot) {
+        const auto n = static_cast<int>(channel);
+        const auto id = !output ? "track-" + juce::String(n + 1)
+            : n == 0 ? juce::String("master") : n < 3 ? "bus-" + juce::String(n) : "return-" + juce::String(n - 2);
+        return id + "-fx-" + juce::String(slot + 1);
+    }
     std::vector<bool> audioTracks;
 };
 

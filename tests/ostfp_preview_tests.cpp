@@ -1,4 +1,5 @@
 #include "ui/OstfpPreview.h"
+#include "StockEffects.h"
 #include "ui/SongMidi.h"
 #include "ui/StudioLanguage.h"
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -57,6 +58,24 @@ static int checkGallery(const juce::File& directory) {
                 || !juce::String(project->trackLanes[index].regions.front().label).containsAnyOf("ABCDEFG")
                 || project->addSessionClip(index, "Should not become a Core track", {{0, 120, 60, 80}})) return 1;
             if (!project->savedMix || project->savedMix->instruments.size() != project->sourceTrackCount()) return 1;
+            const auto& authored = *project->savedMix;
+            juce::FileInputStream standalone(directory.getChildFile(expected.file).withFileExtension("ostf"));
+            std::unique_ptr<ostfstudio::OstfpPreview> fromScore;
+            if (ostfstudio::readOstfPreview(standalone, fromScore).failed() || !fromScore->savedMix
+                || fromScore->savedMix->trackEffects != authored.trackEffects
+                || fromScore->savedMix->outputEffects != authored.outputEffects) return 1;
+            if (authored.outputEffects[0] != juce::StringArray{ostfstudio::stockEffects[4].chainId()}
+                || authored.outputEffects[1] != juce::StringArray{ostfstudio::stockEffects[3].chainId()}
+                || authored.outputEffects[3] != juce::StringArray{ostfstudio::stockEffects[0].chainId()}) return 1;
+            std::array<int, 2> members{};
+            int roomSends = 0;
+            for (const auto& strip : authored.tracks) {
+                if (strip.outputBus >= 0) ++members.at(static_cast<std::size_t>(strip.outputBus));
+                if (strip.returnSends[0] > 0 && strip.returnSends[0] < 1) ++roomSends;
+            }
+            if (members[0] < 2 || members[1] < 2 || roomSends < 2
+                || std::none_of(authored.trackEffects.begin(), authored.trackEffects.end(),
+                                [](const auto& chain) { return chain.size() >= 2; })) return 1;
             for (std::size_t track = 0; track < project->sourceTrackCount(); ++track) {
                 const auto& plugin = project->savedMix->instruments[track];
                 const auto& events = project->programChanges[track];
@@ -70,12 +89,22 @@ static int checkGallery(const juce::File& directory) {
                 }) || std::none_of(regions.begin(), regions.end(), [](const auto& region) {
                     return region.exactBars && region.exactBars->end - region.exactBars->start > 1.0;
                 })) return 1;
-            ostfstudio::SessionMix mix;
+            auto mix = authored;
             mix.tracks.resize(index + 1);
             mix.midiRoutes.resize(index + 1);
             mix.instruments = project->savedMix->instruments;
             mix.tracks[index].pan = 0.35f;
             mix.tracks[index].muted = true;
+            mix.stockEffectStates[ostfstudio::SessionMix::effectSlot(true, 3, 0)] = "test-state";
+            mix.trackEffects.resize(index + 1);
+            mix.trackEffects[index].add(ostfstudio::stockEffects[2].chainId());
+            mix.stockEffectStates[ostfstudio::SessionMix::effectSlot(false, index, 0)] = "voicing-state";
+            juce::MemoryOutputStream plain;
+            if (ostfstudio::writeOstfPreview(*project, mix, plain).failed()) return 1;
+            juce::MemoryInputStream plainInput(plain.getData(), plain.getDataSize(), false);
+            if (ostfstudio::readOstfPreview(plainInput, fromScore).failed() || !fromScore->savedMix
+                || fromScore->savedMix->stockEffectStates != mix.stockEffectStates
+                || fromScore->savedMix->trackEffects != mix.trackEffects) return 1;
             juce::MemoryOutputStream saved;
             if (ostfstudio::writeOstfpPreview(*project, mix, saved).failed()) return 1;
             juce::MemoryInputStream roundtrip(saved.getData(), saved.getDataSize(), false);
@@ -84,7 +113,14 @@ static int checkGallery(const juce::File& directory) {
                 || reopened->sourceTrackCount() != index || reopened->sourceScore != project->sourceScore
                 || reopened->savedMix->instruments.front()["pluginId"] != mix.instruments.front()["pluginId"]
                 || reopened->savedMix->tracks.size() != index + 1 || !reopened->savedMix->tracks[index].muted
-                || reopened->savedMix->tracks[index].pan != 0.35f) return 1;
+                || reopened->savedMix->tracks[index].pan != 0.35f
+                || reopened->savedMix->outputEffects != mix.outputEffects
+                || reopened->savedMix->stockEffectStates != mix.stockEffectStates) return 1;
+            for (std::size_t i = 0; i < index; ++i)
+                if (reopened->savedMix->trackEffects[i] != mix.trackEffects[i]
+                    || reopened->savedMix->tracks[i].outputBus != mix.tracks[i].outputBus
+                    || std::abs(reopened->savedMix->tracks[i].returnSends[0] - mix.tracks[i].returnSends[0]) > 0.00001f
+                    || reopened->savedMix->tracks[i].pan != mix.tracks[i].pan) return 1;
         }
         if (std::string_view(expected.file) == "paper-lantern-replies.ostfp") {
             const auto& notes = project->pitchedNotes.front();

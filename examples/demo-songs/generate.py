@@ -699,8 +699,57 @@ def production_session(song):
         return {"id": identifier, "kind": kind, "audioChannels": 2, "gainDb": 0, "pan": 0,
                 "mute": False, "solo": False, "soloSafe": False, "deviceIds": [], **fields}
 
-    channels = [channel("master", "master", gainDb=-3)]
+    catalog = json.loads((DESTINATION.parents[1] / "src/plugins/effects/catalog.json").read_text(encoding="utf-8"))
+    effects = {item["type"]: item for item in catalog}
     devices = []
+    def insert(strip, *types):
+        for kind in types:
+            item = effects[kind]
+            identifier = f"{strip['id']}-{kind.lower()}"
+            strip["deviceIds"].append(identifier)
+            devices.append({"id": identifier, "role": "effect", "enabled": True, "bypass": False,
+                            "onUnavailable": "reportAndPreserve", "plugin": {
+                                "format": "vst3", "pluginId": "ABCDEF019182FAEB4F737466" + item["code"].encode("ascii").hex().upper(),
+                                "vendor": "OSTF Studio", "name": item["name"]}})
+
+    # Post-fader sends in dB. Keep bass and kick near centre; give harmony and replies their own space.
+    # Values are (fader dB, stereo pan, output channel, room send dB or None, inserts in signal order).
+    parts = {
+        "hook": (-5, -.08, "master", -16, ["Amp", "EQ"]),
+        "horn": (-6, -.12, "master", -14, ["EQ", "Compressor"]),
+        "arp": (-8, -.30, "bus-2", -19, ["Phaser"]),
+        "voice-track": (-4, 0, "master", -13, ["EQ", "Compressor"]),
+        "backing": (-12, .24, "bus-2", -11, ["Chorus"]),
+        "keys": (-9, -.26, "bus-2", -16, ["Chorus"]),
+        "bass": (-6, 0, "bus-1", None, ["Compressor"]),
+        "answer": (-11, .32, "bus-2", -15, ["Phaser"]),
+        "nylon": (-12, -.38, "bus-2", -16, ["EQ"]),
+        "strings": (-13, .24, "bus-2", -12, []),
+        "comp": (-11, -.38, "bus-2", -17, ["Chorus"]),
+        "brass": (-10, .22, "bus-2", -15, ["EQ"]),
+        "pad": (-14, .32, "bus-2", -12, ["Chorus"]),
+        "vibes": (-9, .34, "bus-2", -12, []),
+        "organ": (-12, -.32, "bus-2", -17, ["Phaser"]),
+        "guitar": (-11, .29, "bus-2", -17, ["Amp"]),
+        "rhythm": (-10, -.38, "bus-2", -20, ["Amp"]),
+        "lead": (-6, .08, "master", -16, ["Distortion", "Amp"]),
+        "pulse": (-9, -.22, "bus-2", -19, ["Flanger"]),
+        "sub": (-7, 0, "bus-1", None, ["Distortion", "EQ"]),
+        "chord": (-11, .25, "bus-2", -18, ["Chorus"]),
+        "atmos": (-14, .36, "bus-2", -11, ["Phaser"]),
+        "perc": (-12, .30, "bus-1", -19, ["EQ"]),
+        "noise": (-15, -.32, "bus-2", -14, ["Flanger"]),
+        "drums": (-7, 0, "bus-1", -22, []),
+        "kit": (-7, 0, "bus-1", -23, []),
+        "ride-kit": (-9, .06, "bus-1", -17, []),
+    }
+    if song["song"]["title"] == "Blue Hour Waltz":
+        parts["keys"] = (-6, -.18, "bus-2", -14, ["EQ"])
+    channels = [channel("master", "master", gainDb=-1), channel("bus-1", "bus", name="Rhythm", gainDb=-2, outputChannelId="master"),
+                channel("bus-2", "bus", name="Harmony", gainDb=-1.5, outputChannelId="master"),
+                channel("return-1", "bus", name="Room", gainDb=-3, outputChannelId="master")]
+    for strip, kind in zip(channels, ("Limiter", "Compressor", "EQ", "Reverb")):
+        insert(strip, kind)
     for index, lane in enumerate(song["tracks"], start=1):
         midi_channel = 10 if lane["trackType"] == "drum" else index
         lane["midi"] = {"mode": "singleChannel", "channel": midi_channel}
@@ -713,8 +762,14 @@ def production_session(song):
                 "format": "vst3", "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
                 "name": "OSTF GM Sound Module", "vendor": "OSTF Studio",
             }})
-        channels.append(channel(f"track-{index}", "track", trackId=lane["id"], outputChannelId="master",
-                                deviceIds=[device], gainDb=-5 if lane["role"] in ("texture", "rhythm") else -2))
+        level, pan, output, send, inserts = parts[lane["id"]]
+        strip = channel(f"track-{index}", "track", trackId=lane["id"], outputChannelId=output,
+                        deviceIds=[device], gainDb=level, pan=pan)
+        if send is not None:
+            strip["sends"] = [{"id": f"send-{index}-room", "targetChannelId": "return-1", "gainDb": send,
+                               "preFader": False, "enabled": True}]
+        insert(strip, *inserts)
+        channels.append(strip)
     return {"channels": channels, "devices": devices}
 
 

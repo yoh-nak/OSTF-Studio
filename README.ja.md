@@ -32,6 +32,8 @@ Windows は Setup.exe を実行するか、Portable ZIP を展開してくださ
 
 ## 音源・エフェクト・ミキサー
 
+開発ビルドには OSTF Studio 製のステレオVST3エフェクト9種を同梱します。**File → Demo songs → Paper Lantern Replies** を開くと、リードボーカルの **EQ → Compressor**、ドラムとベースの Bus A、伴奏の Bus B、Return 1 のリバーブを確認できます。トラックのセンド量、パン、フェーダー、エフェクトの順番を `.ostf` と `.ostfp` の両方で復元します。[デモ曲ごとの試聴手順](examples/demo-songs/README.md)
+
 プラグインブラウザーには VST3 がメーカー別に表示されます。初回のスキャン結果はこの PC に保存されます。楽器とエフェクトを絞り込み、トラックへドラッグして割り当てられます。見つからない場合は **Scan one…** から個別に VST3 を選択できます。
 
 **OSTF GM Sound Module** はチャンネルごとに音色、音量、パン、エクスプレッションなどを設定できる16パートの音源です。チャンネル10は打楽器です。配布版は FluidR3 GM を同梱しており、手元の SF2 も読み込めます。複数トラックで1つの音源を共有するには **Instrument → Instrument destination** で同じ音源トラックを指定し、各パートの MIDI チャンネルを選びます。共有音源のステレオ出力は音源を置いたトラックで調整します。[FluidR3 の配布条件](licenses/NOTICE.md)

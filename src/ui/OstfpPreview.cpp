@@ -1,4 +1,5 @@
 #include "ui/OstfpPreview.h"
+#include "StockEffects.h"
 #include "core/MidiGeneratorPattern.h"
 #include <juce_cryptography/juce_cryptography.h>
 #include <algorithm>
@@ -393,17 +394,38 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix) {
     juce::var voicingMix;
     juce::var voicingRoute;
     juce::Array<juce::var> channels, routes, devices;
+    auto states = object({});
+    auto attachEffects = [&](juce::var& channel, bool output, std::size_t index, const juce::StringArray& chain) {
+        auto ids = array(channel["deviceIds"]);
+        for (int slot = 0; slot < chain.size(); ++slot) {
+            for (const auto& fx : stockEffects) {
+                if (fx.chainId() != chain[slot]) continue;
+                const auto id = SessionMix::effectSlot(output, index, slot);
+                ids.add(id);
+                devices.add(object({{"id", id}, {"role", "effect"}, {"enabled", true}, {"bypass", false},
+                    {"onUnavailable", "reportAndPreserve"}, {"plugin", object({{"format", "vst3"}, {"vendor", "OSTF Studio"},
+                        {"name", fx.name}, {"pluginId", fx.classId()}})}}));
+                if (const auto state = mix.stockEffectStates.find(id); state != mix.stockEffectStates.end())
+                    states.getDynamicObject()->setProperty(id, state->second);
+                break;
+            }
+        }
+        channel.getDynamicObject()->setProperty("deviceIds", ids);
+    };
     auto master = mixChannel("master", "master", mix.routing.masterDb);
+    attachEffects(master, true, 0, mix.outputEffects[0]);
     master.getDynamicObject()->setProperty("mute", mix.routing.outputMuted[0]);
     channels.add(master);
     for (int bus = 0; bus < 2; ++bus) {
         auto channel = mixChannel(busId(bus), "bus", mix.routing.busDb[static_cast<std::size_t>(bus)]);
+        attachEffects(channel, true, bus + 1, mix.outputEffects[bus + 1]);
         channel.getDynamicObject()->setProperty("mute", mix.routing.outputMuted[static_cast<std::size_t>(bus + 1)]);
         channel.getDynamicObject()->setProperty("outputChannelId", "master");
         channels.add(std::move(channel));
     }
     for (std::size_t i = 0; i < mix.routing.returnCount && i < maxMixerReturns; ++i) {
         auto channel = mixChannel(returnId(i), "bus", mix.routing.returnDb[i]);
+        attachEffects(channel, true, 3 + i, mix.outputEffects[3 + i]);
         channel.getDynamicObject()->setProperty("mute", mix.routing.outputMuted[3 + i]);
         channel.getDynamicObject()->setProperty("outputChannelId", "master");
         channels.add(std::move(channel));
@@ -435,6 +457,14 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix) {
                                 {"enabled", true}, {"bypass", false}, {"onUnavailable", "reportAndPreserve"}}));
         }
         model->setProperty("sends", sends);
+        if (index < mix.trackEffects.size()) {
+            if (!isVoicing) attachEffects(channel, false, index, mix.trackEffects[index]);
+            else for (int slot = 0; slot < mix.trackEffects[index].size(); ++slot) {
+                const auto key = SessionMix::effectSlot(false, index, slot);
+                if (const auto state = mix.stockEffectStates.find(key); state != mix.stockEffectStates.end())
+                    states.getDynamicObject()->setProperty(key, state->second);
+            }
+        }
         if (isVoicing) voicingMix = channel;
         else channels.add(std::move(channel));
         auto local = object({{"trackId", id}, {"midiChannel", midi.channel}, {"cue", settings.cue}});
@@ -459,7 +489,7 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix) {
         outputEffects.add(fx);
     }
     hostData.add(object({{"namespace", mixNamespace}, {"version", "1.0"},
-                        {"data", object({{"tracks", routes}, {"cueDb", mix.routing.cueDb}, {"inserts", inserts}, {"outputEffects", outputEffects}, {"chordVoicingMix", voicingMix}, {"chordVoicingRoute", voicingRoute}})}}));
+                        {"data", object({{"tracks", routes}, {"cueDb", mix.routing.cueDb}, {"inserts", inserts}, {"outputEffects", outputEffects}, {"stockEffectStates", states}, {"chordVoicingMix", voicingMix}, {"chordVoicingRoute", voicingRoute}})}}));
     return object({{"channels", channels}, {"devices", devices}, {"hostExtensions", hostData}});
 }
 
@@ -491,6 +521,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
     mix.tracks.resize(voicingIndex + static_cast<std::size_t>(voicingMix.isObject()));
     mix.midiRoutes.resize(mix.tracks.size());
     mix.instruments.resize(mix.tracks.size());
+    mix.trackEffects.resize(mix.tracks.size());
     for (int i = 0; i < tracks.size(); ++i) {
         const auto midi = tracks[i]["midi"];
         const auto channel = static_cast<int>(midi["channel"]);
@@ -503,8 +534,39 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
     const auto channelData = production["channels"];
     auto channels = array(channelData);
     if (voicingMix.isObject()) channels.add(voicingMix);
+    // Legacy Studio chains can also contain cached host IDs for third-party plug-ins.
+    // Translate state keys after merging those chains, so mixed chains keep slot order.
+    std::map<juce::String, juce::StringArray> effectDeviceIds;
     for (const auto& entry : channels) {
         const auto id = entry["id"].toString();
+        const bool outputChannel = entry["kind"] != "track";
+        const int track = entry == voicingMix ? static_cast<int>(voicingIndex) : trackIndex(entry["trackId"]);
+        const int output = id == "master" ? 0 : id == "bus-1" ? 1 : id == "bus-2" ? 2
+            : returnIndex(id) >= 0 ? 3 + returnIndex(id) : -1;
+        const int channelIndex = outputChannel ? output : track;
+        require(channelIndex >= 0, "Unsupported production channel");
+        auto& fx = outputChannel ? mix.outputEffects[channelIndex] : mix.trackEffects[channelIndex];
+        for (const auto& deviceId : array(entry["deviceIds"])) {
+            const auto found = std::find_if(devices.begin(), devices.end(), [&](const auto& device) { return device["id"] == deviceId; });
+            require(found != devices.end() && (*found)["stateAssetId"].isVoid(), "Unknown device or unsupported state asset");
+            const auto& device = *found;
+            if (device["role"] == "instrument") {
+                require(!outputChannel && fx.isEmpty() && !mix.instruments[track].isObject(), "Unsupported instrument order");
+                if (static_cast<bool>(device["enabled"]) && !static_cast<bool>(device["bypass"]))
+                    mix.instruments[track] = device["plugin"];
+                continue;
+            }
+            require(device["role"] == "effect" && static_cast<bool>(device["enabled"]) && !static_cast<bool>(device["bypass"]),
+                    "Unsupported production device or bypass state");
+            const auto ref = device["plugin"];
+            const auto stock = std::find_if(std::begin(stockEffects), std::end(stockEffects), [&](const auto& item) {
+                return ref["format"] == "vst3" && ref["pluginId"].toString().equalsIgnoreCase(item.classId());
+            });
+            require(stock != std::end(stockEffects) && fx.size() < static_cast<int>(SessionMix::maxEffects),
+                    "Unsupported Production Session effect or chain length");
+            fx.add(stock->chainId());
+            effectDeviceIds[SessionMix::effectSlot(outputChannel, channelIndex, 0)].add(deviceId.toString());
+        }
         if (id == "master") {
             mix.routing.masterDb = gain(entry["gainDb"]);
             mix.routing.outputMuted[0] = static_cast<bool>(entry["mute"]);
@@ -522,17 +584,6 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
         } else {
             const auto i = entry == voicingMix ? static_cast<int>(voicingIndex) : trackIndex(entry["trackId"]);
             require(i >= 0 && entry["kind"] == "track", "Unsupported OSTFP mixer track");
-            const auto ids = entry["deviceIds"];
-            if (ids.isArray() && ids.size() > 0) {
-                require(ids.size() == 1, "Preview supports one Production Session instrument per track");
-                const auto found = std::find_if(devices.begin(), devices.end(), [&](const auto& device) {
-                    return device["id"] == ids[0];
-                });
-                require(found != devices.end() && (*found)["role"] == "instrument"
-                    && (*found)["stateAssetId"].isVoid(), "Unsupported Production Session instrument");
-                if (static_cast<bool>((*found)["enabled"]) && !static_cast<bool>((*found)["bypass"]))
-                    mix.instruments[static_cast<std::size_t>(i)] = (*found)["plugin"];
-            }
             auto& settings = mix.tracks[static_cast<std::size_t>(i)];
             settings.volumeDb = gain(entry["gainDb"]);
             const auto pan = static_cast<float>(entry["pan"]);
@@ -559,10 +610,19 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
             mix.insertIds[static_cast<std::size_t>(i)] = ids[i].toString();
     }
     auto readEffects = [](const juce::var& value, juce::StringArray& result) {
+        juce::StringArray legacy;
         if (const auto* values = value.getArray())
             for (const auto& entry : *values)
                 if (entry.isString() && entry.toString().isNotEmpty()
-                    && result.size() < static_cast<int>(SessionMix::maxEffects)) result.add(entry.toString());
+                    && legacy.size() < static_cast<int>(SessionMix::maxEffects)) legacy.add(entry.toString());
+        if (legacy.isEmpty()) return;
+        if (!result.isEmpty()) {
+            juce::StringArray stock;
+            for (const auto& id : legacy)
+                for (const auto& item : stockEffects) if (id == item.chainId()) { stock.add(id); break; }
+            require(stock == result, "Conflicting production and Studio effect order");
+        }
+        result = std::move(legacy);
     };
     const auto outputData = local["outputEffects"];
     if (const auto* outputs = outputData.getArray())
@@ -589,6 +649,22 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
             mix.midiRoutes[index].destination = static_cast<std::size_t>(target);
         }
     }
+    auto restoreStates = [&](bool output, std::size_t channel, const juce::StringArray& chain) {
+        const auto it = effectDeviceIds.find(SessionMix::effectSlot(output, channel, 0));
+        const bool voicing = !output && channel == voicingIndex;
+        if (it == effectDeviceIds.end() && !voicing) return;
+        int device = 0;
+        for (int slot = 0; slot < chain.size(); ++slot)
+            for (const auto& fx : stockEffects) if (chain[slot] == fx.chainId()) {
+                const auto key = SessionMix::effectSlot(output, channel, slot);
+                const juce::Identifier deviceId(voicing ? key : it->second[device++]);
+                const auto state = local["stockEffectStates"][deviceId];
+                if (state.isString()) mix.stockEffectStates[key] = state.toString();
+                break;
+            }
+    };
+    for (std::size_t i = 0; i < mix.trackEffects.size(); ++i) restoreStates(false, i, mix.trackEffects[i]);
+    for (std::size_t i = 0; i < mix.outputEffects.size(); ++i) restoreStates(true, i, mix.outputEffects[i]);
     return mix;
 }
 

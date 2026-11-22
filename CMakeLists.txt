@@ -31,6 +31,18 @@ if (OSTF_STUDIO_BUILD_GUI)
     )
     FetchContent_MakeAvailable(JUCE)
 
+    set(effect_catalog "${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/effects/catalog.json")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${effect_catalog}")
+    file(READ "${effect_catalog}" effects)
+    string(JSON effect_count LENGTH "${effects}")
+    math(EXPR last_effect "${effect_count}-1")
+    # Share the JUCE modules and DSP across all nine wrappers.
+    add_library(ostf_effect_dsp STATIC src/plugins/effects/StudioEffect.cpp)
+    set_target_properties(ostf_effect_dsp PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+    target_compile_definitions(ostf_effect_dsp PUBLIC JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
+    target_link_libraries(ostf_effect_dsp PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_recommended_config_flags)
+    target_include_directories(ostf_effect_dsp INTERFACE "$<TARGET_PROPERTY:juce::juce_core,INTERFACE_JUCE_MODULE_PATH>")
+
     juce_add_plugin(OSTFArranger
         COMPANY_NAME "OSTF Studio"
         BUNDLE_ID "org.ostf.arranger"
@@ -93,8 +105,8 @@ if (OSTF_STUDIO_BUILD_GUI)
     juce_generate_juce_header(OSTFStudio)
     target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/OstfpPreview.cpp
         src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
-        src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp)
-    target_include_directories(OSTFStudio PRIVATE src)
+        src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp tests/stock_effects_smoke.cpp)
+    target_include_directories(OSTFStudio PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(OSTFStudio PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
     target_compile_definitions(OSTFStudio PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
     if (WIN32)
@@ -109,9 +121,11 @@ if (OSTF_STUDIO_BUILD_GUI)
         juce::juce_recommended_config_flags
     )
     include(packaging/collect-notices.cmake)
+    add_subdirectory(src/plugins/effects)
+    configure_file(src/plugins/effects/StockEffects.h.in generated/StockEffects.h @ONLY)
 
     add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
-    target_include_directories(ostf_studio_ostfp_tests PRIVATE src)
+    target_include_directories(ostf_studio_ostfp_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(ostf_studio_ostfp_tests PRIVATE JUCE_USE_CURL=0)
     target_link_libraries(ostf_studio_ostfp_tests PRIVATE juce::juce_cryptography juce::juce_audio_basics)
     add_test(NAME ostf_studio_ostfp_tests COMMAND ostf_studio_ostfp_tests
@@ -140,5 +154,9 @@ if (OSTF_STUDIO_BUILD_GUI)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tinysoundfont-saw.sf2"
             "$<TARGET_FILE_DIR:OSTFArranger_VST3>/../..")
         set_tests_properties(ostf_studio_gm_plugin PROPERTIES TIMEOUT 20)
+        add_test(NAME ostf_studio_stock_effects COMMAND OSTFStudio --stock-effects-smoke
+            "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../.."
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/blue-hour-waltz.ostfp")
+        set_tests_properties(ostf_studio_stock_effects PROPERTIES TIMEOUT 90)
     endif()
 endif()

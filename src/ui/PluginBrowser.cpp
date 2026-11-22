@@ -1,6 +1,7 @@
 #include "ui/PluginBrowser.h"
 #include "ui/PluginLibrary.h"
 #include "ui/PluginRoles.h"
+#include "StockEffects.h"
 #include <algorithm>
 
 namespace {
@@ -291,6 +292,7 @@ int PluginBrowser::runScanWorker(const juce::String& token, const juce::String& 
 void PluginBrowser::registerBundledPlugins() {
     for (const auto* file : {"OSTF Arranger.vst3", "OSTF GM Sound Module.vst3"})
         registerBundledVst3(plugins_, file);
+    for (const auto& fx : ostfstudio::stockEffects) registerBundledVst3(plugins_, juce::String(fx.name) + ".vst3");
 }
 
 void PluginBrowser::refreshTree() {

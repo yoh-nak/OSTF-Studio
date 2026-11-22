@@ -23,7 +23,8 @@ inline void registerBundledVst3(juce::KnownPluginList& library, const juce::Stri
     if (local.isNotEmpty()) paths.add(juce::File(local).getChildFile("Programs/Common/VST3"), 1);
 #endif
     for (int i = 0; i < paths.getNumPaths(); ++i) {
-        const auto bundle = paths[i].getChildFile(filename);
+        auto bundle = paths[i].getChildFile(filename);
+        if (!bundle.isDirectory()) bundle = paths[i].getChildFile("OSTF Studio Effects").getChildFile(filename);
         if (!bundle.isDirectory()) continue;
         juce::OwnedArray<juce::PluginDescription> found;
         library.scanAndAddFile(bundle.getFullPathName(), true, found, format);
