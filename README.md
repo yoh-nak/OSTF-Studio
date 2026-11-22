@@ -2,6 +2,8 @@
 
 **English** · [日本語](README.ja.md)
 
+**Download 1.0.0 alpha 2** · [Windows x64 installer](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.2/OSTF_Studio_Windows_x64_Setup.exe) · [Windows portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.2/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon Mac DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.2/OSTF_Studio_macOS_arm64.dmg)
+
 **1.0.0 alpha** is the first public testing series for Windows x64 and Apple silicon Macs. Try a bundled demo to explore the Global Timeline, piano roll, VST3 instruments and session mixer. [Alpha downloads and release notes](https://github.com/yoh-nak/OSTF-Studio/releases)
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
@@ -14,9 +16,9 @@ OSTF Studio is in active development. If a demo makes you want to write a song w
 
 ## Install OSTF Studio
 
-Open **Assets** on the [GitHub Releases page](https://github.com/yoh-nak/OSTF-Studio/releases). For **1.0.0 alpha 1**, download the [Windows x64 installer](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.1/OSTF_Studio_Windows_x64_Setup.exe), [Windows portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.1/OSTF_Studio_Windows_x64_Portable.zip), or [Apple silicon Mac disk image](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.1/OSTF_Studio_macOS_arm64.dmg). Open the installer inside the DMG on macOS. Development packages are available for seven days under **Actions → build run → Artifacts**.
+On Windows, run the Setup executable or extract the portable ZIP. On an Apple silicon Mac, open the DMG and run **Install OSTF Studio and VST3.pkg**. Public installers and matching source archives are listed under **Assets** on each [GitHub Release](https://github.com/yoh-nak/OSTF-Studio/releases). Development packages are available for seven days under **Actions → build run → Artifacts**.
 
-### In the development build after alpha 1
+### New in alpha 2
 
 - Choose **File → Save as MIDI (SMF)** for a song-wide `.mid` file. Format 0 merges the parts into one track while retaining their MIDI channels. Format 1 writes a conductor track and named part tracks. Both preserve the source resolution, meter, tempo changes, notes, mapped GM percussion and supported channel events. Audio, plug-in state and vocal expression curves stay in the OSTF project. The derived Chord Voicing display does not create an extra MIDI part.
 - **Settings → Language** offers the system language, English and Japanese. The selection takes effect on the next launch. An unsupported system language uses English.

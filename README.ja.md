@@ -2,6 +2,8 @@
 
 [English](README.md) · **日本語**
 
+**1.0.0 alpha 2 をダウンロード** · [Windows x64 インストーラー](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.2/OSTF_Studio_Windows_x64_Setup.exe) · [Windows Portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.2/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon Mac 用 DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.2/OSTF_Studio_macOS_arm64.dmg)
+
 OSTF Studio は、楽曲の構造と演奏情報を OSTF 5.0 で扱う Windows・macOS 用の DAW です。現在は 1.0.0 のアルファ版を公開しています。同梱のデモ曲で、グローバルタイムライン、ピアノロール、VST3 音源とミキサーを試せます。
 
 ## ☕ Buy Me a Coffee で開発を応援する
@@ -10,16 +12,11 @@ OSTF Studio は、楽曲の構造と演奏情報を OSTF 5.0 で扱う Windows�
 
 ## インストール
 
-公開版は [GitHub Releases](https://github.com/yoh-nak/OSTF-Studio/releases) の各リリースの **Assets** にあります。**1.0.0 alpha 1** の配布ファイルは以下から直接ダウンロードできます。
-
-| 対象 | ダウンロードと使い方 |
-| --- | --- |
-| Windows x64 | [Setup.exe](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.1/OSTF_Studio_Windows_x64_Setup.exe) を実行します。インストール不要の [Portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.1/OSTF_Studio_Windows_x64_Portable.zip) もあります。 |
-| Apple silicon Mac | [macOS arm64 DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.1/OSTF_Studio_macOS_arm64.dmg) を開き、中のインストーラーでアプリと VST3 をインストールします。Developer ID 署名・公証は未設定です。 |
+Windows は Setup.exe を実行するか、Portable ZIP を展開してください。Apple silicon Mac は DMG を開き、中の **Install OSTF Studio and VST3.pkg** でアプリと VST3 をインストールします。macOS の Developer ID 署名・公証は未設定です。公開版のインストーラーと対応ソースは [GitHub Releases](https://github.com/yoh-nak/OSTF-Studio/releases) の各リリースの **Assets** にあります。
 
 開発ビルドは **Actions → 各ビルドの実行結果 → Artifacts** に7日間保存されます。公開版の履歴・配布ファイルは Releases から取得できます。
 
-## alpha 1 公開後の開発版で使える機能
+## alpha 2 の新機能
 
 - **ファイル → MIDI（SMF）で保存** で曲全体を `.mid` に書き出します。フォーマット0は MIDI チャンネルを保ったまま全パートを1トラックにまとめます。フォーマット1はテンポ・拍子のトラックと各パートの名前付きトラックに分けます。録音したノート、GM マッピングのあるドラム、プログラムチェンジ、CC、ピッチベンド、アフタータッチも対象です。WAV・プラグインの設定・歌唱曲線は OSTF プロジェクトに保存してください。コードから表示用に展開したボイシングを重複して書き出すことはありません。
 - **設定 → 言語** で「OS の表示言語を使用」「English」「日本語」から選べます。変更は次回の起動時に反映します。初期設定では日本語環境なら日本語、それ以外の環境では英語で開きます。
