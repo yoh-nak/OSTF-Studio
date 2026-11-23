@@ -10,6 +10,8 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 - For the proposed Studio chord comparison, test a single-bar substitution with a dependent bass clip and unrelated performances. Verify cancel, chords-only acceptance, selective part adoption, concurrent edits, undo and reopening. Keep the optional score-level dependency status distinct from any clip-level review label.
 
+- The proposed chord-fit overlay compares sounding pitches by chord span. Check passing tones, mid-bar changes, held notes, sparse melodies and percussion. On First Light Vector, compare a local edit with a full recomputation and measure playback and scrolling before claiming performance.
+
 - Both bar rulers seek the shared transport using their own zoom and scroll. Audio regions draw stereo peaks from linked or embedded WAVs with source trims and tempo changes. Relay Circuit has four audio tracks; First Light Vector has five. Sample-by-sample rendering is reproducible with the demo generator. The transport smoke test checks the seek coordinates and waveform against a known pulse; the stock FX test checks both overlapping stems during playback.
 
 - The piano roll edits source MIDI notes, including mapped drum hits, by stable OSTF note ID. It supports multi-selection, copying, trimming either edge, grid nudge, velocity and bounded undo/redo. Test with `ostf_studio_piano_edits`, which exercises pointer gestures, round trips in both formats and SMF. A note referenced by vocal or other data stays in its owning clip. The chord voicing projection remains read-only.
