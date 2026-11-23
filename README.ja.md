@@ -64,7 +64,7 @@ Windows は Setup.exe を実行するか、Portable ZIP を展開してくださ
 
 alpha 3 は、120 BPM・4/4・32小節の空の新規プロジェクトで起動します。「トラック」から最初のパートを追加できます。「ファイル → デモソング」にはロックの Copper Mile、トランスの First Light Vector を含む6曲があります。
 
-開発ビルドには OSTF Studio 製のステレオVST3エフェクト9種を同梱します。**File → Demo songs → Paper Lantern Replies** を開くと、リードボーカルの **EQ → Compressor**、ドラムとベースの Bus A、伴奏の Bus B、Return 1 のリバーブを確認できます。トラックのセンド量、パン、フェーダー、エフェクトの順番を `.ostf` と `.ostfp` の両方で復元します。[デモ曲ごとの試聴手順](examples/demo-songs/README.md)
+開発ビルドには音を加工する9種類のエフェクトと、解析用VST3の **OSTF Wave Analyzer** を同梱します。解析器をマスターまたは個別トラックのFXに挿すと、左右の波形とスペクトル、ピークとRMS、位相相関、3種類のLUFS、最大トゥルーピークを確認できます。スペクトルにカーソルを置くと周波数とレベルを表示します。Freezeで表示を固定し、Reset metersで積算をやり直せます。**File → Demo songs → Paper Lantern Replies** を開くと、リードボーカルの **EQ → Compressor**、ドラムとベースの Bus A、伴奏の Bus B、Return 1 のリバーブを確認できます。トラックのセンド量、パン、フェーダー、エフェクトの順番を `.ostf` と `.ostfp` の両方で復元します。[デモ曲ごとの試聴手順](examples/demo-songs/README.md)
 
 プラグインブラウザーには VST3 がメーカー別に表示されます。初回のスキャン結果はこの PC に保存されます。楽器とエフェクトを絞り込み、トラックへドラッグして割り当てられます。見つからない場合は **Scan one…** から個別に VST3 を選択できます。
 

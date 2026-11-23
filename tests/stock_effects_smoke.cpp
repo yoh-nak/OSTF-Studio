@@ -40,6 +40,27 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
             if (block > 5) peak = std::max(peak, std::abs(wet));
         }
     }
+    if (desc.name == "OSTF Wave Analyzer") {
+        if (difference != 0 || instance.getLatencySamples() != 0 || !instance.hasEditor()) return false;
+        auto* span = instance.getParameters()[0];
+        span->setValueNotifyingHost(1.f);
+        juce::MemoryBlock saved;
+        instance.getStateInformation(saved);
+        span->setValueNotifyingHost(0.f);
+        instance.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+        if (span->getValue() != 1.f) return false;
+        std::unique_ptr<juce::AudioProcessorEditor> editor(instance.createEditorIfNeeded());
+        if (!editor) return false;
+        editor.reset();
+        instance.releaseResources();
+        if (!instance.setBusesLayout({{juce::AudioChannelSet::mono()}, {juce::AudioChannelSet::mono()}})) return false;
+        instance.prepareToPlay(44100, 128);
+        juce::AudioBuffer<float> mono(1, 101);
+        mono.clear(); mono.setSample(0, 89, -.375f);
+        instance.processBlock(mono, midi);
+        instance.releaseResources();
+        return mono.getSample(0, 89) == -.375f && mono.getMagnitude(0, 0, 101) == .375f;
+    }
     auto* param = instance.getParameters()[0];
     param->setValueNotifyingHost(.28f);
     juce::MemoryBlock state;

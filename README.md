@@ -8,6 +8,10 @@
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
 
+## OSTF Wave Analyzer (development build)
+
+Insert **OSTF Wave Analyzer** on a track or master bus. It shows left and right waveforms, a 4096-sample spectrum, sample peak and RMS, stereo correlation, momentary/short-term/integrated LUFS and maximum 4× interpolated true peak. Hover over the spectrum for frequency and level. Freeze holds the display while measurement continues. Reset meters starts a fresh measurement on the next audio block. The plug-in runs locally and passes its input to the output with zero added latency.
+
 ## ☕ Support development on Buy Me a Coffee
 
 OSTF Studio is in active development. If a demo makes you want to write a song with it, buying me a coffee helps me keep refining the GM instruments and testing playback on Windows and macOS.

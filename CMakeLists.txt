@@ -21,6 +21,10 @@ add_executable(ostf_studio_core_tests tests/timeline_model_tests.cpp)
 target_link_libraries(ostf_studio_core_tests PRIVATE ostf_studio_core)
 add_test(NAME ostf_studio_core_tests COMMAND ostf_studio_core_tests)
 
+add_executable(ostf_analyzer_meter_tests tests/analyzer_meter_tests.cpp)
+target_include_directories(ostf_analyzer_meter_tests PRIVATE src/plugins/effects)
+add_test(NAME ostf_analyzer_meter_tests COMMAND ostf_analyzer_meter_tests)
+
 if (OSTF_STUDIO_BUILD_GUI)
     include(FetchContent)
     FetchContent_Declare(
@@ -55,7 +59,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     file(READ "${effect_catalog}" effects)
     string(JSON effect_count LENGTH "${effects}")
     math(EXPR last_effect "${effect_count}-1")
-    # Share the JUCE modules and DSP across all nine wrappers.
+    # Share the JUCE module objects across the stock effect wrappers.
     add_library(ostf_effect_dsp STATIC src/plugins/effects/StudioEffect.cpp)
     set_target_properties(ostf_effect_dsp PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
     target_compile_definitions(ostf_effect_dsp PUBLIC JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
