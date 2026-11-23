@@ -4,7 +4,7 @@
 
 class ViewButton final : public juce::Button {
 public:
-    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score };
+    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
 
     void paintButton(juce::Graphics& g, bool hover, bool down) override {
@@ -16,6 +16,31 @@ public:
         const float x = rect.getCentreX() - 10, y = rect.getCentreY() - 9;
         const auto line = [&](int x1, int y1, int x2, int y2) { g.drawLine(x+x1, y+y1, x+x2, y+y2, 1.6f); };
         switch (icon_) {
+            case Icon::melody:
+                line(6, 12, 6, 1); line(6, 1, 12, 4);
+                g.fillEllipse(x+1, y+11, 6, 4); break;
+            case Icon::chorus:
+                g.drawRoundedRectangle(x+4,y+1,6,10,3,1.5f);
+                g.drawRoundedRectangle(x+1,y+6,12,8,4,1.4f); line(7,14,7,17); line(3,17,11,17); break;
+            case Icon::pitched:
+                g.drawRect(x,y+3,13.f,12.f,1.4f); line(4,4,4,15); line(9,4,9,15);
+                g.fillRect(x+3,y+3,3.f,5.f); break;
+            case Icon::drums:
+                g.drawEllipse(x,y+5,13,5,1.4f); line(0,7,1,14); line(13,7,12,14);
+                line(1,14,12,14); line(2,1,10,5); line(12,0,5,5); break;
+            case Icon::audio:
+                line(0,9,3,9); line(3,9,5,3); line(5,3,8,15); line(8,15,10,6); line(10,6,13,9); break;
+            case Icon::bus:
+                for (int h : {3,9,15}) { line(0,h,6,h); line(6,h,9,9); }
+                line(9,9,13,9); break;
+            case Icon::send:
+                line(1,3,10,3); line(10,3,10,11); line(10,11,1,11);
+                line(1,11,5,7); line(1,11,5,15); break;
+            case Icon::zoomIn:
+            case Icon::zoomOut:
+                g.drawEllipse(x+1,y,13,13,1.7f); line(12,12,19,18); line(4,6,11,6);
+                if (icon_ == Icon::zoomIn) line(7,3,7,9);
+                break;
             case Icon::arrangement:
                 line(1, 1, 1, 17);
                 g.fillRoundedRectangle(x+4, y+2, 10, 3, 1);
@@ -55,6 +80,9 @@ public:
                     line(0, i, 3, i); line(7, i, i == 9 ? 15 : 20, i);
                 }
                 break;
+        }
+        if (icon_ >= Icon::melody && icon_ <= Icon::send) {
+            line(14,14,20,14); line(17,11,17,17);
         }
         if (hasKeyboardFocus(false)) g.drawRoundedRectangle(rect, 4, 1.5f);
     }

@@ -179,6 +179,18 @@ static int checkGallery(const juce::File& directory) {
             const auto alignments = lyrics["alignments"];
             if (units.size() != static_cast<int>(notes.size() + project->pitchedNotes[7].size())
                 || alignments.size() != units.size() || lyrics["voices"].size() != 2) return 1;
+            std::unique_ptr<ostfstudio::OstfpPreview> doubled, restored;
+            if (project->editTracks(ostfstudio::TrackKind::pitched, {}, doubled, 0).failed()) return 1;
+            const auto duplicated = juce::JSON::parse(doubled->sourceScore.toString());
+            const auto newTrack = duplicated["tracks"][8];
+            const auto voice = duplicated["lyrics"]["voices"][2];
+            if (voice["trackId"] != newTrack["id"] || voice["id"] == lyrics["voices"][0]["id"]
+                || newTrack["clips"][0]["vocalPerformances"][0]["voiceId"] != voice["id"]
+                || duplicated["lyrics"]["units"].size() != units.size()
+                || duplicated["lyrics"]["alignments"].size() != alignments.size() + static_cast<int>(notes.size())
+                || doubled->editTracks(ostfstudio::TrackKind::pitched, 8, restored).failed()) return 1;
+            const auto restoredScore = juce::JSON::parse(restored->sourceScore.toString());
+            if (juce::JSON::toString(restoredScore["lyrics"]) != juce::JSON::toString(lyrics)) return 1;
         }
         std::cout << expected.file << (expected.bars == 0 ? ": mixed meter rejected as expected" : ": preview opened") << '\n';
     }
@@ -380,6 +392,10 @@ int main(int argc, char** argv) {
     auto mix = ostfstudio::SessionMix{};
     mix.tracks.resize(3);
     mix.midiRoutes.resize(3);
+    mix.routing.busCount = 4;
+    mix.routing.busDb[3] = -4.5;
+    mix.tracks[2].outputBus = 3;
+    mix.outputEffects[ostfstudio::busOutput(3)].add("VST3|Test|Bus D|23");
     mix.routing.masterDb = -6.0;
     mix.routing.returnCount = 2;
     mix.routing.returnDb[1] = -8.0;
@@ -398,6 +414,8 @@ int main(int argc, char** argv) {
         || scoreOnly->sourceScore != package->sourceScore || scoreOnly->pitchedNotes[0].size() != 6
         || scoreOnly->pitchedNotes[1].size() != 2 || scoreOnly->pitchedNotes[1][1].velocity != 77) return 1;
     const auto& saved = *package->savedMix;
+    if (saved.routing.busCount != 4 || saved.routing.busDb[3] != -4.5 || saved.tracks[2].outputBus != 3
+        || saved.outputEffects[ostfstudio::busOutput(3)] != mix.outputEffects[ostfstudio::busOutput(3)]) return 1;
     if (saved.tracks[0].volumeDb != -9.0 || saved.tracks[0].pan != 0.5f || saved.tracks[0].outputBus != 1
         || std::abs(saved.tracks[0].returnSends[1] - 0.42f) > 0.001f || saved.routing.masterDb != -6.0
         || saved.routing.returnCount != 2 || saved.routing.returnDb[1] != -8.0
@@ -457,6 +475,24 @@ int main(int argc, char** argv) {
         || audio->editTracks(TrackKind::pitched, 3, removed).failed()
         || removed->trackKinds[3] != TrackKind::drum || removed->trackKinds[4] != TrackKind::audio
         || removed->audio.size() != 1 || removed->audio[0].track != 0) return 1;
+    std::unique_ptr<ostfstudio::OstfpPreview> melodyProject, chorus, copied;
+    if (project->editTracks(TrackKind::pitched, {}, melodyProject, {}, ostfstudio::MixerTrackGroup::melody).failed()
+        || !melodyProject->isGlobalNoteTrack(3) || melodyProject->mixerGroups[3] != ostfstudio::MixerTrackGroup::melody
+        || melodyProject->editTracks(TrackKind::pitched, {}, chorus, {}, ostfstudio::MixerTrackGroup::vocal).failed()
+        || chorus->mixerGroups[4] != ostfstudio::MixerTrackGroup::vocal
+        || chorus->editTracks(TrackKind::pitched, {}, copied, 0).failed()
+        || copied->audio.back().track != 5 || copied->audio.back().embedded != project->audio[0].embedded
+        || copied->pitchedNotes[5].size() != project->pitchedNotes[0].size()) return 1;
+    const auto copyJson = juce::JSON::parse(copied->sourceScore.toString());
+    auto originalTrack = copyJson["tracks"][0], copy = copyJson["tracks"][5];
+    if (originalTrack["id"] == copy["id"] || originalTrack["clips"][0]["id"] == copy["clips"][0]["id"]) return 1;
+    while (copied->sourceTrackCount() < ostfstudio::OstfpPreview::maxTracks) {
+        std::unique_ptr<ostfstudio::OstfpPreview> next;
+        if (copied->editTracks(TrackKind::pitched, {}, next).failed()) return 1;
+        copied.swap(next);
+    }
+    std::unique_ptr<ostfstudio::OstfpPreview> overflow;
+    if (copied->sourceTrackCount() != 15 || copied->editTracks(TrackKind::pitched, {}, overflow).wasOk() || overflow) return 1;
     removed->audio.clear();
     mix.tracks.resize(5);
     mix.audioTracks = {false, false, false, false, true};

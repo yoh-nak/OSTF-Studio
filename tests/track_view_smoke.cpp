@@ -63,6 +63,39 @@ int checkTrackView(const juce::File& fixture) {
     if (tracks->getNumItems() != 1 || tracks->getSelectedId() != 1) return 15;
     auto* addedGrip = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
     if (!addedGrip || addedGrip->height() != 84) return 18;
+    const auto click = [&](const char* label) {
+        auto* button = findControl<ViewButton>(main, juce::translate(label));
+        if (!button || !button->isEnabled() || button->getTooltip().isEmpty() || !button->onClick) return false;
+        button->onClick();
+        return true;
+    };
+    main.setSize(680, 570);
+    juce::RectangleList<int> icons;
+    for (auto* child : main.getChildren()) {
+        if (auto* button = dynamic_cast<ViewButton*>(child)) {
+            if (button->getTooltip().isEmpty() || icons.intersectsRectangle(button->getBounds())
+                || !main.getLocalBounds().contains(button->getBounds())) return 33;
+            icons.add(button->getBounds());
+        }
+    }
+    if (!click("Add melody track") || !click("Add chorus vocal track") || !click("Add drum / percussion track")
+        || !click("Add audio track") || tracks->getNumItems() != 5) return 34;
+    const auto selected = tracks->getText();
+    auto trackActions = model.getMenuForIndex(4, {});
+    for (juce::PopupMenu::MenuItemIterator it(trackActions); it.next();)
+        if (it.getItem().text == TRANS("Duplicate track") && it.getItem().isEnabled)
+            model.menuItemSelected(it.getItem().itemID, 4);
+    if (tracks->getNumItems() != 6 || !tracks->getText().startsWith(selected)) return 35;
+    if (!click("Add bus track") || !click("Add return track")) return 36;
+    const auto* busC = findControl<TrackRowSize>(main, "Bus C track height");
+    const auto* return2 = findControl<TrackRowSize>(main, "Return 2 track height");
+    if (!busC || !busC->isVisible() || !return2 || !return2->isVisible()) return 37;
+    auto& desktop = juce::Desktop::getInstance();
+    const auto scale = desktop.getGlobalScaleFactor();
+    const bool atMaxScale = scale >= 1.5f;
+    if (!click(atMaxScale ? "Zoom out interface" : "Zoom in interface") || scale == desktop.getGlobalScaleFactor()
+        || !click(atMaxScale ? "Zoom in interface" : "Zoom out interface") || scale != desktop.getGlobalScaleFactor()) return 38;
+    main.setSize(1450, 1200);
     if (!main.openDocument(fixture)) return 1;
     auto* guitar = findControl<TrackRowSize>(main, "Lead Guitar track height");
     auto* bass = findControl<TrackRowSize>(main, "Bass track height");

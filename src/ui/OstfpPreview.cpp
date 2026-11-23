@@ -260,7 +260,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
 
     const auto trackData = score["tracks"];
     const auto& tracks = array(trackData);
-    require(static_cast<std::size_t>(tracks.size()) <= OstfpPreview::maxTracks, "Preview supports at most eight arrangement tracks");
+    require(static_cast<std::size_t>(tracks.size()) <= OstfpPreview::maxTracks, "Preview supports at most fifteen source tracks");
     std::vector<std::pair<juce::String, int>> drumMappings;
     if (const auto slots = score["soundSlots"]; slots.isArray()) {
         for (const auto& slot : array(slots)) {
@@ -442,6 +442,11 @@ juce::MemoryBlock savedScore(const OstfpPreview& project, bool writing = false) 
 
 juce::String busId(int bus) { return bus < 0 ? "master" : "bus-" + juce::String(bus + 1); }
 juce::String returnId(std::size_t index) { return "return-" + juce::String(static_cast<int>(index + 1)); }
+int busIndex(const juce::String& id) {
+    for (int i = 0; i < static_cast<int>(maxMixerBuses); ++i)
+        if (id == busId(i)) return i;
+    return -1;
+}
 int returnIndex(const juce::String& id) {
     for (std::size_t index = 0; index < maxMixerReturns; ++index)
         if (id == returnId(index)) return static_cast<int>(index);
@@ -483,10 +488,11 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix) {
     attachEffects(master, true, 0, mix.outputEffects[0]);
     master.getDynamicObject()->setProperty("mute", mix.routing.outputMuted[0]);
     channels.add(master);
-    for (int bus = 0; bus < 2; ++bus) {
+    for (int bus = 0; bus < static_cast<int>(mix.routing.busCount); ++bus) {
+        const auto slot = busOutput(static_cast<std::size_t>(bus));
         auto channel = mixChannel(busId(bus), "bus", mix.routing.busDb[static_cast<std::size_t>(bus)]);
-        attachEffects(channel, true, bus + 1, mix.outputEffects[bus + 1]);
-        channel.getDynamicObject()->setProperty("mute", mix.routing.outputMuted[static_cast<std::size_t>(bus + 1)]);
+        attachEffects(channel, true, slot, mix.outputEffects[slot]);
+        channel.getDynamicObject()->setProperty("mute", mix.routing.outputMuted[slot]);
         channel.getDynamicObject()->setProperty("outputChannelId", "master");
         channels.add(std::move(channel));
     }
@@ -585,6 +591,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
         return std::clamp(v, -60.0, 6.0);
     };
     SessionMix mix;
+    mix.routing.busCount = mix.routing.returnCount = 0;
     mix.tracks.resize(voicingIndex + static_cast<std::size_t>(voicingMix.isObject()));
     mix.midiRoutes.resize(mix.tracks.size());
     mix.instruments.resize(mix.tracks.size());
@@ -608,7 +615,8 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
         const auto id = entry["id"].toString();
         const bool outputChannel = entry["kind"] != "track";
         const int track = entry == voicingMix ? static_cast<int>(voicingIndex) : trackIndex(entry["trackId"]);
-        const int output = id == "master" ? 0 : id == "bus-1" ? 1 : id == "bus-2" ? 2
+        const int bus = busIndex(id);
+        const int output = id == "master" ? 0 : bus >= 0 ? static_cast<int>(busOutput(bus))
             : returnIndex(id) >= 0 ? 3 + returnIndex(id) : -1;
         const int channelIndex = outputChannel ? output : track;
         require(channelIndex >= 0, "Unsupported production channel");
@@ -637,10 +645,10 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
         if (id == "master") {
             mix.routing.masterDb = gain(entry["gainDb"]);
             mix.routing.outputMuted[0] = static_cast<bool>(entry["mute"]);
-        } else if (id == "bus-1" || id == "bus-2") {
-            const auto bus = id == "bus-1" ? 0u : 1u;
+        } else if (bus >= 0) {
+            mix.routing.busCount = std::max(mix.routing.busCount, static_cast<std::size_t>(bus + 1));
             mix.routing.busDb[bus] = gain(entry["gainDb"]);
-            mix.routing.outputMuted[1 + bus] = static_cast<bool>(entry["mute"]);
+            mix.routing.outputMuted[busOutput(bus)] = static_cast<bool>(entry["mute"]);
         }
         else if (id.startsWith("return-")) {
             const auto index = returnIndex(id);
@@ -659,8 +667,8 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
             settings.muted = static_cast<bool>(entry["mute"]);
             settings.soloed = static_cast<bool>(entry["solo"]);
             const auto output = entry["outputChannelId"].toString();
-            require(output == "master" || output == "bus-1" || output == "bus-2", "Unsupported OSTFP track output");
-            settings.outputBus = output == "master" ? -1 : (output == "bus-1" ? 0 : 1);
+            require(output == "master" || busIndex(output) >= 0, "Unsupported OSTFP track output");
+            settings.outputBus = busIndex(output);
             const auto sends = entry["sends"];
             if (!sends.isVoid()) for (const auto& send : array(sends)) {
                 const auto r = returnIndex(send["targetChannelId"].toString());
@@ -763,7 +771,7 @@ void readAudioReferences(const juce::var& score, OstfpPreview& project) {
     const auto references = score["extensions"][mixNamespace]["data"]["audio"];
     if (!references.isArray()) return;
     const auto& records = array(references);
-    require(records.size() <= 8, "Too many referenced audio files");
+    require(records.size() <= static_cast<int>(OstfpPreview::maxTracks), "Too many referenced audio files");
     for (const auto& ref : records) {
         const auto track = integer(ref["track"]);
         const auto path = ref["path"].toString();
@@ -889,8 +897,64 @@ const char* OstfpPreview::keepLabel(juce::String label) {
     return labels.back().toRawUTF8();
 }
 
+namespace {
+using IdCopies = std::map<juce::String, juce::String>;
+
+void collectOwnedIds(const juce::var& value, IdCopies& ids, bool makeCopies = false) {
+    if (auto* obj = value.getDynamicObject()) {
+        if (auto id = value["id"].toString(); id.isNotEmpty())
+            ids.try_emplace(id, makeCopies ? "copy-" + juce::Uuid().toString() : juce::String{});
+        for (const auto& field : obj->getProperties()) collectOwnedIds(field.value, ids, makeCopies);
+    } else if (auto* items = value.getArray())
+        for (const auto& item : *items) collectOwnedIds(item, ids, makeCopies);
+}
+
+void remapIds(juce::var& value, const juce::String& field, const IdCopies& ids) {
+    if (auto* obj = value.getDynamicObject()) {
+        auto& properties = obj->getProperties();
+        for (int i = 0; i < properties.size(); ++i)
+            remapIds(*properties.getVarPointerAt(i), properties.getName(i).toString(), ids);
+    } else if (auto* items = value.getArray()) {
+        for (auto& item : *items) remapIds(item, field, ids);
+    } else if (value.isString() && (field == "id" || field.endsWith("Id") || field.endsWith("Ids"))) {
+        if (const auto it = ids.find(value.toString()); it != ids.end()) value = it->second;
+    }
+}
+
+juce::var copyScoreTrack(const juce::var& original, juce::var lyrics) {
+    IdCopies ids;
+    collectOwnedIds(original, ids, true);
+    // Lyrics and text units are shared. Each singing part owns its voice and note alignments.
+    auto copyRelated = [&](const char* key, auto matches) {
+        auto* object = lyrics.getDynamicObject();
+        if (!object || !lyrics[key].isArray()) return;
+        auto list = lyrics[key];
+        const auto count = list.getArray()->size();
+        for (int i = 0; i < count; ++i) {
+            auto item = (*list.getArray())[i].clone();
+            if (!matches(item)) continue;
+            collectOwnedIds(item, ids, true);
+            remapIds(item, {}, ids);
+            list.getArray()->add(item);
+        }
+        object->setProperty(key, list);
+    };
+    copyRelated("voices", [&](const auto& voice) { return voice["trackId"] == original["id"]; });
+    copyRelated("alignments", [&](const auto& alignment) {
+        auto notes = alignment["noteIds"];
+        return notes.isArray() && !notes.getArray()->isEmpty() && std::all_of(notes.getArray()->begin(),
+            notes.getArray()->end(), [&](const auto& note) { return ids.contains(note.toString()); });
+    });
+    auto copy = original.clone();
+    remapIds(copy, {}, ids);
+    copy.getDynamicObject()->setProperty("name", original["name"].toString() + TRANS(" (copy)"));
+    return copy;
+}
+}
+
 juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t> remove,
-                                     std::unique_ptr<OstfpPreview>& result) const {
+                                     std::unique_ptr<OstfpPreview>& result, std::optional<std::size_t> duplicate,
+                                     MixerTrackGroup group) const {
     try {
         const auto before = savedScore(*this);
         auto score = parseObject(before);
@@ -899,13 +963,35 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
         auto extensions = score["extensions"];
         if (auto* values = extensions.getDynamicObject()) values->removeProperty(mixNamespace);
         const auto revision = "studio-" + juce::Uuid().toString();
-        if (remove) {
+        if (duplicate) {
+            require(!remove && *duplicate < sourceTrackCount() && sourceTrackCount() < maxTracks, "Cannot duplicate this track");
+            auto copy = copyScoreTrack(entries[static_cast<int>(*duplicate)], score["lyrics"]);
+            entries.add(std::move(copy));
+            score.getDynamicObject()->setProperty("tracks", tracks);
+            kind = trackKinds[*duplicate];
+        } else if (remove) {
             require(*remove < static_cast<std::size_t>(entries.size()), "Invalid track");
             const auto removed = entries[static_cast<int>(*remove)];
-            juce::StringArray ids;
-            ids.add(removed["id"].toString());
-            if (const auto clips = removed["clips"]; clips.isArray())
-                for (const auto& clip : *clips.getArray()) ids.add(clip["id"].toString());
+            IdCopies ids;
+            collectOwnedIds(removed, ids);
+            auto lyrics = score["lyrics"];
+            auto removeRelated = [&](const char* key, auto matches) {
+                if (!lyrics.isObject() || !lyrics[key].isArray()) return;
+                auto list = lyrics[key];
+                for (int i = list.getArray()->size(); --i >= 0;) {
+                    const auto item = (*list.getArray())[i];
+                    if (!matches(item)) continue;
+                    collectOwnedIds(item, ids);
+                    list.getArray()->remove(i);
+                }
+                lyrics.getDynamicObject()->setProperty(key, list);
+            };
+            removeRelated("voices", [&](const auto& item) { return item["trackId"] == removed["id"]; });
+            removeRelated("alignments", [&](const auto& item) {
+                auto notes = item["noteIds"];
+                return notes.isArray() && !notes.getArray()->isEmpty() && std::all_of(notes.getArray()->begin(),
+                    notes.getArray()->end(), [&](const auto& note) { return ids.contains(note.toString()); });
+            });
             entries.remove(static_cast<int>(*remove));
             score.getDynamicObject()->setProperty("tracks", tracks);
             const auto referencesRemoved = [&ids](const auto& self, const juce::var& value) -> bool {
@@ -919,11 +1005,14 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
             };
             require(!referencesRemoved(referencesRemoved, score), "Track or clip is referenced elsewhere in the score");
         } else {
-            require(static_cast<std::size_t>(entries.size()) < maxTracks, "Preview supports up to eight tracks");
-            const auto name = kind == TrackKind::audio ? "Audio" : kind == TrackKind::drum ? "Drums" : "Pitched";
+            require(static_cast<std::size_t>(entries.size()) < maxTracks, "Preview supports at most fifteen source tracks");
+            const auto name = group == MixerTrackGroup::melody ? "Melody" : group == MixerTrackGroup::vocal ? "Chorus"
+                            : kind == TrackKind::audio ? "Audio" : kind == TrackKind::drum ? "Drums" : "Pitched";
             auto track = object({{"id", revision + "-track"}, {"name", name + juce::String(" ") + juce::String(entries.size() + 1)},
                                  {"clips", juce::Array<juce::var>{}}});
             if (kind != TrackKind::audio) track.getDynamicObject()->setProperty("trackType", kind == TrackKind::drum ? "drum" : "melodic");
+            if (group == MixerTrackGroup::melody || group == MixerTrackGroup::vocal)
+                track.getDynamicObject()->setProperty("role", group == MixerTrackGroup::melody ? "melody" : "vocal");
             entries.add(track);
             score.getDynamicObject()->setProperty("tracks", tracks);
         }
@@ -936,7 +1025,9 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
             document->setProperty("modifiedBy", object({{"name", "OSTF Studio"}}));
         }
         auto next = projectScore(score);
-        next->sourceScore = editedScoreBytes(before, score, {"tracks", "document", "extensions"});
+        next->sourceScore = editedScoreBytes(before, score, {"tracks", "document", "extensions", "lyrics"});
+        require(next->sourceScore.getSize() <= maxBytes, "OSTF score is too large.");
+        next->sourceManifest = sourceManifest;
         next->trackKinds = trackKinds;
         if (remove) next->trackKinds.erase(next->trackKinds.begin() + static_cast<std::ptrdiff_t>(*remove));
         else next->trackKinds.insert(next->trackKinds.begin() + static_cast<std::ptrdiff_t>(sourceTrackCount()), kind);
@@ -944,6 +1035,10 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
             if (remove && item.track == *remove) continue;
             next->audio.push_back(item);
             if (remove && item.track > *remove) --next->audio.back().track;
+            if (duplicate && item.track == *duplicate) {
+                next->audio.push_back(item);
+                next->audio.back().track = sourceTrackCount();
+            }
         }
         result = std::move(next);
         return juce::Result::ok();
@@ -1026,7 +1121,7 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
                 && (header[6] & 1) == 0 && juce::ByteOrder::littleEndianShort(header + 8) == 0 && input.setPosition(0),
                 "Expected a stored OSTFP mimetype header");
         juce::ZipFile zip(input);
-        require(zip.getNumEntries() >= 3 && zip.getNumEntries() <= 12
+        require(zip.getNumEntries() >= 3 && zip.getNumEntries() <= 4 + static_cast<int>(OstfpPreview::maxTracks)
                 && zip.getEntry(0)->filename == "mimetype" && zip.getEntry(1)->filename == "manifest.json",
                 "Preview supports an OSTFP score and optional Studio mixer document");
         const auto mime = readMember(zip, 0);
@@ -1038,7 +1133,7 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
         const auto& documents = array(documentData);
         const auto assetData = manifest["assets"];
         const auto& assets = array(assetData);
-        require(documents.size() <= 1 && assets.size() <= 8 && zip.getNumEntries() == 3 + documents.size() + assets.size()
+        require(documents.size() <= 1 && assets.size() <= static_cast<int>(OstfpPreview::maxTracks) && zip.getNumEntries() == 3 + documents.size() + assets.size()
                 && array(manifest["bindings"]).isEmpty()
                 && (manifest["externalAssets"].isVoid() || array(manifest["externalAssets"]).isEmpty()),
                 "Unsupported OSTFP documents or assets");
@@ -1123,7 +1218,7 @@ juce::Result writeOstfpPreview(const OstfpPreview& project, const SessionMix& mi
             media.push_back(audioBytes(audio));
             const auto& bytes = media.back();
             total += bytes.getSize();
-            require(total <= maxPackageBytes - 3 * maxBytes && media.size() <= 8, "OSTFP audio exceeds preview package capacity");
+            require(total <= maxPackageBytes - 3 * maxBytes && media.size() <= OstfpPreview::maxTracks, "OSTFP audio exceeds preview package capacity");
             const auto id = "audio-" + juce::String(static_cast<int>(media.size()));
             const auto path = "assets/" + id + ".wav";
             references.add(object({{"track", static_cast<int>(audio.track)}, {"path", path}}));

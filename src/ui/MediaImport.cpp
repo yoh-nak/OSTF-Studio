@@ -163,7 +163,7 @@ juce::Result readMidi(const juce::File& source, ImportSong& song) {
     if (song.parts.empty())
         return fail("No MIDI notes found.");
     if (song.parts.size() > OstfpPreview::maxTracks)
-        return fail("Studio can open up to eight source tracks.");
+        return fail("Studio can open up to fifteen source tracks.");
     if (meters.count(0))
         std::tie(song.beats, song.beatType) = meters.at(0);
     for (const auto& [tick, meter] : meters)

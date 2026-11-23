@@ -35,15 +35,16 @@ struct SessionMix {
     std::vector<juce::var> instruments;
     MixerRouting routing;
     static constexpr std::size_t maxEffects = 8;
-    std::array<juce::String, 3 + maxMixerReturns> insertIds;
-    std::array<juce::StringArray, 3 + maxMixerReturns> outputEffects;
+    std::array<juce::String, mixerOutputCapacity> insertIds;
+    std::array<juce::StringArray, mixerOutputCapacity> outputEffects;
     std::vector<juce::StringArray> trackEffects;
     // Normalized to the displayed channel and slot when reading a production document.
     std::map<juce::String, juce::String> stockEffectStates;
     static juce::String effectSlot(bool output, std::size_t channel, int slot) {
         const auto n = static_cast<int>(channel);
         const auto id = !output ? "track-" + juce::String(n + 1)
-            : n == 0 ? juce::String("master") : n < 3 ? "bus-" + juce::String(n) : "return-" + juce::String(n - 2);
+            : n == 0 ? juce::String("master") : isReturnOutput(channel) ? "return-" + juce::String(n - 2)
+            : "bus-" + juce::String(static_cast<int>(outputBusIndex(channel) + 1));
         return id + "-fx-" + juce::String(slot + 1);
     }
     std::vector<bool> audioTracks;
@@ -68,7 +69,7 @@ struct SongInformation {
 
 struct OstfpPreview {
     juce::int64 playbackEndTick() const { return (bars.endBar - 1) * ticksPerBar; }
-    static constexpr std::size_t maxTracks = 8;
+    static constexpr std::size_t maxTracks = 15; // One transport channel is reserved for global chord voicing.
     juce::String title;
     juce::String sourceVersion;
     juce::int64 durationTicks = 0;
@@ -114,7 +115,8 @@ struct OstfpPreview {
 
     [[nodiscard]] ArrangementView view() const { return {bars, globalLanes, trackLanes}; }
     const char* keepLabel(juce::String label);
-    juce::Result editTracks(TrackKind kind, std::optional<std::size_t> remove, std::unique_ptr<OstfpPreview>& result) const;
+    juce::Result editTracks(TrackKind kind, std::optional<std::size_t> remove, std::unique_ptr<OstfpPreview>& result,
+                            std::optional<std::size_t> duplicate = {}, MixerTrackGroup group = MixerTrackGroup::pitched) const;
     bool insertGeneratorPattern(std::size_t track, int bar);
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);
 };

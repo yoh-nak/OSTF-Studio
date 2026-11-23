@@ -14,6 +14,7 @@ class PreviewTransport final : private juce::AudioIODeviceCallback, private juce
 public:
     static constexpr std::size_t maxTracks = std::tuple_size_v<decltype(ostfstudio::MeterFrame::tracks)>;
     static constexpr std::size_t outputCount = std::tuple_size_v<decltype(ostfstudio::MeterFrame::outputs)>;
+    static_assert(maxTracks >= ostfstudio::OstfpPreview::maxTracks + 1);
     using Chain = std::array<juce::AudioPluginInstance*, ostfstudio::SessionMix::maxEffects>;
     using Inserts = std::array<Chain, outputCount + maxTracks>;
     struct TrackSetup {

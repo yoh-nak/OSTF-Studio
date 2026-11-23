@@ -9,6 +9,9 @@
 class MixerPanel final : public juce::Component {
 public:
     MixerPanel();
+    void addReturn();
+    void addBus();
+    static juce::String busName(std::size_t index);
     void setTracks(const ostfstudio::OstfpPreview& project);
     void resized() override;
     void updateMeters(const ostfstudio::MeterFrame& frame, double now);
@@ -31,7 +34,8 @@ public:
     void restore(const ostfstudio::SessionMix& mix);
     std::function<void(std::size_t)> channelChanged;
     std::function<void()> routingChanged;
-    std::function<void()> returnsChanged;
+    std::function<void()> requestReturn;
+    std::function<void(bool, std::size_t)> rowMenu;
 
 private:
     struct Strip final : juce::Component {
@@ -48,9 +52,12 @@ private:
         juce::ComboBox output, returnTarget;
         juce::Slider sendLevel;
         juce::Label status;
+        void mouseDown(const juce::MouseEvent& event) override {
+            if (event.mods.isPopupMenu() && contextMenu) contextMenu();
+        }
+        std::function<void()> contextMenu;
         const bool isTrack;
     };
-    void addReturn();
     void updateReturnOptions();
     void refreshAudibility();
 

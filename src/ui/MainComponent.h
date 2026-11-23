@@ -64,13 +64,21 @@ private:
     juce::PopupMenu timelineMenu() const;
     void selectTrack(std::size_t index);
     void rebuildTrackControls();
-    void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {});
+    void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
+                    std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched);
+    void showRowMenu(bool output, std::size_t index);
+    void confirmRemoval(bool output, std::size_t index);
+    void editOutput(bool isReturn, std::optional<std::size_t> source = {}, bool remove = false);
+    void refreshTrackActions();
+    void changeInterfaceScale(int step);
+    void revealRow(juce::Rectangle<int> row);
+    void copyEffectChain(bool output, std::size_t from, std::size_t to);
     bool canEditTracks() const;
     void chooseTrackPlugin(std::size_t index, bool bundleDirectory);
     void showTrackPluginMenu(std::size_t index);
     void scanTrackPlugin(std::size_t index);
     void discoverTrackPlugin(std::size_t index);
-    void loadTrackPlugin(std::size_t index, const juce::PluginDescription& description, bool restoring = false);
+    void loadTrackPlugin(std::size_t index, const juce::PluginDescription& description, bool restoring = false, juce::MemoryBlock state = {});
     void openTrackPluginEditor(std::size_t index);
     void linkAudio(std::size_t index);
     void setupOutputTracks();
@@ -126,7 +134,12 @@ private:
                pluginBrowserButton_ {ViewButton::Icon::plugins}, outputButton_ {ViewButton::Icon::outputs},
                lanesButton_ {ViewButton::Icon::lanes}, arrangementButton_ {ViewButton::Icon::arrangement},
                leadButton_ {ViewButton::Icon::leadSheet}, scoreButton_ {ViewButton::Icon::score};
-    juce::TooltipWindow tooltips_ {this};
+    ViewButton melodyAdd_ {ViewButton::Icon::melody}, chorusAdd_ {ViewButton::Icon::chorus},
+               pitchedAdd_ {ViewButton::Icon::pitched}, drumsAdd_ {ViewButton::Icon::drums},
+               audioAdd_ {ViewButton::Icon::audio}, busAdd_ {ViewButton::Icon::bus}, returnAdd_ {ViewButton::Icon::send},
+               uiSmaller_ {ViewButton::Icon::zoomOut}, uiLarger_ {ViewButton::Icon::zoomIn};
+    int interfaceScale_ = 100;
+    juce::TooltipWindow tooltips_ {this, 450};
     bool editorVisible_ = true, mixerSelected_ = false;
     TransportPanel deck_;
     juce::Label documentLabel_;

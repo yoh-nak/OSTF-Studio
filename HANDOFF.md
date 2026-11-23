@@ -4,6 +4,9 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
+- `feature/track-actions-ui-scale` adds toolbar actions for melody, chorus, pitched, drum, audio, bus and return tracks. Right-click the name in the arrangement or mixer to duplicate a part or remove it after confirmation. Master, Cue and the derived chord voicing are fixed. Source parts can occupy 15 of the 16 playback channels. There are up to eight buses and eight returns. Existing output slot IDs remain compatible.
+- The magnifiers set application scale to 75%, 100%, 125% or 150% and save it in view settings. At narrow widths the toolbar wraps to a second line. Test with `ostf_studio_track_view`, the round-trip and gallery tests, and the core mixer tests. The Windows x64 Release passed all 19 CTests, including copying the vocal demo's notes, voices and lyric alignments. Local development packages use `dist/windows-track-actions/`. Physical-device playback has not been verified for these changes.
+
 - On `feature/windows-vst3-installer-repair`, Windows Setup can install Studio alone, or repair the shared VST3 set while matching versioned binaries are loaded. The shared task is selected by default. Deferring it also defers migration of legacy bundles. The application binary is the `transport-nav` build. The revised installer is in `dist/windows-transport-nav-setup2/`.
 - An isolated Windows installer test held a matching VST3 open, restored missing bundle resources, reproduced exit code 5 with a changed and locked binary, deferred the shared update and successfully retried after releasing the lock. The workflow includes the locked repair and app-only paths. The local test used isolated paths and ran without UAC. The installed transport application and all 112 files in the 11 shared bundles on this workstation matched the build.
 

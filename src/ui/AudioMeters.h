@@ -28,7 +28,7 @@ private:
 
 struct MeterFrame {
     std::array<StereoPeak, 16> tracks{};
-    std::array<StereoPeak, 3 + maxMixerReturns> outputs{}; // Master, buses A/B, returns
+    std::array<StereoPeak, mixerOutputCapacity> outputs{};
     StereoPeak cue{};
 };
 }

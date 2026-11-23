@@ -254,13 +254,17 @@ void PreviewTransport::setChannelMix(std::size_t track, const ostfstudio::Channe
     channel.level = audible ? ostfstudio::gainFromDb(mix.volumeDb) : 0.0f;
     channel.cue = mix.cue ? ostfstudio::gainFromDb(cueDb) : 0.0f;
     channel.pan = mix.pan;
-    channel.bus = std::clamp(mix.outputBus + 1, 0, 2);
+    channel.bus = mix.outputBus >= 0 && mix.outputBus < static_cast<int>(ostfstudio::maxMixerBuses)
+        ? static_cast<int>(ostfstudio::busOutput(static_cast<std::size_t>(mix.outputBus))) : 0;
     for (std::size_t i = 0; i < channel.sends.size(); ++i) channel.sends[i] = mix.returnSends[i];
 }
 
 void PreviewTransport::setOutputMix(const ostfstudio::MixerRouting& mix) {
     outputGains_[0] = mix.outputMuted[0] ? 0.0f : ostfstudio::gainFromDb(mix.masterDb);
-    for (std::size_t i = 0; i < mix.busDb.size(); ++i) outputGains_[1 + i] = mix.outputMuted[1 + i] ? 0.0f : ostfstudio::gainFromDb(mix.busDb[i]);
+    for (std::size_t i = 0; i < mix.busDb.size(); ++i) {
+        const auto slot = ostfstudio::busOutput(i);
+        outputGains_[slot] = i < mix.busCount && !mix.outputMuted[slot] ? ostfstudio::gainFromDb(mix.busDb[i]) : 0.0f;
+    }
     for (std::size_t i = 0; i < mix.returnDb.size(); ++i)
         outputGains_[3 + i] = i < mix.returnCount && !mix.outputMuted[3 + i] ? ostfstudio::gainFromDb(mix.returnDb[i]) : 0.0f;
 }

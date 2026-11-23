@@ -19,6 +19,7 @@ const char* groupName(ostfstudio::MixerTrackGroup group) {
 }
 
 MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, bool track) : isTrack(track) {
+    for (auto* label : {&name, &classification, &status}) label->setInterceptsMouseClicks(false, false);
     name.setText(title, juce::dontSendNotification);
     name.setJustificationType(juce::Justification::centred);
     classification.setText(juce::translate(group), juce::dontSendNotification);
@@ -48,8 +49,6 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
         cue.setTooltip("Send to the independent Cue output pair.");
         output.setTitle(title + " output");
         output.addItem(TRANS("Out: Master"), 1);
-        output.addItem(TRANS("Out: Bus A"), 2);
-        output.addItem(TRANS("Out: Bus B"), 3);
         output.setSelectedId(1, juce::dontSendNotification);
         returnTarget.setTitle(title + " return send");
         sendLevel.setName(title + " send level");
@@ -94,7 +93,7 @@ void MixerPanel::Strip::resized() {
 void MixerPanel::updateMeters(const ostfstudio::MeterFrame& frame, double now) {
     for (std::size_t i = 0; i < std::min(strips_.size(), frame.tracks.size()); ++i)
         strips_[i]->meter.update(frame.tracks[i], now);
-    for (std::size_t i = 0; i < buses_.size(); ++i) buses_[i]->meter.update(frame.outputs[1 + i], now);
+    for (std::size_t i = 0; i < buses_.size(); ++i) buses_[i]->meter.update(frame.outputs[ostfstudio::busOutput(i)], now);
     for (std::size_t i = 0; i < returns_.size(); ++i) returns_[i]->meter.update(frame.outputs[3 + i], now);
     if (master_) master_->meter.update(frame.outputs[0], now);
     if (cue_) cue_->meter.update(frame.cue, now);
@@ -126,7 +125,7 @@ MixerPanel::MixerPanel() {
     viewport_.setScrollBarsShown(true, true);
     outputViewport_.setViewedComponent(&outputRack_, false);
     outputViewport_.setScrollBarsShown(true, true);
-    addReturnButton_.onClick = [this] { addReturn(); if (returnsChanged) returnsChanged(); };
+    addReturnButton_.onClick = [this] { if (requestReturn) requestReturn(); };
 }
 
 void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
@@ -134,7 +133,7 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     buses_.clear();
     returns_.clear();
     routing_ = {};
-    routing_.returnCount = 0;
+    routing_.returnCount = routing_.busCount = 0;
     const auto& tracks = project.trackLanes;
     channels_.assign(tracks.size(), {});
     trackOrder_.resize(tracks.size());
@@ -146,6 +145,7 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
 
     for (std::size_t i = 0; i < tracks.size(); ++i) {
         auto strip = std::make_unique<Strip>(juce::String::fromUTF8(tracks[i].label), groupName(project.mixerGroups[i]), true);
+        strip->contextMenu = [this, i] { if (rowMenu) rowMenu(false, i); };
         auto* controls = strip.get();
         strip->volume.onValueChange = [this, i, controls] { setVolumeDb(i, controls->volume.getValue()); };
         strip->pan.onValueChange = [this, i, controls] { setPan(i, static_cast<float>(controls->pan.getValue() / 100.0)); };
@@ -172,17 +172,8 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         strips_.push_back(std::move(strip));
     }
 
-    for (std::size_t i = 0; i < routing_.busDb.size(); ++i) {
-        auto bus = std::make_unique<Strip>(i == 0 ? TRANS("Bus A") : TRANS("Bus B"), "BUS", false);
-        bus->mute.onClick = [this, i, button = &bus->mute] { setOutputMuted(i + 1, button->getToggleState()); };
-        bus->status.setText(TRANS("To Master"), juce::dontSendNotification);
-        bus->volume.onValueChange = [this, i, control = &bus->volume] {
-            routing_.busDb[i] = control->getValue();
-            if (routingChanged) routingChanged();
-        };
-        outputRack_.addAndMakeVisible(*bus);
-        buses_.push_back(std::move(bus));
-    }
+    addBus();
+    addBus();
     master_ = std::make_unique<Strip>(TRANS("Master"), "OUTPUT", false);
     cue_ = std::make_unique<Strip>("Cue", "MONITOR", false);
     master_->mute.onClick = [this] { setOutputMuted(0, master_->mute.getToggleState()); };
@@ -204,10 +195,35 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     outputViewport_.setViewPosition(0, 0);
 }
 
+juce::String MixerPanel::busName(std::size_t index) {
+    return TRANS("Bus ") + juce::String::charToString(static_cast<juce::juce_wchar>('A' + index));
+}
+
+void MixerPanel::addBus() {
+    if (routing_.busCount >= ostfstudio::maxMixerBuses) return;
+    const auto index = routing_.busCount++;
+    auto strip = std::make_unique<Strip>(busName(index), "BUS", false);
+    strip->contextMenu = [this, index] { if (rowMenu) rowMenu(true, ostfstudio::busOutput(index)); };
+    strip->mute.onClick = [this, index, button = &strip->mute] {
+        setOutputMuted(ostfstudio::busOutput(index), button->getToggleState());
+    };
+    strip->status.setText(TRANS("To Master"), juce::dontSendNotification);
+    strip->volume.onValueChange = [this, index, control = &strip->volume] {
+        routing_.busDb[index] = control->getValue();
+        if (routingChanged) routingChanged();
+    };
+    outputRack_.addAndMakeVisible(*strip);
+    buses_.push_back(std::move(strip));
+    for (auto& track : strips_)
+        track->output.addItem(TRANS("Out: ") + busName(index), static_cast<int>(index + 2));
+    resized();
+}
+
 void MixerPanel::addReturn() {
     if (routing_.returnCount >= ostfstudio::maxMixerReturns) return;
     const auto index = routing_.returnCount++;
     auto strip = std::make_unique<Strip>(TRANS("Return ") + juce::String(static_cast<int>(index + 1)), "RETURN", false);
+    strip->contextMenu = [this, index] { if (rowMenu) rowMenu(true, ostfstudio::returnOutput(index)); };
     strip->mute.onClick = [this, index, button = &strip->mute] { setOutputMuted(index + 3, button->getToggleState()); };
     strip->status.setText(TRANS("To Master"), juce::dontSendNotification);
     strip->volume.onValueChange = [this, index, control = &strip->volume] {
@@ -227,7 +243,8 @@ void MixerPanel::updateReturnOptions() {
         strip->returnTarget.clear(juce::dontSendNotification);
         for (std::size_t i = 0; i < routing_.returnCount; ++i)
             strip->returnTarget.addItem(TRANS("Send: Return ") + juce::String(static_cast<int>(i + 1)), static_cast<int>(i + 1));
-        strip->returnTarget.setSelectedId(chosen, juce::dontSendNotification);
+        strip->returnTarget.setSelectedId(std::min(chosen, static_cast<int>(routing_.returnCount)), juce::dontSendNotification);
+        strip->sendLevel.setEnabled(routing_.returnCount != 0);
     }
 }
 
@@ -244,7 +261,7 @@ void MixerPanel::setPan(std::size_t index, float pan) {
 }
 
 void MixerPanel::setOutputBus(std::size_t index, int bus) {
-    channels_[index].outputBus = std::clamp(bus, -1, 1);
+    channels_[index].outputBus = std::clamp(bus, -1, static_cast<int>(routing_.busCount) - 1);
     strips_[index]->output.setSelectedId(channels_[index].outputBus + 2, juce::dontSendNotification);
     if (routingChanged) routingChanged();
 }
@@ -280,6 +297,23 @@ ostfstudio::SessionMix MixerPanel::snapshot() const {
 
 void MixerPanel::restore(const ostfstudio::SessionMix& mix) {
     if (mix.tracks.size() != channels_.size() && mix.tracks.size() + 1 != channels_.size()) return;
+    if (routing_.busCount > mix.routing.busCount) {
+        for (auto& strip : strips_) {
+            strip->output.clear(juce::dontSendNotification);
+            strip->output.addItem(TRANS("Out: Master"), 1);
+            for (std::size_t i = 0; i < mix.routing.busCount; ++i)
+                strip->output.addItem(TRANS("Out: ") + busName(i), static_cast<int>(i + 2));
+        }
+        buses_.resize(mix.routing.busCount);
+        routing_.busCount = mix.routing.busCount;
+    }
+    while (routing_.busCount < std::min(mix.routing.busCount, ostfstudio::maxMixerBuses)) addBus();
+    if (routing_.returnCount > mix.routing.returnCount) {
+        returns_.resize(mix.routing.returnCount);
+        routing_.returnCount = mix.routing.returnCount;
+        updateReturnOptions();
+    }
+    addReturnButton_.setEnabled(mix.routing.returnCount < ostfstudio::maxMixerReturns);
     while (routing_.returnCount < std::min(mix.routing.returnCount, ostfstudio::maxMixerReturns)) addReturn();
     routing_.masterDb = mix.routing.masterDb;
     routing_.cueDb = mix.routing.cueDb;
@@ -299,16 +333,18 @@ void MixerPanel::restore(const ostfstudio::SessionMix& mix) {
         strip.solo.setToggleState(track.soloed, juce::dontSendNotification);
         strip.cue.setToggleState(track.cue, juce::dontSendNotification);
         strip.output.setSelectedId(track.outputBus + 2, juce::dontSendNotification);
-        strip.sendLevel.setValue(track.returnSends[0] * 100.0, juce::dontSendNotification);
+        const int r = strip.returnTarget.getSelectedId() - 1;
+        strip.sendLevel.setValue(r < 0 ? 0 : track.returnSends[static_cast<std::size_t>(r)] * 100.0, juce::dontSendNotification);
         if (channelChanged) channelChanged(i);
     }
     refreshAudibility();
     routing_.outputMuted = mix.routing.outputMuted;
     master_->mute.setToggleState(routing_.outputMuted[0], juce::dontSendNotification);
     for (std::size_t i = 0; i < buses_.size(); ++i)
-        buses_[i]->mute.setToggleState(routing_.outputMuted[1 + i], juce::dontSendNotification);
+        buses_[i]->mute.setToggleState(routing_.outputMuted[ostfstudio::busOutput(i)], juce::dontSendNotification);
     for (std::size_t i = 0; i < returns_.size(); ++i)
         returns_[i]->mute.setToggleState(routing_.outputMuted[3 + i], juce::dontSendNotification);
+    resized();
     if (routingChanged) routingChanged();
 }
 
@@ -345,20 +381,20 @@ void MixerPanel::refreshAudibility() {
 
 double MixerPanel::outputVolume(std::size_t index) const {
     if (index == 0) return routing_.masterDb;
-    if (index < 3) return routing_.busDb[index - 1];
+    if (!ostfstudio::isReturnOutput(index)) return routing_.busDb[ostfstudio::outputBusIndex(index)];
     return routing_.returnDb[index - 3];
 }
 
 void MixerPanel::setOutputVolume(std::size_t index, double db) {
     if (index == 0) master_->volume.setValue(db, juce::sendNotificationSync);
-    else if (index < 3) buses_[index - 1]->volume.setValue(db, juce::sendNotificationSync);
+    else if (!ostfstudio::isReturnOutput(index)) buses_[ostfstudio::outputBusIndex(index)]->volume.setValue(db, juce::sendNotificationSync);
     else if (index - 3 < returns_.size()) returns_[index - 3]->volume.setValue(db, juce::sendNotificationSync);
 }
 
 void MixerPanel::setOutputMuted(std::size_t index, bool muted) {
     routing_.outputMuted[index] = muted;
     if (index == 0) master_->mute.setToggleState(muted, juce::dontSendNotification);
-    else if (index < 3) buses_[index - 1]->mute.setToggleState(muted, juce::dontSendNotification);
+    else if (!ostfstudio::isReturnOutput(index)) buses_[ostfstudio::outputBusIndex(index)]->mute.setToggleState(muted, juce::dontSendNotification);
     else if (index - 3 < returns_.size()) returns_[index - 3]->mute.setToggleState(muted, juce::dontSendNotification);
     if (routingChanged) routingChanged();
 }

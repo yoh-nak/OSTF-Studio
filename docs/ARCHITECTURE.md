@@ -6,6 +6,8 @@
 - DAW runtime = audio device, hosting, transport, timeline, editors, clipboard, AI integration.
 - OS-local settings = hardware device IDs, auth, user-specific settings, plugins scanning paths.
 
+Toolbar and track-header actions share the score editing, mixer routing and plug-in hosting paths. The mixer supports eight buses and eight returns with stable saved output slots. Removing a bus redirects its tracks to Master. Removing a return clears its sends. Interface scale is stored in the local view preferences.
+
 ## Project lifecycle
 
 A new session reads the embedded empty OSTF template through the same reader as a standalone score. The six playable Studio demos use the OSTFP reader. The upstream comprehensive example remains a parser regression fixture. Launching a document from the operating system opens that document directly in the workspace.
