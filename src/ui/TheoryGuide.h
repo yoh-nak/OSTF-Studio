@@ -10,7 +10,7 @@ public:
     using Tick = juce::int64;
     struct Scale {
         juce::String name;
-        int mask = 0;
+        int mask = 0, tonic = -1;
         struct Target { juce::String type, id; };
         std::vector<Target> targets;
     };
@@ -49,6 +49,9 @@ public:
     }
     std::vector<TrackCell> analyse(std::size_t track, const std::vector<PitchedNote>& notes, int reference = -1) const;
     int scaleForNote(const TrackCell&, const PitchedNote&) const;
+    enum class Tone { unknown, root, guide, chord, scale, outside };
+    static Tone tone(int pitch, const Chord* chord, int scaleMask);
+    static const char* interval(int pitch, int root);
     int chordMask(const Cell& c) const { return c.chord < 0 ? 0 : chords[static_cast<std::size_t>(c.chord)].mask; }
 private:
     struct Key { int root; juce::String mode; };

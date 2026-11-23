@@ -10,7 +10,7 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 - For the proposed Studio chord comparison, test a single-bar substitution with a dependent bass clip and unrelated performances. Verify cancel, chords-only acceptance, selective part adoption, concurrent edits, undo and reopening. Keep the optional score-level dependency status distinct from any clip-level review label.
 
-- The Theory Guide implementation on `feature/theory-guide-lanes` adds optional analysis lanes to the arrangement and piano roll. Open **View → Theory Guide**. Select a pitched track or expand its row, including the global chord voicing or a melody. Test the independent layer switches and hover a note crossing a chord boundary. The analysis uses structured pitch classes and source gate durations. It does not judge passing tones or measure acoustic output.
+- On `feature/theory-guide-lanes`, **View → Theory Guide** controls arrangement analysis. Select a pitched track or expand its row. The guide headers show the readings at the cursor even at full-song zoom. The piano roll has an independent colour selector beside the snap grid. Check its four modes with the arrangement guide on and off, and hover either side of a held note across a chord change. For a C-major A7 → Dm7, the arrangement identifies A7 as V/ii and its hover text names Dm7. Set `OSTF_THEORY_SMOKE_PNG` to an absolute file path when running the theory smoke test to capture the editor at bar 14 of Neon Platforms.
 
 - Run `ostf_studio_theory_guide` in CTest. It checks bar 14 of Neon Platforms: Electric Piano Comp contains 13,176 note-ticks over A7, all chord tones, with 9,904 note-ticks in C Ionian. Other tests cover held notes, missing or overlapping context, key changes, track/section/chord/clip/note scopes, fixed triggers, modal uncertainty, minor cadences and piano-roll layer switching.
 
@@ -18,7 +18,7 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 - The guide caches the analysis outside the audio callback. Benchmark GUI scrolling and physical playback under plug-in load separately. Previewing arranger proposals and applying a reharmonisation with undo remain design work.
 
-- Windows x64 Release passed all 21 CTests in `build-win-plugins`, including the Theory Guide UI snapshot checks, transport and plug-in playback tests. The standalone core build also passed. macOS compilation and physical-device playback under load are unverified for this change.
+- Windows x64 Release validation in `build-win-plugins` includes 21 CTests and a snapshot of the chord/scale colours at bar 14. One piano-edit test run timed out. Four consecutive isolated reruns passed. macOS compilation and physical-device playback under load are unverified for this change.
 
 - Both bar rulers seek the shared transport using their own zoom and scroll. Audio regions draw stereo peaks from linked or embedded WAVs with source trims and tempo changes. Relay Circuit has four audio tracks; First Light Vector has five. Sample-by-sample rendering is reproducible with the demo generator. The transport smoke test checks the seek coordinates and waveform against a known pulse; the stock FX test checks both overlapping stems during playback.
 

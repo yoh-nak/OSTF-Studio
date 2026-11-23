@@ -53,7 +53,7 @@ TheoryGuide::TheoryGuide(const juce::var& score, Tick end) {
         sectionIds.push_back(entry["id"].toString());
     });
     auto addScale = [&](const juce::var& definition, const juce::var& range, const juce::String& track) {
-        Scale s {definition.getProperty("label", definition["id"]).toString(), pitchMask(definition, "tonic")};
+        Scale s {definition.getProperty("label", definition["id"]).toString(), pitchMask(definition, "tonic"), pitchClass(definition["tonic"])};
         if (track.isNotEmpty()) {
             s.name = track + " / " + (s.name.isNotEmpty() ? s.name : range["id"].toString());
             s.targets.push_back({"track", track});
@@ -126,6 +126,28 @@ void TheoryGuide::buildFunctions() {
             f.function = "Subdominant";
         } else if (degree == 5 && (minor ? min : maj)) { f.degree = minor ? "iv" : "IV"; f.function = "Subdominant"; }
         else if (degree == 7 && maj) { f.degree = "V"; f.function = "Dominant"; }
+        else if (!minor && min && (degree == 4 || degree == 9)) {
+            f.degree = degree == 4 ? "iii" : "vi";
+            f.function = "Tonic substitute";
+        }
+        else if (minor && maj && (degree == 3 || degree == 8 || degree == 10)) {
+            f.degree = degree == 3 ? "III" : degree == 8 ? "VI" : "VII";
+            f.function = "Diatonic";
+        }
+    }
+    // An actual adjacent target supplies the evidence for an applied dominant.
+    for (std::size_t i = 1; i < functions.size(); ++i) {
+        auto& from = functions[i - 1];
+        const auto& to = functions[i];
+        const auto& h = chords[from.chord];
+        if (from.key != to.key || from.end != to.start || h.root < 0 || to.degree.isEmpty()
+            || to.degree == "I" || to.degree == "i" || to.degree.contains("/") || from.degree == "V"
+            || (h.root - chords[to.chord].root + 12) % 12 != 7) continue;
+        const auto has = [&](int n) { return contains(h.intervals, h.root + n); };
+        if (has(4) && has(7) && has(10) && !has(11)) {
+            from.degree = "V/" + to.degree;
+            from.function = "Secondary dominant";
+        }
     }
     for (std::size_t i = 1; i < functions.size(); ++i) {
         const auto& v = functions[i-1]; const auto& tonic = functions[i];
@@ -139,6 +161,24 @@ void TheoryGuide::buildFunctions() {
         }
         progressions.push_back({v.start, tonic.end, "V-" + tonic.degree});
     }
+}
+
+const char* TheoryGuide::interval(int pitch, int root) {
+    static constexpr const char* names[] {"1", "b2", "2", "b3", "3", "4", "#4/b5", "5", "b6", "6", "b7", "7"};
+    return root < 0 ? "" : names[(pitch - root + 12) % 12];
+}
+
+TheoryGuide::Tone TheoryGuide::tone(int pitch, const Chord* chord, int scaleMask) {
+    if (chord && contains(chord->mask, pitch)) {
+        const auto degree = (pitch - chord->root + 12) % 12;
+        if (degree == 0) return Tone::root;
+        // A #9 can coexist with the major third. It is a chord colour, not a minor third.
+        if ((degree == 3 && !contains(chord->intervals, chord->root + 4)) || degree == 4
+            || degree == 10 || degree == 11) return Tone::guide;
+        return Tone::chord;
+    }
+    if (contains(scaleMask, pitch)) return Tone::scale;
+    return (chord && chord->mask) || scaleMask ? Tone::outside : Tone::unknown;
 }
 
 int TheoryGuide::scaleForNote(const TrackCell& cell, const PitchedNote& note) const {

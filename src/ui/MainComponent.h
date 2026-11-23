@@ -129,7 +129,7 @@ private:
     void refreshTrackTheory(std::size_t track);
     int theoryTrackHeight(std::size_t track) const;
     bool pitchedSelection() const;
-    void drawTheoryRows(juce::Graphics&, juce::Rectangle<int>, int labelWidth, bool piano,
+    void drawTheoryRows(juce::Graphics&, juce::Rectangle<int>, int labelWidth,
                         std::optional<std::size_t> track) const;
     bool theoryVisible_ = false, chordFitVisible_ = true, scaleFitVisible_ = true;
     int scaleReference_ = -1;
@@ -141,7 +141,8 @@ private:
     void finishNoteEdit(bool playing);
     PianoNoteGrid pianoGrid_;
     PianoVelocityLane pianoVelocity_ {pianoGrid_};
-    juce::ComboBox pianoSnap_;
+    juce::ComboBox pianoSnap_, pianoColours_;
+    juce::Rectangle<int> functionRow_;
     std::optional<std::size_t> pianoTrack_;
     std::size_t pianoGeneration_ = 0;
     struct NoteRevision { juce::MemoryBlock before, after; };

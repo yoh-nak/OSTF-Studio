@@ -68,6 +68,24 @@ int modelChecks() {
     if (cadence.analyse(0, soloNotes)[1].scale.percent() != 0 || cadence.analyse(1, soloNotes)[1].scale.percent() != -1) return 21;
     minor["song"]["key"].getDynamicObject()->setProperty("mode", "dorian");
     if (!TheoryGuide(minor, 3).progressions.empty()) return 22;
+    using Tone = TheoryGuide::Tone;
+    const auto& g7 = guide.chords[1];
+    const auto& cmaj = guide.chords[2];
+    const auto ionian = guide.scales[0].mask;
+    // The same sustained F is the seventh of G7, then a scale tone over Cmaj7.
+    if (TheoryGuide::tone(65, &g7, ionian) != Tone::guide || TheoryGuide::tone(65, &cmaj, ionian) != Tone::scale
+        || juce::String(TheoryGuide::interval(65, g7.root)) != "b7" || juce::String(TheoryGuide::interval(65, cmaj.root)) != "4"
+        || TheoryGuide::tone(60, &cmaj, ionian) != Tone::root || TheoryGuide::tone(67, &cmaj, ionian) != Tone::chord
+        || TheoryGuide::tone(61, &cmaj, ionian) != Tone::outside || TheoryGuide::tone(61, nullptr, 0) != Tone::unknown) return 23;
+    auto applied = juce::JSON::parse(R"({"song":{"key":{"state":"tonal","tonic":{"step":"C"},"mode":"major"}},
+        "harmony":{"chords":[{"root":{"step":"A"},"intervals":[0,4,7,10,15],"start":0,"duration":4},
+        {"root":{"step":"D"},"intervals":[0,3,7,10],"start":4,"duration":4},
+        {"root":{"step":"A"},"intervals":[0,3,7],"start":8,"duration":4}]}})");
+    const TheoryGuide intoTwo(applied, 12);
+    if (intoTwo.functions[0].degree != "V/ii" || intoTwo.functions[2].degree != "vi"
+        || TheoryGuide::tone(60, &intoTwo.chords[0], ionian) != Tone::chord) return 24;
+    (*applied["harmony"]["chords"].getArray())[1].getDynamicObject()->setProperty("start", 5);
+    if (TheoryGuide(applied, 12).functions.front().degree == "V/ii") return 25;
     return 0;
 }
 
@@ -95,12 +113,13 @@ int checkTheoryGuide(const juce::File& demo) {
     if (guide.analyse(voicing, project->pitchedNotes[voicing])[at].chord.total <= 0) return 13;
 
     MainComponent main;
-    main.setVisible(true); main.setSize(1440, 1000);
+    main.setVisible(true); main.setSize(1440, 1280);
     if (!main.openDocument(demo)) return 14;
     auto* grid = dynamic_cast<PianoNoteGrid*>(main.findChildWithID("piano-note-grid"));
     juce::MenuBarModel* model = nullptr;
     for (auto* child : main.getChildren()) if (auto* bar = dynamic_cast<juce::MenuBarComponent*>(child)) model = bar->getModel();
-    if (!grid || !model) return 15;
+    auto* colours = dynamic_cast<juce::ComboBox*>(main.findChildWithID("piano-note-colours"));
+    if (!grid || !model || !colours || !colours->isVisible()) return 15;
     auto set = [&](const char* text, bool enabled) {
         const auto cmd = find(*model, juce::translate(text));
         if (cmd.id && cmd.checked != enabled) model->menuItemSelected(cmd.id, 1);
@@ -108,7 +127,9 @@ int checkTheoryGuide(const juce::File& demo) {
     };
     const auto show = find(*model, TRANS("Show Theory Guide")), chord = find(*model, TRANS("Chord tone fit")),
                scale = find(*model, TRANS("Scale fit"));
+    const auto savedMode = colours->getSelectedId();
     juce::ScopeGuard restore([&] {
+        colours->setSelectedId(savedMode, juce::sendNotificationSync);
         set("Show Theory Guide", true); set("Chord tone fit", chord.checked);
         set("Scale fit", scale.checked); set("Show Theory Guide", show.checked);
     });
@@ -116,16 +137,43 @@ int checkTheoryGuide(const juce::File& demo) {
     const int normal = grid->getHeight();
     set("Show Theory Guide", true); set("Chord tone fit", true); set("Scale fit", true);
     const int both = grid->getHeight();
-    if (both <= 0 || both >= normal) return 17;
+    if (both <= 0 || both != normal) return 17;
+    colours->setSelectedId(4, juce::sendNotificationSync);
+    for (auto* child : main.getChildren()) {
+        if (auto* picker = dynamic_cast<juce::ComboBox*>(child); picker && picker->getTitle() == TRANS("Arrangement track"))
+            picker->setSelectedId(static_cast<int>(keys + 1), juce::sendNotificationSync);
+        if (auto* slider = dynamic_cast<juce::Slider*>(child); slider && (slider->getTitle() == TRANS("Piano roll horizontal zoom")
+                || slider->getTitle() == TRANS("Arrangement horizontal zoom")))
+            slider->setValue(0.68, juce::sendNotificationSync);
+    }
+    main.displayTransportPosition(13 * project->ticksPerBar);
+    for (const auto* id : {"piano-horizontal-scroll", "arrangement-horizontal-scroll"})
+        if (auto* scroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID(id)))
+            scroll->setCurrentRangeStart(13, juce::sendNotificationSync);
     const auto snapshot = main.createComponentSnapshot(main.getLocalBounds());
+    const auto snapshotPath = juce::SystemStats::getEnvironmentVariable("OSTF_THEORY_SMOKE_PNG", {});
+    if (snapshotPath.isNotEmpty()) {
+        juce::FileOutputStream out {juce::File(snapshotPath)};
+        if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed()
+            || !juce::PNGImageFormat().writeImageToStream(snapshot, out)) return 27;
+    }
     int chordPixels = 0;
     for (int y = grid->getY(); y < grid->getBottom(); ++y)
         for (int x = grid->getX(); x < grid->getRight(); ++x)
             if (snapshot.getPixelAt(x,y).getARGB() == 0xff60c9b4) ++chordPixels;
     if (!chordPixels) return 18;
     set("Scale fit", false);
-    if (grid->getHeight() <= both || !find(*model, TRANS("Chord tone fit")).checked) return 19;
+    if (grid->getHeight() != both || !find(*model, TRANS("Chord tone fit")).checked) return 19;
     set("Chord tone fit", false); set("Scale fit", true);
-    if (grid->getHeight() <= both || find(*model, TRANS("Chord tone fit")).checked) return 20;
+    if (grid->getHeight() != both || find(*model, TRANS("Chord tone fit")).checked) return 20;
+    set("Show Theory Guide", false);
+    const PitchedNote c {0, 10, 60};
+    for (int mode = 1; mode <= 4; ++mode) {
+        colours->setSelectedId(mode, juce::sendNotificationSync);
+        const auto hint = grid->theoryHint(0, c);
+        if (hint.contains("Cmaj7") != (mode == 2 || mode == 4)
+            || hint.contains("Ionian") != (mode == 3 || mode == 4)
+            || grid->getHeight() != normal) return 26;
+    }
     return 0;
 }
