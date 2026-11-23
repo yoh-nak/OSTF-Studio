@@ -164,6 +164,32 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     back->onClick();
     if (!reads("section", "Opening") || !reads("bar-beat-tick", "001.01.000")
         || arrangementScroll->getCurrentRangeStart() != 1 || pianoScroll->getCurrentRangeStart() != 1) return 34;
+    ArrangementRuler* ruler = nullptr;
+    for (auto* child : main.getChildren())
+        if (auto* r = dynamic_cast<ArrangementRuler*>(child->findChildWithID("arrangement-ruler"))) ruler = r;
+    if (!ruler || !ruler->isVisible()) return 35;
+    const int width = ruler->getWidth() - ruler->headerWidth;
+    const int centre = ruler->headerWidth + width / 2;
+    const auto pointer = [&](int x, int origin, bool down, int modifiers = 0) {
+        const auto time = juce::Time::getCurrentTime();
+        return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), {float(x), 9.f},
+            (down ? juce::ModifierKeys::leftButtonModifier : 0) | modifiers, 1.f, 0, 0, 0, 0, ruler, ruler, time,
+            {float(origin), 9.f}, time, 1, x != origin);
+    };
+    arrangementScroll->setCurrentRangeStart(4, juce::sendNotificationSync);
+    ruler->mouseDown(pointer(centre, centre, true)); ruler->mouseUp(pointer(centre, centre, false));
+    const auto clicked = ruler->playheadBar();
+    if (std::abs(clicked - 4.5) > .003 || arrangementScroll->getCurrentRangeStart() != 4) return 36;
+    const int left = centre - width / 4;
+    ruler->mouseDown(pointer(centre, centre, true)); ruler->mouseDrag(pointer(left, centre, true));
+    ruler->mouseUp(pointer(left, centre, false));
+    if (std::abs(arrangementScroll->getCurrentRangeStart() - 4.25) > .01 || ruler->playheadBar() != clicked) return 37;
+    juce::MouseWheelDetails wheel{};
+    wheel.deltaY = -0.5f;
+    auto wheelEvent = pointer(centre, centre, false, juce::ModifierKeys::shiftModifier).getEventRelativeTo(&main);
+    main.mouseWheelMove(wheelEvent, wheel);
+    if (arrangementScroll->getCurrentRangeStart() <= 4.25 || ruler->playheadBar() != clicked) return 38;
+    if (!main.keyPressed(juce::KeyPress(juce::KeyPress::homeKey)) || ruler->playheadBar() != 1) return 39;
     main.setSize(680, 550);
     main.displayTransportPosition(960);
     if (!savePng(dir.getChildFile("transport-compact.png"), main) || pianoCursorX(main) < 0) return 16;

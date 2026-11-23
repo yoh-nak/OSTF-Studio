@@ -7,6 +7,7 @@
 #include "ui/PluginBrowser.h"
 #include "ui/PreviewTransport.h"
 #include "ui/ViewButton.h"
+#include "ui/ArrangementRuler.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
@@ -17,9 +18,12 @@ public:
     MainComponent();
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
-    void displayTransportPosition(juce::int64 tick, double seconds = -1);
+    void displayTransportPosition(juce::int64 tick, double seconds = -1, bool keepArrangementView = false);
     void paint(juce::Graphics& g) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress&) override;
+    bool keyStateChanged(bool) override;
+    void focusOfChildComponentChanged(FocusChangeType) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
@@ -44,6 +48,9 @@ private:
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
     void stopTransport();
     void navigateTransport(TransportKey::Action);
+    void locateTransport(juce::int64 tick, bool keepArrangementView = false);
+    void panArrangement(double fraction);
+    void showShortcutList();
     void updateTransportMix();
     void togglePluginBrowser();
     juce::Rectangle<int> getWorkspace() const;
@@ -156,6 +163,8 @@ private:
     bool mixedHeights_ = false;
     juce::ScrollBar arrangementScroll_ {false}, pianoScroll_ {false};
     juce::Component rowOverlay_;
+    ArrangementRuler ruler_;
+    bool spaceHeld_ = false;
     juce::ScrollBar verticalScroll_ {true};
     juce::StringArray performanceLaneNames_;
     MidiDragButton midiDrag_;

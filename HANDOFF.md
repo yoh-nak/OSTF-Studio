@@ -109,3 +109,5 @@ The [original demo song gallery](examples/demo-songs/README.md) contains five OS
 ### Audio demo tracks and song information
 
 The toolbar information icon opens the existing song metadata editor. Rename score tracks and production outputs from their context menus. Paper Lantern Replies and First Light Vector include original stereo WAV cues, two track inserts, a Harmony bus and a Room send. The preview reads one native, unwarped WAV region per score track, with source-frame trims, region mute/gain, tick placement and verified package bindings. Standalone saves place the WAV in a sibling media directory. The stock-effects smoke test renders the actual audio and checks routing, gating and gain offline.
+
+The pinned arrangement ruler locates on click and pans on horizontal drag. Shift-wheel and horizontal trackpad motion pan the timeline; Space toggles transport, Home returns to the start, and F1 opens the localized shortcut guide in Help. Manual horizontal navigation during playback switches off Follow.

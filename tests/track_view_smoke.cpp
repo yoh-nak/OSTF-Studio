@@ -29,6 +29,13 @@ int checkTrackView(const juce::File& fixture) {
     if (!document || !document->getText().contains(TRANS("Unsaved project"))
         || !tracks || tracks->getNumItems() != 0 || !menus || !menus->getModel()) return 13;
     auto& model = *menus->getModel();
+    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Settings"), TRANS("Help")};
+    if (model.getMenuBarNames() != names) return 38;
+    const auto help = model.getMenuForIndex(4, {});
+    bool hasShortcuts = false;
+    for (juce::PopupMenu::MenuItemIterator it(help); it.next();)
+        if (it.getItem().text == TRANS("Shortcuts...")) hasShortcuts = it.getItem().isEnabled;
+    if (!hasShortcuts) return 39;
     const auto fileMenu = model.getMenuForIndex(0, {});
     bool newEnabled = false, saveScoreEnabled = false, savePackageEnabled = false;
     juce::StringArray songs;
@@ -56,10 +63,10 @@ int checkTrackView(const juce::File& fixture) {
     };
     if (!choose(TRANS("Pitched tracks"))) return 17;
     height->setValue(84, juce::sendNotificationSync);
-    const auto trackMenu = model.getMenuForIndex(4, {});
+    const auto trackMenu = model.getMenuForIndex(2, {});
     for (juce::PopupMenu::MenuItemIterator it(trackMenu); it.next();)
         if (it.getItem().text == TRANS("Add pitched track") && it.getItem().isEnabled)
-            model.menuItemSelected(it.getItem().itemID, 4);
+            model.menuItemSelected(it.getItem().itemID, 2);
     if (tracks->getNumItems() != 1 || tracks->getSelectedId() != 1) return 15;
     auto* addedGrip = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
     if (!addedGrip || addedGrip->height() != 84) return 18;
@@ -83,10 +90,10 @@ int checkTrackView(const juce::File& fixture) {
     if (!click("Add melody track") || !click("Add chorus vocal track") || !click("Add drum / percussion track")
         || !click("Add audio track") || tracks->getNumItems() != 5) return 34;
     const auto selected = tracks->getText();
-    auto trackActions = model.getMenuForIndex(4, {});
+    auto trackActions = model.getMenuForIndex(2, {});
     for (juce::PopupMenu::MenuItemIterator it(trackActions); it.next();)
         if (it.getItem().text == TRANS("Duplicate track") && it.getItem().isEnabled)
-            model.menuItemSelected(it.getItem().itemID, 4);
+            model.menuItemSelected(it.getItem().itemID, 2);
     if (tracks->getNumItems() != 6 || !tracks->getText().startsWith(selected)) return 35;
     if (!click("Add bus track") || !click("Add return track")) return 36;
     const auto* busC = findControl<TrackRowSize>(main, "Bus C track height");
@@ -165,5 +172,16 @@ int checkTrackView(const juce::File& fixture) {
         const auto silent = meter.createComponentSnapshot(meter.getLocalBounds());
         if (silent.getPixelAt(vertical ? 4 : 60, vertical ? 60 : 4) != juce::Colour(0xff152026)) return 12;
     }
+    if (!main.keyPressed(juce::KeyPress(juce::KeyPress::F1Key))) return 40;
+    auto* guide = dynamic_cast<juce::DialogWindow*>(juce::Component::getCurrentlyModalComponent());
+    if (!guide || guide->getName() != TRANS("Shortcuts") || !guide->getContentComponent()) return 41;
+    bool listsPlayback = false, listsRuler = false;
+    for (auto* child : guide->getContentComponent()->getChildren())
+        if (auto* label = dynamic_cast<juce::Label*>(child)) {
+            listsPlayback |= label->getText() == TRANS("Play / stop");
+            listsRuler |= label->getText() == TRANS("Click the bar ruler");
+        }
+    guide->exitModalState(0);
+    if (!listsPlayback || !listsRuler) return 42;
     return 0;
 }

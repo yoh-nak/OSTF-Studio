@@ -49,7 +49,7 @@ juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds) {
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI };
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts };
 constexpr int timelineMenuBase = 100;
 constexpr int demoMenuBase = 300;
 constexpr struct { const char* title; const char* resource; } gallery[] {
@@ -331,6 +331,7 @@ private:
 }
 
 MainComponent::MainComponent() {
+    setWantsKeyboardFocus(true);
     viewPreferences_.setStorageParameters(ostfstudio::viewSettingsOptions());
     if (const auto* config = viewPreferences_.getUserSettings()) {
         interfaceScale_ = std::clamp(config->getIntValue("interfaceScale", 100), minInterfaceScale, maxInterfaceScale);
@@ -464,6 +465,21 @@ MainComponent::MainComponent() {
     addChildComponent(mixer_);
     rowOverlay_.setInterceptsMouseClicks(false, true);
     addAndMakeVisible(rowOverlay_);
+    ruler_.headerWidth = trackHeaderWidth;
+    ruler_.setComponentID("arrangement-ruler");
+    ruler_.setTitle(TRANS("Bar ruler"));
+    ruler_.setTooltip(TRANS("Click to position the playhead. Drag left or right to scroll."));
+    ruler_.visibleBars = [this] { return arrangementScroll_.getCurrentRange(); };
+    ruler_.playheadBar = [this] { return project_ && project_->ticksPerBar > 0 && cursorTick_ >= 0
+        ? project_->bars.firstBar + double(cursorTick_) / project_->ticksPerBar : -1.0; };
+    ruler_.locate = [this](double fraction) {
+        if (!project_ || recordTrack_) return;
+        const auto visible = arrangementScroll_.getCurrentRange();
+        const auto bar = visible.getStart() + fraction * visible.getLength();
+        locateTransport(std::llround((bar - project_->bars.firstBar) * project_->ticksPerBar), true);
+    };
+    ruler_.pan = [this](double fraction) { panArrangement(fraction); };
+    rowOverlay_.addAndMakeVisible(ruler_);
     verticalScroll_.setAutoHide(false);
     verticalScroll_.setComponentID("arrangement-vertical-scroll");
     verticalScroll_.setSingleStepSize(32);
@@ -500,7 +516,7 @@ MainComponent::MainComponent() {
     newProject();
 }
 
-juce::StringArray MainComponent::getMenuBarNames() { return {TRANS("File"), TRANS("View"), TRANS("Settings"), TRANS("Help"), TRANS("Track")}; }
+juce::StringArray MainComponent::getMenuBarNames() { return {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Settings"), TRANS("Help")}; }
 
 juce::PopupMenu MainComponent::timelineMenu() const {
     juce::PopupMenu lanes;
@@ -544,7 +560,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(showPartScore, TRANS("Score"), project_ != nullptr, scoreButton_.getToggleState());
             break;
         }
-        case 2: {
+        case 3: {
             menu.addItem(showDevices, TRANS("Audio / MIDI Devices..."));
             juce::PopupMenu languages;
             const auto selected = viewPreferences_.getUserSettings()->getValue("language", "system");
@@ -554,8 +570,11 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addSubMenu(TRANS("Language"), languages);
             break;
         }
-        case 3: menu.addItem(showAbout, TRANS("About OSTF Studio")); break;
-        case 4: {
+        case 4:
+            menu.addItem(showShortcuts, TRANS("Shortcuts..."));
+            menu.addItem(showAbout, TRANS("About OSTF Studio"));
+            break;
+        case 2: {
             const auto editable = canEditTracks();
             const auto add = editable && project_->sourceTrackCount() < ostfstudio::OstfpPreview::maxTracks;
             menu.addItem(addMelody, TRANS("Add melody track"), add);
@@ -665,6 +684,7 @@ void MainComponent::menuItemSelected(int item, int) {
         case removeTrack:
             if (selectedTrack_) confirmRemoval(false, *selectedTrack_);
             break;
+        case showShortcuts: showShortcutList(); break;
         case showAbout:
             juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
                 TRANS("About OSTF Studio"), "OSTF Studio " OSTF_STUDIO_DISPLAY_VERSION "\n"
@@ -710,12 +730,26 @@ void MainComponent::scrollBarMoved(juce::ScrollBar* bar, double) {
 }
 
 void MainComponent::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) {
+    if (rowOverlay_.isVisible() && rowOverlay_.getBounds().contains(event.getPosition())
+        && (event.mods.isShiftDown() || std::abs(wheel.deltaX) > std::abs(wheel.deltaY))) {
+        const auto delta = std::abs(wheel.deltaX) > std::abs(wheel.deltaY) ? wheel.deltaX : wheel.deltaY;
+        panArrangement(-0.32 * delta);
+        return;
+    }
     if (verticalScroll_.isVisible() && rowOverlay_.getBounds().contains(event.getPosition())
         && std::abs(wheel.deltaY) > std::abs(wheel.deltaX)) {
         verticalScroll_.mouseWheelMove(event.getEventRelativeTo(&verticalScroll_), wheel);
         return;
     }
     Component::mouseWheelMove(event, wheel);
+}
+
+void MainComponent::panArrangement(double fraction) {
+    if (!arrangementScroll_.isEnabled()) return;
+    const auto range = arrangementScroll_.getCurrentRange();
+    arrangementScroll_.setCurrentRangeStart(range.getStart() + fraction * range.getLength(), juce::sendNotificationSync);
+    if (transportActive_ && arrangementScroll_.getCurrentRangeStart() != range.getStart())
+        deck_.follow.setToggleState(false, juce::dontSendNotification);
 }
 
 void MainComponent::updateHorizontalRange(bool piano, bool reset) {
@@ -847,7 +881,7 @@ bool MainComponent::isInterestedInDragSource(const SourceDetails& details) {
 }
 
 std::optional<std::size_t> MainComponent::pluginDropTrack(juce::Point<int> position) const {
-    if (!rowOverlay_.getBounds().contains(position)) return std::nullopt;
+    if (!rowOverlay_.getBounds().withTrimmedTop(globalRowHeight).contains(position)) return std::nullopt;
     for (std::size_t i = 0; i < std::min(trackRows_.size(), trackControls_.size()); ++i)
         if (trackRows_[i].contains(position) && !trackControls_[i]->loading) return i;
     return std::nullopt;
@@ -858,7 +892,7 @@ std::size_t MainComponent::visibleOutputCount() const {
 }
 
 std::optional<std::size_t> MainComponent::outputDropTrack(juce::Point<int> position) const {
-    if (!rowOverlay_.getBounds().contains(position)) return std::nullopt;
+    if (!rowOverlay_.getBounds().withTrimmedTop(globalRowHeight).contains(position)) return std::nullopt;
     for (std::size_t row = 0; row < visibleOutputCount(); ++row) {
         const auto i = mixer_.routing().outputAt(row);
         if (outputRows_[i].contains(position) && outputControls_[i].effects.loading == 0) return i;
@@ -1032,6 +1066,70 @@ void MainComponent::stopTransport() {
     repaint();
 }
 
+void MainComponent::showShortcutList() {
+    const std::pair<const char*, const char*> rows[] = {
+        {"Space", "Play / stop"}, {"Home key", "Return to song start"}, {"F1", "Show shortcuts"},
+        {"Click the bar ruler", "Move the playhead"}, {"Drag the bar ruler", "Scroll the timeline horizontally"},
+        {"Shift + wheel / horizontal scroll", "Scroll the timeline horizontally"},
+        {"Mouse wheel", "Scroll through tracks"}, {"Right-click a track name", "Open track actions"}
+    };
+    // The content owns its labels for the lifetime of the asynchronous dialog.
+    struct Guide final : juce::Component {
+        juce::OwnedArray<juce::Label> labels;
+        void add(const juce::String& text, int x, int y, int width, bool key) {
+            auto* label = labels.add(new juce::Label({}, text));
+            label->setColour(juce::Label::textColourId, juce::Colour(key ? 0xff91e2d6 : 0xffe1e6eb));
+            label->setBounds(x, y, width, 29);
+            addAndMakeVisible(*label);
+        }
+    };
+    auto guide = std::make_unique<Guide>();
+    int y = 10;
+    for (const auto& [key, action] : rows) {
+        guide->add(juce::translate(key), 12, y, 245, true);
+        guide->add(juce::translate(action), 259, y, 267, false);
+        y += 31;
+    }
+    guide->setSize(535, y + 10);
+    juce::DialogWindow::LaunchOptions options;
+    options.dialogTitle = TRANS("Shortcuts");
+    options.dialogBackgroundColour = juce::Colour(0xff222c34);
+    options.content.setOwned(guide.release());
+    options.componentToCentreAround = this;
+    options.useNativeTitleBar = true;
+    options.resizable = false;
+    options.escapeKeyTriggersCloseButton = true;
+    options.launchAsync();
+}
+
+bool MainComponent::keyPressed(const juce::KeyPress& key) {
+    if (key.getModifiers().isAnyModifierKeyDown() || isCurrentlyBlockedByAnotherModalComponent()) return false;
+    const auto* focus = juce::Component::getCurrentlyFocusedComponent();
+    if (focus && (dynamic_cast<const juce::TextEditor*>(focus) || focus->findParentComponentOfClass<juce::TextEditor>())) return false;
+    if (key.isKeyCode(juce::KeyPress::F1Key)) { showShortcutList(); return true; }
+    if (!project_) return false;
+    if (key.isKeyCode(juce::KeyPress::homeKey)) {
+        navigateTransport(TransportKey::home);
+        return true;
+    }
+    if (!key.isKeyCode(juce::KeyPress::spaceKey)) return false;
+    if (!spaceHeld_) {
+        spaceHeld_ = true;
+        if (transportActive_) stopTransport();
+        else startTransport(false);
+    }
+    return true;
+}
+
+bool MainComponent::keyStateChanged(bool isKeyDown) {
+    if (!isKeyDown && !juce::KeyPress::isKeyCurrentlyDown(juce::KeyPress::spaceKey)) spaceHeld_ = false;
+    return false;
+}
+
+void MainComponent::focusOfChildComponentChanged(FocusChangeType) {
+    if (!hasKeyboardFocus(true)) spaceHeld_ = false;
+}
+
 void MainComponent::navigateTransport(TransportKey::Action action) {
     if (!project_ || recordTrack_) return;
     if (transportActive_ && !transport_.isRunning()) stopTransport();
@@ -1040,11 +1138,17 @@ void MainComponent::navigateTransport(TransportKey::Action action) {
     juce::int64 target = 0;
     if (action == TransportKey::forward) target = now + std::min(project_->ticksPerBar, end - now);
     if (action == TransportKey::rewind) target = std::max<juce::int64>(0, now - project_->ticksPerBar);
-    if (transportActive_) transport_.seekToTick(target);
-    displayTransportPosition(target);
+    locateTransport(target);
 }
 
-void MainComponent::displayTransportPosition(juce::int64 tick, double seconds) {
+void MainComponent::locateTransport(juce::int64 tick, bool keepArrangementView) {
+    if (!project_ || recordTrack_) return;
+    tick = std::clamp<juce::int64>(tick, 0, project_->playbackEndTick());
+    if (transportActive_) transport_.seekToTick(tick);
+    displayTransportPosition(tick, -1, keepArrangementView);
+}
+
+void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, bool keepArrangementView) {
     cursorTick_ = tick;
     if (scoreView_ && scoreView_->isVisible()) scoreView_->playbackPosition(tick);
     if (!project_) return;
@@ -1052,7 +1156,7 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds) {
     if (deck_.follow.getToggleState() && tick >= 0) {
         const auto bar = 1.0 + double(tick) / project_->ticksPerBar;
         for (auto* scroll : {&arrangementScroll_, &pianoScroll_}) {
-            if (!scroll->isEnabled() || !scroll->isVisible()) continue;
+            if (!scroll->isEnabled() || !scroll->isVisible() || (keepArrangementView && scroll == &arrangementScroll_)) continue;
             const auto range = scroll->getCurrentRange();
             if (bar < range.getStart() || bar >= range.getEnd() - range.getLength() * 0.05)
                 scroll->setCurrentRangeStart(bar - range.getLength() * 0.15, juce::dontSendNotification);
@@ -1317,7 +1421,7 @@ void MainComponent::changeInterfaceScale(int step) {
 
 void MainComponent::revealRow(juce::Rectangle<int> row) {
     if (!verticalScroll_.isVisible() || row.isEmpty()) return;
-    const auto visible = rowOverlay_.getBounds();
+    const auto visible = rowOverlay_.getBounds().withTrimmedTop(globalRowHeight);
     const auto delta = row.getY() < visible.getY() ? row.getY() - visible.getY()
                      : std::max(0, row.getBottom() - visible.getBottom());
     verticalScroll_.setCurrentRangeStart(verticalScroll_.getCurrentRangeStart() + delta, juce::sendNotificationSync);
@@ -2256,6 +2360,8 @@ void MainComponent::resized() {
         verticalScroll_.setVisible(contentHeight > viewportHeight);
         if (verticalScroll_.isVisible()) verticalScroll_.setBounds(arrangement.removeFromRight(14).withTrimmedLeft(2));
         rowOverlay_.setBounds(arrangement);
+        ruler_.setBounds(rowOverlay_.getLocalBounds().removeFromTop(globalRowHeight));
+        ruler_.toFront(false);
         int y = arrangement.getY() + globalHeight - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
         bool arrangementHeading = false;
         trackRows_.assign(trackControls_.size(), {});
@@ -2425,12 +2531,15 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
     };
     const int tickStep = juce::jmax(1, static_cast<int>(widthInBars / (area.getWidth() < 420 ? 4 : 8)));
     const auto firstBar = static_cast<int>(std::ceil(visible.start));
-    const auto ruler = drawRow(TRANS("BARS"), area.getY());
-    for (int bar = firstBar; bar < visible.end; bar += tickStep) {
-        const int x = positionX(bar, ruler);
-        g.setColour(juce::Colour(muted));
-        g.drawText(juce::String(bar), ruler.withLeft(x).withWidth(std::min(36, ruler.getRight() - x)).withTrimmedLeft(3),
-                   juce::Justification::centredLeft);
+    const auto ruler = area.withHeight(laneHeight);
+    if (!project_) {
+        drawRow(TRANS("BARS"), area.getY());
+        for (int bar = firstBar; bar < visible.end; bar += tickStep) {
+            const int x = positionX(bar, ruler);
+            g.setColour(juce::Colour(muted));
+            g.drawText(juce::String(bar), ruler.withLeft(x).withWidth(std::min(36, ruler.getRight() - x)).withTrimmedLeft(3),
+                       juce::Justification::centredLeft);
+        }
     }
 
     auto drawLane = [&](const ostfstudio::ArrangementLane& lane, int y, juce::Colour colour) {
