@@ -72,7 +72,7 @@ Windows は Setup.exe を実行するか、Portable ZIP を展開してくださ
 
 **Save as OSTF** はスコアと Studio のミキサー設定を保存します。リンクした WAV は隣の `<曲名>.media` にコピーし、相対パスで参照します。曲を移動するときはこのフォルダーも一緒に移動してください。**Save as OSTFP** はスコア、Production Session の設定、WAV を1ファイルにまとめます。現行プレビューは単一拍子・最大256小節・最大8アレンジトラックに対応しています。拍子の混在や規格全体の検証は今後の課題です。[公式仕様](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.0/tree/d8ce48ca6c873a5a24a94bcc80d847bf33135b46)
 
-この開発版の Windows Setup は管理者の許可を受け、音源2種とエフェクト9種を `%CommonProgramFiles%\VST3\OSTF Studio` に配置します。他の DAW では VST3 のシステムフォルダーを有効にして再スキャンしてください。更新前に DAW を閉じてください。旧版の同一プラグインは `%LOCALAPPDATA%\OSTF Studio\Previous VST3` に退避します。共有プラグインは Windows のアプリ一覧から個別にアンインストールできます。Mac では DMG 内の PKG を実行すると `/Library/Audio/Plug-Ins/VST3` に入ります。
+この開発版の Windows Setup は、共有 VST3 の項目を選ぶと管理者の許可を受け、音源2種とエフェクト9種を `%CommonProgramFiles%\VST3\OSTF Studio` に配置します。他の DAW では VST3 のシステムフォルダーを有効にして再スキャンしてください。同じバージョンで内容も一致する VST3 バイナリは使用中でもそのまま使い、不足ファイルを補います。使用中のプラグインに更新が必要なときは、本体だけ先にインストールできます。後で DAW の作業を保存して閉じ、Setup を再実行して共有 VST3 を選んでください。旧版のプラグインは共有 VST3 のインストール成功後に `%LOCALAPPDATA%\OSTF Studio\Previous VST3` に退避します。共有プラグインは Windows のアプリ一覧から個別にアンインストールできます。Mac では DMG 内の PKG を実行すると `/Library/Audio/Plug-Ins/VST3` に入ります。
 
 ## 開発を再開する
 

@@ -11,13 +11,14 @@ DefaultDirName={commonpf64}\OSTF Studio VST3
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 CreateUninstallRegKey=yes
-CloseApplications=yes
+CloseApplications=no
 RestartApplications=no
+SetupLogging=yes
 OutputDir={#OutputDir}
 OutputBaseFilename=OSTF-Studio-VST3-Setup
 SetupIconFile=..\..\assets\AppIcon.ico
 
 [Files]
-Source: "{#ArrangerBundle}\*"; DestDir: "{commoncf64}\VST3\OSTF Studio\OSTF Arranger.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#GmBundle}\*"; DestDir: "{commoncf64}\VST3\OSTF Studio\OSTF GM Sound Module.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#EffectsDir}\*"; DestDir: "{commoncf64}\VST3\OSTF Studio"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#ArrangerBundle}\*"; DestDir: "{commoncf64}\VST3\OSTF Studio\OSTF Arranger.vst3"; Flags: replacesameversion recursesubdirs createallsubdirs
+Source: "{#GmBundle}\*"; DestDir: "{commoncf64}\VST3\OSTF Studio\OSTF GM Sound Module.vst3"; Flags: replacesameversion recursesubdirs createallsubdirs
+Source: "{#EffectsDir}\*"; DestDir: "{commoncf64}\VST3\OSTF Studio"; Flags: replacesameversion recursesubdirs createallsubdirs

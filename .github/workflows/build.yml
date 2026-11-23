@@ -86,7 +86,7 @@ jobs:
           BINARY_VERSION: ${{ steps.version.outputs.binary }}
         run: |
           ./packaging/windows/Package.ps1 -AppVersion $env:APP_VERSION -BinaryVersion $env:BINARY_VERSION
-      - name: Verify Windows Setup installs shared VST3 plug-ins
+      - name: Verify app-only install and repair with a loaded VST3
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -95,8 +95,25 @@ jobs:
           Copy-Item -Recurse -LiteralPath 'build/OSTFArranger_artefacts/Release/VST3/OSTF Arranger.vst3' -Destination $oldRoot
           $other = New-Item -ItemType Directory -Path (Join-Path $oldRoot 'Third Party Test.vst3')
           $setup = (Resolve-Path 'dist/OSTF_Studio_Windows_x64_Setup.exe').Path
-          $install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' -WindowStyle Hidden -PassThru
-          if (-not $install.WaitForExit(240000) -or $install.ExitCode -ne 0) { throw 'Setup did not finish successfully' }
+          function Install-Studio([string] $tasks) {
+            $install = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- $tasks" -WindowStyle Hidden -PassThru
+            if (-not $install.WaitForExit(240000) -or $install.ExitCode -ne 0) { throw "Setup failed with $tasks" }
+          }
+          $shared = Join-Path $env:CommonProgramFiles 'VST3/OSTF Studio/OSTF Arranger.vst3/Contents'
+          $dir = New-Item -ItemType Directory -Force -Path (Join-Path $shared 'x86_64-win')
+          $dll = Join-Path $dir.FullName 'OSTF Arranger.vst3'
+          Copy-Item -LiteralPath (Join-Path $oldRoot 'OSTF Arranger.vst3/Contents/x86_64-win/OSTF Arranger.vst3') -Destination $dll
+          $metadata = Join-Path $shared 'Resources/moduleinfo.json'
+          $lock = [IO.File]::Open($dll, 'Open', 'Read', 'Read')
+          try {
+            Install-Studio '/MERGETASKS=!sharedvst3'
+            if (!(Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs/OSTF Studio/OSTF Studio.exe')) -or
+                (Test-Path -LiteralPath $metadata) -or !(Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF Arranger.vst3'))) {
+              throw 'App-only setup touched plug-ins or failed to install Studio'
+            }
+            Install-Studio '/TASKS=sharedvst3'
+            if (!(Test-Path -LiteralPath $metadata)) { throw 'Setup did not repair the incomplete locked bundle' }
+          } finally { $lock.Dispose() }
           if ((Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF Arranger.vst3')) -or
               -not (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'OSTF Studio/Previous VST3/OSTF Arranger.vst3')) -or
               -not (Test-Path -LiteralPath $other.FullName)) { throw 'Unexpected legacy VST3 migration' }

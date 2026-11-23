@@ -16,6 +16,8 @@ The preview renderer publishes stereo sample peaks from the processed source aud
 
 The nine stock audio effects use separate VST3 component classes and share a JUCE DSP library. The demo generator, packaging checks and Studio's VST3 identity mapping use the same effect catalog. The Production Session describes owned instruments and stock effects in processing order, bus destinations, gains, pan and post-fader sends. The Studio host extension carries edited stock effect state and accommodates legacy insert lists. The synthetic chord-voicing row keeps its settings in the extension. The offline audio test runs the same render path as the device callback.
 
+On Windows, the per-user Studio installer and the machine-wide VST3 installer have separate ownership. Users can update the application while a DAW is using the shared plug-ins and defer shared installation. Legacy plug-in migration runs after the shared installer succeeds.
+
 | Module | Responsibility |
 |---|---|
 | `ScoreDocument` (future) | exact official OSTF 5.0 parsing/validation; no invented fields |

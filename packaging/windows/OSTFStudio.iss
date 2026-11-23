@@ -18,6 +18,24 @@ OutputDir={#OutputDir}
 OutputBaseFilename=OSTF_Studio_Windows_x64_Setup
 SetupIconFile=..\..\assets\AppIcon.ico
 WizardStyle=modern
+SetupLogging=yes
+
+[Languages]
+Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"
+
+[CustomMessages]
+en.SharedTask=Install or update shared VST3 plug-ins for Studio and other DAWs (requires administrator approval)
+ja.SharedTask=Studio と他の DAW で使う共有 VST3 をインストール・更新する（管理者の許可が必要）
+en.SharedLaunchError=Windows could not start the shared VST3 installer. %1 (Windows error %2)
+ja.SharedLaunchError=Windows が共有 VST3 インストーラーを起動できませんでした。%1（Windows エラー %2）
+en.SharedExitError=The shared VST3 installer stopped (setup exit code %1). If a DAW is using an OSTF plug-in that needs updating, save your work and close that DAW before retrying.
+ja.SharedExitError=共有 VST3 のインストールが中断されました（セットアップ終了コード %1）。更新が必要な OSTF プラグインを DAW で使用している場合は、作業を保存してその DAW を閉じてから再試行してください。
+en.ContinueAppOnly=Continue installing the Studio application now? To install missing instruments and effects later, run this installer again and select the shared VST3 task.
+ja.ContinueAppOnly=今回は Studio 本体のインストールを続けますか？ 不足している音源・エフェクトは、あとでこのインストーラーを再実行し、共有 VST3 の項目を選ぶと追加できます。
+
+[Tasks]
+Name: "sharedvst3"; Description: "{cm:SharedTask}"
 
 [Files]
 Source: "{#PluginSetup}"; Flags: dontcopy nocompression
@@ -43,16 +61,39 @@ Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project\DefaultIcon"; ValueType
 Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\OSTF Studio.exe"" ""%1"""
 
 [Code]
+var
+  SharedInstalled: Boolean;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ExitCode: Integer;
+  Params: String;
+  ShowCommand: Integer;
 begin
   Result := '';
+  if SharedInstalled or not WizardIsTaskSelected('sharedvst3') then exit;
   ExtractTemporaryFile('OSTF-Studio-VST3-Setup.exe');
+  Params := '/SUPPRESSMSGBOXES /NORESTART /SP- /NOCLOSEAPPLICATIONS';
+  if WizardSilent then begin
+    Params := '/VERYSILENT ' + Params;
+    ShowCommand := SW_HIDE;
+  end else begin
+    Params := '/SILENT ' + Params;
+    ShowCommand := SW_SHOWNORMAL;
+  end;
   if not ShellExec('runas', ExpandConstant('{tmp}\OSTF-Studio-VST3-Setup.exe'),
-      '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-', '', SW_HIDE, ewWaitUntilTerminated, ExitCode)
-      or (ExitCode <> 0) then
-    Result := 'The shared VST3 plug-ins could not be installed. Close your DAWs, allow administrator access and retry. Error ' + IntToStr(ExitCode);
+      Params, '', ShowCommand, ewWaitUntilTerminated, ExitCode) then
+    Result := FmtMessage(CustomMessage('SharedLaunchError'), [SysErrorMessage(ExitCode), IntToStr(ExitCode)])
+  else if ExitCode <> 0 then
+    Result := FmtMessage(CustomMessage('SharedExitError'), [IntToStr(ExitCode)])
+  else
+    SharedInstalled := True;
+  if Result <> '' then begin
+    Log(Result);
+    if not WizardSilent then
+      if MsgBox(Result + #13#10#13#10 + CustomMessage('ContinueAppOnly'),
+          mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then Result := '';
+  end;
 end;
 
 procedure MigrateBundle(const LegacyFolder, BundleName, ProcessorCID: String);
@@ -79,7 +120,7 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssPostInstall then begin
+  if (CurStep = ssPostInstall) and SharedInstalled then begin
     #include MigrationList
   end;
 end;

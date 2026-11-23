@@ -4,6 +4,9 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
+- On `feature/windows-vst3-installer-repair`, Windows Setup can install Studio alone, or repair the shared VST3 set while matching versioned binaries are loaded. The shared task is selected by default. Deferring it also defers migration of legacy bundles. The application binary is the `transport-nav` build. The revised installer is in `dist/windows-transport-nav-setup2/`.
+- An isolated Windows installer test held a matching VST3 open, restored missing bundle resources, reproduced exit code 5 with a changed and locked binary, deferred the shared update and successfully retried after releasing the lock. The workflow includes the locked repair and app-only paths. The local test used isolated paths and ran without UAC. The installed transport application and all 112 files in the 11 shared bundles on this workstation matched the build.
+
 - On `feature/transport-navigation`, Home locates tick zero, Rewind and Forward step one source bar and repeat on hold. Stop parks the playhead for the next Play or Record MIDI. A running recording keeps a continuous take. The section readout follows source intervals. Follow defaults on for the arrangement and piano roll, and switching it off leaves both scroll ranges under manual control. The reading modes retain their own Follow playback switch.
 - Windows x64 Release passed all 19 CTests. Run `ostf_studio_transport`, `ostf_studio_stock_effects` and `ostf_studio_notation` for tempo-aware seeking, follow at independent zoom settings, GM note chase and WAV positioning. The UI snapshots are in `build-win-plugins/transport-check/`. Local Windows development packages use `dist/windows-transport-nav/`. macOS execution and physical-device playback for this feature remain unverified.
 
