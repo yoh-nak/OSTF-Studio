@@ -2,7 +2,7 @@
 
 **English** · [日本語](README.ja.md)
 
-Choose AI Arrangement Studio, AI Lyric Studio or AI Vocal Studio from the **Mode** menu. The prompt guide beside the global timeline headings shows example requests for the selected mode. The ChatGPT connection button sits at the right of the top toolbar, alongside the model selector and refresh button when signed in. Open **Settings → M-VAVE controllers** to assign live controls or edit an SMK-25 II preset inside Studio. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
+Choose AI Arrangement Studio, AI Lyric Studio or AI Vocal Studio from the **Mode** menu. The prompt guide beside the global timeline headings cycles through three example requests for the selected mode every 15 seconds. The previous and next buttons reset the reading time. The ChatGPT connection button sits at the right of the top toolbar, alongside the model selector and refresh button when signed in. Open **Settings → Mackie Control** to connect a control surface. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
 
 The **External connections** menu opens Splice, Melodyne and Ableton Link. Select an audio clip in the arrangement or the lower clip lane to open its source range in Melodyne. Opening Melodyne without a selection launches the standalone editor. Enable Link in both Live and Studio and enable Start Stop Sync in Live to share transport. The Link tempo menu shows the connected peer count. Audio capture holds its starting tempo for the duration of a take.
 
@@ -12,11 +12,9 @@ The **External connections** menu opens Splice, Melodyne and Ableton Link. Selec
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
 
-## M-VAVE controller editor (development build)
+## Mackie Control
 
-Open **Settings → M-VAVE → SMK-25 II preset editor**. The two rows show all eight presets and both banks. **Load recommended mixer layout** previews their assignments locally. On Windows, **Send Studio recommended setup** writes the pad and knob settings over Bluetooth, backs up each changed preset and verifies it by reading it back. You can also edit and transfer an individual preset. The performance MIDI input uses the fixed mixer assignments as soon as Studio recognises the SMK-25 II.
-
-P1 addresses tracks 1–8, P2 addresses tracks 9–16, and so on up to P8. Empty slots have no target. Bank A knobs control volume and its two pad rows switch mute and solo. Bank B knobs control pan. Pads 1–8 select a track. Pads 9–16 control mute, solo, record arm, play, stop, record, cue and song end. Hover over a mapped mixer control to see its preset, bank, MIDI channel and CC or note number. Double-click a track name to edit it in place, press Enter to save or Escape to cancel.
+Set the device to Mackie Control (MCU) mode and select its DAW MIDI input under **Settings → Mackie Control**. Select the feedback output to mirror faders, pan rings and button LEDs. The eight strips control volume, pan, record arm, solo, mute and selection. Bank and channel navigation move the strips across the mixer. Transport controls include rewind, forward, stop, play and record. Double-click a track name to edit it in place, press Enter to save or Escape to cancel.
 
 Arm a MIDI track to play its assigned instrument while stopped and see its post-fader audio level. The track instrument menu's **MIDI OUT** destination sends live and sequenced MIDI to a hardware port. A separate audio input can receive the hardware's sound. Port selections are local to this computer.
 
@@ -38,7 +36,7 @@ Use **File → Import and transcription** to analyse audio, MIDI or a PDF score.
 
 ## Audio clip editing (development build)
 
-Select an audio track to open its waveform below the arrangement. Enable **Loop** and drag the clip’s amber right edge to repeat it. **Warp (re-pitch)** fits one cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker and drag it to move that point in time. Pitch follows the change in speed. Use **Splice Sounds** to open the installed official VST3 instrument inside Studio, browse your library, audition sounds and drag a licensed WAV onto an audio track. The dialog includes installation and scanning if Studio has not found the instrument. [Splice plugin and plan details](https://support.splice.com/en/articles/12997860-splice-sounds-plugin-faq)
+Select an audio track to open its waveform below the arrangement. Enable **Loop** and drag the clip’s amber right edge to repeat it. **Warp (re-pitch)** fits one cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker and drag it to move that point in time. Pitch follows the change in speed. Use **Splice Sounds** in the right plug-in pane to open the installed official VST3 editor, browse your library, audition sounds and drag a licensed WAV onto an audio track. The pane includes installation and scanning if Studio has not found the instrument. [Splice plugin and plan details](https://support.splice.com/en/articles/12997860-splice-sounds-plugin-faq)
 
 Press **Melodyne** in the waveform editor to open the selected source as a working WAV in Melodyne standalone. Use **Replace Audio** in Melodyne, then **Apply edited WAV** in Studio to keep the edited audio in your project. The Theory Guide groups cadences directly on the degree row. The function row stays available underneath.
 

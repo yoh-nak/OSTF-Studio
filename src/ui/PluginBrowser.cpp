@@ -79,18 +79,31 @@ PluginBrowser::PluginBrowser() {
     cache_ = directory.getChildFile("vst3-cache.xml");
     if (const auto xml = juce::XmlDocument::parse(cache_)) plugins_.recreateFromXml(*xml);
     registerBundledPlugins();
-    addAndMakeVisible(scanButton_);
-    addAndMakeVisible(scanOneButton_);
-    addAndMakeVisible(filter_);
+    addAndMakeVisible(pluginsTab_);
+    addAndMakeVisible(spliceTab_);
+    addAndMakeVisible(pluginPage_);
+    addChildComponent(splicePage_);
+    pluginsTab_.onClick = [this] { selectSplice(false); };
+    spliceTab_.onClick = [this] { if (onSplice) onSplice(); };
+    pluginsTab_.setToggleState(true, juce::dontSendNotification);
+    splicePage_.addAndMakeVisible(spliceView_);
+    splicePage_.addAndMakeVisible(spliceMessage_);
+    splicePage_.addAndMakeVisible(installSplice_);
+    splicePage_.addAndMakeVisible(scanSplice_);
+    installSplice_.onClick = [] { juce::URL("https://splice.com/tools/sounds-plugin").launchInDefaultBrowser(); };
+    scanSplice_.onClick = [this] { selectSplice(false); scan(); };
+    pluginPage_.addAndMakeVisible(scanButton_);
+    pluginPage_.addAndMakeVisible(scanOneButton_);
+    pluginPage_.addAndMakeVisible(filter_);
     filter_.addItem(TRANS("All plug-ins"), 1);
     filter_.addItem(TRANS("Instruments"), 2);
     filter_.addItem(TRANS("Effects"), 3);
     filter_.setSelectedId(1, juce::dontSendNotification);
     filter_.onChange = [this] { refreshTree(); };
     scanOneButton_.onClick = [this] { choosePlugin(); };
-    addAndMakeVisible(status_);
-    addChildComponent(progress_);
-    addAndMakeVisible(tree_);
+    pluginPage_.addAndMakeVisible(status_);
+    pluginPage_.addChildComponent(progress_);
+    pluginPage_.addAndMakeVisible(tree_);
     tree_.setRootItemVisible(false);
     tree_.setDefaultOpenness(true);
     scanButton_.onClick = [this] {
@@ -110,6 +123,17 @@ PluginBrowser::~PluginBrowser() {
 
 void PluginBrowser::resized() {
     auto area = getLocalBounds().reduced(6);
+    auto tabs = area.removeFromTop(28);
+    pluginsTab_.setBounds(tabs.removeFromLeft(tabs.getWidth() / 2).reduced(1));
+    spliceTab_.setBounds(tabs.reduced(1));
+    pluginPage_.setBounds(area);
+    splicePage_.setBounds(area);
+    area = pluginPage_.getLocalBounds();
+    spliceView_.setBounds(area);
+    auto notice = area.reduced(8);
+    spliceMessage_.setBounds(notice.removeFromTop(64));
+    installSplice_.setBounds(notice.removeFromTop(28));
+    scanSplice_.setBounds(notice.removeFromTop(28));
     auto buttons = area.removeFromTop(24);
     scanOneButton_.setBounds(buttons.removeFromRight(buttons.getWidth() / 2).reduced(2, 0));
     scanButton_.setBounds(buttons.reduced(2, 0));
@@ -117,6 +141,25 @@ void PluginBrowser::resized() {
     status_.setBounds(area.removeFromTop(28));
     if (progress_.isVisible()) progress_.setBounds(area.removeFromTop(14).reduced(0, 2));
     tree_.setBounds(area);
+}
+
+void PluginBrowser::selectSplice(bool show) {
+    pluginPage_.setVisible(!show);
+    splicePage_.setVisible(show);
+    pluginsTab_.setToggleState(!show, juce::dontSendNotification);
+    spliceTab_.setToggleState(show, juce::dontSendNotification);
+    if (onPageChanged) onPageChanged();
+}
+
+void PluginBrowser::showSpliceMessage(const juce::String& message) {
+    spliceMessage_.setText(message, juce::dontSendNotification);
+}
+
+void PluginBrowser::showSpliceEditor(std::unique_ptr<juce::AudioProcessorEditor> editor) {
+    spliceMessage_.setVisible(!editor);
+    installSplice_.setVisible(!editor);
+    scanSplice_.setVisible(!editor);
+    spliceView_.setViewedComponent(editor.release(), true);
 }
 
 std::optional<juce::PluginDescription> PluginBrowser::find(const juce::String& identifier) const {

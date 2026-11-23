@@ -1,120 +1,39 @@
 #pragma once
-#include "core/Smk25Preset.h"
-#include <map>
 #include <juce_audio_devices/juce_audio_devices.h>
 
 namespace ostfstudio {
-enum class SurfaceModel { none, smk25ii, mixer, generic };
-inline SurfaceModel surfaceModel(juce::String name) {
-    auto compact = name.toLowerCase().retainCharacters("abcdefghijklmnopqrstuvwxyz0123456789");
-    if ((compact.contains("smk25ii") || compact.contains("smk252")) && !compact.contains("daw"))
-        return SurfaceModel::smk25ii;
-    if (compact.contains("smcmixer"))
-        return SurfaceModel::mixer;
-    return SurfaceModel::none;
-}
-using ControlTargetMap = std::map<std::pair<juce::String, int>, juce::String>;
-inline juce::String resolveControlTarget(const ControlTargetMap& targets, const juce::String& port, int preset,
-                                         const juce::String& fallback) {
-    for (int page : {preset, -1}) {
-        const auto found = targets.find({port, page});
-        if (found != targets.end()) return found->second;
-    }
-    return fallback;
-}
-
-// A preset assigned to a particular device starts at its first parameter.
-inline int controlParameterIndex(const ControlTargetMap& targets, const juce::String& port, int page, int bank, int knob) {
-    const int group = targets.contains({port, page}) ? 0 : std::max(0, page);
-    return (group * 2 + bank) * 8 + knob;
-}
-
-inline int movedEffectSlot(int slot, int from, int to) {
-    if (slot == from) return to;
-    if (slot > from && (to < 0 || slot <= to)) return slot - 1;
-    if (to >= 0 && slot >= to && slot < from) return slot + 1;
-    return slot;
-}
-
 struct SurfaceAction {
-    enum Kind { none, pad, knob, fader, relativePan, learned } kind = none;
-    int index = 0, value = 0, page = -1, bank = 0;
-    juce::String port;
+    enum Kind { none, fader, relativePan, arm, solo, mute, select, bankLeft, bankRight,
+                channelLeft, channelRight, rewind, forward, stop, play, record } kind = none;
+    int index = 0, value = 0;
 };
-struct ControllerMap {
-    juce::String port;
-    bool studioRig = false;
-    static std::shared_ptr<const Smk25Rig> factoryLayout() {
-        static const auto layout = std::make_shared<const Smk25Rig>();
-        return layout;
+
+inline SurfaceAction mackieAction(const juce::MidiMessage& m) {
+    using A = SurfaceAction;
+    if (m.isPitchWheel() && m.getChannel() <= 8)
+        return {A::fader, m.getChannel() - 1, m.getPitchWheelValue()};
+    if (m.getChannel() != 1) return {};
+    if (m.isController() && m.getControllerNumber() >= 16 && m.getControllerNumber() < 24) {
+        const int value = m.getControllerValue();
+        return {A::relativePan, m.getControllerNumber() - 16, (value & 64) ? -(value & 63) : value};
     }
-    std::shared_ptr<const Smk25Rig> layout = factoryLayout();
-    SurfaceModel model = SurfaceModel::none;
-    std::array<int, 16> notes{}, pitches{};
-    std::array<int, 8> cc{};
-    ControllerMap() {
-        for (int i = 0; i < 16; ++i)
-            notes[i] = 9 * 128 + 36 + i; // Studio pad preset, channel 10
-        for (int i = 0; i < 8; ++i)
-            cc[i] = 16 + i; // Studio knob preset, channel 1
-        pitches.fill(-1);
+    if (!m.isNoteOn()) return {};
+    const int note = m.getNoteNumber();
+    if (note < 32) {
+        constexpr A::Kind strips[]{A::arm, A::solo, A::mute, A::select};
+        return {strips[note / 8], note % 8};
     }
-    bool learnable() const { return model == SurfaceModel::smk25ii || model == SurfaceModel::generic; }
-    int padIndex(const juce::MidiMessage &m) const {
-        if (!learnable() || !(m.isNoteOn() || m.isNoteOff()))
-            return -1;
-        if (studioRig) {
-            const auto hit = layout->address(false, m.getChannel(), m.getNoteNumber());
-            return hit >= 0 && (hit / 24) % 2 == 0 ? hit % 24 : -1;
-        }
-        auto it = std::find(notes.begin(), notes.end(), (m.getChannel() - 1) * 128 + m.getNoteNumber());
-        return it == notes.end() ? -1 : int(it - notes.begin());
+    switch (note) {
+        case 0x2e: return {A::bankLeft};
+        case 0x2f: return {A::bankRight};
+        case 0x30: return {A::channelLeft};
+        case 0x31: return {A::channelRight};
+        case 0x5b: return {A::rewind};
+        case 0x5c: return {A::forward};
+        case 0x5d: return {A::stop};
+        case 0x5e: return {A::play};
+        case 0x5f: return {A::record};
+        default: return {};
     }
-    SurfaceAction action(const juce::MidiMessage &m) const {
-        if (studioRig) {
-            if (!learnable() || !(m.isNoteOnOrOff() || m.isController())) return {};
-            const bool knob = m.isController();
-            const auto hit = layout->address(knob, m.getChannel(), knob ? m.getControllerNumber() : m.getNoteNumber());
-            if (hit < 0) return {};
-            const auto index = hit % 24 - (knob ? 16 : 0);
-            return {knob ? SurfaceAction::knob : m.isNoteOn() ? SurfaceAction::pad : SurfaceAction::none,
-                    index, knob ? m.getControllerValue() : pitches[index], hit / 48, (hit / 24) % 2};
-        }
-        if (model == SurfaceModel::mixer) {
-            if (m.isPitchWheel() && m.getChannel() <= 8)
-                return {SurfaceAction::fader, m.getChannel() - 1, m.getPitchWheelValue()};
-            if (m.isController() && m.getChannel() == 1 && m.getControllerNumber() >= 16 &&
-                m.getControllerNumber() < 24) {
-                const int v = m.getControllerValue();
-                return {SurfaceAction::relativePan, m.getControllerNumber() - 16, (v & 64) ? -(v & 63) : v};
-            }
-        }
-        if (learnable()) {
-            if (m.isNoteOn()) {
-                const auto index = padIndex(m);
-                if (index >= 0)
-                    return {SurfaceAction::pad, index, pitches[index]};
-            }
-            if (m.isController()) {
-                const auto key = (m.getChannel() - 1) * 128 + m.getControllerNumber();
-                const auto it = std::find(cc.begin(), cc.end(), key);
-                if (it != cc.end())
-                    return {SurfaceAction::knob, int(it - cc.begin()), m.getControllerValue()};
-            }
-        }
-        return {};
-    }
-    void bind(int control, int key) {
-        auto assign = [&](auto &keys, int index) {
-            for (auto &existing : keys)
-                if (existing == key)
-                    existing = -1;
-            keys[index] = key;
-        };
-        if (control >= 0 && control < 16)
-            assign(notes, control);
-        else if (control >= 16 && control < 24)
-            assign(cc, control - 16);
-    }
-};
-} // namespace ostfstudio
+}
+}

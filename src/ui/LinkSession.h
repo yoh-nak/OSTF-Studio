@@ -14,6 +14,8 @@ public:
     Pulse audioPulse(std::int64_t micros, double quantum) const;
     void setTempo(double bpm);
     void stop();
+    struct Launch { std::int64_t micros; double elapsedBeats, gridBeat; };
+    Launch followStart(double quantum) const;
     std::int64_t startAt(double songBeat, double quantum, bool announce);
     std::int64_t micros() const;
 private:

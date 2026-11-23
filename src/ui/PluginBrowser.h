@@ -10,6 +10,11 @@ public:
     void resized() override;
     bool hasScanCache() const { return cache_.existsAsFile(); }
     void scan();
+    bool showingSplice() const { return splicePage_.isVisible(); }
+    void selectSplice(bool show);
+    void showSpliceEditor(std::unique_ptr<juce::AudioProcessorEditor>);
+    void showSpliceMessage(const juce::String&);
+    std::function<void()> onSplice, onPageChanged;
     std::optional<juce::PluginDescription> find(const juce::String& identifier) const;
     juce::Array<juce::PluginDescription> types() const { return plugins_.getTypes(); }
     static int runScanWorker(const juce::String& token, const juce::String& target = {});
@@ -22,6 +27,11 @@ private:
     bool startScanner();
     void finishScan(const juce::String& message = {});
 
+    juce::Component pluginPage_, splicePage_;
+    juce::TextButton pluginsTab_{TRANS("Plug-ins")}, spliceTab_{"Splice Sounds"};
+    juce::Viewport spliceView_;
+    juce::Label spliceMessage_;
+    juce::TextButton installSplice_{TRANS("Get Splice Sounds")}, scanSplice_{TRANS("Scan VST3")};
     juce::File cache_, scanStatus_;
     juce::KnownPluginList plugins_;
     std::unique_ptr<juce::ChildProcess> scanProcess_;

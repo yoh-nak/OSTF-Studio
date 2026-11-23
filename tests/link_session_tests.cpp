@@ -39,6 +39,11 @@ int main(int argc, char** argv) {
     studio.startAt(0, 4, true);
     if (!wait([&] { return peer.state(4).playing; })) return 5;
     if (std::abs(std::remainder(studio.state(4).beat - peer.state(4).beat, 4.0)) > .03) return 6;
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    const auto beforeFollow = peer.micros();
+    const auto resumed = peer.followStart(4);
+    if (resumed.micros < beforeFollow || resumed.elapsedBeats < 0
+        || (resumed.elapsedBeats > 0 && resumed.micros - beforeFollow > 100000)) return 9;
     peer.stop();
     if (!wait([&] { return !studio.state(4).playing; })) return 7;
     std::cout << "Two Link peers verified tempo, beat phase, start and stop.\n";

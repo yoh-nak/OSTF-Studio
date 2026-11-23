@@ -146,20 +146,6 @@ bool checkPerformanceAudio() {
         monitor.stop();
         song.pitchedNotes[0].clear();
         song.trackKinds = {TrackKind::drum};
-        ControllerMap rig;
-        rig.studioRig = true; rig.model = SurfaceModel::smk25ii;
-        for (int p = 0; p < 8; ++p) for (int b = 0; b < 2; ++b) {
-            for (int i = 0; i < 16; ++i) {
-                auto msg = juce::MidiMessage::noteOn(p + 9,36 + b * 16 + i,juce::uint8(90));
-                const auto action = rig.action(msg);
-                if (action.kind != SurfaceAction::pad || action.index != i || action.page != p || action.bank != b ||
-                    rig.padIndex(msg) != (b == 0 ? i : -1)) return false;
-            }
-            for (int i = 0; i < 8; ++i) {
-                auto a = rig.action(juce::MidiMessage::controllerEvent(p + 9,16 + b * 8 + i,92));
-                if (a.kind != SurfaceAction::knob || a.index != i || a.value != 92 || a.page != p || a.bank != b) return false;
-            }
-        }
     }
     for (int channels : {0, 1, 2}) {
         PreviewTransport capture;

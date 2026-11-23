@@ -1,8 +1,21 @@
-#include "ui/MixerShortcuts.h"
 #include "ui/MainComponent.h"
-#include "ui/SmkPresetEditor.h"
+#if JUCE_WINDOWS
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace {
+template <typename T>
+T* descendant(juce::Component& parent) {
+    for (auto* child : parent.getChildren()) {
+        if (auto* match = dynamic_cast<T*>(child)) return match;
+        if (auto* match = descendant<T>(*child)) return match;
+    }
+    return nullptr;
+}
+
 juce::MouseEvent pointer(juce::Component& target, int y) {
     const auto time = juce::Time::getCurrentTime();
     return {juce::Desktop::getInstance().getMainMouseSource(), {10.0f, static_cast<float>(y)},
@@ -19,70 +32,93 @@ T* findControl(juce::Component& root, const juce::String& title) {
 }
 }
 
+// Optional integration check using the user's installed VST3 and its real native editor.
+// Exercise the same menu item twice, including a trip back to the ordinary plug-in list.
+std::unique_ptr<juce::Timer> startSplicePaneCheck(std::function<void(int)> finished) {
+    class Probe final : public juce::Timer {
+    public:
+        explicit Probe(std::function<void(int)> done) : finish(std::move(done)) {
+            studio.setBounds(-12000, -12000, 1440, 900);
+            studio.addToDesktop(juce::ComponentPeer::windowIsTemporary | juce::ComponentPeer::windowIgnoresKeyPresses);
+            studio.setVisible(true);
+            for (auto* child : studio.getChildren())
+                if (auto* bar = dynamic_cast<juce::MenuBarComponent*>(child)) menus = bar->getModel();
+            if (menus) {
+                const auto menu = menus->getMenuForIndex(5, {});
+                for (juce::PopupMenu::MenuItemIterator it(menu); it.next();)
+                    if (it.getItem().text == TRANS("Open Splice Sounds in right pane")) command = it.getItem().itemID;
+                if (command) menus->menuItemSelected(command, 5);
+            }
+            startTimer(100);
+        }
+    private:
+        int inspect() {
+            if (!command) return 1;
+            PluginBrowser* pane = nullptr;
+            for (auto* child : studio.getChildren())
+                if (auto* p = dynamic_cast<PluginBrowser*>(child)) pane = p;
+            if (!pane || !pane->isShowing() || !pane->showingSplice() || pane->getX() <= 0) return 2;
+            auto* editor = descendant<juce::AudioProcessorEditor>(*pane);
+            if (!editor) {
+                const auto types = pane->types();
+                const bool installed = std::any_of(types.begin(), types.end(), [](const auto& t) {
+                    return t.name.equalsIgnoreCase("Splice Sounds") && t.pluginFormatName == "VST3";
+                });
+                return installed ? -1 : 77;
+            }
+            if (!editor->processor.getName().equalsIgnoreCase("Splice Sounds")
+                || !editor->isShowing() || editor->getPeer() != studio.getPeer()
+                || editor->getWidth() <= 0 || editor->getHeight() <= 0) return 3;
+            auto* view = editor->findParentComponentOfClass<juce::Viewport>();
+            if (!view || view->getViewedComponent() != editor || view->getViewArea().isEmpty()) return 4;
+#if JUCE_WINDOWS
+            auto* native = descendant<juce::HWNDComponent>(*editor);
+            if (!native) return -1;
+            auto host = static_cast<HWND>(native->getHWND());
+            if (!host || !IsChild(static_cast<HWND>(studio.getPeer()->getNativeHandle()), host)
+                || !GetWindow(host, GW_CHILD)) return -1;
+#endif
+            if (!firstEditor) {
+                firstEditor = editor;
+                pane->selectSplice(false);
+                if (editor->isShowing()) return 5;
+                menus->menuItemSelected(command, 5);
+                return -1;
+            }
+            return editor == firstEditor ? 0 : 6;
+        }
+        void timerCallback() override {
+            int result = inspect();
+            if (result < 0 && juce::Time::getMillisecondCounterHiRes() < deadline) return;
+            stopTimer();
+            finish(result < 0 ? 7 : result);
+        }
+        MainComponent studio;
+        std::function<void(int)> finish;
+        juce::MenuBarModel* menus = nullptr;
+        juce::Component::SafePointer<juce::AudioProcessorEditor> firstEditor;
+        int command = 0;
+        double deadline = juce::Time::getMillisecondCounterHiRes() + 30000;
+    };
+    return std::make_unique<Probe>(std::move(finished));
+}
+
 int checkTrackView(const juce::File& fixture) {
     using namespace ostfstudio;
-    {
-        juce::TemporaryFile preferencesFile(".settings"), source(".mkcII");
-        juce::PropertiesFile settings(preferencesFile.getFile(), juce::PropertiesFile::Options{});
-        const auto example = Smk25Preset::studioPreset();
-        if (!source.getFile().replaceWithData(example.bytes().data(), example.bytes().size())) return 110;
-        const juce::StringArray path{source.getFile().getFullPathName()};
-        {
-            SmkPresetEditor editor(settings);
-            editor.setSize(760, 400);
-            if (!editor.isInterestedInFileDrag(path) || editor.isInterestedInFileDrag({"sample.mkc"})) return 111;
-            editor.filesDropped(path, 20, 20);
-            auto* bank = findControl<juce::ComboBox>(editor, TRANS("Preset bank"));
-            auto* number = findControl<juce::Slider>(editor, TRANS("Note number"));
-            if (!bank || !number) return 112;
-            bank->setSelectedId(2, juce::sendNotificationSync);
-            if (number->getValue() != 52) return 113;
-            number->setValue(75, juce::sendNotificationSync);
-        }
-        SmkPresetEditor restored(settings);
-        auto* bank = findControl<juce::ComboBox>(restored, TRANS("Preset bank"));
-        auto* number = findControl<juce::Slider>(restored, TRANS("Note number"));
-        if (!bank || !number || number->getValue() != 36) return 114;
-        bank->setSelectedId(2, juce::sendNotificationSync);
-        if (number->getValue() != 75 || !settings.containsKey("smk25Draft")) return 115;
-        SmkPresetEditor::PresetReadbacks verified{};
-        for (int page = 0; page < 8; ++page) verified[page] = example.forStudioSlot(page);
-        restored.showVerifiedSetup(verified, 0);
-        if (settings.containsKey("smk25Draft") || number->getValue() != 52) return 135;
-        auto* deviceSlot = findControl<juce::ComboBox>(restored, TRANS("Device preset slot"));
-        auto* channel = findControl<juce::ComboBox>(restored, TRANS("MIDI channel"));
-        if (!deviceSlot || !channel) return 136;
-        deviceSlot->setSelectedId(8, juce::sendNotificationSync);
-        if (channel->getSelectedId() != 16) return 137;
-    }
-    {
-        const auto first = mixerShortcut("Volume", 0, MixerShortcut::volume);
-        const auto last = mixerShortcut("Pan", 63, MixerShortcut::pan);
-        if (!first.contains("P1 A") || !first.contains("Ch 9  CC 16") || !last.contains("P8 B") || !last.contains("Ch 16  CC 31")
-            || mixerShortcut("Volume", 64, MixerShortcut::volume) != "Volume"
-            || !mixerShortcut("Solo", 8, MixerShortcut::solo).contains("Ch 10  Note 44")) return 161;
-    }
-    ControllerMap profile;
-    profile.model = surfaceModel("SMK25II-bt");
-    profile.pitches[0] = 74;
-    auto on = [](int channel, int pitch) { return juce::MidiMessage::noteOn(channel,pitch,juce::uint8(95)); };
-    if (surfaceModel("SMK25II-bt-DAW") != SurfaceModel::none || profile.action(on(10,36)).value != 74
-        || profile.action(on(1,36)).kind != SurfaceAction::none) return 93;
-    profile.bind(1, 9*128+36);
-    if (profile.padIndex(juce::MidiMessage::noteOff(10,36)) != 1 || profile.notes[0] != -1) return 94;
-    profile.model = surfaceModel("SMC-Mixer");
-    if (profile.action(juce::MidiMessage::pitchWheel(8,16383)).index != 7
-        || profile.action(juce::MidiMessage::controllerEvent(1,16,65)).value != -1
-        || profile.action(juce::MidiMessage::pitchWheel(9,8192)).kind != SurfaceAction::none) return 95;
+    using A = SurfaceAction;
+    if (mackieAction(juce::MidiMessage::pitchWheel(8,16383)).index != 7
+        || mackieAction(juce::MidiMessage::controllerEvent(1,16,65)).value != -1
+        || mackieAction(juce::MidiMessage::pitchWheel(9,8192)).kind != A::none) return 95;
+    auto note = [](int n) { return mackieAction(juce::MidiMessage::noteOn(1,n,juce::uint8(127))); };
+    if (note(0x5e).kind != A::play || note(0x5f).kind != A::record || note(0x2f).kind != A::bankRight
+        || note(0x13).kind != A::mute || note(0x13).index != 3
+        || mackieAction(juce::MidiMessage::noteOff(1,0x5e)).kind != A::none) return 93;
     MidiInputRoute route{"selected-port", "Selected keyboard", 2};
     if (!route.accepts("selected-port", 2) || route.accepts("selected-port", 1) || route.accepts("other-port", 2)) return 101;
     route.enabled = false;
     if (route.accepts("selected-port", 2)) return 102;
     route = {};
     if (!route.accepts("other-port", 16) || route.accepts("other-port", 0) || route.accepts("other-port", 17)) return 103;
-    profile.model = SurfaceModel::generic;
-    profile.bind(16, 3 * 128 + 70);
-    if (profile.action(juce::MidiMessage::controllerEvent(4,70,99)).kind != SurfaceAction::knob) return 104;
     PianoNoteGrid grid;
     PianoInspector colours(grid);
     colours.showLegend = true;
@@ -107,20 +143,6 @@ int checkTrackView(const juce::File& fixture) {
     grid.mouseDrag(panEvent(60, left));
     grid.mouseUp(panEvent(60, 0));
     if (std::abs(scrolled - .2) > .0001 || !grid.selection.isEmpty()) return 134;
-    ControlTargetMap targets;
-    targets[{"SMK input A", -1}] = "mix";
-    targets[{"SMK input A", 2}] = "synth";
-    targets[{"SMK input B", 2}] = "fx";
-    if (resolveControlTarget(targets, "SMK input A", 2, "follow") != "synth" ||
-        resolveControlTarget(targets, "SMK input A", 3, "follow") != "mix" ||
-        resolveControlTarget(targets, "SMK input B", 2, "follow") != "fx" ||
-        resolveControlTarget(targets, "SMK input B", 3, "follow") != "follow") return 125;
-    if (controlParameterIndex(targets, "SMK input A", 2, 0, 4) != 4 ||
-        controlParameterIndex(targets, "SMK input A", 2, 1, 4) != 12 ||
-        controlParameterIndex(targets, "SMK input A", 3, 0, 4) != 52 ||
-        movedEffectSlot(1, 1, 3) != 3 || movedEffectSlot(2, 1, 3) != 1 ||
-        movedEffectSlot(1, 3, 0) != 2 || movedEffectSlot(1, 1, -1) != -1 ||
-        movedEffectSlot(2, 1, -1) != 1 || movedEffectSlot(0, 1, -1) != 0) return 129;
     MainComponent main;
     main.setVisible(true);
     main.setSize(1450, 1200);
@@ -136,7 +158,7 @@ int checkTrackView(const juce::File& fixture) {
     const auto external = model.getMenuForIndex(5, {});
     juce::StringArray actions;
     for (juce::PopupMenu::MenuItemIterator it(external); it.next();) actions.add(it.getItem().text);
-    if (!actions.contains("Splice...") || !actions.contains("Melodyne...") || !actions.contains("Ableton Link")) return 121;
+    if (!actions.contains(TRANS("Open Splice Sounds in right pane")) || !actions.contains("Melodyne...") || !actions.contains("Ableton Link")) return 121;
     auto* examples = findControl<juce::TextEditor>(main, TRANS("Example prompts"));
     auto* connection = main.findChildWithID("chatgpt-connection");
     if (!examples || !examples->isReadOnly() || !connection || !connection->isVisible()) return 122;
@@ -156,6 +178,13 @@ int checkTrackView(const juce::File& fixture) {
         const auto example = examples->getText();
         if (example.isEmpty() || displayedExamples.contains(example)) return 122;
         displayedExamples.add(example);
+        auto* next = findControl<juce::TextButton>(main, TRANS("Next example"));
+        auto* previous = findControl<juce::TextButton>(main, TRANS("Previous example"));
+        if (!next || !previous) return 162;
+        next->onClick();
+        if (examples->getText().isEmpty() || examples->getText() == example) return 162;
+        previous->onClick();
+        if (examples->getText() != example) return 162;
     }
     if (!previousMode) return 122;
     model.menuItemSelected(previousMode, 3);

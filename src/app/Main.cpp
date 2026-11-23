@@ -4,10 +4,6 @@
 #include "ui/StudioLanguage.h"
 #include "ui/PluginRoles.h"
 #include <cmath>
-#if JUCE_WINDOWS && defined(_MSC_VER)
-#include "ui/Smk25Bluetooth.h"
-#include <future>
-#endif
 
 namespace {
 int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const juce::String& arrangerPath) {
@@ -204,6 +200,7 @@ private:
 
 int checkStockEffects(const juce::StringArray&);
 int checkTrackView(const juce::File&);
+std::unique_ptr<juce::Timer> startSplicePaneCheck(std::function<void(int)>);
 int checkPianoEdits(const juce::File&);
 int checkTheoryGuide(const juce::File&);
 int checkNotation(const juce::File&, const juce::File&);
@@ -217,56 +214,14 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
-#if JUCE_WINDOWS && defined(_MSC_VER)
-        if (args.size() == 2 && (args[0] == "--smk25-read-smoke" || args[0] == "--smk25-read-all-smoke" ||
-                                  args[0] == "--smk25-test-slot8-pad-colour-and-restore")) {
-            const juce::File report(args[1]);
-            const bool writeTest = args[0] == "--smk25-test-slot8-pad-colour-and-restore";
-            const int slots = args[0] == "--smk25-read-all-smoke" ? 8 : 1;
-            const auto result = std::async(std::launch::async, [slots,writeTest,report]() -> juce::String {
-                if (report.exists()) return "Report already exists.";
-                auto found = ostfstudio::smkble::discover();
-                if (found.devices.size() != 1)
-                    return found.message.isEmpty() ? juce::String("Expected exactly one SMK-25 II.") : found.message;
-                const auto device = found.devices.front();
-                if (writeTest) {
-                    // This explicit hardware diagnostic only changes one colour byte in slot 8.
-                    const auto original = ostfstudio::smkble::transfer(device, 7, {});
-                    if (!original.preset || original.message.isNotEmpty()) return "Initial read failed: " + original.message;
-                    const auto backup = report.withFileExtension(".mkcII");
-                    const auto& bytes = original.preset->bytes();
-                    if (backup.exists() || !backup.replaceWithData(bytes.data(), bytes.size())) return "Could not save original.";
-                    auto desired = *original.preset;
-                    bool edited = false;
-                    for (int i = 0; i < 16 && !edited; ++i) {
-                        auto pad = desired.control(0, i);
-                        pad.rgb[0] ^= 64;
-                        edited = desired.edit(0, i, pad);
-                    }
-                    if (!edited) return "No editable pad in preset 8 bank A.";
-                    const auto changed = ostfstudio::smkble::transfer(device, 7, desired);
-                    // Always attempt recovery, including when verification or acknowledgement failed.
-                    const auto restored = ostfstudio::smkble::transfer(device, 7, original.preset);
-                    const auto finalRead = ostfstudio::smkble::transfer(device, 7, {});
-                    if (!finalRead.preset || finalRead.message.isNotEmpty() || bytes != finalRead.preset->bytes())
-                        return "RESTORE NOT VERIFIED. Backup: " + backup.getFullPathName() + " / " + restored.message + " / " + finalRead.message;
-                    if (restored.message.isNotEmpty() || changed.message.isNotEmpty())
-                        return "Original image verified. Write: " + changed.message + " / restore: " + restored.message;
-                    return {};
-                }
-                for (int slot = 0; slot < slots; ++slot) {
-                    const auto read = ostfstudio::smkble::transfer(device, slot, {});
-                    if (!read.preset || read.message.isNotEmpty()) return device.name + " #" + juce::String(slot + 1) + " / " + read.message;
-                }
-                return {};
-            }).get();
-            const auto success = writeTest ? juce::String("Preset 8 pad colour written, read back, restored and independently verified (2504 bytes).") :
-                                              "Read SMK-25 II presets: " + juce::String(slots);
-            const bool saved = !report.exists() && report.replaceWithText(result.isEmpty() ? success : result);
-            setApplicationReturnValue(saved && result.isEmpty() ? 0 : 1);
-            quit();
+        if (args.size() == 1 && args[0] == "--splice-pane-smoke") {
+            spliceCheck_ = startSplicePaneCheck([this](int result) {
+                setApplicationReturnValue(result);
+                quit();
+            });
             return;
         }
+#if JUCE_WINDOWS && defined(_MSC_VER)
         if (args.size() == 4 && args[0] == "--render-score-page") {
             ostfstudio::runWindowsScorePageRenderer(juce::File(args[1]), juce::File(args[2]), args[3].getIntValue());
             quit();
@@ -351,6 +306,7 @@ public:
         }
     }
     void shutdown() override {
+        spliceCheck_.reset();
         startup_.reset();
         mainWindow_.reset();
     }
@@ -400,6 +356,7 @@ private:
     }
     std::unique_ptr<MainWindow> mainWindow_;
     std::unique_ptr<StartupScreen> startup_;
+    std::unique_ptr<juce::Timer> spliceCheck_;
     juce::File queuedDocument_;
 };
 

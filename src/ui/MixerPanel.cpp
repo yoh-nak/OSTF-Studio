@@ -1,4 +1,3 @@
-#include "ui/MixerShortcuts.h"
 #include "ui/MixerPanel.h"
 #include <algorithm>
 #include <numeric>
@@ -138,7 +137,7 @@ MixerPanel::MixerPanel() {
 void MixerPanel::renameTrack(std::size_t index, const juce::String& name) {
     if (index < strips_.size()) {
         strips_[index]->name.setText(name, juce::dontSendNotification);
-        strips_[index]->name.setTooltip(ostfstudio::mixerShortcut(name, index, ostfstudio::MixerShortcut::select));
+        strips_[index]->name.setTooltip(name);
     }
 }
 
@@ -162,12 +161,12 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         auto strip = std::make_unique<Strip>(juce::String::fromUTF8(tracks[i].label), project.trackKinds[i] == ostfstudio::TrackKind::audio ? "Audio" : groupName(project.mixerGroups[i]), true);
         strip->contextMenu = [this, i] { if (rowMenu) rowMenu(false, i); };
         using namespace ostfstudio;
-        strip->name.setTooltip(mixerShortcut(strip->name.getText(), i, MixerShortcut::select));
-        strip->volume.setTooltip(mixerShortcut(TRANS("Volume"), i, MixerShortcut::volume));
-        strip->pan.setTooltip(mixerShortcut(TRANS("Pan"), i, MixerShortcut::pan));
-        strip->mute.setTooltip(mixerShortcut(TRANS("Mute"), i, MixerShortcut::mute));
-        strip->solo.setTooltip(mixerShortcut(TRANS("Solo"), i, MixerShortcut::solo));
-        strip->cue.setTooltip(mixerPadShortcut(TRANS("Cue to headphones (outputs 3-4)"), 14, true));
+        strip->name.setTooltip(strip->name.getText());
+        strip->volume.setTooltip(TRANS("Volume"));
+        strip->pan.setTooltip(TRANS("Pan"));
+        strip->mute.setTooltip(TRANS("Mute"));
+        strip->solo.setTooltip(TRANS("Solo"));
+        strip->cue.setTooltip(TRANS("Cue to headphones (outputs 3-4)"));
         auto* controls = strip.get();
         strip->volume.onValueChange = [this, i, controls] { setVolumeDb(i, controls->volume.getValue()); };
         strip->pan.onValueChange = [this, i, controls] { setPan(i, static_cast<float>(controls->pan.getValue() / 100.0)); };

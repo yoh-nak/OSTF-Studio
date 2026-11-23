@@ -127,8 +127,14 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
         linkStartBeat_ = double(startTick) / project.ppq;
         playbackLink_ = inputs == 0 ? launchClock_ : nullptr;
         const auto countBeats = countRemaining_.load() / sampleRate_ * options->linkTempo / 60.0;
-        launchMicros_ = launchClock_->startAt(double(startTick) / project.ppq - countBeats, options->linkQuantum,
-                                               options->announceLinkStart);
+        if (options->announceLinkStart) {
+            launchMicros_ = launchClock_->startAt(linkStartBeat_ - countBeats, linkQuantum_, true);
+        } else {
+            const auto launch = launchClock_->followStart(linkQuantum_);
+            launchMicros_ = launch.micros;
+            linkStartBeat_ = launch.gridBeat;
+            seekToTick(startTick + juce::int64(std::llround(launch.elapsedBeats * project.ppq)));
+        }
         outputLatencyMicros_ = device->getOutputLatencyInSamples() * 1.0e6 / sampleRate_;
     }
     devices_ = &devices;
@@ -192,8 +198,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     loopSamples_ = {}; loopRestart_ = false;
     captured_.setSize(0, 0);
     mapInput_ = false;
-    surface_ = {};
-    otherSurfaces_.clear();
+    controlPort_.clear();
     midiInput_ = {};
     elapsed_ = countRemaining_ = 0;
     beatSamples_.clear();
@@ -792,23 +797,7 @@ void PreviewTransport::handleIncomingMidiMessage(juce::MidiInput* input, const j
 
 void PreviewTransport::inputFromDevice(const juce::MidiMessage& message, const juce::String& port) {
     if (!midiInput_.accepts(port, message.getChannel())) return;
-    auto other = otherSurfaces_.find(port);
-    const auto& surface = other == otherSurfaces_.end() ? surface_ : other->second;
-    if (surface.port.isNotEmpty() && port == surface.port) {
-        if (surface.model == ostfstudio::SurfaceModel::mixer) return;
-        const auto action = surface.action(message);
-        if (action.kind == ostfstudio::SurfaceAction::knob) return;
-        if (surface.studioRig && action.page >= 0) return;
-        const int index = mapInput_ ? surface.padIndex(message) : -1;
-        if (index >= 0) {
-            if (surface.pitches[index] >= 0) {
-                auto note = message;
-                note.setNoteNumber(surface.pitches[index]);
-                inputNote(note);
-            }
-            return;
-        }
-    }
+    if (controlPort_.isNotEmpty() && port == controlPort_) return;
     auto mapped = message;
     if (mapInput_ && (message.isNoteOn() || message.isNoteOff())) mapped.setNoteNumber(inputMap_[message.getNoteNumber()]);
     inputNote(mapped);
@@ -870,8 +859,7 @@ void PreviewTransport::closeRecordedNote(size_t key, juce::int64 elapsed) {
 juce::Result PreviewTransport::prepareTake(const TakeOptions& options) {
     jassert(!devices_);
     takeStart_ = sample_.load();
-    surface_ = options.surface;
-    otherSurfaces_ = options.otherSurfaces;
+    controlPort_ = options.controlPort;
     midiInput_ = options.midiInput;
     if (options.drumMapping) { inputMap_ = *options.drumMapping; mapInput_ = true; }
     if (options.inputChannels) {

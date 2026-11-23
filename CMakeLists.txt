@@ -21,10 +21,6 @@ add_executable(ostf_studio_core_tests tests/timeline_model_tests.cpp)
 target_link_libraries(ostf_studio_core_tests PRIVATE ostf_studio_core)
 add_test(NAME ostf_studio_core_tests COMMAND ostf_studio_core_tests)
 
-add_executable(ostf_smk25_preset_tests tests/smk25_preset_tests.cpp)
-target_link_libraries(ostf_smk25_preset_tests PRIVATE ostf_studio_core)
-add_test(NAME ostf_smk25_preset_tests COMMAND ostf_smk25_preset_tests)
-
 add_executable(ostf_analyzer_meter_tests tests/analyzer_meter_tests.cpp)
 target_include_directories(ostf_analyzer_meter_tests PRIVATE src/plugins/effects)
 add_test(NAME ostf_analyzer_meter_tests COMMAND ostf_analyzer_meter_tests)
@@ -149,7 +145,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     juce_generate_juce_header(OSTFStudio)
     target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/OstfpPreview.cpp
         src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
-        src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/Smk25Bluetooth.cpp
+        src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp
         src/ui/TheoryGuide.cpp tests/stock_effects_smoke.cpp tests/track_view_smoke.cpp tests/notation_smoke.cpp
         tests/transport_smoke.cpp tests/piano_edit_smoke.cpp tests/theory_guide_smoke.cpp)
     target_include_directories(OSTFStudio PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -170,10 +166,6 @@ if (OSTF_STUDIO_BUILD_GUI)
         juce::juce_recommended_config_flags
     )
     if (WIN32 AND MSVC)
-        # The 19041 projection includes <experimental/coroutine>, even for synchronous consumers.
-        if(MSVC AND CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION AND CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION VERSION_LESS "10.0.20348.0")
-            set_source_files_properties(src/ui/Smk25Bluetooth.cpp PROPERTIES COMPILE_OPTIONS "/await")
-        endif()
         target_link_libraries(OSTFStudio PRIVATE windowsapp shcore shlwapi windowscodecs)
     elseif (APPLE)
         target_link_libraries(OSTFStudio PRIVATE "-framework CoreGraphics" "-framework ImageIO")

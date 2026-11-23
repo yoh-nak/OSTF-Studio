@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Docked Splice Sounds, Mackie Control, Link and prompt navigation
+
+On `feature/mackie-link-prompt-guide`, External connections → Open Splice Sounds in right pane and the Splice Sounds tab host the installed official VST3 in the right browser viewport. The Windows integration check `OSTF Studio.exe --splice-pane-smoke` dispatched the menu item, verified the official editor and its native child window belonged to Studio, hid the editor by returning to the plug-in list, and reopened the same instance. It passed with Splice Sounds 0.16.0 on this computer. The check requires a scanned and installed copy (exit 77 if unavailable). Account sign-in, sample licensing, preview audio, and macOS operation were not exercised.
+
+Mackie Control input and optional feedback output replace the SMK preset editor and fixed mixer shortcuts. The Link follower uses the remote start timestamp and catches up when the local audio engine starts late. Two SDK peers exchanged tempo, beat phase, play and stop on Windows. Live 12 did not advertise a peer during a passive check. Physical MCU controls still need verification. Each Studio mode has three local prompt examples with 15-second rotation and manual previous/next navigation.
+
 ## Mixer shortcuts and clip loops
 
 SMK-25 II presets select permanent groups of eight tracks. Banks A and B control volume and pan. Mapped controls display channel and CC or note in their tooltip. The editor previews all sixteen banks and the Windows BLE bulk transfer uses its existing slot backup and read-back path. The recommended mixer mapping is independent of MIDI Learn and plug-in focus.

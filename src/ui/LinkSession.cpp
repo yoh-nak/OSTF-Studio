@@ -34,6 +34,15 @@ void LinkSession::stop() {
     session.setIsPlaying(false, link.clock().micros());
     link.commitAppSessionState(session);
 }
+LinkSession::Launch LinkSession::followStart(double quantum) const {
+    const auto& link = impl_->link;
+    const auto state = link.captureAppSessionState();
+    const auto origin = state.timeForIsPlaying();
+    const auto audible = std::max(origin, link.clock().micros() + std::chrono::milliseconds(45));
+    const double beat = state.beatAtTime(audible, quantum);
+    return {audible.count(), beat - state.beatAtTime(origin, quantum), beat};
+}
+
 std::int64_t LinkSession::startAt(double beat, double quantum, bool announce) {
     auto& link = impl_->link;
     auto session = link.captureAppSessionState();

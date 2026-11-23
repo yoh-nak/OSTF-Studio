@@ -44,8 +44,7 @@ public:
         double linkQuantum = 4, linkTempo = 0;
         bool announceLinkStart = true;
         const std::array<int, 128>* drumMapping = nullptr;
-        ostfstudio::ControllerMap surface;
-        std::map<juce::String, ostfstudio::ControllerMap> otherSurfaces;
+        juce::String controlPort;
         ostfstudio::MidiInputRoute midiInput;
     };
     void setInputGain(double db) { captureGain_.store(juce::Decibels::decibelsToGain(float(db))); }
@@ -157,8 +156,7 @@ private:
     juce::int64 takeStart_ = 0, countLength_ = 0, countBeat_ = 1, countBar_ = 1;
     std::array<int, 128> inputMap_{};
     bool mapInput_ = false;
-    ostfstudio::ControllerMap surface_;
-    std::map<juce::String, ostfstudio::ControllerMap> otherSurfaces_;
+    juce::String controlPort_;
     ostfstudio::MidiInputRoute midiInput_;
     juce::AudioBuffer<float> captured_;
     int firstInputBuffer_ = 0;

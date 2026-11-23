@@ -19,13 +19,13 @@
 #include "ui/DrumSteps.h"
 #include "ui/DrumPads.h"
 #include "ui/ControllerSurface.h"
+#include "ui/MidiActivityLamp.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
 #include "ui/SongBasicsPanel.h"
 #include "ui/TheoryGuide.h"
 
-class SmkPresetEditor;
 
 class MainComponent final : public juce::Component, public juce::TooltipClient, public juce::DragAndDropContainer,
                             public juce::FileDragAndDropTarget, public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::MidiInputCallback, private juce::Timer, private juce::ScrollBar::Listener {
@@ -65,23 +65,20 @@ private:
     void attachPadInput(bool);
     void openController(bool show);
     void connectController(juce::MidiDeviceInfo);
-    void refreshController();
-    void syncControlInputs();
-    ostfstudio::ControllerMap controllerProfile(const juce::MidiDeviceInfo&);
-    std::map<juce::String, ostfstudio::ControllerMap> otherSurfaces_;
-    size_t rigMixerBank(int page) const;
     void applySurfaceAction(ostfstudio::SurfaceAction);
-    void saveControllerBindings();
-    SmkPresetEditor* presetEditor_ = nullptr;
+    int mackieBank_ = 0;
+    void connectMackieOutput(const juce::String&);
+    void updateMackieFeedback();
+    std::unique_ptr<juce::MidiOutput> mackieOutput_;
+    std::array<int, 8 * 6 + 3> mackieFeedback_{};
     std::unique_ptr<juce::DocumentWindow> surfaceWindow_;
     ControllerSurface* surfacePanel_ = nullptr;
     juce::MidiDeviceListConnection surfaceDevices_;
     juce::SpinLock surfaceLock_;
-    ostfstudio::ControllerMap surfaceMap_;
+    juce::String mackiePort_;
     std::array<ostfstudio::SurfaceAction, 128> surfaceEvents_{};
     size_t surfaceCount_ = 0;
-    int surfaceLearn_ = -1;
-    bool surfacePan_ = false, openedSurfacePort_ = false;
+    bool openedSurfacePort_ = false;
     void flashPad(int pitch);
     void cancelPadLearn();
     std::array<int, 128> padMapping_{};
@@ -155,7 +152,6 @@ private:
     struct InputMonitor { ostfstudio::MidiInputRoute route; bool received = false; };
     std::vector<InputMonitor> inputMonitors_;
     std::optional<std::size_t> drumInputMonitor_;
-    int surfaceInputStatus_ = -1, surfaceInputData_ = 0;
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
                     std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched,
                     const ImportResultRow* import = nullptr, juce::int64 tick = 0);
@@ -243,7 +239,7 @@ private:
     double parameterFraction_ = 0;
     int parameterBottom_ = 0, parameterHeight_ = 0;
     int preferredHeaderWidth_ = 487, trackHeaderWidth = 487, trackNameWidth = 172;
-    int preferredBrowserWidth_ = 230;
+    int preferredBrowserWidth_ = 230, preferredSpliceWidth_ = 800;
     double arrangementFraction_ = 0.6;
     PianoVelocityLane pianoVelocity_ {pianoGrid_};
     juce::ComboBox pianoSnap_, pianoColours_, drumMode_;
@@ -349,11 +345,14 @@ private:
     ostfstudio::ProjectAudio* clipOn(std::size_t track) const;
     void placeWav(const juce::File&, std::size_t track, juce::int64 tick, bool replace);
     void openSplice();
+    void updateSplicePlayback();
     void toggleLink();
     void pollLink();
     void editLinkTempo();
     double linkQuantum() const;
     std::unique_ptr<ostfstudio::LinkSession> link_;
+    int lastLinkPeers_ = -1;
+    double lastLinkTempo_ = 0;
     bool lastLinkPlaying_ = false, followingLink_ = false;
     void aiConnectionMenu();
     void displayAiState(const juce::String&, juce::uint32);
@@ -395,7 +394,7 @@ private:
     bool spliceLoading_ = false;
     std::unique_ptr<juce::AudioPluginInstance> spliceInstance_;
     juce::AudioProcessorPlayer splicePlayer_;
-    std::unique_ptr<juce::DocumentWindow> spliceWindow_;
+    bool spliceAuditionActive_ = false;
     EditorClipLane clipLane_;
     void refreshClipLane();
     void midiClipMenu(std::size_t track, double bar);
