@@ -7,15 +7,15 @@ enum class Theme { studioBlue, harmonic };
 using Tone = ostfstudio::TheoryGuide::Tone;
 inline juce::Colour toneColour(Tone tone) {
     switch (tone) {
-        case Tone::root: return juce::Colour(0xfff2c56d);
-        case Tone::guide: return juce::Colour(0xff60c9b4);
-        case Tone::fifth: return juce::Colour(0xff87c9fa);
-        case Tone::tension: return juce::Colour(0xffc4a0ef);
-        case Tone::avoid: return juce::Colour(0xffed9564);
-        case Tone::chord: return juce::Colour(0xffb0ddb5);
-        case Tone::scale: return juce::Colour(0xff94bff0);
-        case Tone::outside: return juce::Colour(0xffd6a2bc);
-        default: return juce::Colour(0xff88919a);
+        case Tone::root: return juce::Colour(0xff875306);
+        case Tone::guide: return juce::Colour(0xff086250);
+        case Tone::fifth: return juce::Colour(0xff175a98);
+        case Tone::tension: return juce::Colour(0xff603987);
+        case Tone::avoid: return juce::Colour(0xffd80924);
+        case Tone::chord: return juce::Colour(0xff28613c);
+        case Tone::scale: return juce::Colour(0xff245487);
+        case Tone::outside: return juce::Colour(0xff813453);
+        default: return juce::Colour(0xff515d67);
     }
 }
 inline juce::String toneName(Tone tone) {

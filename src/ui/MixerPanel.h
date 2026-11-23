@@ -26,6 +26,7 @@ public:
     double outputVolume(std::size_t index) const;
     void setOutputVolume(std::size_t index, double db);
     void setVolumeDb(std::size_t index, double db);
+    void displayPan(std::size_t index, float pan);
     void setPan(std::size_t index, float pan);
     void setOutputBus(std::size_t index, int bus);
     void setSendLevel(std::size_t index, std::size_t target, float level);

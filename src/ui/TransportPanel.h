@@ -101,7 +101,8 @@ public:
     static int panelHeight(int width) { return width < 1220 ? 101 : 65; }
     void setPosition(const ostfstudio::OstfpPreview& song, juce::int64 tick, double seconds, int shift = 0, double rate = 1) {
         const auto withinBar = tick % song.ticksPerBar;
-        const double beatLength = song.ppq * 4.0 / song.beatUnit;
+        const auto meter = ostfstudio::activeMeter(song.meters, double(tick), {0, song.meterBeats, song.beatUnit});
+        const double beatLength = song.ppq * 4.0 / meter.denominator;
         const auto beat = static_cast<int>(std::floor(withinBar / beatLength));
         const auto sub = static_cast<juce::int64>(std::floor(withinBar - beat * beatLength));
         auto set = [&](int index, juce::String text) {
@@ -117,7 +118,7 @@ public:
         set(1, padded(frames / 108000, 2) + ":" + padded(frames / 1800 % 60, 2) + ":"
                + padded(frames / 30 % 60, 2) + ":" + padded(frames % 30, 2));
         set(2, rate == 1 ? song.contextAt(ostfstudio::TimelineLane::tempo, tick) : juce::String(song.clock.bpmAt(tick) * rate, 2));
-        set(3, juce::String(song.meterBeats) + "/" + juce::String(song.beatUnit));
+        set(3, juce::String(meter.numerator) + "/" + juce::String(meter.denominator));
         set(4, ostfstudio::shiftedLabel(song.contextAt(ostfstudio::TimelineLane::key, tick), shift));
         set(5, ostfstudio::shiftedLabel(song.contextAt(ostfstudio::TimelineLane::scale, tick), shift));
         set(6, ostfstudio::shiftedLabel(song.contextAt(ostfstudio::TimelineLane::chord, tick), shift));

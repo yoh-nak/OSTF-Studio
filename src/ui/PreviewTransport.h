@@ -30,6 +30,8 @@ public:
                        int semitones = 0, double tempoRate = 1);
     struct Cursor { juce::int64 tick; double seconds; };
     std::vector<ostfstudio::PitchedNote> stop(Cursor* stoppedAt = nullptr);
+    juce::Result updateLoopNotes(const ostfstudio::OstfpPreview&);
+    void setLoop(juce::Range<juce::int64> ticks);
     void seekToTick(juce::int64 tick);
     juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
                                  double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1);
@@ -44,6 +46,13 @@ public:
 private:
     juce::Optional<PositionInfo> getPosition() const override;
     void processEffects(const Chain& effects, juce::AudioBuffer<float>& audio, int count);
+    using Timelines = std::array<juce::MidiBuffer, maxTracks>;
+    juce::Result makeMidiTimelines(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, int, Timelines&) const;
+    void adoptPendingNotes();
+    Timelines pendingTimelines_, pendingLoopEvents_;
+    bool pendingNotes_ = false;
+    std::vector<TrackSetup> playbackRoutes_;
+    int playbackShift_ = 0;
     void renderInstruments(float* const* output, int channels, int count, int first, int end);
     void audioDeviceIOCallbackWithContext(const float* const*, int, float* const*, int, int,
                                            const juce::AudioIODeviceCallbackContext&) override;
@@ -64,7 +73,8 @@ private:
     struct InstrumentTrack {
         juce::AudioPluginInstance* instance = nullptr;
         juce::MidiBuffer timeline;
-        juce::MidiBuffer seekEvents;
+        juce::MidiBuffer seekEvents, loopEvents;
+        ostfstudio::PanEnvelope panEnvelope;
         juce::AudioBuffer<float> wav;
         double wavRate = 0.0;
         int wavStart = 0, wavEnd = 0;
@@ -82,8 +92,11 @@ private:
     ostfstudio::TempoMap clock_;
     juce::int64 ppq_ = 1;
     int meterBeats_ = 4, beatUnit_ = 4;
+    std::vector<ostfstudio::MeterPoint> meters_;
     juce::int64 lastSample_ = 0;
     juce::int64 scoreTicks_ = 0;
+    juce::Range<int> loopSamples_;
+    bool loopRestart_ = false;
     bool recording_ = false;
     std::mutex recordingMutex_;
     std::array<juce::int64, 16 * 128> pressed_ {};

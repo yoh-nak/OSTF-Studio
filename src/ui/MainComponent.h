@@ -10,6 +10,8 @@
 #include "ui/ArrangementRuler.h"
 #include "ui/AudioClipWaveforms.h"
 #include "ui/PianoInspector.h"
+#include "ui/PerformanceEditor.h"
+#include "ui/DrumSteps.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
@@ -157,11 +159,19 @@ private:
     int preferredHeaderWidth_ = 487, trackHeaderWidth = 487, trackNameWidth = 172;
     double arrangementFraction_ = 0.6;
     PianoVelocityLane pianoVelocity_ {pianoGrid_};
-    juce::ComboBox pianoSnap_, pianoColours_;
+    juce::ComboBox pianoSnap_, pianoColours_, drumMode_;
+    DrumSteps drumSteps_;
+    PerformanceEditor controllerEditor_{pianoGrid_};
+    std::map<juce::String,ostfstudio::MidiControl> controllerKeys_;
+    void refreshControllerLane();
+    void editPerformancePoint(juce::String,juce::int64,std::optional<double>);
+    void updateDrumLoop();
+    juce::Range<juce::int64> activeLoop_;
+
     juce::Rectangle<int> functionRow_;
     std::optional<std::size_t> pianoTrack_;
     std::size_t pianoGeneration_ = 0;
-    struct NoteRevision { juce::MemoryBlock before, after; };
+    struct NoteRevision { juce::MemoryBlock before, after; juce::String panTrack; ostfstudio::PanEnvelope oldPan, newPan; };
     std::deque<NoteRevision> noteHistory_;
     std::size_t noteHistoryCursor_ = 0;
     struct TrackControls {

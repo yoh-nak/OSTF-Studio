@@ -987,6 +987,30 @@ def production_session(song, cues):
         production.setdefault("audioRegions", []).append({"id": identifier + "-cue", "channelId": strip["id"], "sourceAssetId": asset["id"],
             "startTick": start, "durationTicks": length, "sourceStartFrame": 0,
             "sourceFrameCount": asset["frameCount"], "playbackMode": "native", "gainDb": 0, "mute": False})
+    if song["song"]["title"] == "Copper Mile":
+        sections = {s["name"]: s["start"] for s in song["timeline"]["sections"]}
+        solo, bridge, refrain = (sections[name] for name in ("Guitar Solo", "Half-time Break", "Final Refrain"))
+        song["timeline"]["tempoChanges"].extend([{"at": bridge, "bpm": 104}, {"at": refrain, "bpm": 116}])
+        song["timeline"]["meterChanges"].extend([{"at": bridge, "numerator": 2, "denominator": 2},
+                                                {"at": refrain, "numerator": 4, "denominator": 4}])
+        lead = next(t for t in song["tracks"] if t["id"] == "lead")
+        clip = next(c for c in lead["clips"] if c["start"] == solo)
+        events = clip.setdefault("midiEvents", [])
+        for note_event in [n for n in clip["notes"] if n["duration"] >= PPQ][:4]:
+            start, length, identity = (note_event[k] for k in ("start", "duration", "id"))
+            for i, bend in enumerate([8192, 9000, 10600, 12600, 14200, 12100, 9850, 8192]):
+                events.append({"id": f"{identity}-slide-{i}", "start": start + i * (length - 1) // 7,
+                               "type": "pitchBend", "value14": bend})
+            for i, value in enumerate([0, 36, 72, 0]):
+                when = start + i * (length - 1) // 3
+                events.extend([{"id": f"{identity}-wheel-{i}", "start": when, "type": "controlChange", "controller": 1, "value": value},
+                               {"id": f"{identity}-at-{i}", "start": when, "type": "channelPressure", "value": value}])
+        events.sort(key=lambda e: e["start"])
+        strip = next(c for c in channels if c.get("trackId") == "lead")
+        production["automation"] = [{"id": "solo-pan", "target": {"kind": "channel", "channelId": strip["id"], "parameter": "pan"},
+                                     "valueType": "number", "interpolation": "linear",
+                                     "points": [{"atTick": solo + (bridge - solo) * i // 4, "value": v}
+                                                for i, v in enumerate([strip["pan"], -.65, .65, -.35, strip["pan"]])]}]
     return production
 
 

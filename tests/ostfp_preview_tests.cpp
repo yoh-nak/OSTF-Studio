@@ -39,7 +39,7 @@ static int checkGallery(const juce::File& directory) {
         {"relay-circuit.ostfp", 96, 12, 128.0},
         {"paper-lantern-replies.ostfp", 56, 9, 78.0},
         {"offset-bridges.ostfp", 0, 0, 0.0},
-        {"copper-mile.ostfp", 64, 6, 116.0},
+        {"copper-mile.ostfp", 64, 6, 0.0},
         {"first-light-vector.ostfp", 96, 11, 138.0},
     };
     for (const auto& expected : cases) {
@@ -47,7 +47,7 @@ static int checkGallery(const juce::File& directory) {
         std::unique_ptr<ostfstudio::OstfpPreview> project;
         const auto result = ostfstudio::readOstfpPreview(input, project);
         const bool matches = expected.bars == 0
-            ? result.getErrorMessage() == "Preview requires one meter starting at tick zero"
+            ? result.getErrorMessage() == "Preview requires meter changes to preserve bar length at bar boundaries."
             : result.wasOk() && project->bars.endBar == expected.bars + 1
               && project->sourceTrackCount() == static_cast<std::size_t>(expected.tracks)
               && project->chordVoicingTrack == static_cast<std::size_t>(expected.tracks)
@@ -58,6 +58,12 @@ static int checkGallery(const juce::File& directory) {
         if (!matches) {
             std::cerr << expected.file << ": unexpected preview result: " << result.getErrorMessage() << '\n';
             return 1;
+        }
+        if (std::string_view(expected.file) == "copper-mile.ostfp") {
+            const auto& env = project->panAutomation.at("lead");
+            if (project->contextAt(ostfstudio::TimelineLane::meter,153600) != "2/2"
+                || project->clock.bpmAt(153600) != 104 || project->clock.bpmAt(168960) != 116
+                || env.points.size() != 5 || env.valueAt(138240,0) < .6) return 1;
         }
         if (expected.bars != 0) {
             const auto index = *project->chordVoicingTrack;

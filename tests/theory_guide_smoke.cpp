@@ -245,7 +245,7 @@ int checkTheoryGuide(const juce::File& demo) {
     int chordPixels = 0;
     for (int y = grid->getY(); y < grid->getBottom(); ++y)
         for (int x = grid->getX(); x < grid->getRight(); ++x)
-            if (snapshot.getPixelAt(x,y).getARGB() == 0xff60c9b4) ++chordPixels;
+            if (snapshot.getPixelAt(x,y).getARGB() == 0xff086250) ++chordPixels;
     if (!chordPixels) return 18;
     set("Scale fit", false);
     if (grid->getHeight() != both || !find(*model, TRANS("Chord tone fit")).checked) return 19;

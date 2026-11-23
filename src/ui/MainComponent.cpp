@@ -449,8 +449,18 @@ MainComponent::MainComponent() {
     deck_.follow.onClick = [this] { displayTransportPosition(cursorTick_); };
     addChildComponent(trackPicker_);
     addChildComponent(performanceLane_);
+    performanceLane_.setComponentID("performance-picker");
     performanceLane_.setTitle(TRANS("Performance lane"));
-    performanceLane_.onChange = [this] { pianoVelocity_.cancel(); resized(); repaint(); };
+    performanceLane_.onChange = [this] { pianoVelocity_.cancel(); refreshControllerLane(); resized(); repaint(); };
+    addChildComponent(controllerEditor_);
+    controllerEditor_.edit = [this](auto id, auto tick, auto value){editPerformancePoint(id,tick,value);};
+    addChildComponent(drumMode_); addChildComponent(drumSteps_);
+    drumMode_.setComponentID("drum-mode"); drumMode_.addItem(TRANS("Drum notes"),1); drumMode_.addItem(TRANS("Slot steps"),2);
+    drumMode_.setSelectedId(1,juce::dontSendNotification);
+    drumMode_.onChange=[this]{refreshEditor();};
+    drumSteps_.commit=[this](const auto& edits){applyNoteGesture(edits);};
+    drumSteps_.loopChanged=[this]{updateDrumLoop();};
+
     arrangementZoom_.setSliderStyle(juce::Slider::LinearHorizontal);
     arrangementZoom_.setRange(0.0, 1.0);
     arrangementZoom_.setDoubleClickReturnValue(true, 0.0);
@@ -510,7 +520,7 @@ MainComponent::MainComponent() {
     midiDrag_.writeMidi = [this](juce::OutputStream& stream) { return selectedTrack_ && writeTrackMidi(*selectedTrack_, stream); };
     midiDrag_.reportError = [this](const juce::String& error) { statusLabel_.setText(error, juce::dontSendNotification); };
     addChildComponent(mixer_);
-    pianoGrid_.selectionChanged = [this] { pianoInspector_.updateActions(pianoGrid_.grid > 1, pianoGrid_.selection.size()); };
+    pianoGrid_.selectionChanged = [this] { pianoInspector_.updateActions(pianoGrid_.grid > 1, pianoGrid_.selection.size()); repaint(); };
     addChildComponent(pianoGrid_);
     addChildComponent(pianoInspectorView_);
     pianoInspectorView_.setViewedComponent(&pianoInspector_, false);
@@ -568,6 +578,10 @@ MainComponent::MainComponent() {
         pianoGrid_.grid = pianoSnap_.getSelectedId() == 1 ? 1
             : std::max(1.0, pianoGrid_.quarter * 4.0 / pianoSnap_.getSelectedId());
         pianoGrid_.selectionChanged();
+        if (project_ && drumSteps_.song == project_.get()) {
+            drumSteps_.grid = pianoGrid_.grid > 1 ? pianoGrid_.grid : std::max(1., project_->ppq / 4.);
+            drumSteps_.repaint();
+        }
         repaint();
     };
     pianoGrid_.previewEdit = [this](const auto& edits) { previewNoteFit(edits); };
@@ -1383,12 +1397,14 @@ void MainComponent::startTransport(bool recording) {
         return;
     }
     transportActive_ = true;
+    activeLoop_ = {};
     recordTrack_ = recording ? selectedTrack_ : std::nullopt;
+    updateDrumLoop();
     deck_.play.setToggleState(!recording, juce::dontSendNotification);
     deck_.stop.setToggleState(false, juce::dontSendNotification);
     deck_.record.setToggleState(recording, juce::dontSendNotification);
     for (auto* button : {&deck_.home, &deck_.rewind, &deck_.forward}) button->setEnabled(!recording);
-    displayTransportPosition(start);
+    displayTransportPosition(activeLoop_.isEmpty() || activeLoop_.contains(start) ? start : activeLoop_.getStart());
     statusLabel_.setText(recording ? TRANS("Recording MIDI into the selected track") : TRANS("Playing arrangement"),
                          juce::dontSendNotification);
     if (!unavailable.empty())
@@ -1472,9 +1488,15 @@ void MainComponent::showShortcutList() {
 }
 
 bool MainComponent::keyPressed(const juce::KeyPress& key) {
-    if (key.getModifiers().isAnyModifierKeyDown() || isCurrentlyBlockedByAnotherModalComponent()) return false;
+    if (isCurrentlyBlockedByAnotherModalComponent()) return false;
     const auto* focus = juce::Component::getCurrentlyFocusedComponent();
     if (focus && (dynamic_cast<const juce::TextEditor*>(focus) || focus->findParentComponentOfClass<juce::TextEditor>())) return false;
+    const auto mods = key.getModifiers();
+    if ((controllerEditor_.isVisible() || drumSteps_.isVisible()) && mods.isCommandDown() && !mods.isAltDown() && key.isKeyCode('Z')) {
+        undoPianoEdit(mods.isShiftDown());
+        return true;
+    }
+    if (mods.isAnyModifierKeyDown()) return false;
     if (key.isKeyCode(juce::KeyPress::F1Key)) { showShortcutList(); return true; }
     if (!project_) return false;
     if (key.isKeyCode(juce::KeyPress::homeKey)) {
@@ -1518,6 +1540,9 @@ void MainComponent::locateTransport(juce::int64 tick, const juce::ScrollBar* anc
 }
 
 void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, const juce::ScrollBar* anchoredView) {
+    controllerEditor_.cursor = tick;
+    if (controllerEditor_.isVisible()) controllerEditor_.repaint();
+    if (drumSteps_.isVisible()) { drumSteps_.cursor=tick; drumSteps_.repaint(); }
     const int previousArrangement = ruler_.playheadColumn(), previousPiano = pianoRuler_.playheadColumn();
     if (theoryVisible_ && theory_ && tick != cursorTick_
         && theory_->firstCell(double(cursorTick_)) != theory_->firstCell(double(tick)))
@@ -1526,6 +1551,14 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, c
     if (scoreView_ && scoreView_->isVisible()) scoreView_->playbackPosition(tick);
     if (!project_) return;
     deck_.setPosition(*project_, std::max<juce::int64>(0, tick), seconds, auditionShift_, auditionRate_);
+    for (const auto& [id, envelope] : project_->panAutomation) {
+        const int i = project_->trackIds.indexOf(id);
+        if (i < 0 || std::size_t(i) >= trackControls_.size()) continue;
+        const float pan = float(envelope.valueAt(double(tick), mixer_.channel(i).pan));
+        auto& slider = trackControls_[i]->pan;
+        if (!slider.isMouseButtonDown()) slider.setValue(pan * 100.0, juce::dontSendNotification);
+        mixer_.displayPan(i,pan);
+    }
     bool scrolled = false;
     if (deck_.follow.getToggleState() && tick >= 0) {
         const auto bar = 1.0 + double(tick) / project_->ticksPerBar;
@@ -2796,12 +2829,13 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
     if (!project_ || !selectedTrack_ || edits.empty()) return;
     if (recordTrack_) { statusLabel_.setText(TRANS("Finish recording before editing notes."), juce::dontSendNotification); return; }
     const bool playing = transportActive_;
-    if (playing) stopTransport();
+    const bool liveLoop = playing && drumSteps_.looping() && !activeLoop_.isEmpty();
+    if (playing && !liveLoop) stopTransport();
     juce::MemoryBlock before;
     juce::StringArray ids;
     const auto result = project_->editNotes(*selectedTrack_, edits, before, ids);
     if (result.failed()) {
-        if (playing) startTransport(false);
+        if (playing && !liveLoop) startTransport(false);
         statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
         return;
     }
@@ -2814,22 +2848,38 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
         theory_.reset();
         refreshTheory();
     } else refreshTrackTheory(*selectedTrack_);
-    if (!edits.empty() && edits.front().action != ostfstudio::NoteEdit::erase) {
+    if (!drumSteps_.isVisible() && !edits.empty() && edits.front().action != ostfstudio::NoteEdit::erase) {
         const int p = edits.front().note.pitch;
         const int shift = p < pianoGrid_.low ? p - pianoGrid_.low : std::max(0, p - pianoGrid_.high);
         pianoGrid_.low += shift; pianoGrid_.high += shift;
     }
-    finishNoteEdit(playing);
+    if (liveLoop) {
+        if (const auto result = transport_.updateLoopNotes(*project_); result.failed()) {
+            stopTransport();
+            statusLabel_.setText(result.getErrorMessage(), juce::dontSendNotification);
+        }
+    }
+    finishNoteEdit(playing && !liveLoop);
 }
 
 void MainComponent::undoPianoEdit(bool redo) {
     if (!project_ || recordTrack_ || (redo ? noteHistoryCursor_ >= noteHistory_.size() : noteHistoryCursor_ == 0)) return;
     const auto& revision = noteHistory_[redo ? noteHistoryCursor_ : noteHistoryCursor_ - 1];
-    if (!project_->addedClips.empty() || project_->sourceScore != (redo ? revision.before : revision.after)) {
+    if ((!project_->addedClips.empty() && revision.panTrack.isEmpty()) || project_->sourceScore != (redo ? revision.before : revision.after)) {
         noteHistory_.clear(); noteHistoryCursor_ = 0; return;
     }
     const bool playing = transportActive_;
     if (playing) stopTransport();
+    if (revision.panTrack.isNotEmpty()) {
+        const auto env = redo ? revision.newPan : revision.oldPan;
+        if (env.points.empty()) {
+            project_->panAutomation.erase(revision.panTrack);
+            const int index = project_->trackIds.indexOf(revision.panTrack);
+            if (index >= 0) mixer_.setPan(index,mixer_.channel(index).pan);
+        } else project_->panAutomation[revision.panTrack]=env;
+        if (redo) ++noteHistoryCursor_; else --noteHistoryCursor_;
+        finishNoteEdit(playing); return;
+    }
     const auto result = project_->restoreNoteScore(redo ? revision.after : revision.before);
     if (result.wasOk()) {
         if (redo) ++noteHistoryCursor_; else --noteHistoryCursor_;
@@ -2849,6 +2899,94 @@ void MainComponent::setWorkspaceMode(WorkspaceMode mode) {
     if (workspaceMode_ == mode) return;
     workspaceMode_ = mode;
     refreshEditor();
+}
+
+void MainComponent::updateDrumLoop() {
+    if (!transportActive_ || recordTrack_ || !transport_.isRunning()) return;
+    const auto range = drumSteps_.looping() ? drumSteps_.range() : juce::Range<juce::int64>{};
+    if (range == activeLoop_) return;
+    activeLoop_ = range;
+    transport_.setLoop(range);
+    if (!range.isEmpty() && !range.contains(transport_.positionTick())) transport_.seekToTick(range.getStart());
+}
+
+void MainComponent::refreshControllerLane() {
+    auto& lane = controllerEditor_;
+    lane.cancel();
+    lane.points.clear();
+    const auto label = performanceLaneNames_[performanceLane_.getSelectedId() - 1];
+    const bool pan = label == "Pan automation";
+    const bool editable = performanceLane_.isVisible() && (pan || controllerKeys_.contains(label));
+    lane.setVisible(editable);
+    if (!editable || !selectedTrack_ || !project_) return;
+    if (pan) {
+        lane.linear = true;
+        lane.bipolar = true;
+        lane.maximum = 0;
+        const auto it = project_->panAutomation.find(project_->trackIds[int(*selectedTrack_)]);
+        if (it != project_->panAutomation.end()) {
+            lane.linear = it->second.linear;
+            for (const auto& p : it->second.points)
+                lane.points.push_back({p.tick, (p.value + 1) / 2, juce::String(p.tick)});
+        }
+    } else {
+        lane.maximum = controllerKeys_.at(label).maximum();
+        lane.bipolar = lane.maximum == 16383;
+        lane.linear = false;
+        for (const auto& c : project_->performanceCurves[*selectedTrack_])
+            if (c.label == label) lane.points.insert(lane.points.end(), c.points.begin(), c.points.end());
+        std::stable_sort(lane.points.begin(), lane.points.end(),
+                         [](const auto& a, const auto& b) { return a.tick < b.tick; });
+    }
+    lane.repaint();
+}
+
+void MainComponent::editPerformancePoint(juce::String id, juce::int64 tick, std::optional<double> value) {
+    if (!project_ || !selectedTrack_ || recordTrack_) return;
+    const auto label = performanceLaneNames_[performanceLane_.getSelectedId() - 1];
+    const bool playing = transportActive_;
+    if (playing) stopTransport();
+    const auto track = *selectedTrack_;
+    if (label == "Pan automation") {
+        const auto key = project_->trackIds[int(track)];
+        const auto it = project_->panAutomation.find(key);
+        const auto old = it == project_->panAutomation.end() ? ostfstudio::PanEnvelope{} : it->second;
+        auto env = old;
+        if (env.id.isEmpty()) env.id = "pan-" + juce::Uuid().toString();
+        std::erase_if(env.points, [&](const auto& p) {
+            return (id.isNotEmpty() && p.tick == id.getLargeIntValue()) || (value && p.tick == tick);
+        });
+        if (value) env.points.push_back({tick, *value * 2 - 1});
+        std::sort(env.points.begin(), env.points.end(), [](const auto& a, const auto& b) { return a.tick < b.tick; });
+        if (env.points.empty()) {
+            project_->panAutomation.erase(key);
+            mixer_.setPan(track, mixer_.channel(track).pan);
+        } else
+            project_->panAutomation[key] = env;
+        rememberScoreEdit(project_->sourceScore);
+        auto& revision = noteHistory_.back();
+        revision.panTrack = key;
+        revision.oldPan = old;
+        revision.newPan = std::move(env);
+    } else if (auto k = controllerKeys_.find(label); k != controllerKeys_.end()) {
+        juce::MemoryBlock before;
+        if (id.isEmpty() && value)
+            for (const auto& p : controllerEditor_.points)
+                if (p.tick == tick) {
+                    id = p.id;
+                    break;
+                }
+        auto result = project_->editController(
+            track, k->second, id, tick,
+            value ? std::optional<int>(juce::roundToInt(*value * k->second.maximum())) : std::nullopt, before);
+        if (result.failed()) {
+            statusLabel_.setText(result.getErrorMessage(), juce::dontSendNotification);
+            if (playing) startTransport(false);
+            return;
+        }
+        rememberScoreEdit(std::move(before));
+    }
+    finishNoteEdit(playing);
 }
 
 void MainComponent::refreshEditor() {
@@ -2879,7 +3017,13 @@ void MainComponent::refreshEditor() {
     const bool piano = arranging && project_ && editorVisible_ && !showMixer;
     refreshPianoNotes();
     pianoGrid_.setDescription(noteFitReading());
-    pianoGrid_.setVisible(piano && selectedTrack_.has_value());
+    const bool drum = piano && selectedTrack_ && pianoGrid_.percussion;
+    drumMode_.setVisible(drum);
+    const bool steps = drum && drumMode_.getSelectedId()==2;
+    drumSteps_.bind(drum ? project_.get() : nullptr,selectedTrack_.value_or(0),std::max<juce::int64>(0,cursorTick_),pianoGrid_.grid);
+    drumSteps_.setVisible(steps);
+    updateDrumLoop();
+    pianoGrid_.setVisible(piano && selectedTrack_.has_value() && !steps);
     pianoRuler_.setVisible(pianoGrid_.isVisible());
     if (!pianoGrid_.isVisible()) pianoVelocity_.setVisible(false);
     pianoSnap_.setVisible(piano && pianoGrid_.editable);
@@ -2894,7 +3038,7 @@ void MainComponent::refreshEditor() {
     theoryButton_.setToggleState(theoryVisible_ && arranging, juce::dontSendNotification);
     lanesButton_.setEnabled(arranging);
     trackPicker_.setVisible(arranging && project_ && editorVisible_);
-    performanceLane_.setVisible(piano && selectedTrack_);
+    performanceLane_.setVisible(piano && selectedTrack_ && !steps);
     const auto previous = performanceLaneNames_[performanceLane_.getSelectedId() - 1];
     performanceLaneNames_ = juce::StringArray{"Velocity"};
     if (project_ && selectedTrack_ && *selectedTrack_ < project_->performanceCurves.size())
@@ -2902,7 +3046,29 @@ void MainComponent::refreshEditor() {
             performanceLaneNames_.addIfNotAlreadyThere(curve.label);
     performanceLane_.clear(juce::dontSendNotification);
     for (int i = 0; i < performanceLaneNames_.size(); ++i) performanceLane_.addItem(juce::translate(performanceLaneNames_[i]), i + 1);
+    controllerKeys_.clear();
+    if (project_ && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount()) {
+        if (pianoGrid_.editable) {
+            for (const auto& c : project_->performanceCurves[*selectedTrack_])
+                if (c.control.type.isNotEmpty()) controllerKeys_[c.label]=c.control;
+            const auto add = [&](ostfstudio::MidiControl key, juce::PopupMenu* menu=nullptr) {
+                const auto text=key.label(); controllerKeys_[text]=key;
+                if (performanceLaneNames_.contains(text)) return;
+                performanceLaneNames_.add(text);
+                if (menu) menu->addItem(performanceLaneNames_.size(),text);
+                else performanceLane_.addItem(juce::translate(text),performanceLaneNames_.size());
+            };
+            add({"pitchBend"}); add({"channelPressure"}); add({"controlChange",7}); add({"controlChange",1}); add({"controlChange",11});
+            for (int group=0; group<120; group+=16) {
+                juce::PopupMenu groupMenu;
+                for (int cc=group; cc<std::min(120,group+16); ++cc) add({"controlChange",cc},&groupMenu);
+                if(groupMenu.getNumItems()) performanceLane_.getRootMenu()->addSubMenu("CC "+juce::String(group)+"-"+juce::String(std::min(119,group+15)),groupMenu);
+            }
+        }
+        performanceLaneNames_.add("Pan automation");performanceLane_.addItem(TRANS("Pan automation"),performanceLaneNames_.size());
+    }
     performanceLane_.setSelectedId(std::max(1, performanceLaneNames_.indexOf(previous) + 1), juce::dontSendNotification);
+    refreshControllerLane();
     arrangementZoom_.setVisible(arranging && project_ != nullptr);
     arrangementZoomLabel_.setVisible(arrangementZoom_.isVisible());
     heightLabel_.setVisible(arrangementZoom_.isVisible());
@@ -2910,7 +3076,7 @@ void MainComponent::refreshEditor() {
     groupHeight_.setVisible(arrangementZoom_.isVisible());
     refreshGroupHeight();
     arrangementScroll_.setVisible(arranging && project_ != nullptr);
-    pianoInspectorView_.setVisible(piano && pianoGrid_.editable);
+    pianoInspectorView_.setVisible(piano && pianoGrid_.editable && !steps);
     pianoDivider_.setVisible(piano);
     columnDivider_.setVisible(piano);
     midiDrag_.setVisible(piano);
@@ -2921,12 +3087,17 @@ void MainComponent::refreshEditor() {
 }
 
 bool MainComponent::canExportTrack(std::size_t track) const {
-    return project_ && track < project_->pitchedNotes.size() && !project_->pitchedNotes[track].empty()
+    return project_ && track < project_->pitchedNotes.size()
+        && (!project_->pitchedNotes[track].empty() || (track < project_->sourceTrackCount()
+            && (!project_->drumNotes[track].empty() || std::any_of(project_->performanceCurves[track].begin(),project_->performanceCurves[track].end(),
+                [](const auto& c){return c.control.type.isNotEmpty() && !c.points.empty();}))))
         && project_->ppq > 0 && project_->ppq <= 32767;
 }
 
 bool MainComponent::writeTrackMidi(std::size_t track, juce::OutputStream& stream) const {
     if (!canExportTrack(track)) return false;
+    if (track < project_->sourceTrackCount())
+        return ostfstudio::writeSongMidi(*project_, ostfstudio::SmfFormat::multitrack, {}, stream, track).wasOk();
     juce::MidiMessageSequence sequence;
     for (const auto& note : project_->pitchedNotes[track]) {
         if (note.startTick < 0 || note.endTick > 0x0fffffff) return false;
@@ -3106,6 +3277,8 @@ void MainComponent::resized() {
     const PianoLayout pianoLayout(editor.withTrimmedTop(30), trackHeaderWidth, verticalScroll_.isVisible(), pitchedSelection() && pianoColours_.getSelectedId() != plainNotes);
     pianoGrid_.setBounds(pianoLayout.grid);
     pianoRuler_.setBounds(pianoLayout.ruler);
+    drumSteps_.setBounds(pianoLayout.ruler.getUnion(pianoLayout.grid).getUnion(pianoLayout.lane).withLeft(pianoLayout.keys.getX()));
+    controllerEditor_.setBounds(pianoLayout.lane.withTrimmedTop(16));
     pianoVelocity_.setBounds(pianoLayout.lane.withTrimmedTop(16));
     pianoVelocity_.setVisible(pianoGrid_.isVisible() && pianoGrid_.editable && performanceLane_.getSelectedId() == 1
                               && pianoLayout.lane.getHeight() >= 20);
@@ -3121,6 +3294,7 @@ void MainComponent::resized() {
     columnDivider_.setBounds(inspector.removeFromRight(6));
     auto pianoNavigation = inspector.removeFromTop(28).reduced(2, 1);
     if (pianoSnap_.isVisible()) pianoSnap_.setBounds(pianoNavigation.removeFromRight(137).reduced(2, 0));
+    if (drumMode_.isVisible()) drumMode_.setBounds(pianoNavigation.removeFromLeft(std::min(210,pianoNavigation.getWidth())).reduced(2,0));
     if (pianoColours_.isVisible()) pianoColours_.setBounds(pianoNavigation.removeFromLeft(std::min(210, pianoNavigation.getWidth())).reduced(2, 0));
     pianoInspectorView_.setBounds(inspector);
     const bool showLegend = pianoColours_.isVisible() && pianoColours_.getSelectedId() != plainNotes;
@@ -3551,6 +3725,7 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
 void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) const {
     g.setColour(juce::Colour(panel));
     g.fillRoundedRectangle(area.toFloat(), 10.0f);
+    if (drumSteps_.isVisible()) return;
     const PianoLayout layout(area, trackHeaderWidth, verticalScroll_.isVisible(), pitchedSelection() && pianoColours_.getSelectedId() != plainNotes);
     const auto mode = pianoColours_.getSelectedId();
     const bool fit = theory_ && pitchedSelection() && mode != plainNotes;
@@ -3576,6 +3751,7 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     auto name = selectedTrack_ ? TRANS("PIANO ROLL  /  ") + juce::String::fromUTF8(project_->trackLanes[*selectedTrack_].label)
                                      : TRANS("PIANO ROLL");
+    if (!pianoGrid_.selection.isEmpty()) name += "    " + TRANS("Selected") + " " + juce::String(pianoGrid_.selection.size());
     if (reading.isNotEmpty()) name += "     " + reading;
     g.drawFittedText(selectedTrack_ && !pianoGrid_.editable ? name + "  /  " + TRANS("Read only") : name,
                      heading, juce::Justification::centredLeft, 1);
@@ -3758,6 +3934,7 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     const auto title = lane.removeFromTop(16);
     g.setColour(juce::Colour(muted));
     g.drawFittedText(laneName, title.reduced(4, 0), juce::Justification::centredLeft, 1);
+    if (controllerEditor_.isVisible()) { drawCursor(title.getBottom()); return; }
     for (auto bar = firstBar; bar < endBar; bar += barStep)
         g.drawVerticalLine(juce::roundToInt(tickX(bar * barLength)), static_cast<float>(lane.getY()),
                            static_cast<float>(lane.getBottom()));

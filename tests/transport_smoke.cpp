@@ -4,6 +4,92 @@
 
 using namespace ostfstudio;
 namespace {
+// A two-channel source with a deterministic output lets us check the host mix and MIDI stream.
+class PerformanceProbe final : public juce::AudioPluginInstance {
+public:
+    PerformanceProbe() { setPlayConfigDetails(0, 2, 960, 96); }
+    juce::MidiBuffer received;
+    void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer& midi) override {
+        received.addEvents(midi, 0, -1, 0);
+        for (int ch = 0; ch < audio.getNumChannels(); ++ch)
+            juce::FloatVectorOperations::fill(audio.getWritePointer(ch), .5f, audio.getNumSamples());
+    }
+    const juce::String getName() const override { return "Performance probe"; }
+    void fillInPluginDescription(juce::PluginDescription& d) const override { d.isInstrument = true; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    bool acceptsMidi() const override { return true; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    bool hasEditor() const override { return false; }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+};
+
+bool checkPerformanceAudio() {
+    OstfpPreview song;
+    song.ppq = 480;
+    song.ticksPerBar = 1920;
+    song.bars = {1, 2};
+    song.clock = TempoMap(480);
+    song.clock.append(0, 120);
+    song.trackIds.add("kit");
+    song.pitchedNotes.resize(1);
+    song.drumNotes.resize(1);
+    song.programChanges.resize(1);
+    song.performanceCurves.resize(1);
+    song.panAutomation["kit"] = {"pan", true, {{0, -1}, {95, 1}}};
+    for (MidiControl k :
+         {MidiControl{"controlChange", 1, 3}, MidiControl{"pitchBend", 0, 3}, MidiControl{"channelPressure", 0, 3}})
+        song.performanceCurves[0].push_back({k.label(), {{10, 1, "p"}}, false, true, false, k});
+    PerformanceProbe probe;
+    PreviewTransport engine;
+    const std::array<PreviewTransport::TrackSetup, 1> routes{{{{}, &probe, 10}}};
+    if (engine.preparePlayback(song, routes, {}, 960, 96).failed()) return false;
+    engine.setChannelMix(0, {}, true, 0);
+    engine.setOutputMix({});
+    juce::AudioBuffer<float> audio(2, 96);
+    engine.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
+    if (audio.getSample(0, 0) < .45f || audio.getSample(1, 0) > .01f || audio.getSample(0, 95) > .01f ||
+        audio.getSample(1, 95) < .45f)
+        return false;
+    const auto heard = [&](int sample) {
+        bool cc = false, bend = false, at = false;
+        for (auto e : probe.received) {
+            auto m = e.getMessage();
+            if (e.samplePosition != sample || m.getChannel() != 3) continue;
+            cc |= m.isControllerOfType(1) && m.getControllerValue() == 127;
+            bend |= m.isPitchWheel() && m.getPitchWheelValue() == 16383;
+            at |= m.isChannelPressure() && m.getChannelPressureValue() == 127;
+        }
+        return cc && bend && at;
+    };
+    if (!heard(10)) return false;
+    engine.seekToTick(48);
+    probe.received.clear();
+    engine.renderBlock(audio.getArrayOfWritePointers(), 2, 16);
+    if (!heard(0)) return false;
+    engine.setLoop({48, 96});
+    song.drumNotes[0].push_back({52, 60, 42, 111, true, "hat"});
+    if (engine.updateLoopNotes(song).failed()) return false;
+    probe.received.clear();
+    engine.renderBlock(audio.getArrayOfWritePointers(), 2, 48);
+    if (engine.positionTick() != 64 || !heard(0)) return false;
+    for (auto e : probe.received) {
+        auto m = e.getMessage();
+        if (m.isNoteOn() && m.getNoteNumber() == 42 && m.getChannel() == 10 && m.getVelocity() == 111 &&
+            e.samplePosition == 4)
+            return true;
+    }
+    return false;
+}
+
 bool checkWaveform(const juce::File& directory) {
     // One second of silence then a left-only half-second pulse. Trim the first half-second.
     constexpr int rate = 8000, frames = 16000;
@@ -83,6 +169,7 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     juce::FileInputStream input(fixture);
     if (dir.createDirectory().failed() || readOstfpPreview(input, song).failed()) return 1;
     if (!checkWaveform(dir)) return 42;
+    if (!checkPerformanceAudio()) return 46;
     auto score = juce::JSON::parse(song->sourceScore.toString());
     auto* timeline = score["timeline"].getDynamicObject();
     auto meter = score["timeline"]["meterChanges"][0].getDynamicObject();
@@ -115,6 +202,11 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     if (engine.preparePlayback(*song, {}, {}, 8000, 400).failed()) return 4;
     for (int i = 0; i < 30; ++i) engine.renderBlock(buffer.getArrayOfWritePointers(), 2, 400);
     if (engine.positionTick() != 1920) return 5;
+    engine.setLoop({0,96});
+    engine.seekToTick(48);
+    engine.renderBlock(buffer.getArrayOfWritePointers(), 2, 400);
+    if (engine.positionTick() != 48 || !engine.isRunning()) return 45;
+    engine.setLoop({});
     engine.seekToTick(480);
     if (engine.positionTick() != 480 || std::abs(engine.cursor().seconds - .25) > 1e-8) return 23;
     engine.renderBlock(buffer.getArrayOfWritePointers(), 2, 400);

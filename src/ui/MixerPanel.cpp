@@ -285,6 +285,11 @@ void MixerPanel::setVolumeDb(std::size_t index, double db) {
     if (channelChanged) channelChanged(index);
 }
 
+void MixerPanel::displayPan(std::size_t index, float pan) {
+    if (index < strips_.size() && !strips_[index]->pan.isMouseButtonDown())
+        strips_[index]->pan.setValue(pan * 100.0, juce::dontSendNotification);
+}
+
 void MixerPanel::setPan(std::size_t index, float pan) {
     channels_[index].pan = std::clamp(pan, -1.0f, 1.0f);
     strips_[index]->pan.setValue(channels_[index].pan * 100.0, juce::dontSendNotification);

@@ -40,6 +40,20 @@ int modelChecks(const juce::File& fixture) {
     // Outside General MIDI's 35..81 percussion range the event uses a custom MIDI mapping.
     hit.pitch = 87;
     if (song->editNotes(drumTrack, {{NoteEdit::change, hit}}, before, ids).failed()) return 16;
+    const MidiControl bend{"pitchBend"}, cc{"controlChange", 11}, pressure{"channelPressure"}, poly{"polyPressure", 60};
+    for (auto key : {bend, cc, pressure, poly}) {
+        if (song->editController(0, key, {}, 70, key.maximum(), before).failed()) return 61;
+        const auto& curves = song->performanceCurves.at(0);
+        const auto lane = std::find_if(curves.begin(), curves.end(), [&](const auto& c){return c.label == key.label();});
+        if (lane == curves.end()) return 62;
+        const auto p = std::find_if(lane->points.begin(), lane->points.end(), [](const auto& p){return p.tick == 70 && p.value == 1;});
+        if (p == lane->points.end()) return 63;
+        const auto id = p->id;
+        if (song->editController(0,key,id,85,73,before).failed()) return 64;
+        if (song->editController(0,key,id,85,{},before).failed() || song->restoreNoteScore(before).failed()) return 65;
+    }
+    const auto owner = song->trackIds[0];
+    song->panAutomation[owner] = {"test-pan", true, {{30,-1},{90,1}}};
     SessionMix mix = song->savedMix.value_or(SessionMix{});
     mix.tracks.resize(song->trackLanes.size());
     juce::MemoryOutputStream plain, packed, midi;
@@ -60,6 +74,14 @@ int modelChecks(const juce::File& fixture) {
         auto& stream = package ? packed : plain;
         juce::MemoryInputStream reopen(stream.getData(), stream.getDataSize(), false);
         if ((package ? readOstfpPreview(reopen, song) : readOstfPreview(reopen, song)).failed()) return 13;
+        if (!song->panAutomation.contains(owner) || std::abs(song->panAutomation.at(owner).valueAt(60,.5)) > .00001) return 66;
+        for (auto key : {bend,cc,pressure,poly}) {
+            const auto& curves = song->performanceCurves.at(0);
+            const auto lane = std::find_if(curves.begin(),curves.end(),[&](const auto& c){return c.label == key.label();});
+            if (lane == curves.end() || std::none_of(lane->points.begin(),lane->points.end(),[&](const auto& p){
+                return p.tick == 85 && juce::roundToInt(p.value * key.maximum()) == 73;
+            })) return 67;
+        }
         const auto& notes = song->pitchedNotes[0];
         if (std::none_of(notes.begin(), notes.end(), [&](const auto& n) {return n.id == first.id && n.pitch == 78 && n.velocity == 117;})) return 14;
         const auto& drums = song->drumNotes[drumTrack];
@@ -71,6 +93,28 @@ int modelChecks(const juce::File& fixture) {
 
 int checkPianoEdits(const juce::File& fixture) {
     if (const auto failed = modelChecks(fixture)) return failed;
+    {
+        OstfpPreview score;
+        score.ppq = 960; score.ticksPerBar = 3840; score.bars = {1,4};
+        score.slotsByTrack = {{{"rim","Rim",38},{"snare","Snare",38}}};
+        score.slotHits = {{{0,120,38,90,true,"a",false,{},"rim"}}};
+        DrumSteps steps;
+        steps.setSize(600,180);
+        steps.bind(&score,0,500,240);
+        std::vector<NoteEdit> edits;
+        steps.commit = [&](auto e){edits = e;};
+        for (auto* child : steps.getChildren()) if (auto* cb = dynamic_cast<juce::ComboBox*>(child); cb && cb->getNumItems()==4)
+            cb->setSelectedId(3,juce::sendNotificationSync);
+        auto touch = [&](float y) {
+            juce::Point<float> xy{125,y};
+            steps.mouseDown(pointer(steps,xy,xy,juce::ModifierKeys::shiftModifier));
+        };
+        touch(48);
+        if (edits.size()!=1 || edits[0].action!=NoteEdit::erase || edits[0].note.id!="a") return 68;
+        touch(76);
+        if (edits.size()!=3 || edits[0].note.slotId!="snare" || edits[0].note.velocity!=120
+            || edits[1].note.startTick!=80 || edits[2].note.endTick!=240) return 69;
+    }
     {
         PianoNoteGrid editor;
         editor.setSize(500, 190);
@@ -277,5 +321,36 @@ int checkPianoEdits(const juce::File& fixture) {
     for (const auto& note : grid->notes)
         if (std::none_of(prior.begin(), prior.end(), [&](const auto& old) { return note.id == old.id && note.velocity == old.velocity; }))
             return 56;
+    auto* picker = dynamic_cast<juce::ComboBox*>(main.findChildWithID("performance-picker"));
+    auto* editor = dynamic_cast<PerformanceEditor*>(main.findChildWithID("performance-editor"));
+    if (!picker || !editor) return 70;
+    for (int i=0; i<picker->getNumItems(); ++i) if (picker->getItemText(i)=="CC 11")
+        picker->setSelectedItemIndex(i,juce::sendNotificationSync);
+    if (!editor->isVisible() || editor->getBounds().isEmpty() || velocity->isVisible()) return 71;
+    const auto initialPoints=editor->points.size();
+    const juce::Point<float> at{float(editor->getWidth()/2),8};
+    editor->mouseDown(pointer(*editor,at,at)); editor->mouseUp(pointer(*editor,at,at));
+    if (editor->points.size()!=initialPoints+1) return 72;
+    main.keyPressed(juce::KeyPress('Z',juce::ModifierKeys::commandModifier,0));
+    if (editor->points.size()!=initialPoints) return 73;
+    auto* drumMode = dynamic_cast<juce::ComboBox*>(main.findChildWithID("drum-mode"));
+    auto* steps = dynamic_cast<DrumSteps*>(main.findChildWithID("drum-steps"));
+    if (!drumMode || !steps) return 74;
+    for (auto* child : main.getChildren()) {
+        auto* select = dynamic_cast<juce::ComboBox*>(child);
+        if (!select || select->getTitle()!=TRANS("Arrangement track")) continue;
+        for (int i=0; i<select->getNumItems() && !drumMode->isVisible(); ++i)
+            select->setSelectedItemIndex(i,juce::sendNotificationSync);
+    }
+    drumMode->setSelectedId(2,juce::sendNotificationSync);
+    if (!steps->isVisible() || steps->getWidth()<200 || grid->isVisible() || picker->isVisible()) return 75;
+    const auto path=juce::SystemStats::getEnvironmentVariable("OSTF_DRUM_SMOKE_PNG",{});
+    if (path.isNotEmpty()) {
+        juce::FileOutputStream out{juce::File(path)};
+        if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed()
+            || !juce::PNGImageFormat().writeImageToStream(main.createComponentSnapshot(main.getLocalBounds()),out)) return 76;
+    }
+    drumMode->setSelectedId(1,juce::sendNotificationSync);
+    if (steps->isVisible() || !grid->isVisible() || !picker->isVisible()) return 77;
     return 0;
 }

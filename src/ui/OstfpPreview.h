@@ -20,7 +20,7 @@ struct PitchedNote {
     bool enabled = true;
     juce::String id;
     bool fixedTrigger = false;
-    juce::String clipId;
+    juce::String clipId, slotId;
 };
 
 struct NoteEdit {
@@ -28,15 +28,47 @@ struct NoteEdit {
     PitchedNote note;
 };
 
+struct MidiControl {
+    juce::String type;
+    int number = 0, channel = 0;
+    int maximum() const { return type == "pitchBend" ? 16383 : 127; }
+    juce::String label() const {
+        juce::String name = type == "controlChange" ? "CC " + juce::String(number)
+            : type == "pitchBend" ? juce::String("Pitch Bend") : type == "channelPressure" ? juce::String("Channel Aftertouch")
+            : "Poly Aftertouch / note " + juce::String(number);
+        return channel ? name + " / ch " + juce::String(channel) : name;
+    }
+};
+struct MeterPoint { juce::int64 tick; int numerator, denominator; };
+inline MeterPoint activeMeter(const std::vector<MeterPoint>& meters, double tick, MeterPoint initial) {
+    const auto next = std::upper_bound(meters.begin(), meters.end(), tick, [](double t, const auto& m){ return t < m.tick; });
+    return next == meters.begin() ? initial : *std::prev(next);
+}
+struct DrumSlot { juce::String id, name; int pitch; };
 struct PerformanceCurve {
-    struct Point { juce::int64 tick; double value; };
+    struct Point { juce::int64 tick; double value; juce::String id; };
     juce::String label;
     std::vector<Point> points;
     bool isCurve = false;
     bool stepped = false;
     bool cents = false;
+    MidiControl control;
+    bool enabled = true;
 };
 
+struct PanEnvelope {
+    juce::String id;
+    bool linear = true;
+    std::vector<PerformanceCurve::Point> points;
+    double valueAt(double tick, double base) const {
+        const auto next = std::upper_bound(points.begin(), points.end(), tick, [](double t, const auto& p){ return t < p.tick; });
+        if (next == points.begin()) return base;
+        const auto& prev = *std::prev(next);
+        if (!linear || next == points.end()) return prev.value;
+        return prev.value + (next->value - prev.value) * ((tick - prev.tick) / (next->tick - prev.tick));
+    }
+};
+using PanAutomation = std::map<juce::String, PanEnvelope>;
 struct SessionMix {
     struct MidiRoute { int channel = 1; std::optional<std::size_t> destination; };
     std::vector<ChannelMix> tracks;
@@ -95,7 +127,12 @@ struct OstfpPreview {
     double previewBpm = 0.0; // A non-zero value denotes one fixed source tempo.
     TempoMap clock;
     int meterBeats = 4, beatUnit = 4;
+    std::vector<MeterPoint> meters;
     juce::String defaultScale;
+    juce::StringArray trackIds;
+    PanAutomation panAutomation;
+    std::vector<std::vector<DrumSlot>> slotsByTrack;
+    std::vector<std::vector<PitchedNote>> slotHits;
     juce::String contextAt(TimelineLane kind, juce::int64 tick) const;
     SongInformation songInformation() const;
     juce::Result renameTrack(std::size_t index, const juce::String& name);
@@ -140,6 +177,8 @@ struct OstfpPreview {
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);
     juce::Result editNotes(std::size_t track, const std::vector<NoteEdit>& edits, juce::MemoryBlock& before,
                            juce::StringArray& resultingIds);
+    juce::Result editController(std::size_t track, const MidiControl&, const juce::String& id, juce::int64 tick,
+                                std::optional<int> value, juce::MemoryBlock& before);
     juce::Result restoreNoteScore(const juce::MemoryBlock& bytes);
 };
 

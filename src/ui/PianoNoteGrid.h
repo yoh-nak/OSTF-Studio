@@ -149,7 +149,14 @@ public:
     void paint(juce::Graphics& g) override {
         if (!editable || !tickRange) return;
         g.setColour(juce::Colour(0xffffc57e));
-        for (const auto& n : notes) if (selection.contains(n.id)) g.drawRoundedRectangle(box(n).reduced(.5f), 2, 1.5f);
+        for (const auto& n : notes) if (selection.contains(n.id)) {
+            const auto r = box(n);
+            g.setColour(juce::Colour(0x66ffd771)); g.fillRect(r);
+            g.setColour(juce::Colour(0xff18212a)); g.drawRect(r, 2.f);
+            g.setColour(juce::Colour(0xffffe18a));
+            if (r.getWidth() >= 5 && r.getHeight() >= 5) g.drawRect(r.reduced(1), 1.f);
+            g.fillRect(r.withWidth(std::min(4.f, r.getWidth())));
+        }
         for (const auto& e : pending) {
             g.setColour(juce::Colour(0xffffc57e));
             g.drawRoundedRectangle(box(e.note).reduced(.5f), 2, 1.5f);
