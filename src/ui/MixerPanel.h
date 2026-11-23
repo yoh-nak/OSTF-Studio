@@ -9,6 +9,7 @@
 
 class MixerPanel final : public juce::Component {
 public:
+    juce::TextButton control{TRANS("Control here")};
     MixerPanel();
     void addReturn();
     void addBus();

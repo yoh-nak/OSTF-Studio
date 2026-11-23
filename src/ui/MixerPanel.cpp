@@ -124,6 +124,7 @@ void MixerPanel::Strip::paint(juce::Graphics& g) {
 
 MixerPanel::MixerPanel() {
     addAndMakeVisible(caption_);
+    addAndMakeVisible(control);
     addAndMakeVisible(addReturnButton_);
     addAndMakeVisible(viewport_);
     addAndMakeVisible(outputViewport_);
@@ -402,6 +403,7 @@ void MixerPanel::restore(const ostfstudio::SessionMix& mix) {
 void MixerPanel::resized() {
     auto area = getLocalBounds().reduced(6, 0);
     auto toolbar = area.removeFromTop(24);
+    control.setBounds(toolbar.removeFromRight(100).reduced(1));
     addReturnButton_.setBounds(toolbar.removeFromRight(94).reduced(1));
     caption_.setBounds(toolbar);
     const auto outputCount = static_cast<int>(buses_.size() + returns_.size()) + 2;

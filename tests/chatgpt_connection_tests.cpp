@@ -13,7 +13,8 @@ int main(int argc, char **argv) {
             return 11;
         auto state = juce::File(home).getChildFile("fixture-state");
         if (args.contains("debug") && args.contains("models")) {
-            std::cout << R"({"models":[{"slug":"test-score","visibility":"list"},{"slug":"internal","visibility":"hide"}]})";
+            std::cerr << "{catalog diagnostic}\\n";
+            std::cout << R"({"models":[{"slug":"gpt-6.1-sol","display_name":"GPT-6.1-Sol","visibility":"list"},{"slug":"test-score","visibility":"list"},{"slug":"internal","visibility":"hide"}]})";
             return 0;
         }
         if (args.contains("exec")) {
@@ -49,7 +50,9 @@ int main(int argc, char **argv) {
     if (!profile.getChildFile("models_cache.json").replaceWithText(R"({"models":[{"slug":"cached","visibility":"list"}]})")
         || service->availableModels() != juce::StringArray{"cached"}) return 6;
     juce::var response;
-    if (service->availableModels(true) != juce::StringArray{"test-score"} ||
+    juce::StringArray labels;
+    if (service->availableModels(true, &labels) != juce::StringArray{"gpt-6.1-sol", "test-score"} ||
+        labels != juce::StringArray{"GPT-6.1-Sol", "test-score"} ||
         service->request("example", "{}", {}, response).failed()) return 5;
     if (service->disconnect().failed() || service->connected())
         return 3;

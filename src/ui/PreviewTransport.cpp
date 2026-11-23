@@ -97,7 +97,7 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
                 (options->midiInput.enabled && (options->midiInput.port.isEmpty() || options->midiInput.port == input.identifier))));
         if (!enabled) return juce::Result::fail("Enable a MIDI input in Settings before recording.");
     }
-    const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples(), semitones, tempoRate, monitorOnly);
+    const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples(), semitones, tempoRate, monitorOnly, options ? options->linkTempo : 0);
     if (result.failed()) return result;
     if (startTick > 0 && !monitorOnly) seekToTick(startTick);
     if (monitorOnly && inputTrack && *inputTrack < tracks.size()) {
@@ -118,6 +118,18 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
     if (!inputs && (record || inputTrack)) prepareRecording(project, tracks, inputTrack, record);
     if ((record || inputTrack) && options) {
         if (const auto armed = prepareTake(*options); armed.failed()) { stop(); return armed; }
+    }
+    launchClock_ = !monitorOnly && options ? options->link : nullptr;
+    if (launchClock_) {
+        linkBaseTempo_ = options->linkTempo;
+        linkBpm_ = linkBaseTempo_;
+        linkQuantum_ = options->linkQuantum;
+        linkStartBeat_ = double(startTick) / project.ppq;
+        playbackLink_ = inputs == 0 ? launchClock_ : nullptr;
+        const auto countBeats = countRemaining_.load() / sampleRate_ * options->linkTempo / 60.0;
+        launchMicros_ = launchClock_->startAt(double(startTick) / project.ppq - countBeats, options->linkQuantum,
+                                               options->announceLinkStart);
+        outputLatencyMicros_ = device->getOutputLatencyInSamples() * 1.0e6 / sampleRate_;
     }
     devices_ = &devices;
     devices.addAudioCallback(this);
@@ -148,8 +160,11 @@ void PreviewTransport::prepareRecording(const ostfstudio::OstfpPreview &project,
 }
 
 juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& project, std::span<const TrackSetup> tracks,
-                                             const Inserts& inserts, double sampleRate, int blockSize, int semitones, double tempoRate, bool monitorOnly) {
+                                             const Inserts& inserts, double sampleRate, int blockSize, int semitones, double tempoRate, bool monitorOnly, double linkTempo) {
     stop();
+    playbackLink_ = launchClock_ = nullptr;
+    linkSubsample_ = 0;
+    linkBpm_ = 0;
     monitorOnly_ = monitorOnly;
     if (!std::isfinite(sampleRate) || sampleRate <= 0 || blockSize < 1)
         return juce::Result::fail("Invalid audio configuration");
@@ -161,6 +176,10 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     const auto scaled = project.clock.scaled(tempoRate);
     if (!scaled) return juce::Result::fail("Invalid tempo rate");
     clock_ = *scaled;
+    if (linkTempo > 0) {
+        clock_ = ostfstudio::TempoMap(project.ppq);
+        if (!clock_.append(0, linkTempo)) return juce::Result::fail("Invalid Link tempo");
+    }
     ppq_ = project.ppq;
     meters_ = project.meters;
     meterBeats_ = project.meterBeats;
@@ -174,6 +193,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     captured_.setSize(0, 0);
     mapInput_ = false;
     surface_ = {};
+    otherSurfaces_.clear();
     midiInput_ = {};
     elapsed_ = countRemaining_ = 0;
     beatSamples_.clear();
@@ -511,7 +531,8 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PreviewTransport::getPosition(
     const double tick = clock_.tickAt(seconds);
     position.setTimeInSeconds(seconds);
     position.setPpqPosition(tick / ppq_);
-    position.setBpm(clock_.bpmAt(static_cast<juce::int64>(tick + 1e-9)));
+    const auto linkedTempo = linkBpm_.load();
+    position.setBpm(linkedTempo > 0 ? linkedTempo : clock_.bpmAt(static_cast<juce::int64>(tick + 1e-9)));
     const auto meter = ostfstudio::activeMeter(meters_, tick, {0, meterBeats_, beatUnit_});
     position.setTimeSignature(TimeSignature{meter.numerator, meter.denominator});
     const auto barPpq = meterBeats_ * 4.0 / beatUnit_;
@@ -532,7 +553,8 @@ void PreviewTransport::processEffects(const Chain& effects, juce::AudioBuffer<fl
 
 void PreviewTransport::renderInstruments(float* const* output, int channels, int count, int first, int end) {
     for (auto& stem : stems_) stem.clear(0, count);
-    const auto audible = end - first;
+    const int audible = count;
+    const auto timelineStep = double(end - first) / count;
     for (std::size_t track = 0; track < instruments_.size(); ++track) {
         auto& slot = instruments_[track];
         const auto& chain = inserts_[outputCount + track];
@@ -545,7 +567,17 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
         if (loopRestart_) pluginMidi_.addEvents(slot.loopEvents, 0, -1, 0);
         pluginMidi_.addEvents(slot.seekEvents, 0, -1, 0);
         slot.seekEvents.clear();
-        if (!monitorOnly_) pluginMidi_.addEvents(slot.timeline, first, end - first, -first);
+        if (!monitorOnly_) {
+            if (end - first == count) pluginMidi_.addEvents(slot.timeline, first, count, -first);
+            else if (end > first) {
+                for (auto it = slot.timeline.findNextSamplePosition(first); it != slot.timeline.cend(); ++it) {
+                    const auto event = *it;
+                    if (event.samplePosition >= end) break;
+                    const int offset = std::min(count - 1, int((event.samplePosition - first) / timelineStep));
+                    pluginMidi_.addEvent(event.data, event.numBytes, offset);
+                }
+            }
+        }
         if (monitorTrack_ == track) {
             const juce::SpinLock::ScopedTryLockType lock(liveLock_);
             if (lock.isLocked()) {
@@ -591,10 +623,12 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
             for (int c = 0; c < 2; ++c) {
                 const auto* source = slot.wav.getReadPointer(std::min(c, slot.wav.getNumChannels() - 1));
                 auto* dest = block.getWritePointer(c);
-                const auto last = std::min(audible, slot.wavEnd - first);
-                for (int i = std::max(0, slot.wavStart - first); i < last; ++i) {
-                    const auto nativeFrame = (first + i - slot.wavStart) * slot.wavRate / sampleRate_;
-                    const auto tick = slot.wavTiming.cycleTicks ? clock_.tickAt((first + i) / sampleRate_) - slot.wavStartTick : 0.0;
+                for (int i = 0; i < count; ++i) {
+                    const double position = first + i * timelineStep;
+                    if (position < slot.wavStart) continue;
+                    if (position >= slot.wavEnd) break;
+                    const auto nativeFrame = (position - slot.wavStart) * slot.wavRate / sampleRate_;
+                    const auto tick = slot.wavTiming.cycleTicks ? clock_.tickAt(position / sampleRate_) - slot.wavStartTick : 0.0;
                     const auto frame = slot.wavTiming.frameAt(nativeFrame, std::max(0.0, tick), slot.wav.getNumSamples());
                     if (frame >= slot.wav.getNumSamples()) break;
                     const auto pos = static_cast<int>(frame);
@@ -609,7 +643,7 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
         const bool automated = !slot.panEnvelope.points.empty();
         if (automated) {
             for (int i = 0; i < audible; ++i) {
-                const auto tick = clock_.tickAt((first + i) / sampleRate_);
+                const auto tick = clock_.tickAt((first + i * timelineStep) / sampleRate_);
                 const auto pan = float(slot.panEnvelope.valueAt(tick, basePan));
                 for (int ch = 0; ch < 2; ++ch) block.getWritePointer(ch)[i] *= ostfstudio::stereoBalance(pan, ch == 1);
             }
@@ -675,6 +709,22 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
         return;
     }
     int done = 0;
+    if (launchClock_) {
+        const auto remaining = (launchMicros_ - launchClock_->micros() - outputLatencyMicros_) * sampleRate_ / 1.0e6;
+        if (remaining >= count) return;
+        done = std::clamp(juce::roundToInt(remaining), 0, count);
+        launchClock_ = nullptr;
+    }
+    double speed = 1.0;
+    if (playbackLink_ && countRemaining_.load() == 0) {
+        const auto audibleTime = playbackLink_->micros() + std::llround(outputLatencyMicros_ + done * 1.e6 / sampleRate_);
+        const auto pulse = playbackLink_->audioPulse(audibleTime, linkQuantum_);
+        linkBpm_ = pulse.tempo;
+        const double framesPerBeat = sampleRate_ * 60.0 / linkBaseTempo_;
+        const double localBeat = linkStartBeat_ + (elapsed_.load() + linkSubsample_) / framesPerBeat;
+        const double phaseError = std::remainder(pulse.beat - localBeat, linkQuantum_);
+        speed = std::clamp(pulse.tempo / linkBaseTempo_ + std::clamp(phaseError * .2, -.025, .025), .01, 64.);
+    }
     while (done < count && running_) {
         if (const auto remaining = countRemaining_.load(); remaining > 0) {
             const auto played = countLength_ - remaining;
@@ -692,13 +742,18 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
         }
         auto limit = loopSamples_.isEmpty() ? lastSample_ : juce::int64(loopSamples_.getEnd());
         if (captured_.getNumChannels()) limit = std::min(limit, juce::int64(captureOrigin_ + captured_.getNumSamples()));
-        const int part = int(std::min<juce::int64>(count - done, limit - first));
+        const auto available = limit - first;
+        if (available <= 0) { running_ = false; break; }
+        const int part = std::min(count - done, int(std::min<double>(count, std::ceil((available - linkSubsample_) / speed))));
         if (part <= 0) { running_ = false; break; }
+        const double advance = part * speed + linkSubsample_;
+        const int timelineFrames = int(std::min<double>(available, std::floor(advance)));
+        linkSubsample_ = timelineFrames == available ? 0.0 : advance - timelineFrames;
         std::array<float*, 4> dest {};
         const int outs = std::min(channels, int(dest.size()));
         for (int c=0; c<outs; ++c) dest[c] = output[c] ? output[c] + done : nullptr;
         blockTimeMs_ = blockStart + done * 1000.0 / sampleRate_;
-        if (pluginAudio_.getNumChannels()) renderInstruments(dest.data(), outs, part, int(first), int(first) + part);
+        if (pluginAudio_.getNumChannels()) renderInstruments(dest.data(), outs, part, int(first), int(first) + timelineFrames);
         if (captured_.getNumChannels()) {
             const int pos = int(first) - captureOrigin_;
             const int channelsNeeded = captured_.getNumChannels();
@@ -714,13 +769,13 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
             const int clickLength = std::max(1, int(sampleRate_ * .025));
             auto beat = std::lower_bound(beatSamples_.begin(), beatSamples_.end(), int(first) - clickLength,
                 [](const auto& b, int x) { return b.first < x; });
-            for (; beat != beatSamples_.end() && beat->first < first + part; ++beat) {
-                const int offset = std::max(0, beat->first - int(first));
-                mixClick(dest.data(), outs, offset, part - offset, int(first) + offset - beat->first, beat->second);
+            for (; beat != beatSamples_.end() && beat->first < first + timelineFrames; ++beat) {
+                const int offset = std::clamp(int((beat->first - first) / speed), 0, part);
+                mixClick(dest.data(), outs, offset, part - offset, std::max(0, int((first - beat->first) / speed)), beat->second);
             }
         }
-        elapsed_ += part;
-        done += part; sample_ = first + part; loopRestart_ = false;
+        elapsed_ += timelineFrames;
+        done += part; sample_ = first + timelineFrames; loopRestart_ = false;
         if (loopSamples_.isEmpty() && sample_ >= lastSample_) running_ = false;
     }
     for (int c = 0; c < channels; ++c)
@@ -735,16 +790,19 @@ void PreviewTransport::handleIncomingMidiMessage(juce::MidiInput* input, const j
 
 void PreviewTransport::inputFromDevice(const juce::MidiMessage& message, const juce::String& port) {
     if (!midiInput_.accepts(port, message.getChannel())) return;
-    if (surface_.port.isNotEmpty() && port == surface_.port) {
-        if (surface_.model == ostfstudio::SurfaceModel::mixer) return;
-        const auto action = surface_.action(message);
-        if (surface_.studioRig && action.page >= 0 &&
+    auto other = otherSurfaces_.find(port);
+    const auto& surface = other == otherSurfaces_.end() ? surface_ : other->second;
+    if (surface.port.isNotEmpty() && port == surface.port) {
+        if (surface.model == ostfstudio::SurfaceModel::mixer) return;
+        const auto action = surface.action(message);
+        if (action.kind == ostfstudio::SurfaceAction::knob) return;
+        if (surface.studioRig && action.page >= 0 &&
             (message.isController() || action.bank == 1 || !mapInput_)) return;
-        const int index = mapInput_ ? surface_.padIndex(message) : -1;
+        const int index = mapInput_ ? surface.padIndex(message) : -1;
         if (index >= 0) {
-            if (surface_.pitches[index] >= 0) {
+            if (surface.pitches[index] >= 0) {
                 auto note = message;
-                note.setNoteNumber(surface_.pitches[index]);
+                note.setNoteNumber(surface.pitches[index]);
                 inputNote(note);
             }
             return;
@@ -812,6 +870,7 @@ juce::Result PreviewTransport::prepareTake(const TakeOptions& options) {
     jassert(!devices_);
     takeStart_ = sample_.load();
     surface_ = options.surface;
+    otherSurfaces_ = options.otherSurfaces;
     midiInput_ = options.midiInput;
     if (options.drumMapping) { inputMap_ = *options.drumMapping; mapInput_ = true; }
     if (options.inputChannels) {

@@ -51,7 +51,7 @@ public:
         inputLamp.pulse();
         inputLabel.setText("MIDI IN  " + event, juce::dontSendNotification);
     }
-    juce::ToggleButton learning{TRANS("MIDI Learn")};
+    juce::TextButton learning{TRANS("MIDI Learn")}, recommended{TRANS("Send Studio recommended setup")};
     juce::Label status;
     ostfstudio::SurfaceModel model = ostfstudio::SurfaceModel::none;
     explicit ControllerSurface() {
@@ -72,6 +72,12 @@ public:
             if (manualBinding) manualBinding(target.getSelectedId() - 1, (inputChannel.getSelectedId() - 1) * 128 + int(inputNumber.getValue()));
         };
         unassign.onClick = [this] { if (manualBinding) manualBinding(target.getSelectedId() - 1, -1); };
+        learning.setClickingTogglesState(true);
+        learning.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff956126));
+#if JUCE_WINDOWS && defined(_MSC_VER)
+        addAndMakeVisible(recommended);
+        recommended.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff17634f));
+#endif
         addChildComponent(controlTarget);
         controlTarget.addItem(TRANS("Follow active editor"), 1);
         controlTarget.addItem(TRANS("Mixer"), 2);
@@ -98,6 +104,15 @@ public:
         };
         setSize(700, 306);
     }
+    void selectOnlySmkInput() {
+        int match = -1;
+        for (int i = 0; i < ports.size(); ++i) {
+            if (ostfstudio::surfaceModel(ports[i].name) != ostfstudio::SurfaceModel::smk25ii) continue;
+            if (match >= 0) return;
+            match = i;
+        }
+        if (match >= 0) devices.setSelectedId(match + 2, juce::sendNotificationSync);
+    }
     void refreshPorts(const juce::String &active) {
         ports.clear();
         devices.clear(juce::dontSendNotification);
@@ -116,7 +131,8 @@ public:
 
         devices.setBounds(top.removeFromLeft(245).reduced(2));
         layer.setBounds(top.removeFromLeft(132).reduced(2));
-        learning.setBounds(top);
+        recommended.setBounds(top.removeFromRight(207).reduced(2));
+        learning.setBounds(top.reduced(2));
         controlTarget.setBounds(layer.getBounds().getUnion(top).withWidth(215));
         auto footer = getLocalBounds().reduced(12).removeFromBottom(88);
         auto form = footer.removeFromTop(32);

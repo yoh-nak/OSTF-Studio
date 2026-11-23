@@ -343,6 +343,29 @@ bool checkWaveform(const juce::File& directory) {
         || !replacement.timing.loop || replacement.timing.markers.size() != 1
         || prepareEditedWav(replacement, editFile, replacement.sha256, region).wasOk()
         || region.embedded != bytes.getMemoryBlock()) return false;
+    region.durationTicks = 240;
+    juce::int64 clipFrames = 0;
+    const auto excerpt = clipWav(region, region.embedded, clock, clipFrames);
+    auto excerptReader = wavReader(excerpt);
+    if (!excerptReader || clipFrames != 4000 || excerptReader->lengthInSamples != clipFrames) return false;
+    juce::MemoryBlock changed;
+    {
+        auto writer = wavWriter(changed, *excerptReader);
+        juce::AudioBuffer<float> fill(2, int(clipFrames));
+        fill.clear();
+        for (int i = 0; i < clipFrames; ++i) fill.setSample(0, i, .25f);
+        if (!writer || !writer->writeFromAudioSampleBuffer(fill, 0, int(clipFrames))) return false;
+    }
+    if (!editFile.replaceWithData(changed.getData(), changed.getSize()) ||
+        prepareEditedWav(region, editFile, hash, replacement, clipFrames).failed()) return false;
+    auto original = wavReader(region.embedded), merged = wavReader(replacement.embedded);
+    juce::AudioBuffer<float> a(2, frames), b(2, frames);
+    if (!merged || merged->lengthInSamples != frames || !merged->read(&b, 0, frames, 0, true, true)
+        || !original->read(&a, 0, frames, 0, true, true)) return false;
+    for (int i = 0; i < frames; ++i) {
+        const bool inside = i >= region.startFrame && i < region.startFrame + clipFrames;
+        if (std::abs(b.getSample(0, i) - (inside ? .25f : a.getSample(0, i))) > .0001f) return false;
+    }
     region.embedded.reset();
     waveforms.load({region});
     return !waveforms.available(0);

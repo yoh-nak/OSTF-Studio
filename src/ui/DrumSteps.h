@@ -3,6 +3,12 @@
 
 class DrumSteps final : public juce::Component, public juce::SettableTooltipClient {
 public:
+    void adjustPattern(int index, double value, bool relative) {
+        auto& box = index == 0 ? bars : repeats;
+        if (box.getNumItems() > 0)
+            box.setSelectedItemIndex(std::clamp(relative ? box.getSelectedItemIndex() + int(value) :
+                juce::roundToInt(value * (box.getNumItems() - 1)), 0, box.getNumItems() - 1), juce::sendNotificationSync);
+    }
     using Tick = juce::int64;
     using Edit = ostfstudio::NoteEdit;
     const ostfstudio::OstfpPreview* song = nullptr;

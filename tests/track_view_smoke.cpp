@@ -77,6 +77,20 @@ int checkTrackView(const juce::File& fixture) {
             if (legend.getPixelAt(8 + 40 * pc, PianoInspector::controlsHeight + 20) != pianoHarmony::degreeColour(pc + 60, 0)) return 67;
         if (legend.getPixelAt(7, PianoInspector::controlsHeight + 67) != pianoHarmony::toneColour(pianoHarmony::Tone::root)) return 68;
     }
+    ControlTargetMap targets;
+    targets[{"SMK input A", -1}] = "mix";
+    targets[{"SMK input A", 2}] = "synth";
+    targets[{"SMK input B", 2}] = "fx";
+    if (resolveControlTarget(targets, "SMK input A", 2, "follow") != "synth" ||
+        resolveControlTarget(targets, "SMK input A", 3, "follow") != "mix" ||
+        resolveControlTarget(targets, "SMK input B", 2, "follow") != "fx" ||
+        resolveControlTarget(targets, "SMK input B", 3, "follow") != "follow") return 125;
+    if (controlParameterIndex(targets, "SMK input A", 2, 0, 4) != 4 ||
+        controlParameterIndex(targets, "SMK input A", 2, 1, 4) != 12 ||
+        controlParameterIndex(targets, "SMK input A", 3, 0, 4) != 52 ||
+        movedEffectSlot(1, 1, 3) != 3 || movedEffectSlot(2, 1, 3) != 1 ||
+        movedEffectSlot(1, 3, 0) != 2 || movedEffectSlot(1, 1, -1) != -1 ||
+        movedEffectSlot(2, 1, -1) != 1 || movedEffectSlot(0, 1, -1) != 0) return 129;
     MainComponent main;
     main.setVisible(true);
     main.setSize(1450, 1200);
@@ -87,9 +101,19 @@ int checkTrackView(const juce::File& fixture) {
     if (!main.getName().contains(TRANS("Unsaved project"))
         || !tracks || tracks->getNumItems() != 0 || !menus || !menus->getModel()) return 13;
     auto& model = *menus->getModel();
-    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Settings"), TRANS("Help")};
+    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")};
     if (model.getMenuBarNames() != names) return 38;
-    const auto help = model.getMenuForIndex(4, {});
+    const auto external = model.getMenuForIndex(4, {});
+    juce::StringArray actions;
+    for (juce::PopupMenu::MenuItemIterator it(external); it.next();) actions.add(it.getItem().text);
+    if (!actions.contains("Splice...") || !actions.contains("Melodyne...") || !actions.contains("Ableton Link")) return 121;
+    for (const auto name : {"AI Arrangement Studio", "AI Lyric Studio", "AI Vocal Studio"})
+        if (!findControl<juce::TextButton>(main, name)) return 122;
+    if (!findControl<EditorClipLane>(main, TRANS("Clips"))) return 123;
+    EditorClipLane exampleLane;
+    exampleLane.clips = {{{1, 2}, "A"}, {{3, 5}, "B"}};
+    if (exampleLane.at(1.5) != 1. || exampleLane.at(2.) || exampleLane.at(3.) != 3. || exampleLane.at(5.)) return 124;
+    const auto help = model.getMenuForIndex(5, {});
     bool hasShortcuts = false;
     for (juce::PopupMenu::MenuItemIterator it(help); it.next();)
         if (it.getItem().text == TRANS("Shortcuts...")) hasShortcuts = it.getItem().isEnabled;
@@ -126,6 +150,22 @@ int checkTrackView(const juce::File& fixture) {
         if (it.getItem().text == TRANS("Add pitched track") && it.getItem().isEnabled)
             model.menuItemSelected(it.getItem().itemID, 2);
     if (tracks->getNumItems() != 1 || tracks->getSelectedId() != 1) return 15;
+    const auto renameMenu = model.getMenuForIndex(2, {});
+    int renameId = 0;
+    for (juce::PopupMenu::MenuItemIterator it(renameMenu); it.next();)
+        if (it.getItem().text == TRANS("Rename track...")) renameId = it.getItem().itemID;
+    if (!renameId) return 126;
+    model.menuItemSelected(renameId, 2);
+    auto* inlineName = dynamic_cast<juce::TextEditor*>(main.findChildWithID("inline-track-name"));
+    if (!inlineName || !inlineName->isVisible()) return 127;
+    const auto originalName = tracks->getText();
+    inlineName->setText("Keep original", false);
+    inlineName->onEscapeKey();
+    if (inlineName->isVisible() || tracks->getText() != originalName) return 128;
+    model.menuItemSelected(renameId, 2);
+    inlineName->setText("Inline track", false);
+    inlineName->onReturnKey();
+    if (inlineName->isVisible() || tracks->getText() != "Inline track") return 129;
     auto* addedGrip = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
     if (!addedGrip || addedGrip->height() != 84) return 18;
     auto* info = findControl<ViewButton>(main, TRANS("Song information"));

@@ -127,6 +127,12 @@ public:
         auto spreadRow = left.getUnion(area);
         sliderRow(spreadRow, spreadLabel, spread);
     }
+    void adjustFromController(int index, double value, bool relative) {
+        std::array<juce::Slider*, 4> knobs{&start, &end, &strength, &spread};
+        if (index < 0 || index >= int(knobs.size())) return;
+        auto& control = *knobs[size_t(index)];
+        control.setValue(relative ? control.getValue() + value : control.proportionOfLengthToValue(value), juce::sendNotificationSync);
+    }
 private:
     PianoNoteGrid& grid_;
     juce::ToggleButton pencil;

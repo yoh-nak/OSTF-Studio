@@ -127,7 +127,7 @@ struct OstfpPreview {
     juce::int64 playbackEndTick() const { return (bars.endBar - 1) * ticksPerBar; }
     static constexpr std::size_t maxTracks = 15; // One transport channel is reserved for global chord voicing.
     juce::String title;
-    juce::String sourceVersion;
+    juce::String sourceVersion, documentId;
     juce::int64 durationTicks = 0;
     BarSpan bars {1, 1};
     juce::int64 ticksPerBar = 0;

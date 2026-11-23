@@ -38,6 +38,22 @@ if (OSTF_STUDIO_BUILD_GUI)
         GIT_SHALLOW TRUE
     )
     FetchContent_MakeAvailable(JUCE)
+    FetchContent_Declare(ableton_link
+        GIT_REPOSITORY https://github.com/Ableton/link.git
+        GIT_TAG 45931b8bd2a7066f1950f2a0beab81a0c51f28fe
+        GIT_SUBMODULES modules/asio-standalone
+        SOURCE_SUBDIR ostf-no-examples)
+    FetchContent_MakeAvailable(ableton_link)
+    include("${ableton_link_SOURCE_DIR}/AbletonLinkConfig.cmake")
+    add_library(ostf_link STATIC src/ui/LinkSession.cpp)
+    target_include_directories(ostf_link PUBLIC src)
+    target_link_libraries(ostf_link PRIVATE Ableton::Link)
+    if(WIN32)
+        target_link_libraries(ostf_link PRIVATE ws2_32 iphlpapi winmm)
+    endif()
+    add_executable(ostf_link_tests tests/link_session_tests.cpp)
+    target_link_libraries(ostf_link_tests PRIVATE ostf_link)
+    add_test(NAME link_transport COMMAND ostf_link_tests)
 
     set(JSONCONS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if(POLICY CMP0135)
@@ -143,6 +159,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         target_compile_definitions(OSTFStudio PRIVATE JUCE_ASIO=$<BOOL:${OSTF_STUDIO_ENABLE_ASIO}>)
     endif()
     target_link_libraries(OSTFStudio PRIVATE
+        ostf_link
         ostf_studio_core
         ostf_score_validation
         OSTFStudioAssets

@@ -144,6 +144,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
 
     auto out = std::make_unique<OstfpPreview>();
     out->sourceVersion = score["version"].toString();
+    out->documentId = score["document"]["id"].toString();
     out->durationTicks = duration;
     out->ticksPerBar = ticksPerBar;
     out->ppq = ppq;

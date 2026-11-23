@@ -1,5 +1,6 @@
 #pragma once
 #include "core/Smk25Preset.h"
+#include <map>
 #include <juce_audio_devices/juce_audio_devices.h>
 
 namespace ostfstudio {
@@ -12,9 +13,33 @@ inline SurfaceModel surfaceModel(juce::String name) {
         return SurfaceModel::mixer;
     return SurfaceModel::none;
 }
+using ControlTargetMap = std::map<std::pair<juce::String, int>, juce::String>;
+inline juce::String resolveControlTarget(const ControlTargetMap& targets, const juce::String& port, int preset,
+                                         const juce::String& fallback) {
+    for (int page : {preset, -1}) {
+        const auto found = targets.find({port, page});
+        if (found != targets.end()) return found->second;
+    }
+    return fallback;
+}
+
+// A preset assigned to a particular device starts at its first parameter.
+inline int controlParameterIndex(const ControlTargetMap& targets, const juce::String& port, int page, int bank, int knob) {
+    const int group = targets.contains({port, page}) ? 0 : std::max(0, page);
+    return (group * 2 + bank) * 8 + knob;
+}
+
+inline int movedEffectSlot(int slot, int from, int to) {
+    if (slot == from) return to;
+    if (slot > from && (to < 0 || slot <= to)) return slot - 1;
+    if (to >= 0 && slot >= to && slot < from) return slot + 1;
+    return slot;
+}
+
 struct SurfaceAction {
     enum Kind { none, pad, knob, fader, relativePan, learned } kind = none;
     int index = 0, value = 0, page = -1, bank = 0;
+    juce::String port;
 };
 struct ControllerMap {
     juce::String port;

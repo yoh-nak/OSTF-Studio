@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/LinkSession.h"
 #include "ui/AudioTrackInput.h"
 #include "ui/ControllerMap.h"
 #include "ui/MidiInputRoute.h"
@@ -39,8 +40,12 @@ public:
         int firstInputBuffer = 0;
         double inputGainDb = 0;
         bool countIn = false;
+        ostfstudio::LinkSession* link = nullptr;
+        double linkQuantum = 4, linkTempo = 0;
+        bool announceLinkStart = true;
         const std::array<int, 128>* drumMapping = nullptr;
         ostfstudio::ControllerMap surface;
+        std::map<juce::String, ostfstudio::ControllerMap> otherSurfaces;
         ostfstudio::MidiInputRoute midiInput;
     };
     void setInputGain(double db) { captureGain_.store(juce::Decibels::decibelsToGain(float(db))); }
@@ -63,7 +68,7 @@ public:
     void setLoop(juce::Range<juce::int64> ticks);
     void seekToTick(juce::int64 tick);
     juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
-                                 double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1, bool monitorOnly = false);
+                                 double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1, bool monitorOnly = false, double linkTempo = 0);
     void renderBlock(float* const* output, int channels, int samples, const float* const* input = nullptr, int inputs = 0);
     ostfstudio::MeterFrame takeMeters() noexcept;
     void setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb);
@@ -124,6 +129,12 @@ private:
     std::atomic<juce::int64> sample_ {0};
     double sampleRate_ = 0.0;
     ostfstudio::TempoMap clock_;
+    ostfstudio::LinkSession* launchClock_ = nullptr;
+    std::int64_t launchMicros_ = 0;
+    ostfstudio::LinkSession* playbackLink_ = nullptr;
+    double linkBaseTempo_ = 0, linkQuantum_ = 4, linkStartBeat_ = 0, linkSubsample_ = 0;
+    std::atomic<double> linkBpm_{0};
+    double outputLatencyMicros_ = 0;
     juce::int64 ppq_ = 1;
     int meterBeats_ = 4, beatUnit_ = 4;
     std::vector<ostfstudio::MeterPoint> meters_;
@@ -147,6 +158,7 @@ private:
     std::array<int, 128> inputMap_{};
     bool mapInput_ = false;
     ostfstudio::ControllerMap surface_;
+    std::map<juce::String, ostfstudio::ControllerMap> otherSurfaces_;
     ostfstudio::MidiInputRoute midiInput_;
     juce::AudioBuffer<float> captured_;
     int firstInputBuffer_ = 0;

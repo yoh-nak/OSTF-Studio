@@ -67,7 +67,9 @@ public:
                  stop{TransportKey::stop, TRANS("Stop")}, record{TransportKey::record, TRANS("Record")},
                  follow{TransportKey::follow, TRANS("Follow")};
     juce::ToggleButton click{TRANS("Metronome")}, countIn{TRANS("Count-in")};
+    juce::TextButton control{TRANS("Control here")};
     TransportPanel() {
+        addAndMakeVisible(control);
         for (auto* button : {&click, &countIn}) addAndMakeVisible(button);
         countIn.setTooltip(TRANS("Count one bar before recording"));
         for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow}) addAndMakeVisible(*b);
@@ -137,6 +139,7 @@ public:
         auto switches = narrow ? r.removeFromRight(105) : top.removeFromLeft(101);
         click.setBounds(switches.removeFromTop(switches.getHeight() / 2));
         countIn.setBounds(switches);
+        control.setBounds(top.removeFromLeft(stacked ? 57 : 90).reduced(1, 3));
         top.removeFromLeft(5);
         const int clockWidth = stacked ? top.getWidth() / 2 : juce::jlimit(122, 158, getWidth() / 8);
         for (int i = 0; i < 2; ++i) fields_[i] = top.removeFromLeft(clockWidth).reduced(1, 0);

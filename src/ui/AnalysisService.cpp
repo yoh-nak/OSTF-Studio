@@ -69,6 +69,7 @@ juce::Result studioCodex(const juce::File& home, juce::StringArray args, int tim
         linkSent = true;
         signIn(juce::URL(tail.substring(0, end)));
     };
+    const bool catalog = args.size() >= 3 && args[1] == "debug" && args[2] == "models";
     args.insert(1, "-c");
     args.insert(2, "cli_auth_credentials_store=file");
     args.insert(3, "-c");
@@ -137,7 +138,11 @@ juce::Result studioCodex(const juce::File& home, juce::StringArray args, int tim
     startup.hStdInput = input;
     startup.cb = sizeof(startup);
     startup.dwFlags = STARTF_USESTDHANDLES;
-    startup.hStdOutput = startup.hStdError = log;
+    auto errors = catalog ? CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &security,
+                                       OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) : INVALID_HANDLE_VALUE;
+    const juce::ScopeGuard closeErrors([&] { if (errors != INVALID_HANDLE_VALUE) CloseHandle(errors); });
+    startup.hStdOutput = log;
+    startup.hStdError = errors != INVALID_HANDLE_VALUE ? errors : log;
     PROCESS_INFORMATION process{};
     const auto started = CreateProcessW(args[0].toWideCharPointer(), command.data(), nullptr, nullptr, TRUE,
                                         CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW, environment.data(),
@@ -169,7 +174,7 @@ juce::Result studioCodex(const juce::File& home, juce::StringArray args, int tim
     args.insert(0, "/usr/bin/env");
     if (!status && !signIn) return runAnalysisTool(args, timeout);
     juce::ChildProcess probe;
-    if (!probe.start(args)) return juce::Result::fail(TRANS("Could not start the analysis tool."));
+    if (!probe.start(args, catalog ? juce::ChildProcess::wantStdOut : (juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))) return juce::Result::fail(TRANS("Could not start the analysis tool."));
     std::thread readOutput([&] {
         char c;
         while (probe.readProcessOutput(&c, 1) == 1)
@@ -219,13 +224,16 @@ class ChatGpt final : public AnalysisProvider {
 public:
     ChatGpt(juce::File cli, juce::File profile, juce::String selected, AiStudioMode studioMode)
         : executable(std::move(cli)), home(std::move(profile)), model(std::move(selected)), mode(studioMode) {}
-    juce::StringArray availableModels(bool refresh) const override {
-        auto visible = [](const juce::var& catalog) {
+    juce::StringArray availableModels(bool refresh, juce::StringArray* labels) const override {
+        auto visible = [labels](const juce::var& catalog) {
+            if (labels) labels->clear();
             juce::StringArray result;
             if (const auto* models = catalog["models"].getArray())
                 for (const auto& entry : *models)
-                    if (entry["visibility"].toString() == "list" && entry["slug"].toString().isNotEmpty())
-                        result.addIfNotAlreadyThere(entry["slug"].toString());
+                    if (const auto id = entry["slug"].toString(); entry["visibility"].toString() == "list" && id.isNotEmpty() && !result.contains(id)) {
+                        result.add(id);
+                        if (labels) labels->add(entry.getProperty("display_name", id).toString());
+                    }
             return result;
         };
         auto models = visible(juce::JSON::parse(home.getChildFile("models_cache.json")));

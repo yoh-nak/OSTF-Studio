@@ -4,6 +4,11 @@
 
 class DrumPads final : public juce::Component {
   public:
+    void chooseSlot(double value, bool relative) {
+        if (slot.getNumItems() > 0)
+            slot.setSelectedItemIndex(std::clamp(relative ? slot.getSelectedItemIndex() + int(value) :
+                juce::roundToInt(value * (slot.getNumItems() - 1)), 0, slot.getNumItems() - 1), juce::sendNotificationSync);
+    }
     std::function<void(int, std::optional<int>)> edit;
     std::function<void(int, bool)> trigger;
     std::function<void(int)> selectionChanged;

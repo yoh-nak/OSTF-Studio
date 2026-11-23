@@ -8,7 +8,7 @@ using SignInLink = std::function<void(const juce::URL&)>;
 class AnalysisProvider {
 public:
     virtual ~AnalysisProvider() = default;
-    virtual juce::StringArray availableModels(bool refresh = false) const { return {}; }
+    virtual juce::StringArray availableModels(bool refresh = false, juce::StringArray* labels = nullptr) const { return {}; }
     virtual juce::String name() const = 0;
     virtual bool connected() const = 0;
     virtual juce::Result connect(const SignInLink& = {}) const = 0;

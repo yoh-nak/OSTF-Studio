@@ -12,7 +12,22 @@ public:
     std::function<bool(const juce::String&, bool)> useRig;
     std::function<void(int)> changeTarget;
     juce::ComboBox target;
-    juce::ToggleButton automatic{TRANS("All Studio banks")};
+    juce::TextButton automatic{TRANS("Studio control mode")};
+#if JUCE_WINDOWS && defined(_MSC_VER)
+    void beginRecommended() {
+        if (destination.isEmpty()) {
+            status.setText(TRANS("Select a controller MIDI input in Studio assignments."), juce::dontSendNotification);
+            return;
+        }
+        if (bluetooth.getSelectedId() > 0) { confirmSetup(); return; }
+        if (devices.size() > 1 && isEnabled()) {
+            status.setText(TRANS("Choose a Bluetooth device"), juce::dontSendNotification);
+            return;
+        }
+        setupAfterScan = true;
+        if (isEnabled()) scanDevices();
+    }
+#endif
     void showRig(bool active, int mode) {
         automatic.setToggleState(active, juce::dontSendNotification);
         target.setSelectedId(mode + 1, juce::dontSendNotification);
@@ -24,8 +39,9 @@ public:
 #endif
     }
     explicit SmkPresetEditor(juce::PropertiesFile& settings) : prefs(settings) {
-        for (juce::Component* c : std::initializer_list<juce::Component*>{&create, &open, &save, &apply, &filename, &status, &bank,
+        for (juce::Component* c : std::initializer_list<juce::Component*>{&create, &open, &save, &filename, &status, &bank,
                   &mode, &channel, &number, &modeLabel, &channelLabel, &numberLabel, &colourLabel}) addAndMakeVisible(c);
+        automatic.setClickingTogglesState(true);
         addAndMakeVisible(automatic);
         addAndMakeVisible(target);
         target.addItem(TRANS("Follow active editor"), 1);
@@ -68,7 +84,8 @@ public:
         bluetooth.setTitle(TRANS("Bluetooth settings device"));
         bluetooth.setTextWhenNothingSelected(TRANS("Choose a Bluetooth device"));
         bluetooth.onChange = [this] { refresh(); };
-        setup.onClick = [this] { confirmSetup(); };
+        setup.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff17634f));
+        setup.onClick = [this] { beginRecommended(); };
         scan.onClick = [this] { scanDevices(); };
         readDevice.onClick = [this] { confirmReplacement([this] { startTransfer(false); }); };
         writeDevice.onClick = [this] { confirmWrite(); };
@@ -76,7 +93,6 @@ public:
         create.onClick = [this] { confirmReplacement([this] { newPreset(); }); };
         open.onClick = [this] { choose(false); };
         save.onClick = [this] { choose(true); };
-        apply.onClick = [this] { confirmApply(); };
         juce::MemoryBlock draft;
         if (draft.fromBase64Encoding(prefs.getValue("smk25Draft"))) {
             preset = decode(draft);
@@ -110,8 +126,6 @@ public:
         destinationName = std::move(name);
         automatic.setEnabled(destination.isNotEmpty());
         refresh();
-        apply.setEnabled(preset.has_value() && destination.isNotEmpty());
-        apply.setTooltip(destination.isEmpty() ? TRANS("Select a controller MIDI input in Studio assignments.") : destinationName);
     }
 
     void resized() override {
@@ -157,7 +171,6 @@ public:
         setup.setBounds(rigRow.reduced(2));
 #endif
         auto bottom = area.removeFromBottom(40);
-        apply.setBounds(bottom.removeFromRight(200).reduced(2));
         status.setBounds(bottom);
     }
 
@@ -168,7 +181,7 @@ private:
     bool dirty = false;
     int slot = 0;
     juce::String destination, destinationName;
-    juce::TextButton create{TRANS("New preset")}, open{TRANS("Open preset...")}, save{TRANS("Save preset as...")}, apply{TRANS("Use both banks in Studio")};
+    juce::TextButton create{TRANS("New preset")}, open{TRANS("Open preset...")}, save{TRANS("Save preset as...")};
     juce::Label filename, status, modeLabel, channelLabel, numberLabel, colourLabel;
     juce::ComboBox bank, mode, channel, deviceSlot;
     juce::Slider number;
@@ -191,7 +204,8 @@ private:
     std::vector<ostfstudio::smkble::Device> devices;
     juce::ThreadPool jobs{1};
 
-    juce::TextButton setup{TRANS("Set up all 8 presets...")};
+    juce::TextButton setup{TRANS("Send Studio recommended setup")};
+    bool setupAfterScan = false;
     bool scanned = false;
     void confirmSetup() {
         const int deviceIndex = bluetooth.getSelectedId() - 1;
@@ -254,6 +268,8 @@ private:
                 safe->status.setText(result.message.isNotEmpty() ? result.message : TRANS("Choose the device preset slot to read or write."), juce::dontSendNotification);
                 safe->setEnabled(true);
                 safe->refresh();
+                if (std::exchange(safe->setupAfterScan, false) && safe->bluetooth.getSelectedId() > 0)
+                    safe->confirmSetup();
             });
         });
     }
@@ -286,7 +302,7 @@ private:
                         safe->storeDraft();
                     }
                     message = writing ? TRANS("Device preset verified.") : TRANS("Device preset loaded.");
-                    if (writing && safe->automatic.getToggleState() && result.preset && safe->applyBindings &&
+                    if (writing && port.isNotEmpty() && result.preset && safe->applyBindings &&
                         !safe->applyBindings(*result.preset, index, port))
                         message += " " + TRANS("Check the selected input and give each pad or knob a unique MIDI address across all presets.");
                 }
@@ -307,7 +323,7 @@ private:
         const bool pad = slot < 16;
 #if JUCE_WINDOWS && defined(_MSC_VER)
         const bool deviceReady = size_t(bluetooth.getSelectedId() - 1) < devices.size();
-        setup.setEnabled(deviceReady && destination.isNotEmpty());
+        setup.setEnabled(destination.isNotEmpty());
         setup.setTooltip(destination.isEmpty() ? TRANS("Select a controller MIDI input in Studio assignments.") : TRANS("Set up all 8 presets..."));
         readDevice.setEnabled(deviceReady);
         writeDevice.setEnabled(deviceReady && preset.has_value());
@@ -315,7 +331,6 @@ private:
         bank.setEnabled(preset.has_value());
         filename.setText((source == juce::File{} ? TRANS("Studio preset") : source.getFileName()) + (dirty ? " *" : ""), silent);
         save.setEnabled(preset.has_value());
-        apply.setEnabled(preset.has_value() && destination.isNotEmpty());
         for (int i = 0; i < 24; ++i) {
             const auto desc = preset ? preset->control(b, i) : Preset::Control{};
             const auto title = (i < 16 ? TRANS("Pad") : TRANS("Knob")) + " " + juce::String(i < 16 ? i + 1 : i - 15);
@@ -436,17 +451,5 @@ private:
             } else safe->confirmReplacement([safe, file] { if (safe) safe->loadFile(file); });
         });
     }
-    void confirmApply() {
-        if (!preset || destination.isEmpty()) return;
-        const int page = deviceSlot.getSelectedId() - 1;
-        const auto msg = destinationName + " / " + TRANS("Preset") + " " + juce::String(page + 1) + "\n" +
-            TRANS("Use the notes and CCs from both banks for this preset in Studio?");
-        juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, apply.getButtonText(), msg,
-            TRANS("Apply"), TRANS("Cancel"), this, juce::ModalCallbackFunction::create(
-                [safe = juce::Component::SafePointer<SmkPresetEditor>(this), id = destination, data = *preset, page](int ok) {
-                    if (!ok || !safe) return;
-                    bool applied = safe->applyBindings && safe->applyBindings(data, page, id);
-                    safe->status.setText(applied ? TRANS("Studio input assignments saved.") : TRANS("Check the selected input and give each pad or knob a unique MIDI address across all presets."), juce::dontSendNotification);
-                }));
-    }
+
 };

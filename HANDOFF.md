@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Workspace controller targets, Link and clip editing
+
+On `feature/studio-controls-link-clips`, transport and mixer share a control target. The MIDI and waveform panes and each instrument or effect editor have their own assignment button. Port identifiers distinguish separate units, and SMK-25 II preset addresses select per-preset targets. Effect assignments follow insert reordering. MIDI assignments and destinations are saved in local Studio preferences. Track names are editable inline by double-click, F2 or the track menu.
+
+The Windows tests cover inline editing, separate controller inputs and presets, reorder/delete rules for targeted inserts, clip selection, cropped Melodyne WAV replacement, the model catalogue, and MIDI/audio transport. The desktop account catalogue returned GPT-6.1-Sol. Two SDK participants exchanged tempo, phase and start/stop. A separate passive test detected Live 12 Standard at 120 BPM while stopped. Simultaneous operation of two physical controllers and an editing round trip in the Melodyne application still need human-device validation. Installer and portable ZIP for this build are generated in `dist/windows-workspace-control-link`.
+
 ## SMK-25 II rig and live MIDI monitoring
 
 Branch `feature/controller-rig-and-midi-monitor` adds Bluetooth discovery on opening the editor, per-preset read/write, verified bulk provisioning of 8 × 2 banks, contextual mixer/plugin knobs and coloured performance/command pads. Edited files can supply both banks of a slot. Armed MIDI tracks monitor through their instrument and FX while stopped. The instrument menu offers an external MIDI destination for monitoring and playback.

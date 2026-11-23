@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/EditorClipLane.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <JuceHeader.h>
 #include "ui/DeviceSettingsWindow.h"
@@ -63,7 +64,22 @@ private:
     void openController(bool show);
     void connectController(juce::MidiDeviceInfo);
     void refreshController();
-    juce::AudioPluginInstance* surfacePlugin() const;
+    juce::AudioPluginInstance* surfacePlugin(const juce::String& target = {}) const;
+    juce::String activeControlTarget(const juce::String& port, int page) const;
+    void chooseControlTarget(juce::Button&, const juce::String&, const juce::String&);
+    void assignControlTarget(const juce::MidiDeviceInfo&, const juce::String&, const juce::String&);
+    void syncControlInputs();
+    void remapEffectTargets(bool output, size_t index, int from, int to);
+    juce::String controlProjectId_;
+    ostfstudio::ControllerMap controllerProfile(const juce::MidiDeviceInfo&);
+    juce::String pluginTarget(bool output, size_t track, int slot) const;
+    juce::String targetCaption(const juce::String&) const;
+    void refreshControlButtons();
+    juce::TextButton paneControl_{TRANS("Control here")};
+    std::map<juce::String, ostfstudio::ControllerMap> otherSurfaces_;
+    std::map<juce::String, int> lastControlPages_;
+    std::map<juce::String, juce::String> controlPortNames_;
+    ostfstudio::ControlTargetMap controlTargets_;
     size_t rigMixerBank(int page) const;
     int rigTarget_ = 0;
     void applySurfaceAction(ostfstudio::SurfaceAction);
@@ -154,6 +170,9 @@ private:
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
                     std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched,
                     const ImportResultRow* import = nullptr, juce::int64 tick = 0);
+    juce::TextEditor renameEditor_{TRANS("Track name")};
+    std::size_t renameRow_{};
+    bool renameOutput_{};
     void renameTrack(std::size_t index, bool output = false);
     void showPatch(std::size_t track, juce::int64 tick);
     void showRowMenu(bool output, std::size_t index);
@@ -340,17 +359,27 @@ private:
     ostfstudio::ProjectAudio* clipOn(std::size_t track) const;
     void placeWav(const juce::File&, std::size_t track, juce::int64 tick, bool replace);
     void openSplice();
+    void toggleLink();
+    void pollLink();
+    void editLinkTempo();
+    double linkQuantum() const;
+    std::unique_ptr<ostfstudio::LinkSession> link_;
+    bool lastLinkPlaying_ = false, followingLink_ = false;
     void aiConnectionMenu();
     void displayAiState(const juce::String&, juce::uint32);
     juce::String aiModel_;
-    juce::ComboBox aiStudio_;
+    std::array<juce::TextButton, 3> aiStudios_;
+    int studioModeIndex_ = 0;
+    juce::ComboBox modelPicker_;
+    juce::TextButton fetchModels_{TRANS("Refresh models")};
+    void showModelChoices();
     ostfstudio::AiStudioMode aiMode() const {
-        return static_cast<ostfstudio::AiStudioMode>(std::clamp(aiStudio_.getSelectedId(), 1, 3) - 1);
+        return static_cast<ostfstudio::AiStudioMode>(studioModeIndex_);
     }
     void applyAiSelection();
     void refreshAiModels();
     bool refreshingModels_ = false;
-    juce::StringArray aiModels_;
+    juce::StringArray aiModels_, aiModelNames_;
     enum class AccountAction { restore, login, logout };
     void updateAiConnection(AccountAction);
     juce::URL signInUrl_;
@@ -376,11 +405,15 @@ private:
     std::unique_ptr<juce::AudioPluginInstance> spliceInstance_;
     juce::AudioProcessorPlayer splicePlayer_;
     std::unique_ptr<juce::DocumentWindow> spliceWindow_;
+    EditorClipLane clipLane_;
+    void refreshClipLane();
+    void selectEditorClip(std::optional<double> bar, bool locate);
     void editMelodyneCopy();
     void applyMelodyneCopy();
     struct MelodyneCopy {
         juce::File wav;
-        juce::String originalHash;
+        juce::String originalHash, workingHash;
+        juce::int64 startFrame, frames, startTick, durationTicks;
     };
     std::map<juce::String, MelodyneCopy> melodyneCopies_;
     void openEffectEditor(bool output, std::size_t index, std::size_t slot);

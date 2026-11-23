@@ -44,7 +44,7 @@ public:
     std::function<const ostfstudio::ProjectAudio*()> sourceClip;
     std::function<const ostfstudio::TempoMap&()> clock;
     std::function<void(const ostfstudio::ClipTiming&)> onEdit;
-    std::function<void()> onMelodyne, onApply, onSplice;
+    std::function<void()> onMelodyne, onApply, onSplice, selectWave;
     std::function<bool()> hasWorkingCopy;
     ArrangementRuler recordRuler;
     juce::ComboBox channels;
@@ -116,6 +116,7 @@ public:
         commit(edit);
     }
     void mouseDown(const juce::MouseEvent& e) override {
+        if (canvas().contains(e.getPosition()) && selectWave) selectWave();
         drag = warp.isEnabled() && canvas().contains(e.getPosition()) ? hit(e.x) : -1;
     }
     void mouseDrag(const juce::MouseEvent& e) override {
