@@ -23,7 +23,14 @@ constexpr auto muted = 0xffaab6c4;
 constexpr auto accent = 0xff46bdb2;
 constexpr auto hardwareAmber = 0xffe7b46c;
 constexpr int menuHeight = 28;
-int viewBarHeight(int width) { return width < 860 ? 64 : 32; }
+int toolbarButtonWidth(int width) { return std::clamp(width / 24, 24, 39); }
+
+int viewBarHeight(int width) {
+    const bool wrapIcons = width < 860;
+    const int available = width - 32 - (wrapIcons ? 9 : 20) * toolbarButtonWidth(width);
+    const int rows = (wrapIcons ? 2 : 1) + (available < 394 ? 1 : 0);
+    return 32 * rows;
+}
 constexpr int minInterfaceScale = 75;
 constexpr int maxInterfaceScale = 150;
 constexpr int timelineNavigationHeight = 32;
@@ -94,7 +101,16 @@ int browserWidthFor(int available, int preferred) {
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, externalSplice, externalMelodyne, externalLink, linkTempoItem };
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal };
+constexpr struct { const char* name; const char* first; const char* second; } studioModes[] {
+    {"AI Arrangement Studio", "Keep just piano and bass in the verse. Suggest an eight-bar build into the chorus.",
+                              "Suggest two bass lines with different rhythms over these chords."},
+    {"AI Lyric Studio", "Write four lines for a chorus about a train station at dawn.",
+                        "Keep the meaning of this verse and give each line eight syllables."},
+    {"AI Vocal Studio", "Suggest places to breathe in this melody.",
+                        "Add a harmony voice just for the last two bars of the chorus."}
+};
+static_assert(std::size(studioModes) == studioVocal - studioArrangement + 1);
 constexpr int themeBlue = 89, themeHarmonic = 90, themeGraphite = 91, themeAubergine = 92;
 constexpr const char* workspaceThemes[]{"blue", "harmonic", "graphite", "aubergine"};
 constexpr int timelineMenuBase = 100;
@@ -872,26 +888,13 @@ MainComponent::MainComponent() {
     clipLane_.select = [this](std::optional<double> bar) { selectEditorClip(bar, true); };
     addChildComponent(pianoRuler_);
     rowOverlay_.addAndMakeVisible(ruler_);
-    rowOverlay_.addAndMakeVisible(aiButton_);
-    const juce::StringArray studioNames{"AI Arrangement Studio", "AI Lyric Studio", "AI Vocal Studio"};
-    studioModeIndex_ = std::clamp(viewPreferences_.getUserSettings()->getIntValue("aiStudioMode", 1), 1, 3) - 1;
-    for (int i = 0; i < 3; ++i) {
-        auto& button = aiStudios_[i];
-        rowOverlay_.addAndMakeVisible(button);
-        button.setButtonText(studioNames[i]);
-        button.setTitle(studioNames[i]);
-        button.setRadioGroupId(914);
-        button.setClickingTogglesState(true);
-        button.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff17634f));
-        button.setToggleState(i == studioModeIndex_, juce::dontSendNotification);
-        button.onClick = [this, i] {
-            studioModeIndex_ = i;
-            viewPreferences_.getUserSettings()->setValue("aiStudioMode", i + 1);
-            applyAiSelection();
-        };
-    }
-    rowOverlay_.addChildComponent(modelPicker_);
-    rowOverlay_.addChildComponent(fetchModels_);
+    rowOverlay_.addAndMakeVisible(promptGuide_);
+    studioModeIndex_ = std::clamp(viewPreferences_.getUserSettings()->getIntValue("aiStudioMode", 1), 1, int(std::size(studioModes))) - 1;
+    updatePromptGuide();
+    addAndMakeVisible(aiButton_);
+    aiButton_.setComponentID("chatgpt-connection");
+    addChildComponent(modelPicker_);
+    addChildComponent(fetchModels_);
     modelPicker_.setTitle(TRANS("Analysis model"));
     modelPicker_.onChange = [this] {
         const auto index = modelPicker_.getSelectedId() - 2;
@@ -989,7 +992,7 @@ MainComponent::MainComponent() {
     newProject();
 }
 
-juce::StringArray MainComponent::getMenuBarNames() { return {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")}; }
+juce::StringArray MainComponent::getMenuBarNames() { return {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")}; }
 
 juce::PopupMenu MainComponent::timelineMenu() const {
     juce::PopupMenu lanes;
@@ -1200,7 +1203,11 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(showPartScore, TRANS("Score"), project_ != nullptr, scoreButton_.getToggleState());
             break;
         }
-        case 3: {
+        case 3:
+            for (int i = 0; i < int(std::size(studioModes)); ++i)
+                menu.addItem(studioArrangement + i, studioModes[i].name, true, i == studioModeIndex_);
+            break;
+        case 4: {
             menu.addItem(showDevices, TRANS("Audio / MIDI Devices..."));
             menu.addItem(aiConnections, TRANS("AI connections..."));
             menu.addItem(controllerSettings, TRANS("M-VAVE controllers..."));
@@ -1221,7 +1228,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addSubMenu(TRANS("Language"), languages);
             break;
         }
-        case 4:
+        case 5:
             menu.addItem(externalSplice, "Splice...");
             menu.addItem(externalMelodyne, "Melodyne...", !recordTrack_);
             menu.addSeparator();
@@ -1232,7 +1239,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
                              juce::String(int(state.peers)) + " " + TRANS("peers") + "...", !recordTrack_);
             }
             break;
-        case 5:
+        case 6:
             menu.addItem(showShortcuts, TRANS("Shortcuts..."));
             menu.addItem(showAbout, TRANS("About OSTF Studio"));
             break;
@@ -1260,6 +1267,14 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
 }
 
 void MainComponent::menuItemSelected(int item, int) {
+    if (item >= studioArrangement && item <= studioVocal) {
+        studioModeIndex_ = item - studioArrangement;
+        viewPreferences_.getUserSettings()->setValue("aiStudioMode", studioModeIndex_ + 1);
+        updatePromptGuide();
+        applyAiSelection();
+        menuItemsChanged();
+        return;
+    }
     if (item >= themeBlue && item <= themeAubergine) {
         pianoInspector_.theme = static_cast<pianoHarmony::Theme>(item - themeBlue);
         if (auto* config = viewPreferences_.getUserSettings()) {
@@ -3779,7 +3794,7 @@ void MainComponent::showTrackInput(std::size_t i) {
     menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&trackControls_[i]->input),
         [safe = juce::Component::SafePointer<MainComponent>(this), ports, id, generation = projectGeneration_](int item) {
             if (!safe || item == 0 || safe->recordTrack_ || safe->projectGeneration_ != generation) return;
-            if (item == 3) { safe->menuItemSelected(showDevices, 3); return; }
+            if (item == 3) { safe->menuItemSelected(showDevices, 4); return; }
             auto& target = safe->midiRoutes_[id];
             if (item == 1 || item == 2) { target.enabled = item == 1; target.port.clear(); target.name.clear(); }
             else if (item >= 10 && item <= 26) target.channel = item - 10;
@@ -3838,7 +3853,7 @@ void MainComponent::showAudioInput(std::size_t i) {
     menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&trackControls_[i]->input),
         [safe = juce::Component::SafePointer<MainComponent>(this), id, generation = projectGeneration_](int item) {
             if (!safe || !item || safe->recordTrack_ || safe->projectGeneration_ != generation) return;
-            if (item == 2) { safe->menuItemSelected(showDevices, 3); return; }
+            if (item == 2) { safe->menuItemSelected(showDevices, 4); return; }
             safe->audioInputs_[id].first = item == 1 ? -1 : item - (item >= 100 ? 100 : 10);
             if (item >= 10) safe->captureChannels_[id] = item >= 100 ? 2 : 1;
             safe->refreshMidiRoutes();
@@ -4585,6 +4600,11 @@ void MainComponent::updateAiConnection(AccountAction action) {
     });
 }
 
+void MainComponent::updatePromptGuide() {
+    const auto& mode = studioModes[studioModeIndex_];
+    promptGuide_.setExamples(mode.name, juce::translate(mode.first), juce::translate(mode.second));
+}
+
 void MainComponent::applyAiSelection() {
     if (!activeAi_) return;
     activeAi_ = ostfstudio::chatGptProvider({}, {}, aiModel_, aiMode());
@@ -4836,6 +4856,7 @@ void MainComponent::loadEffect(bool output, std::size_t index, std::size_t posit
 
 std::optional<TimelineLane> MainComponent::globalLaneAt(juce::Point<int> p) const {
     if (!project_ || !rowOverlay_.isVisible() ||
+        (promptGuide_.isVisible() && promptGuide_.getLocalBounds().contains(promptGuide_.getLocalPoint(this, p))) ||
         !rowOverlay_.getBounds().withTrimmedTop(timelineRowHeight()).contains(p))
         return {};
     int y = rowOverlay_.getY() + timelineRowHeight() - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
@@ -5707,16 +5728,26 @@ void MainComponent::resized() {
     menuBar_.setBounds(getLocalBounds().removeFromTop(menuHeight));
     auto viewBar = getLocalBounds().withTrimmedTop(menuHeight).removeFromTop(barHeight).reduced(8, 0);
     auto row = viewBar.removeFromTop(32);
-    const int width = std::clamp(getWidth() / 24, 24, 39);
+    const int width = toolbarButtonWidth(getWidth());
     const auto place = [&](ViewButton& button) { button.setBounds(row.removeFromLeft(width).reduced(2, 2)); };
     for (auto* button : {&arrangementButton_, &leadButton_, &scoreButton_, &pianoButton_, &mixerButton_,
                          &pluginBrowserButton_, &outputButton_, &lanesButton_, &theoryButton_, &songInfoButton_, &musicButton_}) place(*button);
-    if (barHeight > 32) { toolbarHint_.setBounds(row); row = viewBar; }
+    if (getWidth() < 860) { toolbarHint_.setBounds(row); row = viewBar.removeFromTop(32); }
     row.removeFromLeft(8);
     for (auto* button : {&melodyAdd_, &chorusAdd_, &pitchedAdd_, &drumsAdd_, &audioAdd_, &busAdd_, &returnAdd_}) place(*button);
     row.removeFromLeft(8);
     place(uiSmaller_); place(uiLarger_);
-    if (barHeight == 32) toolbarHint_.setBounds(row.withTrimmedRight(8));
+    auto aiRow = viewBar.isEmpty() ? row : viewBar.removeFromTop(32);
+    const bool connected = activeAi_ != nullptr;
+    modelPicker_.setVisible(connected);
+    fetchModels_.setVisible(connected);
+    if (connected) {
+        fetchModels_.setBounds(aiRow.removeFromRight(98).reduced(2, 3));
+        modelPicker_.setBounds(aiRow.removeFromRight(std::clamp(aiRow.getWidth() - 160, 112, 204)).reduced(2, 3));
+    }
+    aiButton_.setBounds(aiRow.removeFromRight(std::min(180, aiRow.getWidth())).reduced(2, 2));
+    if (getWidth() >= 860) toolbarHint_.setBounds(barHeight == 32 ? aiRow : row);
+
     deck_.setBounds(18, menuHeight + barHeight + 8, std::min(1590, getWidth() - 36),
                     TransportPanel::panelHeight(getWidth()));
     statusLabel_.setBounds(20, getHeight() - 37, getWidth() - 40, 24);
@@ -5792,33 +5823,12 @@ void MainComponent::resized() {
             labelsWidth = std::max(labelsWidth, headingWidth(juce::translate(lane.label)));
         if (theoryVisible_) labelsWidth = std::max({labelsWidth, headingWidth(TRANS("Degree") + " / " + TRANS("Progression")),
                                                     headingWidth(TRANS("Function"))});
-        const int panelWidth = std::min(460, trackHeaderWidth - labelsWidth - 20);
-        const bool columns = panelWidth >= 282;
-        const int panelHeight = columns ? 88 : (activeAi_ ? 113 : 84);
-        const int aiY = std::max(0, (globalHeight - panelHeight) / 2) - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
-        const int visibleBottom = std::min(globalHeight, rowOverlay_.getHeight());
-        auto placeAi = [visibleBottom](juce::Component& item, int x, int y, int w, int h, bool show = true) {
-            item.setBounds(x, y, w, h);
-            item.setVisible(show && y >= 0 && y + h <= visibleBottom);
-            item.toFront(false);
-        };
-        const int gap = 4;
-        if (columns) {
-            const int modes = std::clamp(panelWidth * 42 / 100, 134, 164);
-            const int right = 8 + modes + gap, settings = panelWidth - modes - gap;
-            for (int i = 0; i < 3; ++i) placeAi(aiStudios_[i], 8, aiY + 30 * i, modes, 26);
-            placeAi(aiButton_, right, aiY, settings, 27);
-            placeAi(modelPicker_, right, aiY + 30, settings, 26, activeAi_ != nullptr);
-            placeAi(fetchModels_, right, aiY + 60, settings, 26, activeAi_ != nullptr);
-        } else {
-            placeAi(aiButton_, 8, aiY, panelWidth, 25);
-            placeAi(aiStudios_[0], 8, aiY + 29, panelWidth, 23);
-            const int half = (panelWidth - gap) / 2;
-            placeAi(aiStudios_[1], 8, aiY + 55, half, 23);
-            placeAi(aiStudios_[2], 8 + half + gap, aiY + 55, panelWidth - half - gap, 23);
-            placeAi(modelPicker_, 8, aiY + 82, panelWidth - 84, 24, activeAi_ != nullptr);
-            placeAi(fetchModels_, 8 + panelWidth - 80, aiY + 82, 80, 24, activeAi_ != nullptr);
-        }
+        const int guideWidth = std::max(0, trackHeaderWidth - labelsWidth - 20);
+        const int remaining = globalHeight - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
+        const int guideHeight = std::clamp(remaining, 0, rowOverlay_.getHeight());
+        promptGuide_.setBounds(0, 0, guideWidth, guideHeight);
+        promptGuide_.setVisible(guideWidth > 0 && guideHeight >= 44);
+        promptGuide_.toFront(false);
 
         const bool besideTransport = topBasicsHeight() == 0;
         basics_.setBounds(besideTransport

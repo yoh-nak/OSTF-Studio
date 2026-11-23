@@ -224,8 +224,8 @@ int checkTheoryGuide(const juce::File& demo) {
     };
     const auto show = find(*model, TRANS("Show Theory Guide")), chord = find(*model, TRANS("Chord tone fit")),
                scale = find(*model, TRANS("Scale fit"));
-    const auto blue = find(*model, TRANS("Studio Blue"), 3), harmonic = find(*model, TRANS("Harmonic colours"), 3);
-    const auto graphite = find(*model, TRANS("Graphite"), 3), aubergine = find(*model, TRANS("Aubergine"), 3);
+    const auto blue = find(*model, TRANS("Studio Blue"), 4), harmonic = find(*model, TRANS("Harmonic colours"), 4);
+    const auto graphite = find(*model, TRANS("Graphite"), 4), aubergine = find(*model, TRANS("Aubergine"), 4);
     const std::array themes{blue, harmonic, graphite, aubergine};
     const auto active = std::find_if(themes.begin(), themes.end(), [](const auto& t) { return t.checked; });
     if (active == themes.end() || std::any_of(themes.begin(), themes.end(), [](const auto& t) { return !t.id; }))
@@ -242,7 +242,7 @@ int checkTheoryGuide(const juce::File& demo) {
         return 46;
     const auto savedMode = colours->getSelectedId();
     juce::ScopeGuard restore([&] {
-        model->menuItemSelected(active->id, 3);
+        model->menuItemSelected(active->id, 4);
         colours->setSelectedId(savedMode, juce::sendNotificationSync);
         set("Show Theory Guide", true);
         set("Chord tone fit", chord.checked);
@@ -265,11 +265,11 @@ int checkTheoryGuide(const juce::File& demo) {
     main.displayTransportPosition(13 * project->ticksPerBar);
     if (auto* scroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-horizontal-scroll")))
             scroll->setCurrentRangeStart(13, juce::sendNotificationSync);
-    model->menuItemSelected(harmonic.id, 3);
+    model->menuItemSelected(harmonic.id, 4);
     const auto multicolour = main.createComponentSnapshot(main.getLocalBounds());
-    model->menuItemSelected(blue.id, 3);
+    model->menuItemSelected(blue.id, 4);
     const auto snapshot = main.createComponentSnapshot(main.getLocalBounds());
-    if (!find(*model, TRANS("Studio Blue"), 3).checked) return 45;
+    if (!find(*model, TRANS("Studio Blue"), 4).checked) return 45;
     int different = 0;
     for (int y = grid->getY(); y < grid->getBottom(); y += 3)
         for (int x = grid->getX(); x < grid->getRight(); x += 3)

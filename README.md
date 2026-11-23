@@ -2,7 +2,7 @@
 
 **English** · [日本語](README.ja.md)
 
-In the Windows development build, the global timeline header shows the ChatGPT connection state. Arrangement, Lyric and Vocal each have a mode button. The signed-in catalogue and its refresh button appear below them. Open **Settings → M-VAVE controllers** to assign live controls or edit an SMK-25 II preset inside Studio. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
+Choose AI Arrangement Studio, AI Lyric Studio or AI Vocal Studio from the **Mode** menu. The prompt guide beside the global timeline headings shows example requests for the selected mode. The ChatGPT connection button sits at the right of the top toolbar, alongside the model selector and refresh button when signed in. Open **Settings → M-VAVE controllers** to assign live controls or edit an SMK-25 II preset inside Studio. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
 
 The **External connections** menu opens Splice, Melodyne and Ableton Link. Select an audio clip in the arrangement or the lower clip lane to open its source range in Melodyne. Opening Melodyne without a selection launches the standalone editor. Enable Link in both Live and Studio and enable Start Stop Sync in Live to share transport. The Link tempo menu shows the connected peer count. Audio capture holds its starting tempo for the duration of a take.
 

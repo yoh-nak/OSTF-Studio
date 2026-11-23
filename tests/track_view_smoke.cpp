@@ -123,19 +123,39 @@ int checkTrackView(const juce::File& fixture) {
     if (!main.getName().contains(TRANS("Unsaved project"))
         || !tracks || tracks->getNumItems() != 0 || !menus || !menus->getModel()) return 13;
     auto& model = *menus->getModel();
-    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")};
+    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")};
     if (model.getMenuBarNames() != names) return 38;
-    const auto external = model.getMenuForIndex(4, {});
+    const auto external = model.getMenuForIndex(5, {});
     juce::StringArray actions;
     for (juce::PopupMenu::MenuItemIterator it(external); it.next();) actions.add(it.getItem().text);
     if (!actions.contains("Splice...") || !actions.contains("Melodyne...") || !actions.contains("Ableton Link")) return 121;
-    for (const auto name : {"AI Arrangement Studio", "AI Lyric Studio", "AI Vocal Studio"})
-        if (!findControl<juce::TextButton>(main, name)) return 122;
+    auto* examples = findControl<juce::TextEditor>(main, TRANS("Example prompts"));
+    auto* connection = main.findChildWithID("chatgpt-connection");
+    if (!examples || !examples->isReadOnly() || !connection || !connection->isVisible()) return 122;
+    const juce::StringArray modeNames{"AI Arrangement Studio", "AI Lyric Studio", "AI Vocal Studio"};
+    const auto modes = model.getMenuForIndex(3, {});
+    if (modes.getNumItems() != modeNames.size()) return 122;
+    juce::StringArray displayedExamples;
+    int previousMode = 0;
+    for (juce::PopupMenu::MenuItemIterator it(modes); it.next();) {
+        const auto& mode = it.getItem();
+        if (!modeNames.contains(mode.text) || !mode.isEnabled) return 122;
+        if (mode.isTicked) previousMode = mode.itemID;
+        model.menuItemSelected(mode.itemID, 3);
+        const auto selectedMenu = model.getMenuForIndex(3, {});
+        for (juce::PopupMenu::MenuItemIterator selected(selectedMenu); selected.next();)
+            if (selected.getItem().isTicked != (selected.getItem().itemID == mode.itemID)) return 122;
+        const auto example = examples->getText();
+        if (example.isEmpty() || displayedExamples.contains(example)) return 122;
+        displayedExamples.add(example);
+    }
+    if (!previousMode) return 122;
+    model.menuItemSelected(previousMode, 3);
     if (!findControl<EditorClipLane>(main, TRANS("Clips"))) return 123;
     EditorClipLane exampleLane;
     exampleLane.clips = {{{1, 2}, "A"}, {{3, 5}, "B"}};
     if (exampleLane.at(1.5) != 1. || exampleLane.at(2.) || exampleLane.at(3.) != 3. || exampleLane.at(5.)) return 124;
-    const auto help = model.getMenuForIndex(5, {});
+    const auto help = model.getMenuForIndex(6, {});
     bool hasShortcuts = false;
     for (juce::PopupMenu::MenuItemIterator it(help); it.next();)
         if (it.getItem().text == TRANS("Shortcuts...")) hasShortcuts = it.getItem().isEnabled;
@@ -200,6 +220,7 @@ int checkTrackView(const juce::File& fixture) {
     };
     main.setSize(680, 570);
     juce::RectangleList<int> icons;
+    icons.add(connection->getBounds());
     for (auto* child : main.getChildren()) {
         if (auto* button = dynamic_cast<ViewButton*>(child)) {
             if (button->getTooltip().isEmpty() || icons.intersectsRectangle(button->getBounds())
@@ -375,27 +396,29 @@ int checkTrackView(const juce::File& fixture) {
     if (master->height() != TrackRowSize::minimum || bass->height() != 100) return 70;
     auto* tempo = dynamic_cast<TempoEditor*>(main.findChildWithID("tempo-editor"));
     auto* barRuler = guitar->getParentComponent()->findChildWithID("arrangement-ruler");
-    if (!tempo || !barRuler || main.getName().contains(TRANS("Unsaved changes"))) return 75;
+    auto* topRuler = dynamic_cast<ArrangementRuler*>(barRuler);
+    if (!tempo || !topRuler || main.getName().contains(TRANS("Unsaved changes"))) return 75;
     const auto rulerArea = main.getLocalArea(barRuler, barRuler->getLocalBounds());
     for (int y = rulerArea.getBottom() + 2; y < main.getLocalPoint(guitar, juce::Point<int>{0, 0}).y && !tempo->isVisible(); y += 10) {
-        const juce::Point<float> header{float(rulerArea.getX() + 12), float(y)};
+        const juce::Point<float> header{float(rulerArea.getX() + topRuler->headerWidth - 12), float(y)};
         main.mouseDown(gesture(&main, header, header));
     }
     if (!tempo->isVisible() || tracks->isVisible() || audioEditor->isVisible()) return 76;
-    auto* arrangementMode = findControl<juce::TextButton>(main, "AI Arrangement Studio");
-    auto* vocalMode = findControl<juce::TextButton>(main, "AI Vocal Studio");
+    auto* promptPane = findControl<PromptGuide>(main, TRANS("Prompt guide"));
     auto* picker = findControl<juce::ComboBox>(main, TRANS("Analysis model"));
+    auto* refresh = findControl<juce::TextButton>(main, TRANS("Refresh models"));
     auto* deck = dynamic_cast<TransportPanel*>(main.findChildWithID("transport"));
     if (!deck || !deck->click.getClickingTogglesState() || deck->countIn.getNumItems() != 9
-        || !arrangementMode || !vocalMode || !picker || arrangementMode->getX() != vocalMode->getX()
-        || arrangementMode->getBottom() >= vocalMode->getY() || arrangementMode->getRight() >= picker->getX()) return 140;
+        || !picker || !refresh || picker->getParentComponent() != &main || refresh->getParentComponent() != &main
+        || connection->getY() < menus->getBottom() || connection->getBottom() > deck->getY()
+        || connection->getX() < main.getWidth() / 2) return 140;
     const juce::Font heading(juce::FontOptions(15.f, juce::Font::bold));
     const auto reserved = juce::GlyphArrangement::getStringWidth(heading, TRANS("Degree") + " / " + TRANS("Progression"));
-    auto* topRuler = dynamic_cast<ArrangementRuler*>(barRuler);
-    if (!topRuler || picker->getRight() + reserved + 5 > topRuler->headerWidth) return 141;
+    if (!promptPane || !promptPane->isVisible() || promptPane->getWidth() < 100
+        || promptPane->getRight() + reserved + 5 > topRuler->headerWidth
+        || promptPane->getParentComponent() != topRuler->getParentComponent()) return 141;
     const auto columns = tempo->timelineColumns();
-    auto* alignedRuler = dynamic_cast<ArrangementRuler*>(barRuler);
-    if (!alignedRuler || tempo->getX() + columns.getStart() != rulerArea.getX() + alignedRuler->headerWidth
+    if (tempo->getX() + columns.getStart() != rulerArea.getX() + topRuler->headerWidth
         || tempo->getX() + columns.getEnd() != rulerArea.getRight()) return 82;
     const juce::Point<float> rampStart{float(columns.getStart() + columns.getLength()/8), 100.f},
                             rampEnd{float(columns.getStart() + columns.getLength()/2), 75.f};
@@ -437,6 +460,7 @@ int checkTrackView(const juce::File& fixture) {
     scroll->setCurrentRangeStart(scroll->getMaximumRangeLimit(), juce::sendNotificationSync);
     auto* lastReturn = findControl<TrackRowSize>(main, "Return 1 track height");
     auto* ruler = master->getParentComponent()->findChildWithID("arrangement-ruler");
+    if (promptPane->isVisible()) return 141;
     if (!lastReturn || !reachable(*lastReturn) || reachable(*guitar) || !ruler || ruler->getY() != 0) return 9;
     // A short viewport can fit fewer than four output strips beneath the pinned ruler.
     if (master->getY() < ruler->getBottom())

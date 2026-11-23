@@ -14,6 +14,7 @@
 #include "ui/AudioClipEditor.h"
 #include "ui/TempoEditor.h"
 #include "ui/PianoInspector.h"
+#include "ui/PromptGuide.h"
 #include "ui/PerformanceEditor.h"
 #include "ui/DrumSteps.h"
 #include "ui/DrumPads.h"
@@ -371,7 +372,8 @@ private:
     void aiConnectionMenu();
     void displayAiState(const juce::String&, juce::uint32);
     juce::String aiModel_;
-    std::array<juce::TextButton, 3> aiStudios_;
+    PromptGuide promptGuide_;
+    void updatePromptGuide();
     int studioModeIndex_ = 0;
     juce::ComboBox modelPicker_;
     juce::TextButton fetchModels_{TRANS("Refresh models")};

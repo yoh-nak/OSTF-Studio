@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Studio mode menu and prompt guide
+
+On `feature/studio-mode-prompt-guide`, the Mode menu changes the stored AI analysis mode and its two examples. The ChatGPT connection, model and refresh controls sit at the right of the toolbar. The read-only guide occupies the space left of the global lane headings and scrolls out of view above the track headers. The examples are local text. Prompt submission and generation are future work.
+
+The Windows track-view smoke test exercises all three menu entries, the displayed examples, the toolbar at narrow widths and the guide boundary when scrolling. All 26 Windows Release tests passed locally. The English and Japanese strings ship with the application. Live account sign-in and macOS were not retested for this layout change.
+
 ## Workspace controller targets, Link and clip editing
 
 On `feature/studio-controls-link-clips`, transport and mixer share a control target. The MIDI and waveform panes and each instrument or effect editor have their own assignment button. Port identifiers distinguish separate units, and SMK-25 II preset addresses select per-preset targets. Effect assignments follow insert reordering. MIDI assignments and destinations are saved in local Studio preferences. Track names are editable inline by double-click, F2 or the track menu.
