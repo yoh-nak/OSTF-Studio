@@ -6,6 +6,8 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 - The [arranger exchange design](docs/ARRANGER_PHRASE_EXCHANGE.ja.md) proposes embedding Composer’s chord functions in every part arranger. Test that the same notes and settings produce the same analysis in both plug-ins and that a bass arranger works on its own. Keep existing OSTF chord spans, analyse gaps with pitched evidence, and label newly composed harmony as a suggestion. The cross-part check uses a mid-bar chord change on the global lane. The current preview still uses its fixed pattern.
 
+- The proposed native editor’s first musical test regenerates only the ending of a four-bar bass phrase. Compare takes on the same loop, adopt one, save/reopen and compare both exports. Include a bass note sustained across the selection boundary and verify old instrument-only plug-in state still opens.
+
 - Both bar rulers seek the shared transport using their own zoom and scroll. Audio regions draw stereo peaks from linked or embedded WAVs with source trims and tempo changes. Relay Circuit has four audio tracks; First Light Vector has five. Sample-by-sample rendering is reproducible with the demo generator. The transport smoke test checks the seek coordinates and waveform against a known pulse; the stock FX test checks both overlapping stems during playback.
 
 - The piano roll edits source MIDI notes, including mapped drum hits, by stable OSTF note ID. It supports multi-selection, copying, trimming either edge, grid nudge, velocity and bounded undo/redo. Test with `ostf_studio_piano_edits`, which exercises pointer gestures, round trips in both formats and SMF. A note referenced by vocal or other data stays in its owning clip. The chord voicing projection remains read-only.
