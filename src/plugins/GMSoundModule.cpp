@@ -1,3 +1,4 @@
+#include "../ui/ConsoleLookAndFeel.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <GMPreviewData.h>
 #define TSF_IMPLEMENTATION
@@ -283,6 +284,7 @@ private:
 class SoundModuleEditor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
     explicit SoundModuleEditor(SoundModule& module) : AudioProcessorEditor(module), module_(module) {
+        setLookAndFeel(&consoleStyle_);
         for (auto* item : std::array<juce::Component*, 7>{&bank_, &load_, &factory_, &program_, &preset_, &part_, &heading_})
             addAndMakeVisible(*item);
         heading_.setText("OSTF GM Sound Module", juce::dontSendNotification);
@@ -327,6 +329,8 @@ public:
         startTimerHz(12);
         setSize(780, 405);
     }
+
+    ~SoundModuleEditor() override { stopTimer(); setLookAndFeel(nullptr); }
 
     void paint(juce::Graphics& g) override {
         g.fillAll(juce::Colour(0xff14212b));
@@ -431,6 +435,7 @@ private:
     }
 
     struct PartControl { juce::Label label; juce::Slider slider; juce::ToggleButton toggle; };
+    ostfstudio::console::LookAndFeel consoleStyle_ {ostfstudio::console::finishFor(ostfstudio::console::Theme::harmonic)};
     SoundModule& module_;
     std::array<juce::TextButton, 16> channels_;
     std::array<PartControl, SoundModule::controlCount> controls_;

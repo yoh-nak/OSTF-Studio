@@ -1,5 +1,6 @@
 #pragma once
 #include "ui/ControlTargetButton.h"
+#include "ui/ConsoleLookAndFeel.h"
 #include "ui/EditorClipLane.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <JuceHeader.h>
@@ -49,6 +50,8 @@ public:
     void filesDropped(const juce::StringArray&, int x, int y) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 private:
+    ostfstudio::console::LookAndFeel consoleStyle_;
+    const ostfstudio::console::Finish& finish() const { return ostfstudio::console::finishFor(pianoInspector_.theme); }
     bool isInterestedInDragSource(const SourceDetails& details) override;
     void itemDragMove(const SourceDetails& details) override;
     void itemDragExit(const SourceDetails& details) override;

@@ -16,7 +16,6 @@
 #include <utility>
 
 namespace {
-constexpr auto bg = 0xff15181d;
 constexpr auto panel = 0xff242a31;
 constexpr auto muted = 0xffaab6c4;
 constexpr auto accent = 0xff46bdb2;
@@ -113,8 +112,8 @@ constexpr struct { const char* name; const char* first; const char* second; cons
                         "Mark the words to emphasize in the first vocal phrase."}
 };
 static_assert(std::size(studioModes) == studioVocal - studioArrangement + 1);
-constexpr int themeBlue = 89, themeHarmonic = 90, themeGraphite = 91, themeAubergine = 92;
-constexpr const char* workspaceThemes[]{"blue", "harmonic", "graphite", "aubergine"};
+constexpr int firstThemeId = 89;
+constexpr int themeCount = static_cast<int>(std::size(ostfstudio::console::finishes));
 constexpr int timelineMenuBase = 100;
 constexpr int showTheory = 80, showChordFit = 81, showScaleFit = 82, scaleReferenceBase = 1000;
 constexpr int musicSettings = 83, musicDefaults = 84, musicTransform = 85, musicAudition = 86, undoScore = 87, redoScore = 88;
@@ -410,14 +409,16 @@ MainComponent::MainComponent() {
         interfaceScale_ = std::clamp(config->getIntValue("interfaceScale", 100), minInterfaceScale, maxInterfaceScale);
         juce::Desktop::getInstance().setGlobalScaleFactor(interfaceScale_ / 100.f);
         timelineLaneMask_ = static_cast<unsigned>(config->getIntValue("timelineLanes", 0xff));
-        for (int i = 0; i < 4; ++i)
-            if (config->getValue("workspaceTheme") == workspaceThemes[i])
+        for (int i = 0; i < themeCount; ++i)
+            if (config->getValue("workspaceTheme") == ostfstudio::console::finishes[i].key)
                 pianoInspector_.theme = static_cast<pianoHarmony::Theme>(i);
         parameterFraction_ = config->getDoubleValue("parameterLaneRatio", 0);
         theoryVisible_ = config->getBoolValue("theoryGuide", false);
         chordFitVisible_ = config->getBoolValue("showChordFit", true);
         scaleFitVisible_ = config->getBoolValue("showScaleFit", true);
     }
+    consoleStyle_.setFinish(finish());
+    setLookAndFeel(&consoleStyle_);
     setSize(1100, 690);
     menuBar_.setModel(this);
     menuBar_.setColour(juce::PopupMenu::backgroundColourId, juce::Colour(0xff20262d));
@@ -1198,13 +1199,9 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(aiConnections, TRANS("AI connections..."));
             menu.addItem(controllerSettings, "Mackie Control...");
             juce::PopupMenu themes;
-            themes.addItem(themeBlue, TRANS("Studio Blue"), true, blueTheme());
-            themes.addItem(themeHarmonic, TRANS("Harmonic colours"), true,
-                           pianoInspector_.theme == pianoHarmony::Theme::harmonic);
-            themes.addItem(themeGraphite, TRANS("Graphite"), true,
-                           pianoInspector_.theme == pianoHarmony::Theme::graphite);
-            themes.addItem(themeAubergine, TRANS("Aubergine"), true,
-                           pianoInspector_.theme == pianoHarmony::Theme::aubergine);
+            for (int i = 0; i < themeCount; ++i)
+                themes.addItem(firstThemeId + i, juce::translate(ostfstudio::console::finishes[i].name),
+                               true, static_cast<int>(pianoInspector_.theme) == i);
             menu.addSubMenu(TRANS("Colour theme"), themes);
             juce::PopupMenu languages;
             const auto selected = viewPreferences_.getUserSettings()->getValue("language", "system");
@@ -1261,10 +1258,12 @@ void MainComponent::menuItemSelected(int item, int) {
         menuItemsChanged();
         return;
     }
-    if (item >= themeBlue && item <= themeAubergine) {
-        pianoInspector_.theme = static_cast<pianoHarmony::Theme>(item - themeBlue);
+    if (item >= firstThemeId && item < firstThemeId + themeCount) {
+        pianoInspector_.theme = static_cast<pianoHarmony::Theme>(item - firstThemeId);
+        consoleStyle_.setFinish(finish());
+        sendLookAndFeelChange();
         if (auto* config = viewPreferences_.getUserSettings()) {
-            config->setValue("workspaceTheme", workspaceThemes[item - themeBlue]);
+            config->setValue("workspaceTheme", finish().key);
             viewPreferences_.saveIfNeeded();
         }
         menuItemsChanged();
@@ -2022,6 +2021,7 @@ MainComponent::~MainComponent() {
     attachPadInput(false);
     stopTimer();
     transport_.stop();
+    setLookAndFeel(nullptr);
 }
 
 void MainComponent::restoreInstrumentAssignments(const ostfstudio::SessionMix& mix) {
@@ -5549,11 +5549,8 @@ void MainComponent::resized() {
 }
 
 void MainComponent::paint(juce::Graphics& g) {
-    g.fillAll(juce::Colour(pianoInspector_.theme == pianoHarmony::Theme::graphite    ? 0xff202122
-                           : pianoInspector_.theme == pianoHarmony::Theme::aubergine ? 0xff211925
-                           : blueTheme()                                             ? 0xff111d29
-                                                                                     : bg));
-    g.setColour(juce::Colour(0xff1b2229));
+    g.fillAll(juce::Colour(finish().background));
+    g.setColour(juce::Colour(finish().panel).darker(.5f));
     g.fillRect(0, menuHeight, getWidth(), viewBarHeight(getWidth()));
     if (workspaceMode_ != WorkspaceMode::arrangement) return;
     auto area = getWorkspace();
@@ -5577,8 +5574,8 @@ void MainComponent::paint(juce::Graphics& g) {
 
 void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area,
                                     const ostfstudio::ArrangementView& view) {
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff313941), 0.0f, static_cast<float>(area.getY()),
-                                          juce::Colour(panel), 0.0f, static_cast<float>(area.getBottom()), false));
+    g.setGradientFill(juce::ColourGradient(juce::Colour(finish().panel), 0.0f, static_cast<float>(area.getY()),
+                                          juce::Colour(finish().background).brighter(.12f), 0.0f, static_cast<float>(area.getBottom()), false));
     g.fillRoundedRectangle(area.toFloat(), 10.0f);
     area.reduce(13, 13);
     juce::Graphics::ScopedSaveState clipped(g);
@@ -5598,6 +5595,8 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             return colour.withMultipliedSaturation(0.10f);
         if (pianoInspector_.theme == pianoHarmony::Theme::aubergine)
             return juce::Colour::fromHSV(0.79f + 0.07f * colour.getHue(), 0.38f, colour.getBrightness(), 1.f);
+        if (pianoInspector_.theme >= pianoHarmony::Theme::forest)
+            return colour.interpolatedWith(juce::Colour(finish().panel), .42f);
         return colour;
     };
     auto drawRow = [&](const juce::String& label, int y, std::optional<ViewButton::Icon> icon = {}, bool global = false) {

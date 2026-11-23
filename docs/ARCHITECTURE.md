@@ -1,5 +1,9 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## Mixer and plug-in controls
+
+The host scopes its console LookAndFeel to the main component. Workspace preferences store a stable finish key, while musical degree colours and status indicators retain their semantic palettes. Mixer pan, send and level controls use the same channel callbacks as the track headers. The GM instrument and stock effect editors own their own LookAndFeel instances so they render consistently in other VST3 hosts. The effect editors attach each control directly to its existing ranged parameter for gestures, host automation and state recall.
+
 ## MIDI control surfaces
 
 Mackie Control reserves a user-selected OS MIDI port. Channel-strip and transport messages enter a bounded queue and the UI thread applies them to the current eight-track bank. Musical MIDI routes ignore the reserved port. An optional output sends changed fader positions, pan ring values and button states. Both port identifiers live in local preferences.

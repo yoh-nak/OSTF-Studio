@@ -1,4 +1,5 @@
 #include "ui/MixerPanel.h"
+#include "ui/ConsoleLookAndFeel.h"
 #include <algorithm>
 #include <numeric>
 
@@ -34,8 +35,6 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
     volume.setValue(0.0, juce::dontSendNotification);
     volume.setDoubleClickReturnValue(true, 0.0);
     volume.setTextValueSuffix(" dB");
-    volume.setColour(juce::Slider::thumbColourId, juce::Colour(0xffd9d4ca));
-    volume.setColour(juce::Slider::trackColourId, juce::Colour(0xffdba963));
     addAndMakeVisible(name);
     addAndMakeVisible(classification);
     addAndMakeVisible(volume);
@@ -58,15 +57,15 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
         output.setSelectedId(1, juce::dontSendNotification);
         returnTarget.setTitle(title + " return send");
         sendLevel.setName(title + " send level");
-        sendLevel.setSliderStyle(juce::Slider::LinearHorizontal);
-        sendLevel.setTextBoxStyle(juce::Slider::TextBoxRight, false, 45, 16);
+        sendLevel.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        sendLevel.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 44, 16);
         sendLevel.setTextValueSuffix("%");
         sendLevel.setRange(0, 100, 1);
         pan.setName(title + " pan");
         pan.setRange(-100, 100, 1);
         pan.setDoubleClickReturnValue(true, 0.0);
-        pan.setSliderStyle(juce::Slider::LinearHorizontal);
-        pan.setTextBoxStyle(juce::Slider::TextBoxRight, false, 37, 15);
+        pan.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        pan.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 44, 16);
         addAndMakeVisible(pan);
         addAndMakeVisible(solo);
         addAndMakeVisible(cue);
@@ -85,8 +84,9 @@ void MixerPanel::Strip::resized() {
     if (isTrack) {
         output.setBounds(area.removeFromTop(21).reduced(0, 1));
         returnTarget.setBounds(area.removeFromTop(20).reduced(0, 1));
-        sendLevel.setBounds(area.removeFromTop(18));
-        pan.setBounds(area.removeFromTop(18));
+        auto knobs = area.removeFromTop(62).withTrimmedTop(13);
+        pan.setBounds(knobs.removeFromLeft(knobs.getWidth() / 2));
+        sendLevel.setBounds(knobs);
         auto switches = area.removeFromBottom(21);
         mute.setBounds(switches.removeFromLeft(switches.getWidth() / 3));
         solo.setBounds(switches.removeFromLeft(switches.getWidth() / 2));
@@ -115,11 +115,19 @@ void MixerPanel::clearMeters() {
 
 void MixerPanel::Strip::paint(juce::Graphics& g) {
     const auto bounds = getLocalBounds().toFloat();
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff444b54), bounds.getX(), bounds.getY(),
-                                          juce::Colour(0xff24292f), bounds.getX(), bounds.getBottom(), false));
-    g.fillRoundedRectangle(bounds, 5.0f);
-    g.setColour(juce::Colour(0xff59616a));
-    g.drawRoundedRectangle(bounds.reduced(0.5f), 5.0f, 1.0f);
+    const auto face = getLookAndFeel().isColourSpecified(ostfstudio::console::LookAndFeel::panelColourId)
+        ? findColour(ostfstudio::console::LookAndFeel::panelColourId) : juce::Colour(0xff364448);
+    ostfstudio::console::LookAndFeel::verticalGradient(g, bounds, face.brighter(.08f).getARGB(), face.darker(.48f).getARGB());
+    g.fillRoundedRectangle(bounds, 4.f);
+    g.setColour(face.brighter(.30f));
+    g.drawRoundedRectangle(bounds.reduced(.5f), 4.f, 1.f);
+    if (isTrack) {
+        g.setColour(juce::Colour(0xffe1e4de));
+        g.setFont(juce::FontOptions(11.f));
+        for (auto* knob : {&pan, &sendLevel})
+            g.drawText(knob == &pan ? TRANS("Pan") : TRANS("FX send"), knob->getX(), knob->getY()-13,
+                       knob->getWidth(), 13, juce::Justification::centred);
+    }
 }
 
 MixerPanel::MixerPanel() {

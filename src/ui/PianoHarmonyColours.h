@@ -1,9 +1,10 @@
 #pragma once
 #include "ui/TheoryGuide.h"
+#include "ui/ConsoleLookAndFeel.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 namespace pianoHarmony {
-enum class Theme { studioBlue, harmonic, graphite, aubergine };
+using Theme = ostfstudio::console::Theme;
 using Tone = ostfstudio::TheoryGuide::Tone;
 inline juce::Colour toneColour(Tone tone) {
     switch (tone) {

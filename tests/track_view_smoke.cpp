@@ -123,8 +123,8 @@ int checkTrackView(const juce::File& fixture) {
     PianoInspector colours(grid);
     colours.showLegend = true;
     colours.setSize(492, 285);
-    for (auto theme : {pianoHarmony::Theme::harmonic, pianoHarmony::Theme::studioBlue, pianoHarmony::Theme::graphite, pianoHarmony::Theme::aubergine}) {
-        colours.theme = theme;
+    for (int i = 0; i < static_cast<int>(pianoHarmony::Theme::count); ++i) {
+        colours.theme = static_cast<pianoHarmony::Theme>(i);
         const auto legend = colours.createComponentSnapshot(colours.getLocalBounds());
         for (int pc = 0; pc < 12; ++pc)
             if (legend.getPixelAt(8 + 40 * pc, PianoInspector::controlsHeight + 20) != pianoHarmony::degreeColour(pc + 60, 0)) return 67;

@@ -226,7 +226,8 @@ int checkTheoryGuide(const juce::File& demo) {
                scale = find(*model, TRANS("Scale fit"));
     const auto blue = find(*model, TRANS("Studio Blue"), 4), harmonic = find(*model, TRANS("Harmonic colours"), 4);
     const auto graphite = find(*model, TRANS("Graphite"), 4), aubergine = find(*model, TRANS("Aubergine"), 4);
-    const std::array themes{blue, harmonic, graphite, aubergine};
+    const std::array themes{blue, harmonic, graphite, aubergine, find(*model, TRANS("Forest Console"), 4),
+                            find(*model, TRANS("Midnight Indigo"), 4), find(*model, TRANS("Copper Console"), 4)};
     const auto active = std::find_if(themes.begin(), themes.end(), [](const auto& t) { return t.checked; });
     if (active == themes.end() || std::any_of(themes.begin(), themes.end(), [](const auto& t) { return !t.id; }))
         return 44;
@@ -249,6 +250,24 @@ int checkTheoryGuide(const juce::File& demo) {
         set("Scale fit", scale.checked);
         set("Show Theory Guide", show.checked);
     });
+    for (std::size_t i = 0; i < themes.size(); ++i) {
+        model->menuItemSelected(themes[i].id, 4);
+        const auto& finish = ostfstudio::console::finishes[i];
+        if (!find(*model, juce::translate(finish.name), 4).checked
+            || main.findColour(ostfstudio::console::LookAndFeel::accentColourId) != juce::Colour(finish.accent)) return 47;
+    }
+    const auto preview = juce::SystemStats::getEnvironmentVariable("OSTF_CONSOLE_MIXER_PNG", {});
+    if (preview.isNotEmpty()) {
+        MixerPanel mixer;
+        mixer.setLookAndFeel(&main.getLookAndFeel());
+        mixer.setTracks(*project);
+        if (project->savedMix) mixer.restore(*project->savedMix);
+        mixer.setSize(1280, 420);
+        juce::FileOutputStream out{juce::File(preview)};
+        if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed()
+            || !juce::PNGImageFormat().writeImageToStream(mixer.createComponentSnapshot({6,24,464,mixer.getHeight()-24}, true, 1.5f), out))
+            return 48;
+    }
     if (!set("Show Theory Guide", false)) return 16;
     colours->setSelectedId(2, juce::sendNotificationSync);
     const int normal = grid->getHeight();

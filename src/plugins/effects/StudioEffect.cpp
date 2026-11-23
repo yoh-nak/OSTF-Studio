@@ -1,5 +1,6 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
+#include "../../ui/ConsoleLookAndFeel.h"
 #include <array>
 #include <cmath>
 
@@ -17,6 +18,85 @@ constexpr Design designs[] {
     {Kind::Flanger, "Flanger", {{{"Rate Hz", 0.05f, 4, 0.22f}, {"Depth %", 0, 100, 48}, {"Wet %", 0, 100, 28}}}},
     {Kind::Distortion, "Distortion", {{{"Drive dB", 0, 36, 12}, {"Tone Hz", 500, 12000, 4500}, {"Wet %", 0, 100, 32}}}},
     {Kind::Amp, "Amp", {{{"Preamp dB", 0, 36, 16}, {"Cabinet tone Hz", 1200, 7000, 3500}, {"Wet %", 0, 100, 65}}}},
+};
+
+class RackEditor final : public juce::AudioProcessorEditor {
+public:
+    RackEditor(juce::AudioProcessor& processor, Kind kind, const std::array<juce::AudioParameterFloat*, 3>& params)
+        : AudioProcessorEditor(processor), face(finishFor(kind)), style(face), title(processor.getName()) {
+        setLookAndFeel(&style);
+        for (std::size_t i = 0; i < sliders.size(); ++i) {
+            auto& slider = sliders[i];
+            const auto name = params[i]->getName(64);
+            const bool fader = name == "Wet %" || name == "Threshold dB" || name == "Ceiling dB";
+            slider.setName(name);
+            slider.setTitle(name);
+            slider.setSliderStyle(fader ? juce::Slider::LinearVertical : juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 76, 21);
+            labels[i].setText(name, juce::dontSendNotification);
+            labels[i].setJustificationType(juce::Justification::centred);
+            labels[i].setInterceptsMouseClicks(false, false);
+            addAndMakeVisible(labels[i]);
+            addAndMakeVisible(slider);
+            bindings[i] = std::make_unique<juce::SliderParameterAttachment>(*params[i], slider);
+        }
+        setSize(456, 230);
+    }
+    ~RackEditor() override { setLookAndFeel(nullptr); }
+
+    void resized() override {
+        auto panel = getLocalBounds().reduced(18, 12).withTrimmedTop(43);
+        const int width = panel.getWidth() / static_cast<int>(sliders.size());
+        for (std::size_t i = 0; i < sliders.size(); ++i) {
+            auto bay = panel.removeFromLeft(width).reduced(8, 5);
+            labels[i].setBounds(bay.removeFromTop(23));
+            sliders[i].setBounds(bay.reduced(3, 3));
+        }
+    }
+    void paint(juce::Graphics& g) override {
+        const auto bounds = getLocalBounds().toFloat();
+        const auto colour = juce::Colour(face.panel);
+        ostfstudio::console::LookAndFeel::verticalGradient(g, bounds, colour.brighter(.08f).getARGB(), face.background);
+        g.fillAll();
+        g.setColour(juce::Colour(face.background));
+        g.fillRect(0, 0, getWidth(), 48);
+        g.setColour(juce::Colour(face.accent));
+        g.fillRect(20, 14, 3, 20);
+        g.setFont(juce::FontOptions(22.f, juce::Font::bold));
+        g.setColour(juce::Colour(0xfff3f1e9));
+        g.drawText(title, 32, 4, getWidth()-64, 40, juce::Justification::centredLeft);
+        for (std::size_t i = 1; i < sliders.size(); ++i) {
+            g.setColour(juce::Colours::white.withAlpha(.13f));
+            const int x = (sliders[i-1].getRight() + sliders[i].getX()) / 2;
+            g.drawVerticalLine(x, 68.f, bounds.getBottom()-24.f);
+        }
+        for (auto x : {9.f, bounds.getRight()-9.f}) {
+            for (auto y : {9.f, bounds.getBottom()-9.f}) {
+                g.setColour(juce::Colour(0xff161b1d));
+                g.fillEllipse(x-3.6f,y-3.4f,7.2f,7.2f);
+                g.setColour(juce::Colour(0xff788184));
+                g.fillEllipse(x-2.7f,y-3.f,5.4f,5.4f);
+                g.setColour(juce::Colour(0xff2d3437));
+                g.drawLine(x-1.6f,y+1.f,x+1.6f,y-1.5f,1.1f);
+            }
+        }
+    }
+private:
+    static const ostfstudio::console::Finish& finishFor(Kind kind) {
+        using namespace ostfstudio::console;
+        switch (kind) {
+            case Kind::Amp: case Kind::Distortion: return ostfstudio::console::finishFor(Theme::copper);
+            case Kind::Chorus: case Kind::Flanger: case Kind::Phaser: return ostfstudio::console::finishFor(Theme::indigo);
+            case Kind::EQ: case Kind::Compressor: case Kind::Limiter: return ostfstudio::console::finishFor(Theme::forest);
+            default: return ostfstudio::console::finishFor(Theme::studioBlue);
+        }
+    }
+    const ostfstudio::console::Finish& face;
+    ostfstudio::console::LookAndFeel style;
+    const juce::String title;
+    std::array<juce::Slider, 3> sliders;
+    std::array<juce::Label, 3> labels;
+    std::array<std::unique_ptr<juce::SliderParameterAttachment>, 3> bindings;
 };
 
 class StudioEffect final : public juce::AudioProcessor {
@@ -37,7 +117,7 @@ public:
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     bool hasEditor() const override { return true; }
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor(*this); }
+    juce::AudioProcessorEditor* createEditor() override { return new RackEditor(*this, design_.kind, params_); }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}

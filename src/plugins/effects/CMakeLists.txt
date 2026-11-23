@@ -29,4 +29,7 @@ add_executable(ostf_analyzer_editor_tests ../../../tests/analyzer_editor_tests.c
 target_include_directories(ostf_analyzer_editor_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ostf_analyzer_editor_tests PRIVATE OSTFFxAnalyzer ostf_effect_dsp juce::juce_recommended_config_flags)
 add_test(NAME ostf_analyzer_editor_tests COMMAND ostf_analyzer_editor_tests)
+add_executable(ostf_console_editor_tests ../../../tests/console_editor_tests.cpp)
+target_link_libraries(ostf_console_editor_tests PRIVATE ostf_effect_dsp juce::juce_recommended_config_flags)
+add_test(NAME ostf_console_editor_tests COMMAND ostf_console_editor_tests)
 set(stock_names "${stock_names}" PARENT_SCOPE)

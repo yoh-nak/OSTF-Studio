@@ -2,6 +2,8 @@
 
 **English** · [日本語](README.ja.md)
 
+In the upcoming release, mixer strips have metal-capped level faders and separate pan and send knobs with editable values. **Settings → Colour theme** offers seven finishes, including Forest Console, Midnight Indigo and Copper Console. The bundled GM Sound Module and nine stock effects use hardware-style controls. Each effect has its own rack panel and retains its existing automation parameters.
+
 Choose AI Arrangement Studio, AI Lyric Studio or AI Vocal Studio from the **Mode** menu. The prompt guide beside the global timeline headings cycles through three example requests for the selected mode every 15 seconds. The previous and next buttons reset the reading time. The ChatGPT connection button sits at the right of the top toolbar, alongside the model selector and refresh button when signed in. Open **Settings → Mackie Control** to connect a control surface. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
 
 The **External connections** menu opens Splice, Melodyne and Ableton Link. Select an audio clip in the arrangement or the lower clip lane to open its source range in Melodyne. Opening Melodyne without a selection launches the standalone editor. Enable Link in both Live and Studio and enable Start Stop Sync in Live to share transport. The Link tempo menu shows the connected peer count. Audio capture holds its starting tempo for the duration of a take.

@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Console controls and colour themes
+
+Branch `feature/console-controls-themes` updates the mixer, GM Sound Module and the nine stock effects with numeric parameters. Settings → Colour theme selects one of seven finishes. Workspace finish keys live in the existing local view preferences. Each effect editor binds to the same three parameter IDs used by existing sessions and other VST3 hosts.
+
+`ostf_console_editor_tests` checks both directions of parameter updates, fader/knob layout, editable values and default resets for all nine effects. Give the test executable a PNG path to capture the Chorus panel. Setting `OSTF_CONSOLE_MIXER_PNG` to an absolute output path when running `ostf_studio_theory_guide` captures four full-size mixer strips from the demo.
+
+Windows x64 Release built locally. Both core-only tests and all 26 Release tests passed. The GUI suite exercised the seven theme menu entries, musical colour legend, GM VST3 and effect parameters. The first full run had a Link timing failure and transport timeout. Both passed on isolated rerun and on the final full run. Mixer and Chorus snapshots were inspected. macOS build and hands-on control-surface testing are pending for this change.
+
 ## Docked Splice Sounds, Mackie Control, Link and prompt navigation
 
 On `feature/mackie-link-prompt-guide`, External connections → Open Splice Sounds in right pane and the Splice Sounds tab host the installed official VST3 in the right browser viewport. The Windows integration check `OSTF Studio.exe --splice-pane-smoke` dispatched the menu item, verified the official editor and its native child window belonged to Studio, hid the editor by returning to the plug-in list, and reopened the same instance. It passed with Splice Sounds 0.16.0 on this computer. The check requires a scanned and installed copy (exit 77 if unavailable). Account sign-in, sample licensing, preview audio, and macOS operation were not exercised.
