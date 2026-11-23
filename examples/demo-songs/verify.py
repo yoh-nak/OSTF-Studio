@@ -2,6 +2,8 @@
 import argparse
 import hashlib
 import json
+import io
+import wave
 from pathlib import Path
 import subprocess
 import sys
@@ -25,7 +27,26 @@ def verify(path, spec, schemas, catalog):
         schemas["production"].validate(session)
         assert hashlib.sha256(session_bytes).hexdigest() == document["sha256"]
         assert hashlib.sha256(score_bytes).hexdigest() == session["score"]["sha256"] == manifest["score"]["sha256"]
-        assert score["extensions"]["org.ostf.studio"]["data"] == {k: session[k] for k in ("channels", "devices")}
+        assert score["extensions"]["org.ostf.studio"]["data"] == {k: v for k, v in session.items()
+            if k not in ("profile", "profileVersion", "score")}
+        if path.stem in ("paper-lantern-replies", "first-light-vector"):
+            source, = session["assets"]
+            region, = session["audioRegions"]
+            asset, = manifest["assets"]
+            binding, = manifest["bindings"]
+            assert binding == {"resourceKind": "productionAsset", "documentPath": document["path"],
+                               "resourceId": source["id"], "assetId": asset["id"]}
+            wav = package.read(asset["path"])
+            assert wav == (path.parent / source["uri"]).read_bytes()
+            assert hashlib.sha256(wav).hexdigest() == source["sha256"] == asset["sha256"]
+            assert region["startTick"] > 0 and region["sourceAssetId"] == source["id"]
+            with wave.open(io.BytesIO(wav)) as audio:
+                assert (audio.getframerate(), audio.getnchannels(), audio.getnframes()) == (
+                    source["sampleRateHz"], source["audioChannels"], region["sourceFrameCount"])
+                assert any(audio.readframes(audio.getnframes()))
+            strip, = [c for c in session["channels"] if c["id"] == region["channelId"]]
+            assert strip["outputChannelId"] == "bus-2" and strip["sends"][0]["targetChannelId"] == "return-1"
+            assert len(strip["deviceIds"]) == 2
     channels = {c["id"]: c for c in session["channels"]}
     devices = {d["id"]: d for d in session["devices"]}
     assert len(channels) == len(session["channels"]) and len(devices) == len(session["devices"])
@@ -36,7 +57,7 @@ def verify(path, spec, schemas, catalog):
     used = set()
     for c in channels.values():
         chain = [devices[k] for k in c["deviceIds"]]
-        if c["kind"] == "track":
+        if c["kind"] == "track" and c["trackId"] != "foley":
             gm, *chain = chain
             assert gm["role"] == "instrument" and gm["plugin"]["name"] == "OSTF GM Sound Module"
         for d in chain:

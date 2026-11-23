@@ -2,6 +2,11 @@
 
 import hashlib
 import json
+import io
+import math
+import random
+import struct
+import wave
 from copy import deepcopy
 from pathlib import Path
 from zipfile import ZipFile, ZipInfo
@@ -765,7 +770,42 @@ def first_light_vector():
         [("pad", "Wide Halo Pad", "texture", "pad"), ("chord", "Gated Chord Stabs", "rhythm", "stabs")])
 
 
-def production_session(song):
+def sound_effect(stem):
+    """Original stereo Foley/synth cues. All oscillators and noise are generated here."""
+    rate = 24000
+    frames = rate * 2
+    rng = random.Random(719)
+    pcm = bytearray()
+    filtered = 0.0
+    for frame in range(frames):
+        t = frame / rate
+        filtered = .87 * filtered + .13 * rng.uniform(-1, 1)
+        if stem == "paper-lantern-replies":
+            # Two soft glass strikes outline E and A; each has its own stereo position.
+            def bell(onset, frequency):
+                age = t - onset
+                if age < 0:
+                    return 0
+                phase = math.tau * frequency * age
+                return (1 - math.exp(-100 * age)) * math.exp(-3.2 * age) * (
+                    .42 * math.sin(phase) + .12 * math.sin(2.72 * phase) * math.exp(-4 * age))
+            first, reply = bell(0, 659.255), bell(.38, 880)
+            left, right = first + .52 * reply, .62 * first + reply
+        else:
+            phase = math.tau * (140 * t + 110 * t * t)
+            envelope = math.sin(math.pi * t / 2) ** 2
+            left = envelope * (.85 * filtered + .17 * math.sin(phase))
+            right = envelope * (.75 * filtered + .17 * math.sin(phase + .22))
+        fade = min(1, (frames - frame - 1) / 300)
+        pcm.extend(struct.pack("<hh", round(32767 * fade * left), round(32767 * fade * right)))
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setparams((2, 2, rate, frames, "NONE", "not compressed"))
+        wav.writeframes(pcm)
+    return output.getvalue(), rate, frames
+
+
+def production_session(song, cue=None):
     programs = {
         "hook": 27, "horn": 65, "arp": 81, "voice-track": 53, "backing": 52, "keys": 4, "bass": 33,
         "answer": 5, "nylon": 24, "strings": 48, "comp": 28, "brass": 61, "pad": 89, "vibes": 11,
@@ -849,7 +889,20 @@ def production_session(song):
                                "preFader": False, "enabled": True}]
         insert(strip, *inserts)
         channels.append(strip)
-    return {"channels": channels, "devices": devices}
+    production = {"channels": channels, "devices": devices}
+    if cue:
+        name, asset, start, length = cue
+        song["tracks"].append({"id": "foley", "name": name, "clips": []})
+        strip = channel("foley-strip", "track", trackId="foley", gainDb=-7, pan=.18, outputChannelId="bus-2",
+                        sends=[{"id": "foley-room", "targetChannelId": "return-1", "gainDb": -13,
+                                "preFader": False, "enabled": True}])
+        insert(strip, "EQ", "Compressor")
+        channels.append(strip)
+        production["assets"] = [asset]
+        production["audioRegions"] = [{"id": "foley-cue", "channelId": strip["id"], "sourceAssetId": asset["id"],
+            "startTick": start, "durationTicks": length, "sourceStartFrame": 0,
+            "sourceFrameCount": asset["frameCount"], "playbackMode": "native", "gainDb": 0, "mute": False}]
+    return production
 
 
 def json_bytes(document):
@@ -858,7 +911,22 @@ def json_bytes(document):
 
 def write_song(stem, document):
     vary_harmonic_rhythm(document)
-    production = production_session(document)
+    media = []
+    cue = None
+    cues = {"paper-lantern-replies": ("Glass Lantern Chimes", "glass-lantern-chimes", PPQ, 78),
+            "first-light-vector": ("Transition Sweep", "transition-sweep", 30 * PPQ, 138)}
+    if stem in cues:
+        title, filename, start, bpm = cues[stem]
+        wav, rate, frames = sound_effect(stem)
+        path = f"assets/{filename}.wav"
+        asset = {"id": filename, "purpose": "audioSource", "uri": path, "mediaType": "audio/wav",
+                 "sha256": hashlib.sha256(wav).hexdigest(), "byteLength": len(wav), "sampleRateHz": rate,
+                 "frameCount": frames, "audioChannels": 2}
+        cue = title, asset, start, round(frames * bpm * PPQ / (rate * 60))
+        (DESTINATION / path).parent.mkdir(exist_ok=True)
+        (DESTINATION / path).write_bytes(wav)
+        media.append((path, wav))
+    production = production_session(document, cue)
     document.setdefault("extensions", {})["org.ostf.studio"] = {
         "version": "1.0", "status": "current", "dependencies": {"scope": "document"}, "data": production,
     }
@@ -875,9 +943,14 @@ def write_song(stem, document):
                 "documents": [{"id": "studio-production", "role": "productionSession", "path": session_path,
                                "family": "OSTF-Production-Session", "version": "0.3.0",
                                "sha256": hashlib.sha256(session).hexdigest()}]}
+    if cue:
+        manifest["assets"].append({"id": "packed-foley", "path": path, "purpose": asset["purpose"],
+                                   "mediaType": asset["mediaType"], "sha256": asset["sha256"], "sizeBytes": len(wav)})
+        manifest["bindings"].append({"resourceKind": "productionAsset", "resourceId": asset["id"],
+                                     "documentPath": session_path, "assetId": "packed-foley"})
     with ZipFile(DESTINATION / f"{stem}.ostfp", "w") as archive:
         for path, payload in (("mimetype", b"application/vnd.ostf-project+zip"),
-                              ("manifest.json", json_bytes(manifest)), ("score/song.ostf", data), (session_path, session)):
+                              ("manifest.json", json_bytes(manifest)), ("score/song.ostf", data), (session_path, session), *media):
             archive.writestr(ZipInfo(path), payload)
 
 

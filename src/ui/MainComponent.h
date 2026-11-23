@@ -66,6 +66,7 @@ private:
     void rebuildTrackControls();
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
                     std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched);
+    void renameTrack(std::size_t index, bool output = false);
     void showRowMenu(bool output, std::size_t index);
     void confirmRemoval(bool output, std::size_t index);
     void editOutput(bool isReturn, std::optional<std::size_t> source = {}, bool remove = false);
@@ -132,7 +133,7 @@ private:
     juce::MenuBarComponent menuBar_;
     ViewButton pianoButton_ {ViewButton::Icon::piano}, mixerButton_ {ViewButton::Icon::mixer},
                pluginBrowserButton_ {ViewButton::Icon::plugins}, outputButton_ {ViewButton::Icon::outputs},
-               lanesButton_ {ViewButton::Icon::lanes}, arrangementButton_ {ViewButton::Icon::arrangement},
+               songInfoButton_ {ViewButton::Icon::information}, lanesButton_ {ViewButton::Icon::lanes}, arrangementButton_ {ViewButton::Icon::arrangement},
                leadButton_ {ViewButton::Icon::leadSheet}, scoreButton_ {ViewButton::Icon::score};
     ViewButton melodyAdd_ {ViewButton::Icon::melody}, chorusAdd_ {ViewButton::Icon::chorus},
                pitchedAdd_ {ViewButton::Icon::pitched}, drumsAdd_ {ViewButton::Icon::drums},

@@ -153,5 +153,47 @@ int checkStockEffects(const juce::StringArray& args) {
     };
     if (energyAt(2 * song->ppq) <= .0001f || energyAt(4 * song->ppq) > .00001f
         || energyAt(2 * song->ppq) <= .0001f || energyAt(0) > .00001f) return 28;
+    transport.stop();
+    juce::FileInputStream mediaFile(juce::File(args[3]).getSiblingFile("paper-lantern-replies.ostfp"));
+    std::unique_ptr<ostfstudio::OstfpPreview> cue;
+    if (ostfstudio::readOstfpPreview(mediaFile, cue).failed() || cue->audio.size() != 1 || !cue->savedMix) return 29;
+    const auto& region = cue->audio.front();
+    const auto& mixAudio = *cue->savedMix;
+    inserts = {};
+    if (!restore(mixAudio.trackEffects[region.track], PreviewTransport::outputCount + region.track)
+        || !restore(mixAudio.outputEffects[3], 3)) return 30;
+    auto cuePeak = [&](juce::int64 tick, bool soloOther, bool mute, bool bus, bool send, double db, bool wet) {
+        PreviewTransport playback;
+        auto channels = mixAudio.tracks;
+        auto& strip = channels[region.track];
+        strip.muted = mute;
+        strip.soloed = !soloOther;
+        channels[0].soloed = soloOther;
+        strip.volumeDb = db;
+        if (!send) strip.returnSends[0] = 0;
+        auto routing = mixAudio.routing;
+        routing.outputMuted[2] = !bus;
+        playback.setOutputMix(routing);
+        playback.setChannelMix(region.track, strip, ostfstudio::channelIsAudible(channels, region.track), 0);
+        if (playback.preparePlayback(*cue, {}, wet ? inserts : PreviewTransport::Inserts{}, 48000, 256).failed()) return -1.f;
+        playback.seekToTick(tick);
+        float peak = 0.f;
+        for (int i = 0; i < 24; ++i) {
+            playback.renderBlock(audio.getArrayOfWritePointers(), 2, 256);
+            peak = std::max(peak, audio.getMagnitude(0, 0, 256));
+        }
+        return peak;
+    };
+    const auto at = region.startTick;
+    const auto dry = cuePeak(at, false, false, true, false, 0, false);
+    const auto half = cuePeak(at, false, false, true, false, -6, false);
+    if (dry <= .01f || std::abs(half / dry - .5012f) > .002f
+        || cuePeak(0, false, false, true, false, 0, false) != 0
+        || cuePeak(at + region.durationTicks, false, false, true, false, 0, false) != 0
+        || cuePeak(at, true, false, true, true, 0, true) != 0
+        || cuePeak(at, false, true, true, true, 0, true) != 0
+        || cuePeak(at, false, false, false, false, 0, true) != 0
+        || cuePeak(at, false, false, false, true, 0, true) <= .00001f
+        || std::abs(cuePeak(at, false, false, true, false, 0, true) - dry) < .00001f) return 31;
     return 0;
 }

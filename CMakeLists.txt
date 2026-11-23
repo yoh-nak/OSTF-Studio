@@ -149,7 +149,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
     target_include_directories(ostf_studio_ostfp_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(ostf_studio_ostfp_tests PRIVATE JUCE_USE_CURL=0)
-    target_link_libraries(ostf_studio_ostfp_tests PRIVATE ostf_score_validation juce::juce_cryptography juce::juce_audio_basics)
+    target_link_libraries(ostf_studio_ostfp_tests PRIVATE ostf_score_validation juce::juce_cryptography juce::juce_audio_formats)
     add_test(NAME ostf_studio_ostfp_tests COMMAND ostf_studio_ostfp_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
     foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0)

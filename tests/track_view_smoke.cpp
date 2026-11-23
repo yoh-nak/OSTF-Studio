@@ -63,6 +63,8 @@ int checkTrackView(const juce::File& fixture) {
     if (tracks->getNumItems() != 1 || tracks->getSelectedId() != 1) return 15;
     auto* addedGrip = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
     if (!addedGrip || addedGrip->height() != 84) return 18;
+    auto* info = findControl<ViewButton>(main, TRANS("Song information"));
+    if (!info || !info->isEnabled() || info->getTooltip().isEmpty() || !info->onClick) return 37;
     const auto click = [&](const char* label) {
         auto* button = findControl<ViewButton>(main, juce::translate(label));
         if (!button || !button->isEnabled() || button->getTooltip().isEmpty() || !button->onClick) return false;

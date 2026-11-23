@@ -28,12 +28,6 @@ constexpr int trackNameWidth = 95;
 constexpr int arrangementHeadingHeight = 24;
 constexpr int globalRowHeight = 28;
 
-juce::String outputName(std::size_t index) {
-    if (index == 0) return TRANS("Master");
-    if (!ostfstudio::isReturnOutput(index)) return MixerPanel::busName(ostfstudio::outputBusIndex(index));
-    return TRANS("Return ") + juce::String(static_cast<int>(index - 2));
-}
-
 juce::String effectId(const juce::PluginDescription& description) {
     return description.pluginFormatName + "|" + description.manufacturerName + "|" + description.name
         + "|" + juce::String(description.uniqueId);
@@ -55,7 +49,7 @@ juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds) {
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, smallerUI, largerUI };
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI };
 constexpr int timelineMenuBase = 100;
 constexpr int demoMenuBase = 300;
 constexpr struct { const char* title; const char* resource; } gallery[] {
@@ -274,12 +268,12 @@ public:
         };
         send_.setRange(0.0, 100.0, 1.0);
         send_.setTextValueSuffix("%");
-        output_.addItem(TRANS("Master"), 1);
+        output_.addItem(mixer.outputName(0), 1);
         for (std::size_t i = 0; i < mixer.routing().busCount; ++i)
-            output_.addItem(MixerPanel::busName(i), static_cast<int>(i + 2));
+            output_.addItem(mixer.outputName(ostfstudio::busOutput(i)), static_cast<int>(i + 2));
         output_.setSelectedId(channel.outputBus + 2);
         for (std::size_t i = 0; i < mixer.returnCount(); ++i)
-            target_.addItem(TRANS("Return ") + juce::String(static_cast<int>(i + 1)), static_cast<int>(i + 1));
+            target_.addItem(mixer.outputName(ostfstudio::returnOutput(i)), static_cast<int>(i + 1));
         target_.setSelectedId(1);
         send_.setValue(channel.returnSends[0] * 100.0);
         for (auto* slider : {&volume_, &pan_, &send_}) {
@@ -371,6 +365,7 @@ MainComponent::MainComponent() {
     addView(arrangementButton_, "Arrangement", showArrangement);
     addView(leadButton_, "Lead sheet", showLeadSheet);
     addView(scoreButton_, "Score", showPartScore);
+    addView(songInfoButton_, "Song information", showSongInformation);
     addView(melodyAdd_, "Add melody track", addMelody);
     addView(chorusAdd_, "Add chorus vocal track", addChorus);
     addView(pitchedAdd_, "Add pitched track", addPitched);
@@ -572,6 +567,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(addBus, TRANS("Add bus track"), editable && mixer_.routing().busCount < ostfstudio::maxMixerBuses);
             menu.addItem(addReturn, TRANS("Add return track"), editable && mixer_.returnCount() < ostfstudio::maxMixerReturns);
             menu.addSeparator();
+            menu.addItem(renameTrackItem, TRANS("Rename track..."), editable && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
             menu.addItem(copyTrack, TRANS("Duplicate track"), add && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
             menu.addItem(removeTrack, TRANS("Delete selected track..."), editable && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
             break;
@@ -659,6 +655,7 @@ void MainComponent::menuItemSelected(int item, int) {
             break;
         case addBus: editOutput(false); break;
         case addReturn: editOutput(true); break;
+        case renameTrackItem: if (selectedTrack_) renameTrack(*selectedTrack_); break;
         case copyTrack:
             if (selectedTrack_) editTracks(ostfstudio::TrackKind::pitched, {}, selectedTrack_);
             break;
@@ -1327,18 +1324,22 @@ void MainComponent::revealRow(juce::Rectangle<int> row) {
 }
 
 void MainComponent::showRowMenu(bool output, std::size_t index) {
-    if (!canEditTracks() || (output ? index == 0 || !mixer_.routing().hasOutput(index)
+    if (!canEditTracks() || (output ? !mixer_.routing().hasOutput(index)
                                    : index >= project_->sourceTrackCount())) return;
     const bool send = ostfstudio::isReturnOutput(index);
     const bool room = !output ? project_->sourceTrackCount() < ostfstudio::OstfpPreview::maxTracks
         : send ? returnAdd_.isEnabled() : busAdd_.isEnabled();
     juce::PopupMenu menu;
-    menu.addSectionHeader(output ? outputName(index) : juce::String::fromUTF8(project_->trackLanes[index].label));
-    menu.addItem(copyTrack, TRANS("Duplicate track"), room);
-    menu.addItem(removeTrack, TRANS("Delete track..."));
+    menu.addSectionHeader(output ? mixer_.outputName(index) : juce::String::fromUTF8(project_->trackLanes[index].label));
+    menu.addItem(renameTrackItem, TRANS("Rename track..."));
+    if (!output || index != 0) {
+        menu.addItem(copyTrack, TRANS("Duplicate track"), room);
+        menu.addItem(removeTrack, TRANS("Delete track..."));
+    }
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(),
         [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, output, send, index](int choice) {
             if (!safe || safe->projectGeneration_ != generation) return;
+            if (choice == renameTrackItem) safe->renameTrack(index, output);
             if (choice == removeTrack) safe->confirmRemoval(output, index);
             if (choice == copyTrack) {
                 if (output) safe->editOutput(send, index);
@@ -1347,10 +1348,53 @@ void MainComponent::showRowMenu(bool output, std::size_t index) {
         });
 }
 
+void MainComponent::renameTrack(std::size_t index, bool output) {
+    if (!project_ || (output ? !mixer_.routing().hasOutput(index) : index >= project_->sourceTrackCount())) return;
+    auto dialog = std::make_unique<juce::AlertWindow>(TRANS("Rename track"), juce::String{},
+        juce::MessageBoxIconType::NoIcon, this);
+    dialog->addTextEditor("name", output ? mixer_.outputName(index) : juce::String::fromUTF8(project_->trackLanes[index].label), TRANS("Track name"));
+    dialog->getTextEditor("name")->selectAll();
+    dialog->addButton(TRANS("OK"), 1, juce::KeyPress(juce::KeyPress::returnKey));
+    dialog->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    auto* window = dialog.release();
+    window->enterModalState(true, juce::ModalCallbackFunction::create(
+        [safe = juce::Component::SafePointer<MainComponent>(this), window, index, output, generation = projectGeneration_](int choice) {
+            if (!safe || choice != 1 || safe->projectGeneration_ != generation) return;
+            const auto name = window->getTextEditorContents("name").trim();
+            if (output) {
+                if (name.isEmpty()) safe->statusLabel_.setText(TRANS("Enter a track name."), juce::dontSendNotification);
+                else {
+                    safe->mixer_.renameOutput(index, name);
+                    safe->outputControls_[index].size.setTitle(name + " " + TRANS("track height"));
+                    safe->outputControls_[index].mute.setTooltip(TRANS("Mute ") + name);
+                    safe->repaint();
+                }
+                return;
+            }
+            const auto result = safe->project_->renameTrack(index, name);
+            if (result.failed()) {
+                safe->statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
+                return;
+            }
+            safe->trackPicker_.changeItemText(static_cast<int>(index + 1), name);
+            safe->mixer_.renameTrack(index, name);
+            auto& controls = *safe->trackControls_[index];
+            controls.size.setTitle(name + " " + TRANS("track height"));
+            controls.mute.setTooltip(TRANS("Mute ") + name);
+            controls.solo.setTooltip(TRANS("Solo ") + name);
+            controls.mute.setTitle(controls.mute.getTooltip());
+            controls.solo.setTitle(controls.solo.getTooltip());
+            controls.volume.setName(name + " volume");
+            controls.pan.setName(name + " pan");
+            safe->refreshEditor();
+            safe->repaint();
+        }), true);
+}
+
 void MainComponent::confirmRemoval(bool output, std::size_t index) {
     if (!canEditTracks() || (output ? index == 0 || !mixer_.routing().hasOutput(index)
                                    : index >= project_->sourceTrackCount())) return;
-    const auto name = output ? outputName(index) : juce::String::fromUTF8(project_->trackLanes[index].label);
+    const auto name = output ? mixer_.outputName(index) : juce::String::fromUTF8(project_->trackLanes[index].label);
     const auto prompt = output ? (ostfstudio::isReturnOutput(index)
         ? TRANS("Delete {track} and its sends?") : TRANS("Delete {track} and route its tracks to Master?"))
         : TRANS("Remove {track} and its clips from this project? Audio files stay on disk.");
@@ -1400,12 +1444,14 @@ void MainComponent::editOutput(bool send, std::optional<std::size_t> source, boo
     if (remove) {
         for (std::size_t i = index; i + 1 < count; ++i) {
             const auto slot = slotAt(i), next = slotAt(i + 1);
+            mix.outputNames[slot] = mix.outputNames[next];
             outputControls_[slot].effects.slots = std::move(outputControls_[next].effects.slots);
             outputControls_[slot].size.copySize(outputControls_[next].size);
             updateEffectButton(outputControls_[slot].effects);
         }
         routing.removeOutput(*source, mix.tracks);
         const auto last = slotAt(count);
+        mix.outputNames[last].clear();
         outputControls_[last].effects.slots.clear();
         updateEffectButton(outputControls_[last].effects);
     } else {
@@ -1414,6 +1460,7 @@ void MainComponent::editOutput(bool send, std::optional<std::size_t> source, boo
         strip.size.resetSize();
         strip.size.assignHeight(groupDefaults_[static_cast<std::size_t>(outputHeightGroup(dest))]);
         if (source) {
+            mix.outputNames[dest] = mixer_.outputName(*source) + TRANS(" (copy)");
             routing.outputGain(dest) = routing.outputGain(*source);
             routing.outputMuted[dest] = routing.outputMuted[*source];
             strip.size.copySize(outputControls_[*source].size);
@@ -1646,6 +1693,15 @@ void MainComponent::linkAudio(std::size_t index) {
             if (entry == audio.end() && audio.size() >= ostfstudio::OstfpPreview::maxTracks) return;
             safe->stopTransport();
             ostfstudio::ProjectAudio linked{index, file.getFileName(), file, {}};
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(file.createInputStream().release(), true));
+            if (!reader || reader->sampleRate <= 0 || reader->lengthInSamples < 1 || reader->lengthInSamples > 8 * 1024 * 1024
+                || reader->numChannels < 1 || reader->numChannels > 2) {
+                safe->statusLabel_.setText(TRANS("Unsupported WAV") + ": " + file.getFileName(), juce::dontSendNotification);
+                return;
+            }
+            linked.durationTicks = std::clamp<juce::int64>(static_cast<juce::int64>(std::ceil(
+                safe->project_->clock.tickAt(reader->lengthInSamples / reader->sampleRate))), 1, safe->project_->playbackEndTick());
             if (entry == audio.end()) audio.push_back(std::move(linked));
             else *entry = std::move(linked);
             safe->statusLabel_.setText(TRANS("Linked at song start: ") + file.getFileName(), juce::dontSendNotification);
@@ -1833,12 +1889,12 @@ void MainComponent::setupOutputTracks() {
         control.effects.button.onClick = [this, i] { showEffects(true, i); };
         updateEffectButton(control.effects);
         control.size.changed = [this] { refreshGroupHeight(); resized(); repaint(); };
-        control.size.setTitle(outputName(i) + " " + TRANS("track height"));
+        control.size.setTitle(mixer_.outputName(i) + " " + TRANS("track height"));
         rowOverlay_.addChildComponent(control.size);
         rowOverlay_.addChildComponent(control.meter);
         rowOverlay_.addChildComponent(control.effects.button);
         auto& volume = control.volume;
-        volume.setName(outputName(i) + " volume");
+        volume.setName(mixer_.outputName(i) + " volume");
         volume.setSliderStyle(juce::Slider::LinearHorizontal);
         volume.setTextBoxStyle(juce::Slider::TextBoxRight, false, 44, 16);
         volume.setTextValueSuffix(" dB");
@@ -1848,7 +1904,7 @@ void MainComponent::setupOutputTracks() {
         volume.onValueChange = [this, i] { mixer_.setOutputVolume(i, outputControls_[i].volume.getValue()); };
         rowOverlay_.addChildComponent(volume);
         control.mute.setClickingTogglesState(true);
-        control.mute.setTooltip(TRANS("Mute ") + outputName(i));
+        control.mute.setTooltip(TRANS("Mute ") + mixer_.outputName(i));
         control.mute.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffa94f43));
         control.mute.onClick = [this, i] { mixer_.setOutputMuted(i, outputControls_[i].mute.getToggleState()); };
         rowOverlay_.addChildComponent(control.mute);
@@ -1868,7 +1924,7 @@ void MainComponent::updateEffectButton(EffectChain& chain) {
 void MainComponent::showEffects(bool output, std::size_t index) {
     auto& chain = effectChain(output, index);
     if (chain.loading) return;
-    const auto name = output ? outputName(index) : juce::String::fromUTF8(project_->trackLanes[index].label);
+    const auto name = output ? mixer_.outputName(index) : juce::String::fromUTF8(project_->trackLanes[index].label);
     const auto current = [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_]()
         -> MainComponent* {
         return safe && safe->projectGeneration_ == generation ? safe.getComponent() : nullptr;
@@ -2080,6 +2136,7 @@ void MainComponent::refreshEditor() {
     outputButton_.setToggleState(arranging && showOutputTracks_, juce::dontSendNotification);
     for (auto* button : {&pianoButton_, &mixerButton_, &leadButton_, &scoreButton_}) button->setEnabled(project_ != nullptr);
     outputButton_.setEnabled(arranging && project_ != nullptr);
+    songInfoButton_.setEnabled(project_ != nullptr);
     lanesButton_.setEnabled(arranging);
     trackPicker_.setVisible(arranging && project_ && editorVisible_);
     performanceLane_.setVisible(piano && selectedTrack_);
@@ -2137,7 +2194,7 @@ void MainComponent::resized() {
     const int width = std::clamp(getWidth() / 24, 24, 39);
     const auto place = [&](ViewButton& button) { button.setBounds(row.removeFromLeft(width).reduced(2, 2)); };
     for (auto* button : {&arrangementButton_, &leadButton_, &scoreButton_, &pianoButton_, &mixerButton_,
-                         &pluginBrowserButton_, &outputButton_, &lanesButton_}) place(*button);
+                         &pluginBrowserButton_, &outputButton_, &lanesButton_, &songInfoButton_}) place(*button);
     if (barHeight > 32) { documentLabel_.setBounds(row); row = viewBar; }
     row.removeFromLeft(8);
     for (auto* button : {&melodyAdd_, &chorusAdd_, &pitchedAdd_, &drumsAdd_, &audioAdd_, &busAdd_, &returnAdd_}) place(*button);
@@ -2458,9 +2515,17 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             }
             const auto audio = std::find_if(project_->audio.begin(), project_->audio.end(), [i](const auto& item) { return item.track == i; });
             if (audio != project_->audio.end()) {
-                const auto label = audio->embedded.isEmpty() && !audio->localFile.existsAsFile() ? TRANS("Missing WAV") : "WAV";
-                g.setColour(juce::Colour(0xffe7b46c));
-                g.drawText(label, area.getX() + 6, y, 80, rowHeight, juce::Justification::centredLeft);
+                const auto start = 1.0 + static_cast<double>(audio->startTick) / project_->ticksPerBar;
+                const auto length = audio->durationTicks > 0 ? static_cast<double>(audio->durationTicks) / project_->ticksPerBar : 1.0;
+                auto clip = clipBounds({start, start + length}, area.withY(y).withHeight(rowHeight)).reduced(0, 2);
+                if (!clip.isEmpty()) {
+                    const bool missing = audio->embedded.isEmpty() && !audio->localFile.existsAsFile();
+                    g.setColour(juce::Colour(missing ? 0xff754842 : 0xff386d70));
+                    g.fillRoundedRectangle(clip.toFloat(), 3);
+                    g.setColour(juce::Colours::white);
+                    const auto label = missing ? TRANS("Missing WAV") : audio->path.fromLastOccurrenceOf("/", false, false);
+                    g.drawFittedText(label, clip.reduced(3, 0), juce::Justification::centredLeft, 1);
+                }
             }
             const juce::Rectangle<int> hit(labels.getX(), y, labels.getWidth() + area.getWidth(), rowHeight);
             if (selectedTrack_ == i) {
@@ -2500,7 +2565,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             g.fillRoundedRectangle(row.toFloat(), 4.0f);
             g.setColour(juce::Colour(hardwareAmber));
             g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-            g.drawFittedText(outputName(i), row.withWidth(trackNameWidth).withHeight(std::min(34, row.getHeight())).reduced(5, 0),
+            g.drawFittedText(mixer_.outputName(i), row.withWidth(trackNameWidth).withHeight(std::min(34, row.getHeight())).reduced(5, 0),
                              juce::Justification::centredLeft, 1);
             g.setColour(juce::Colour(muted));
             g.drawFittedText(i == 0 ? TRANS("Out 1-2") : TRANS("To Master"), row.withTrimmedLeft(trackHeaderWidth).reduced(8, 0),

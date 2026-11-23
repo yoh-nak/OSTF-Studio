@@ -105,3 +105,7 @@ The [original demo song gallery](examples/demo-songs/README.md) contains five OS
 2. Run `git fetch origin`, `git status --short --branch`, and `git branch -avv`. Continue from the verified remote feature branch if it exists. After the approved branch is pushed, a fresh clone can use `git switch --track origin/feature/release-packaging`. Otherwise the clone has only the changes already published to GitHub.
 3. Build in a fresh local build directory. Git carries source and project documentation. Compilers, SDKs, credentials, plugins, personal settings and generated packages are managed separately on each machine.
 4. Run the build and tests relevant to the next change, update this handoff, and commit on the feature branch. The pending CI check for this branch must use the artifacts-only workflow option. Follow [release and packaging procedures](docs/RELEASING.md) for packaging and approvals.
+
+### Audio demo tracks and song information
+
+The toolbar information icon opens the existing song metadata editor. Rename score tracks and production outputs from their context menus. Paper Lantern Replies and First Light Vector include original stereo WAV cues, two track inserts, a Harmony bus and a Room send. The preview reads one native, unwarped WAV region per score track, with source-frame trims, region mute/gain, tick placement and verified package bindings. Standalone saves place the WAV in a sibling media directory. The stock-effects smoke test renders the actual audio and checks routing, gating and gain offline.

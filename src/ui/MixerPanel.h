@@ -11,8 +11,11 @@ public:
     MixerPanel();
     void addReturn();
     void addBus();
+    juce::String outputName(std::size_t slot) const;
+    void renameOutput(std::size_t slot, const juce::String& name);
     static juce::String busName(std::size_t index);
     void setTracks(const ostfstudio::OstfpPreview& project);
+    void renameTrack(std::size_t index, const juce::String& name);
     void resized() override;
     void updateMeters(const ostfstudio::MeterFrame& frame, double now);
     void clearMeters();
@@ -69,6 +72,7 @@ private:
     juce::Viewport outputViewport_;
     std::vector<ostfstudio::ChannelMix> channels_;
     ostfstudio::MixerRouting routing_;
+    std::array<juce::String, ostfstudio::mixerOutputCapacity> outputNames_;
     std::vector<std::unique_ptr<Strip>> strips_;
     std::vector<std::unique_ptr<Strip>> buses_, returns_;
     std::unique_ptr<Strip> master_, cue_;

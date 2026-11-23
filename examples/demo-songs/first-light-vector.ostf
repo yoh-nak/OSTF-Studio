@@ -24777,6 +24777,11 @@
         "mode": "singleChannel",
         "channel": 6
       }
+    },
+    {
+      "id": "foley",
+      "name": "Transition Sweep",
+      "clips": []
     }
   ],
   "soundSlots": [
@@ -25044,6 +25049,31 @@
                 "enabled": true
               }
             ]
+          },
+          {
+            "id": "foley-strip",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": -7,
+            "pan": 0.18,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "foley-strip-eq",
+              "foley-strip-compressor"
+            ],
+            "trackId": "foley",
+            "outputChannelId": "bus-2",
+            "sends": [
+              {
+                "id": "foley-room",
+                "targetChannelId": "return-1",
+                "gainDb": -13,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           }
         ],
         "devices": [
@@ -25254,6 +25284,59 @@
               "vendor": "OSTF Studio",
               "name": "OSTF Chorus"
             }
+          },
+          {
+            "id": "foley-strip-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "foley-strip-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
+          }
+        ],
+        "assets": [
+          {
+            "id": "transition-sweep",
+            "purpose": "audioSource",
+            "uri": "assets/transition-sweep.wav",
+            "mediaType": "audio/wav",
+            "sha256": "0afd257baef01451e3039b01cf40fb8c5d9bfe3a0f7e2f52b8f5061d84fe9dd3",
+            "byteLength": 192044,
+            "sampleRateHz": 24000,
+            "frameCount": 48000,
+            "audioChannels": 2
+          }
+        ],
+        "audioRegions": [
+          {
+            "id": "foley-cue",
+            "channelId": "foley-strip",
+            "sourceAssetId": "transition-sweep",
+            "startTick": 28800,
+            "durationTicks": 4416,
+            "sourceStartFrame": 0,
+            "sourceFrameCount": 48000,
+            "playbackMode": "native",
+            "gainDb": 0,
+            "mute": false
           }
         ]
       }

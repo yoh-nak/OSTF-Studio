@@ -21373,6 +21373,11 @@
         "mode": "singleChannel",
         "channel": 8
       }
+    },
+    {
+      "id": "foley",
+      "name": "Glass Lantern Chimes",
+      "clips": []
     }
   ],
   "soundSlots": [
@@ -25130,6 +25135,31 @@
                 "enabled": true
               }
             ]
+          },
+          {
+            "id": "foley-strip",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": -7,
+            "pan": 0.18,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "foley-strip-eq",
+              "foley-strip-compressor"
+            ],
+            "trackId": "foley",
+            "outputChannelId": "bus-2",
+            "sends": [
+              {
+                "id": "foley-room",
+                "targetChannelId": "return-1",
+                "gainDb": -13,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           }
         ],
         "devices": [
@@ -25379,6 +25409,59 @@
               "vendor": "OSTF Studio",
               "name": "OSTF Chorus"
             }
+          },
+          {
+            "id": "foley-strip-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "foley-strip-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
+          }
+        ],
+        "assets": [
+          {
+            "id": "glass-lantern-chimes",
+            "purpose": "audioSource",
+            "uri": "assets/glass-lantern-chimes.wav",
+            "mediaType": "audio/wav",
+            "sha256": "3b329d52bf9e3418c5ffbe721afa4be11426d80d7ac6808e9a306cd621f13d47",
+            "byteLength": 192044,
+            "sampleRateHz": 24000,
+            "frameCount": 48000,
+            "audioChannels": 2
+          }
+        ],
+        "audioRegions": [
+          {
+            "id": "foley-cue",
+            "channelId": "foley-strip",
+            "sourceAssetId": "glass-lantern-chimes",
+            "startTick": 960,
+            "durationTicks": 2496,
+            "sourceStartFrame": 0,
+            "sourceFrameCount": 48000,
+            "playbackMode": "native",
+            "gainDb": 0,
+            "mute": false
           }
         ]
       }

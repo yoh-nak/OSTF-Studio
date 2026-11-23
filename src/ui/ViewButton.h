@@ -4,7 +4,7 @@
 
 class ViewButton final : public juce::Button {
 public:
-    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut };
+    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
 
     void paintButton(juce::Graphics& g, bool hover, bool down) override {
@@ -16,6 +16,9 @@ public:
         const float x = rect.getCentreX() - 10, y = rect.getCentreY() - 9;
         const auto line = [&](int x1, int y1, int x2, int y2) { g.drawLine(x+x1, y+y1, x+x2, y+y2, 1.6f); };
         switch (icon_) {
+            case Icon::information:
+                g.drawEllipse(x+2, y, 16, 16, 1.6f);
+                g.fillEllipse(x+9, y+3, 2, 2); line(10,7,10,13); break;
             case Icon::melody:
                 line(6, 12, 6, 1); line(6, 1, 12, 4);
                 g.fillEllipse(x+1, y+11, 6, 4); break;

@@ -37,10 +37,10 @@ static int checkGallery(const juce::File& directory) {
         {"neon-platforms.ostfp", 76, 8, 106.0},
         {"blue-hour-waltz.ostfp", 128, 7, 132.0},
         {"relay-circuit.ostfp", 96, 8, 128.0},
-        {"paper-lantern-replies.ostfp", 56, 8, 78.0},
+        {"paper-lantern-replies.ostfp", 56, 9, 78.0},
         {"offset-bridges.ostfp", 0, 0, 0.0},
         {"copper-mile.ostfp", 64, 6, 116.0},
-        {"first-light-vector.ostfp", 96, 6, 138.0},
+        {"first-light-vector.ostfp", 96, 7, 138.0},
     };
     for (const auto& expected : cases) {
         juce::FileInputStream input(directory.getChildFile(expected.file));
@@ -53,8 +53,8 @@ static int checkGallery(const juce::File& directory) {
               && project->chordVoicingTrack == static_cast<std::size_t>(expected.tracks)
               && project->previewBpm == expected.bpm && !project->pitchedNotes.front().empty()
               && project->chordVoicings > 0
-              && std::all_of(project->trackLanes.begin(), project->trackLanes.end(),
-                             [](const auto& lane) { return lane.regions.size() >= 2; });
+              && std::count_if(project->trackLanes.begin(), project->trackLanes.end(),
+                               [](const auto& lane) { return lane.regions.size() < 2; }) == static_cast<int>(project->audio.size());
         if (!matches) {
             std::cerr << expected.file << ": unexpected preview result: " << result.getErrorMessage() << '\n';
             return 1;
@@ -104,6 +104,17 @@ static int checkGallery(const juce::File& directory) {
                                 [](const auto& chain) { return chain.size() >= 2; })) return 1;
             for (std::size_t track = 0; track < project->sourceTrackCount(); ++track) {
                 const auto& plugin = project->savedMix->instruments[track];
+                if (project->trackKinds[track] == ostfstudio::TrackKind::audio) {
+                    if (plugin.isObject() || project->audio.size() != 1 || project->audio[0].track != track
+                        || authored.trackEffects[track].size() != 2 || authored.tracks[track].outputBus != 1
+                        || authored.tracks[track].returnSends[0] <= 0 || fromScore->trackKinds[track] != ostfstudio::TrackKind::audio)
+                        return 1;
+                    const auto& wav = project->audio.front();
+                    juce::MemoryBlock external;
+                    if (wav.startTick <= 0 || wav.durationTicks <= 0 || wav.frameCount != 48000 || wav.embedded.isEmpty()
+                        || !directory.getChildFile(fromScore->audio.front().path).loadFileAsData(external) || external != wav.embedded) return 1;
+                    continue;
+                }
                 const auto& events = project->programChanges[track];
                 if (plugin["format"] != "vst3" || plugin["name"] != "OSTF GM Sound Module" || events.empty()
                     || events.front().channel != project->sourceMidiChannels[track]
@@ -126,7 +137,11 @@ static int checkGallery(const juce::File& directory) {
             mix.trackEffects[index].add(ostfstudio::stockEffects[2].chainId());
             mix.stockEffectStates[ostfstudio::SessionMix::effectSlot(false, index, 0)] = "voicing-state";
             juce::MemoryOutputStream plain;
-            if (ostfstudio::writeOstfPreview(*project, mix, plain).failed()) return 1;
+            juce::TemporaryFile destination("ostf");
+            const auto file = destination.getFile();
+            const auto savedPlain = ostfstudio::writeOstfPreview(*project, mix, file, plain);
+            if (!project->audio.empty()) file.getSiblingFile(file.getFileNameWithoutExtension() + ".media").deleteRecursively();
+            if (savedPlain.failed()) return 1;
             juce::MemoryInputStream plainInput(plain.getData(), plain.getDataSize(), false);
             if (ostfstudio::readOstfPreview(plainInput, fromScore).failed() || !fromScore->savedMix
                 || fromScore->savedMix->stockEffectStates != mix.stockEffectStates
@@ -140,6 +155,7 @@ static int checkGallery(const juce::File& directory) {
                 || reopened->savedMix->instruments.front()["pluginId"] != mix.instruments.front()["pluginId"]
                 || reopened->savedMix->tracks.size() != index + 1 || !reopened->savedMix->tracks[index].muted
                 || reopened->savedMix->tracks[index].pan != 0.35f
+                || reopened->savedMix->outputNames != mix.outputNames
                 || reopened->savedMix->outputEffects != mix.outputEffects
                 || reopened->savedMix->stockEffectStates != mix.stockEffectStates) return 1;
             for (std::size_t i = 0; i < index; ++i)
@@ -182,14 +198,21 @@ static int checkGallery(const juce::File& directory) {
             std::unique_ptr<ostfstudio::OstfpPreview> doubled, restored;
             if (project->editTracks(ostfstudio::TrackKind::pitched, {}, doubled, 0).failed()) return 1;
             const auto duplicated = juce::JSON::parse(doubled->sourceScore.toString());
-            const auto newTrack = duplicated["tracks"][8];
+            const auto copyIndex = project->sourceTrackCount();
+            const auto newTrack = duplicated["tracks"][static_cast<int>(copyIndex)];
             const auto voice = duplicated["lyrics"]["voices"][2];
             if (voice["trackId"] != newTrack["id"] || voice["id"] == lyrics["voices"][0]["id"]
                 || newTrack["clips"][0]["vocalPerformances"][0]["voiceId"] != voice["id"]
                 || duplicated["lyrics"]["units"].size() != units.size()
                 || duplicated["lyrics"]["alignments"].size() != alignments.size() + static_cast<int>(notes.size())
-                || doubled->editTracks(ostfstudio::TrackKind::pitched, 8, restored).failed()) return 1;
+                || doubled->editTracks(ostfstudio::TrackKind::pitched, copyIndex, restored).failed()) return 1;
+            const auto audioIndex = restored->audio.front().track;
+            const auto newName = juce::String::charToString(0x706f) + juce::String::charToString(0x308a);
+            if (restored->renameTrack(audioIndex, "   ").wasOk() || restored->renameTrack(audioIndex, "  " + newName + "  ").failed()) return 1;
             const auto restoredScore = juce::JSON::parse(restored->sourceScore.toString());
+            if (restoredScore["tracks"][static_cast<int>(audioIndex)]["name"].toString() != newName
+                || restoredScore["tracks"][static_cast<int>(audioIndex)]["id"] != "foley"
+                || juce::String::fromUTF8(restored->trackLanes[audioIndex].label) != newName) return 1;
             if (juce::JSON::toString(restoredScore["lyrics"]) != juce::JSON::toString(lyrics)) return 1;
         }
         std::cout << expected.file << (expected.bars == 0 ? ": mixed meter rejected as expected" : ": preview opened") << '\n';

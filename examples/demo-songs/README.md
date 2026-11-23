@@ -7,9 +7,9 @@ OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、�
 | [Neon Platforms](neon-platforms.ostfp) · シティポップ | 2:52 · 76小節 · 8 | Aメロ、プレコーラス、サビ、ブリッジ、ギター間奏、終サビ、アウトロ。ギターのフックに弦、ブラス、パッド、カッティングを段階的に重ねます。 |
 | [Blue Hour Waltz](blue-hour-waltz.ostfp) · ジャズワルツ | 2:55 · 128小節 · 7 | ピアノイントロ、テーマ、ピアノとホーンのコーラス、4小節単位のセクション、テーマ回帰。3拍のウォーキングベースとライド、ブラシのスロット、固定とオープンの演奏プランを収録。 |
 | [Relay Circuit](relay-circuit.ostfp) · テクノ | 3:00 · 96小節 · 8 | DJイントロ、グルーヴ、ブレイク、ビルド、2回のドロップ、DJアウトロ。サブベース、コードスタブ、金属的なシーケンス、パッドが区間ごとに入れ替わります。 |
-| [Paper Lantern Replies](paper-lantern-replies.ostfp) · R&B | 2:52 · 56小節 · 8 | 2つのヴァース、プレコーラス、サビ、ブリッジ、終サビ。英語のオリジナル歌詞にリードとコーラスの譜面を割り当て、音節とノートを対応付けています。 |
+| [Paper Lantern Replies](paper-lantern-replies.ostfp) · R&B | 2:52 · 56小節 · 9 | 2つのヴァース、プレコーラス、サビ、ブリッジ、終サビ。英語のオリジナル歌詞にリードとコーラスの譜面を割り当て、音節とノートを対応付けています。 |
 | [Copper Mile](copper-mile.ostfp) · ロック | 2:12 · 64小節 · 6 | パワーコードの刻み、クリーンギターとオルガン、リードギターのソロを聴き比べられます。 |
-| [First Light Vector](first-light-vector.ostfp) · トランス | 2:47 · 96小節 · 6 | 四つ打ちキックと裏拍のサブベースに16分アルペジオを重ね、ブレイクからドロップへ展開します。 |
+| [First Light Vector](first-light-vector.ostfp) · トランス | 2:47 · 96小節 · 7 | 四つ打ちキックと裏拍のサブベースに16分アルペジオを重ね、ブレイクからドロップへ展開します。 |
 | [Offset Bridges](offset-bridges.ostfp) · プログレッシブ・ロック | 2:22 · 80小節 · 8 | 7/8のテーマと4/4の展開、混合拍子の間奏、再現部、コーダ。ギター、オルガン、メロトロン、ロックドラムを収録。混合拍子の検証曲です。 |
 
 **Paper Lantern Replies** の歌詞にはヴァースごとの文章と繰り返すサビがあります。
@@ -49,3 +49,9 @@ OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、�
 固定した公式仕様のチェックアウトを用意し、検証用Python環境に `jsonschema==4.25.1` をインストールして `python examples/demo-songs/verify.py <仕様リポジトリのパス>` を実行します。7曲と空の初期スコアについて Score・Manifest・Production Session の各Schema、SHA-256、デバイスの参照と順序、バス・センドの接続、単体版と同梱版の一致を確認します。9種類のVST3の音声処理とバス／センドの実際の出力はGUIビルドのCTestで検証します。
 
 リポジトリのルートで `python examples/demo-songs/generate.py` を実行します。生成はPython標準ライブラリのみを使います。ZIPの先頭は非圧縮の `mimetype` で、パッケージ中のスコアは対応する `.ostf` と同一バイトです。検証には固定リビジョンの公式Score／Manifest Schemaと `tools/ostfp.py validate` を使います。GUI有効ビルドの `ostf_studio_demo_gallery` は6曲の読み込み、歌唱レーンの値、混合拍子の拒否を確認します。
+
+## オーディオトラックの試聴
+
+「Paper Lantern Replies」の **Glass Lantern Chimes** は1小節目の2拍目、「First Light Vector」の **Transition Sweep** は8小節目の3拍目から鳴ります。各トラックをソロにし、FXのEQ／コンプレッサー、出力先のHarmonyバス、Roomリターンへのセンドを個別に確認できます。
+
+両方の効果音は生成スクリプトで合成したオリジナルのステレオWAVです。単体の `.ostf` では隣の `assets/` フォルダーを一緒に置いてください。`.ostfp` には同じ素材と、Production Sessionのオーディオリージョンに素材を対応づけるバインディングを同梱しています。

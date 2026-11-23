@@ -1,5 +1,6 @@
 #include "ui/PreviewTransport.h"
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_cryptography/juce_cryptography.h>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -104,13 +105,26 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
             ? std::unique_ptr<juce::InputStream>(audio.localFile.createInputStream().release())
             : std::make_unique<juce::MemoryInputStream>(audio.embedded, false);
         if (!stream) return juce::Result::fail("Missing WAV: " + audio.path);
+        if (audio.sha256.isNotEmpty() && (stream->getTotalLength() > 16 * 1024 * 1024
+            || juce::SHA256(*stream).toHexString() != audio.sha256 || !stream->setPosition(0)))
+            return juce::Result::fail("WAV does not match the saved project: " + audio.path);
         std::unique_ptr<juce::AudioFormatReader> reader(wavFormat.createReaderFor(stream.release(), true));
         if (!reader || reader->lengthInSamples < 1 || reader->lengthInSamples > 8 * 1024 * 1024
             || reader->numChannels < 1 || reader->numChannels > 2 || reader->sampleRate <= 0)
             return juce::Result::fail("Unsupported WAV: " + audio.path);
         auto& slot = instruments_[audio.track];
-        slot.wav.setSize(static_cast<int>(reader->numChannels), static_cast<int>(reader->lengthInSamples));
-        if (!reader->read(&slot.wav, 0, slot.wav.getNumSamples(), 0, true, true))
+        if (audio.sha256.isNotEmpty() && (reader->sampleRate != audio.sampleRate
+            || static_cast<int>(reader->numChannels) != audio.channels || reader->lengthInSamples != audio.assetFrames))
+            return juce::Result::fail("WAV format does not match its descriptor: " + audio.path);
+        const auto frames = audio.frameCount > 0 ? audio.frameCount : reader->lengthInSamples;
+        if (audio.startFrame < 0 || frames > reader->lengthInSamples - audio.startFrame)
+            return juce::Result::fail("Invalid WAV source range: " + audio.path);
+        slot.wavStart = juce::roundToInt(clock_.secondsAt(audio.startTick) * sampleRate_);
+        slot.wavEnd = audio.durationTicks > 0 ? juce::roundToInt(clock_.secondsAt(audio.startTick + audio.durationTicks) * sampleRate_)
+                                              : static_cast<int>(lastSample_);
+        slot.wavGain = audio.muted ? 0.0f : juce::Decibels::decibelsToGain(static_cast<float>(audio.gainDb));
+        slot.wav.setSize(static_cast<int>(reader->numChannels), static_cast<int>(frames));
+        if (!reader->read(&slot.wav, 0, slot.wav.getNumSamples(), audio.startFrame, true, true))
             return juce::Result::fail("Could not decode WAV: " + audio.path);
         slot.wavRate = reader->sampleRate;
         outputChannels = 2;
@@ -325,12 +339,13 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
             for (int c = 0; c < 2; ++c) {
                 const auto* source = slot.wav.getReadPointer(std::min(c, slot.wav.getNumChannels() - 1));
                 auto* dest = block.getWritePointer(c);
-                for (int i = 0; i < audible; ++i) {
-                    const auto frame = (first + i) * slot.wavRate / sampleRate_;
+                const auto last = std::min(audible, slot.wavEnd - first);
+                for (int i = std::max(0, slot.wavStart - first); i < last; ++i) {
+                    const auto frame = (first + i - slot.wavStart) * slot.wavRate / sampleRate_;
                     if (frame >= slot.wav.getNumSamples()) break;
                     const auto pos = static_cast<int>(frame);
                     const auto next = std::min(pos + 1, slot.wav.getNumSamples() - 1);
-                    dest[i] += source[pos] + (source[next] - source[pos]) * static_cast<float>(frame - pos);
+                    dest[i] += (source[pos] + (source[next] - source[pos]) * static_cast<float>(frame - pos)) * slot.wavGain;
                 }
             }
         }

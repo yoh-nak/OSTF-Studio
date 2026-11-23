@@ -66,6 +66,8 @@ private:
         juce::MidiBuffer seekEvents;
         juce::AudioBuffer<float> wav;
         double wavRate = 0.0;
+        int wavStart = 0, wavEnd = 0;
+        float wavGain = 1.0f;
     };
     std::array<InstrumentTrack, maxTracks> instruments_;
     juce::AudioBuffer<float> pluginAudio_;

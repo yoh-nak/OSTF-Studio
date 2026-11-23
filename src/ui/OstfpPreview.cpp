@@ -1,4 +1,5 @@
 #include "ui/OstfpPreview.h"
+#include <juce_audio_formats/juce_audio_formats.h>
 #include "StockEffects.h"
 #include "core/MidiGeneratorPattern.h"
 #include "core/ScoreSchema.h"
@@ -468,6 +469,7 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix) {
     juce::Array<juce::var> channels, routes, devices;
     auto states = object({});
     auto attachEffects = [&](juce::var& channel, bool output, std::size_t index, const juce::StringArray& chain) {
+        if (output && mix.outputNames[index].isNotEmpty()) channel.getDynamicObject()->setProperty("name", mix.outputNames[index]);
         auto ids = array(channel["deviceIds"]);
         for (int slot = 0; slot < chain.size(); ++slot) {
             for (const auto& fx : stockEffects) {
@@ -572,7 +574,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
     require(extensions.isEmpty() || (extensions.size() == 1 && extensions[0]["namespace"] == mixNamespace
             && extensions[0]["version"] == "1.0"),
             "This production document is outside the Studio mixer preview");
-    for (const auto* field : {"assets", "automation", "audioRegions", "sidechainConnections"})
+    for (const auto* field : {"automation", "sidechainConnections"})
         require(production[field].isVoid() || array(production[field]).isEmpty(), "Unsupported OSTFP production content");
     const auto sourceTracks = score["tracks"];
     const auto& tracks = array(sourceTracks);
@@ -620,6 +622,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production) {
             : returnIndex(id) >= 0 ? 3 + returnIndex(id) : -1;
         const int channelIndex = outputChannel ? output : track;
         require(channelIndex >= 0, "Unsupported production channel");
+        if (outputChannel) mix.outputNames[static_cast<std::size_t>(channelIndex)] = entry["name"].toString();
         auto& fx = outputChannel ? mix.outputEffects[channelIndex] : mix.trackEffects[channelIndex];
         for (const auto& deviceId : array(entry["deviceIds"])) {
             const auto found = std::find_if(devices.begin(), devices.end(), [&](const auto& device) { return device["id"] == deviceId; });
@@ -751,13 +754,16 @@ std::optional<SessionMix> readEmbeddedMix(const juce::var& score) {
 }
 
 juce::MemoryBlock scoreWithMix(const OstfpPreview& project, const SessionMix& mix,
-                               const juce::Array<juce::var>& references = {}) {
+                               const juce::Array<juce::var>& assets, const juce::Array<juce::var>& regions) {
     const auto core = savedScore(project, true);
     auto score = parseObject(core);
     auto extensions = score["extensions"];
     if (!extensions.isObject()) extensions = object({});
     auto settings = productionMix(score, mix);
-    if (!references.isEmpty()) settings.getDynamicObject()->setProperty("audio", references);
+    if (!assets.isEmpty()) {
+        settings.getDynamicObject()->setProperty("assets", assets);
+        settings.getDynamicObject()->setProperty("audioRegions", regions);
+    }
     extensions.getDynamicObject()->setProperty(mixNamespace, object({
         {"version", "1.0"}, {"status", "current"}, {"dependencies", object({{"scope", "document"}})},
         {"data", settings}}));
@@ -767,19 +773,89 @@ juce::MemoryBlock scoreWithMix(const OstfpPreview& project, const SessionMix& mi
     return bytes;
 }
 
-void readAudioReferences(const juce::var& score, OstfpPreview& project) {
-    const auto references = score["extensions"][mixNamespace]["data"]["audio"];
+bool relativeWavPath(const juce::String& path) {
+    const auto parts = juce::StringArray::fromTokens(path, "/", "");
+    return path.endsWithIgnoreCase(".wav") && !path.startsWithChar('/') && !path.containsAnyOf("\\:\r\n")
+        && !path.contains("//") && !parts.contains(".") && !parts.contains("..");
+}
+
+void readAudioReferences(const juce::var& score, const juce::var& production, OstfpPreview& project,
+                         const juce::var& manifest = {}, const juce::String& documentPath = {}) {
+    const auto bindings = manifest.getProperty("bindings", juce::Array<juce::var>{});
+    const auto assets = production.getProperty("assets", juce::Array<juce::var>{});
+    const auto regions = production.getProperty("audioRegions", juce::Array<juce::var>{});
+    const auto references = production["audio"];
+    if (!array(assets).isEmpty() || !array(regions).isEmpty() || !array(bindings).isEmpty()) {
+        const auto& descriptors = array(assets);
+        const auto& clips = array(regions);
+        require(descriptors.size() <= static_cast<int>(OstfpPreview::maxTracks) && clips.size() == descriptors.size()
+                && references.isVoid(), "Studio supports one native WAV region per track and asset");
+        require(!manifest.isObject() || array(bindings).size() == descriptors.size(), "Missing production asset bindings");
+        juce::StringArray usedIds, regionIds;
+        const auto channels = production["channels"];
+        const auto tracks = score["tracks"];
+        for (const auto& region : clips) {
+            const auto assetId = region["sourceAssetId"].toString();
+            const auto findId = [](const auto& list, const auto& id) {
+                return std::find_if(list.begin(), list.end(), [&](const auto& item) { return item["id"] == id; });
+            };
+            const auto asset = findId(descriptors, assetId);
+            const auto channel = findId(array(channels), region["channelId"]);
+            require(asset != descriptors.end() && usedIds.addIfNotAlreadyThere(assetId) && assetId.isNotEmpty()
+                    && channel != array(channels).end() && (*channel)["kind"] == "track", "Unresolved audio region");
+            const auto track = findId(array(tracks), (*channel)["trackId"]);
+            require(track != array(tracks).end(), "Unknown audio region track");
+            ProjectAudio item;
+            item.track = static_cast<std::size_t>(track - array(tracks).begin());
+            require(std::none_of(project.audio.begin(), project.audio.end(), [&](const auto& a) { return a.track == item.track; })
+                    && region["id"].toString().isNotEmpty() && regionIds.addIfNotAlreadyThere(region["id"].toString()),
+                    "Studio supports one native WAV region per track");
+            const auto& a = *asset;
+            item.path = a["uri"].toString();
+            item.sha256 = a["sha256"].toString();
+            const auto rate = integer(a["sampleRateHz"]), channelsInFile = integer(a["audioChannels"]);
+            item.assetFrames = integer(a["frameCount"]);
+            require(a["purpose"] == "audioSource" && a["mediaType"] == "audio/wav" && item.sha256.length() == 64
+                    && rate >= 1 && rate <= 768000 && channelsInFile >= 1 && channelsInFile <= 2
+                    && item.assetFrames > 0 && item.assetFrames <= 8 * 1024 * 1024, "Invalid WAV asset descriptor");
+            item.sampleRate = static_cast<int>(rate);
+            item.channels = static_cast<int>(channelsInFile);
+            item.startTick = integer(region["startTick"]); item.durationTicks = integer(region["durationTicks"]);
+            item.startFrame = integer(region["sourceStartFrame"]); item.frameCount = integer(region["sourceFrameCount"]);
+            item.gainDb = static_cast<double>(region["gainDb"]); item.muted = static_cast<bool>(region["mute"]);
+            require(region["playbackMode"] == "native" && integer(region.getProperty("fadeInTicks", 0)) == 0
+                    && integer(region.getProperty("fadeOutTicks", 0)) == 0, "Unsupported audio region stretch or fade");
+            require(item.startTick >= 0 && item.durationTicks > 0 && item.durationTicks <= project.playbackEndTick() - item.startTick
+                    && item.startFrame >= 0 && item.frameCount > 0 && item.frameCount <= item.assetFrames - item.startFrame
+                    && std::isfinite(item.gainDb), "Invalid audio region range");
+            if (manifest.isObject()) {
+                const auto& links = array(bindings);
+                const auto link = std::find_if(links.begin(), links.end(), [&](const auto& b) {
+                    return b["documentPath"] == documentPath && b["resourceKind"] == "productionAsset" && b["resourceId"] == assetId;
+                });
+                require(link != links.end(), "Missing production audio binding");
+                const auto entries = manifest["assets"];
+                const auto member = findId(array(entries), (*link)["assetId"]);
+                require(member != array(entries).end() && (*member)["sha256"] == item.sha256 && (*member)["mediaType"] == a["mediaType"]
+                        && (*member)["purpose"] == a["purpose"] && (!a.hasProperty("byteLength") || integer(a["byteLength"]) == integer((*member)["sizeBytes"])),
+                        "Inconsistent production audio binding");
+                item.path = (*member)["path"].toString();
+            }
+            require(relativeWavPath(item.path), "Unsupported audio file path");
+            if (project.savedMix && !project.savedMix->instruments[item.track].isObject() && array((*track)["clips"]).isEmpty())
+                project.savedMix->audioTracks[item.track] = true;
+            project.audio.push_back(std::move(item));
+        }
+        return;
+    }
     if (!references.isArray()) return;
     const auto& records = array(references);
     require(records.size() <= static_cast<int>(OstfpPreview::maxTracks), "Too many referenced audio files");
     for (const auto& ref : records) {
         const auto track = integer(ref["track"]);
         const auto path = ref["path"].toString();
-        const auto parts = juce::StringArray::fromTokens(path, "/", "");
-        bool relative = !path.startsWithChar('/') && !path.containsAnyOf("\\:\r\n") && !path.contains("//");
-        for (const auto& part : parts) relative = relative && part.isNotEmpty() && part != "." && part != "..";
-        require(track >= 0 && static_cast<std::size_t>(track) < project.trackLanes.size()
-                && relative && path.endsWithIgnoreCase(".wav"), "Unsupported Studio audio reference");
+        require(track >= 0 && static_cast<std::size_t>(track) < project.sourceTrackCount()
+                && relativeWavPath(path), "Unsupported Studio audio reference");
         project.audio.push_back({static_cast<std::size_t>(track), path, {}, {}});
     }
 }
@@ -791,6 +867,38 @@ juce::MemoryBlock audioBytes(const ProjectAudio& audio) {
     juce::MemoryBlock bytes;
     require(audio.localFile.loadFileAsData(bytes) && bytes.getSize() == static_cast<std::size_t>(length), "Could not read a referenced WAV");
     return bytes;
+}
+
+void reviseDocument(juce::var& score, const juce::MemoryBlock& before, const juce::String& revision) {
+    if (auto* document = score["document"].getDynamicObject()) {
+        document->setProperty("parents", juce::Array<juce::var>{object({{"documentId", document->getProperty("id")},
+            {"revisionId", document->getProperty("revisionId")}, {"sha256", juce::SHA256(before).toHexString()}})});
+        document->setProperty("revisionId", revision);
+        document->setProperty("modifiedBy", object({{"name", "OSTF Studio"}}));
+    }
+}
+
+void describeWav(const OstfpPreview& project, const ProjectAudio& audio, const juce::MemoryBlock& bytes,
+                 const juce::String& path, const juce::String& hash, juce::Array<juce::var>& assets, juce::Array<juce::var>& regions) {
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::AudioFormatReader> reader(format.createReaderFor(new juce::MemoryInputStream(bytes, false), true));
+    require(reader && reader->lengthInSamples > 0 && reader->lengthInSamples <= 8 * 1024 * 1024 && reader->numChannels >= 1
+            && reader->numChannels <= 2 && reader->sampleRate >= 1 && reader->sampleRate <= 768000, "Unsupported WAV format");
+    require(audio.sha256.isEmpty() || (hash == audio.sha256 && reader->sampleRate == audio.sampleRate
+            && static_cast<int>(reader->numChannels) == audio.channels && reader->lengthInSamples == audio.assetFrames),
+            "WAV differs from its production asset descriptor");
+    const auto number = juce::String(static_cast<int>(audio.track + 1));
+    const auto id = "source-" + number;
+    const auto frames = audio.frameCount > 0 ? audio.frameCount : reader->lengthInSamples;
+    const auto length = audio.durationTicks > 0 ? audio.durationTicks : std::clamp<juce::int64>(
+        static_cast<juce::int64>(std::ceil(project.clock.tickAt(frames / reader->sampleRate))), 1, project.playbackEndTick());
+    assets.add(object({{"id", id}, {"purpose", "audioSource"}, {"uri", path}, {"mediaType", "audio/wav"},
+        {"sha256", hash}, {"byteLength", static_cast<juce::int64>(bytes.getSize())},
+        {"sampleRateHz", static_cast<int>(reader->sampleRate)}, {"audioChannels", static_cast<int>(reader->numChannels)},
+        {"frameCount", reader->lengthInSamples}}));
+    regions.add(object({{"id", "region-" + number}, {"channelId", "track-" + number}, {"sourceAssetId", id},
+        {"startTick", audio.startTick}, {"durationTicks", length}, {"sourceStartFrame", audio.startFrame},
+        {"sourceFrameCount", frames}, {"playbackMode", "native"}, {"gainDb", audio.gainDb}, {"mute", audio.muted}}));
 }
 }
 
@@ -874,19 +982,31 @@ juce::Result OstfpPreview::applySongInformation(const SongInformation& info) try
     if (score.hasProperty("contributors") || !people.getArray()->isEmpty()) score.getDynamicObject()->setProperty("contributors", people);
     if (originals.isArray() || !credits.isEmpty()) song->setProperty("credits", credits);
     if (juce::JSON::toString(score) == juce::JSON::toString(parseObject(beforeEdit))) return juce::Result::ok();
-    if (auto* document = score["document"].getDynamicObject()) {
-        juce::Array<juce::var> parents;
-        parents.add(object({{"documentId", document->getProperty("id")}, {"revisionId", document->getProperty("revisionId")},
-                            {"sha256", juce::SHA256(beforeEdit).toHexString()}}));
-        document->setProperty("parents", parents);
-        document->setProperty("revisionId", "metadata-" + juce::Uuid().toString());
-        document->setProperty("modifiedBy", object({{"name", "OSTF Studio"}}));
-    }
+    reviseDocument(score, beforeEdit, "metadata-" + juce::Uuid().toString());
     auto bytes = editedScoreBytes(beforeEdit, score, {"song", "contributors", "document"});
     if (bytes.getSize() > maxBytes) return juce::Result::fail("OSTF score is too large.");
     sourceScore = std::move(bytes);
     addedClips.clear();
     title = info.title;
+    return juce::Result::ok();
+} catch (const std::exception& error) {
+    return juce::Result::fail(juce::String::fromUTF8(error.what()));
+}
+
+juce::Result OstfpPreview::renameTrack(std::size_t index, const juce::String& input) try {
+    const auto name = input.trim();
+    require(index < sourceTrackCount(), "Select an editable track.");
+    require(name.isNotEmpty(), "Enter a track name.");
+    if (name == juce::String::fromUTF8(trackLanes[index].label)) return juce::Result::ok();
+    const auto before = savedScore(*this);
+    auto score = parseObject(before);
+    score["tracks"][static_cast<int>(index)].getDynamicObject()->setProperty("name", name);
+    reviseDocument(score, before, "studio-" + juce::Uuid().toString());
+    auto bytes = editedScoreBytes(before, score, {"tracks", "document"});
+    require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
+    sourceScore = std::move(bytes);
+    addedClips.clear();
+    trackLanes[index].label = keepLabel(name);
     return juce::Result::ok();
 } catch (const std::exception& error) {
     return juce::Result::fail(juce::String::fromUTF8(error.what()));
@@ -1016,14 +1136,7 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
             entries.add(track);
             score.getDynamicObject()->setProperty("tracks", tracks);
         }
-        if (auto* document = score["document"].getDynamicObject()) {
-            juce::Array<juce::var> parents;
-            parents.add(object({{"documentId", document->getProperty("id")},
-                                {"revisionId", document->getProperty("revisionId")}, {"sha256", juce::SHA256(before).toHexString()}}));
-            document->setProperty("parents", parents);
-            document->setProperty("revisionId", revision);
-            document->setProperty("modifiedBy", object({{"name", "OSTF Studio"}}));
-        }
+        reviseDocument(score, before, revision);
         auto next = projectScore(score);
         next->sourceScore = editedScoreBytes(before, score, {"tracks", "document", "extensions", "lyrics"});
         require(next->sourceScore.getSize() <= maxBytes, "OSTF score is too large.");
@@ -1100,7 +1213,7 @@ juce::Result readOstfPreview(juce::InputStream& input, std::unique_ptr<OstfpPrev
         if (score["version"] != "5.0.0") validateVersion(score["version"].toString(), bytes);
         auto next = projectScore(score);
         next->savedMix = readEmbeddedMix(score);
-        readAudioReferences(score, *next);
+        readAudioReferences(score, score["extensions"][mixNamespace]["data"], *next);
         if (next->savedMix)
             for (std::size_t i = 0; i < next->trackKinds.size(); ++i)
                 if (i < next->sourceTrackCount() && i < next->savedMix->audioTracks.size() && next->savedMix->audioTracks[i])
@@ -1134,7 +1247,6 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
         const auto assetData = manifest["assets"];
         const auto& assets = array(assetData);
         require(documents.size() <= 1 && assets.size() <= static_cast<int>(OstfpPreview::maxTracks) && zip.getNumEntries() == 3 + documents.size() + assets.size()
-                && array(manifest["bindings"]).isEmpty()
                 && (manifest["externalAssets"].isVoid() || array(manifest["externalAssets"]).isEmpty()),
                 "Unsupported OSTFP documents or assets");
         const auto descriptor = manifest["score"];
@@ -1152,7 +1264,6 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
             validateVersion("4.3.0", scoreBytes);
         }
         auto next = projectScore(score);
-        readAudioReferences(score, *next);
         if (!documents.isEmpty()) {
             const auto document = documents[0];
             const auto documentPath = document["path"].toString();
@@ -1167,8 +1278,12 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
                     && production["score"]["formatVersion"] == "5.0.0" && production["score"]["sha256"] == hash,
                     "OSTFP production profile or score hash mismatch");
             next->savedMix = readMix(score, production);
+            const auto source = production.hasProperty("assets") || production.hasProperty("audioRegions")
+                ? production : score["extensions"][mixNamespace]["data"];
+            readAudioReferences(score, source, *next, manifest, documentPath);
         } else {
             next->savedMix = readEmbeddedMix(score);
+            readAudioReferences(score, score["extensions"][mixNamespace]["data"], *next, manifest);
         }
         require(assets.size() == static_cast<int>(next->audio.size()), "OSTFP audio inventory mismatch");
         juce::StringArray loadedAssets;
@@ -1211,7 +1326,7 @@ juce::Result writeOstfPreview(const OstfpPreview& project, juce::OutputStream& o
 
 juce::Result writeOstfpPreview(const OstfpPreview& project, const SessionMix& mix, juce::OutputStream& output) {
     try {
-        juce::Array<juce::var> references, assets;
+        juce::Array<juce::var> sources, regions, bindings, assets;
         std::vector<juce::MemoryBlock> media;
         std::size_t total = 0;
         for (const auto& audio : project.audio) {
@@ -1221,15 +1336,24 @@ juce::Result writeOstfpPreview(const OstfpPreview& project, const SessionMix& mi
             require(total <= maxPackageBytes - 3 * maxBytes && media.size() <= OstfpPreview::maxTracks, "OSTFP audio exceeds preview package capacity");
             const auto id = "audio-" + juce::String(static_cast<int>(media.size()));
             const auto path = "assets/" + id + ".wav";
-            references.add(object({{"track", static_cast<int>(audio.track)}, {"path", path}}));
+            const auto digest = juce::SHA256(bytes).toHexString();
+            describeWav(project, audio, bytes, path, digest, sources, regions);
+            bindings.add(object({{"documentPath", mixDocument}, {"resourceKind", "productionAsset"},
+                                 {"resourceId", sources.getLast()["id"]}, {"assetId", id}}));
             assets.add(object({{"id", id}, {"path", path}, {"purpose", "audioSource"}, {"mediaType", "audio/wav"},
                                {"sizeBytes", static_cast<juce::int64>(bytes.getSize())},
-                               {"sha256", juce::SHA256(bytes).toHexString()}}));
+                               {"sha256", digest}}));
         }
-        const auto score = references.isEmpty() ? savedScore(project, true) : scoreWithMix(project, mix, references);
+        const auto score = savedScore(project, true);
         const auto hash = juce::SHA256(score).toHexString();
-        auto document = productionMix(parseObject(score), mix);
+        const auto core = parseObject(score);
+        auto document = productionMix(core, mix);
         auto* profile = document.getDynamicObject();
+        if (!sources.isEmpty() || core["extensions"][mixNamespace]["data"].hasProperty("assets")
+            || core["extensions"][mixNamespace]["data"].hasProperty("audio")) {
+            profile->setProperty("assets", sources);
+            profile->setProperty("audioRegions", regions);
+        }
         profile->setProperty("profile", "OSTF-Production-Session");
         profile->setProperty("profileVersion", "0.3.0");
         profile->setProperty("score", object({{"formatVersion", "5.0.0"}, {"sha256", hash}}));
@@ -1250,7 +1374,7 @@ juce::Result writeOstfpPreview(const OstfpPreview& project, const SessionMix& mi
                               {"sha256", juce::SHA256(production).toHexString()}}));
         fields->setProperty("documents", documents);
         fields->setProperty("assets", assets);
-        fields->setProperty("bindings", juce::Array<juce::var>{});
+        fields->setProperty("bindings", bindings);
         const auto manifestBytes = jsonBytes(manifest);
         require(manifestBytes.getSize() <= maxBytes, "OSTFP manifest is too large");
         juce::ZipFile::Builder archive;
@@ -1275,14 +1399,15 @@ juce::Result writeOstfPreview(const OstfpPreview& project, const SessionMix& mix
 juce::Result writeOstfPreview(const OstfpPreview& project, const SessionMix& mix, const juce::File& destination,
                              juce::OutputStream& output) {
     try {
-        juce::Array<juce::var> references;
+        juce::Array<juce::var> sources, regions;
         if (!project.audio.empty()) {
             require(destination != juce::File{}, "An OSTF file destination is needed to copy referenced audio");
             const auto folder = destination.getSiblingFile(destination.getFileNameWithoutExtension() + ".media");
             require(folder.createDirectory().wasOk(), "Could not create the OSTF media folder");
             for (const auto& audio : project.audio) {
                 const auto bytes = audioBytes(audio);
-                const auto name = juce::SHA256(bytes).toHexString() + ".wav";
+                const auto digest = juce::SHA256(bytes).toHexString();
+                const auto name = digest + ".wav";
                 const auto copy = folder.getChildFile(name);
                 if (!copy.existsAsFile()) {
                     juce::TemporaryFile temporary(copy);
@@ -1293,10 +1418,10 @@ juce::Result writeOstfPreview(const OstfpPreview& project, const SessionMix& mix
                     require(existing.openedOk() && existing.getTotalLength() == static_cast<juce::int64>(bytes.getSize())
                             && juce::SHA256(existing) == juce::SHA256(bytes), "An existing OSTF media file has different content");
                 }
-                references.add(object({{"track", static_cast<int>(audio.track)}, {"path", folder.getFileName() + "/" + name}}));
+                describeWav(project, audio, bytes, folder.getFileName() + "/" + name, digest, sources, regions);
             }
         }
-        const auto bytes = scoreWithMix(project, mix, references);
+        const auto bytes = scoreWithMix(project, mix, sources, regions);
         require(bytes.getSize() <= maxBytes && output.write(bytes.getData(), bytes.getSize()), "Could not write OSTF score");
         return juce::Result::ok();
     } catch (const std::runtime_error& error) {

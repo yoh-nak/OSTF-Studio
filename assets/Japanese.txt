@@ -393,3 +393,8 @@ countries: jp
 " (copy)" = "（コピー）"
 "Delete {track} and its sends?" = "「{track}」と、このリターンへのセンドを削除しますか？"
 "Delete {track} and route its tracks to Master?" = "「{track}」を削除し、接続されているトラックの出力先をマスターに変更しますか？"
+
+"Rename track..." = "トラック名を変更..."
+"Rename track" = "トラック名を変更"
+"Track name" = "トラック名"
+"Enter a track name." = "トラック名を入力してください。"

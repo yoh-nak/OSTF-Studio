@@ -266,7 +266,7 @@ juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpP
         return r;
     if (audio) {
         next->trackKinds[0] = TrackKind::audio;
-        next->audio.push_back({0, source.getFileName(), source, {}});
+        next->audio.push_back({0, source.getFileName(), source, {}, 0, song.length});
     }
     project = std::move(next);
     summary = detail;

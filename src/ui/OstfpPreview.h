@@ -34,6 +34,7 @@ struct SessionMix {
     std::vector<MidiRoute> midiRoutes;
     std::vector<juce::var> instruments;
     MixerRouting routing;
+    std::array<juce::String, mixerOutputCapacity> outputNames;
     static constexpr std::size_t maxEffects = 8;
     std::array<juce::String, mixerOutputCapacity> insertIds;
     std::array<juce::StringArray, mixerOutputCapacity> outputEffects;
@@ -55,6 +56,12 @@ struct ProjectAudio {
     juce::String path;
     juce::File localFile;
     juce::MemoryBlock embedded;
+    juce::int64 startTick = 0, durationTicks = 0, startFrame = 0, frameCount = 0;
+    double gainDb = 0;
+    bool muted = false;
+    juce::String sha256;
+    int sampleRate = 0, channels = 0;
+    juce::int64 assetFrames = 0;
 };
 
 enum class TrackKind { pitched, drum, audio };
@@ -82,6 +89,7 @@ struct OstfpPreview {
     juce::String defaultScale;
     juce::String contextAt(TimelineLane kind, juce::int64 tick) const;
     SongInformation songInformation() const;
+    juce::Result renameTrack(std::size_t index, const juce::String& name);
     juce::Result applySongInformation(const SongInformation&);
     std::vector<ArrangementLane> globalLanes, trackLanes;
     std::vector<std::vector<PitchedNote>> pitchedNotes, drumNotes;
