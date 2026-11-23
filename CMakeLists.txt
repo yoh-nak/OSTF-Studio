@@ -31,6 +31,25 @@ if (OSTF_STUDIO_BUILD_GUI)
     )
     FetchContent_MakeAvailable(JUCE)
 
+    set(JSONCONS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    if(POLICY CMP0135)
+        cmake_policy(SET CMP0135 NEW)
+    endif()
+    FetchContent_Declare(jsoncons
+        URL https://codeload.github.com/danielaparker/jsoncons/zip/refs/tags/v1.5.0
+        URL_HASH SHA256=6de746d3fd381937c9fc58ed47df7404792881b9ba924d43124dc6fb7c22f741)
+    FetchContent_MakeAvailable(jsoncons)
+    set(score_schemas)
+    foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0 5.0.0)
+        list(APPEND score_schemas "third_party/ostf-schemas/ostf-${version}.schema.json")
+    endforeach()
+    juce_add_binary_data(OSTFScoreSchemas HEADER_NAME ScoreSchemas.h NAMESPACE ScoreSchemas SOURCES ${score_schemas})
+    add_library(ostf_score_validation STATIC src/core/ScoreSchema.cpp)
+    target_link_libraries(ostf_score_validation PRIVATE jsoncons OSTFScoreSchemas)
+    if(MSVC)
+        target_compile_options(ostf_score_validation PRIVATE /bigobj)
+    endif()
+
     set(effect_catalog "${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/effects/catalog.json")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${effect_catalog}")
     file(READ "${effect_catalog}" effects)
@@ -116,6 +135,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     endif()
     target_link_libraries(OSTFStudio PRIVATE
         ostf_studio_core
+        ostf_score_validation
         OSTFStudioAssets
         juce::juce_gui_extra
         juce::juce_audio_utils
@@ -129,9 +149,13 @@ if (OSTF_STUDIO_BUILD_GUI)
     add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
     target_include_directories(ostf_studio_ostfp_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(ostf_studio_ostfp_tests PRIVATE JUCE_USE_CURL=0)
-    target_link_libraries(ostf_studio_ostfp_tests PRIVATE juce::juce_cryptography juce::juce_audio_basics)
+    target_link_libraries(ostf_studio_ostfp_tests PRIVATE ostf_score_validation juce::juce_cryptography juce::juce_audio_basics)
     add_test(NAME ostf_studio_ostfp_tests COMMAND ostf_studio_ostfp_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
+    foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0)
+        add_test(NAME ostf_studio_read_${version} COMMAND ostf_studio_ostfp_tests --legacy
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/legacy/${version}.ostf")
+    endforeach()
     add_test(NAME ostf_studio_demo_gallery COMMAND ostf_studio_ostfp_tests --gallery
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs")
     add_test(NAME ostf_studio_song_midi COMMAND ostf_studio_ostfp_tests --smf

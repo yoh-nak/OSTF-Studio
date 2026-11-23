@@ -1,0 +1,100 @@
+{
+  "format": "OSTF",
+  "version": "4.1.0",
+  "ppq": 960,
+  "song": {
+    "title": "Combined Directions"
+  },
+  "timeline": {
+    "sections": [],
+    "tempoChanges": [
+      {
+        "at": 0,
+        "bpm": 120
+      }
+    ],
+    "meterChanges": [
+      {
+        "at": 0,
+        "numerator": 4,
+        "denominator": 4
+      }
+    ],
+    "duration": 30720
+  },
+  "harmony": {
+    "chords": [],
+    "scales": []
+  },
+  "tracks": [
+    {
+      "id": "lead",
+      "name": "Lead Guitar",
+      "clips": [],
+      "role": "accompaniment",
+      "trackType": "melodic",
+      "instrument": {
+        "name": "Electric Guitar",
+        "playablePitchRange": {
+          "lowPitch": 40,
+          "highPitch": 88
+        }
+      },
+      "directions": [
+        {
+          "id": "r",
+          "start": 7680,
+          "duration": 15360,
+          "type": "playingRole",
+          "parameters": {
+            "role": "solo"
+          }
+        },
+        {
+          "id": "i",
+          "start": 7680,
+          "duration": 15360,
+          "type": "improvisation",
+          "parameters": {
+            "pitchSource": {
+              "type": "explicitScale",
+              "scale": {
+                "tonic": {
+                  "step": "A",
+                  "alter": 0
+                },
+                "intervals": [
+                  0,
+                  3,
+                  5,
+                  7,
+                  10
+                ]
+              }
+            },
+            "adherence": "preferred"
+          }
+        },
+        {
+          "id": "p",
+          "start": 15360,
+          "duration": 7680,
+          "type": "pitchRange",
+          "parameters": {
+            "lowPitch": 57,
+            "highPitch": 81,
+            "constraint": "preferred"
+          }
+        }
+      ]
+    }
+  ],
+  "soundSlots": [],
+  "lyrics": {
+    "documents": [],
+    "phrases": [],
+    "units": [],
+    "alignments": []
+  },
+  "resources": []
+}

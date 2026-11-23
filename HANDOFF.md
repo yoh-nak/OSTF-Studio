@@ -4,6 +4,9 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
+- On `feature/legacy-ostf-import`, use **File → Open** for standalone 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.0 and 5.0.0 scores. The old score stays intact until an explicit save. The initial save dialog suggests a sibling with `-5.0.0` in the name. The versioned schemas are embedded and work offline. Score-only 4.3.0 OSTFP packages can be opened. Historical companion session documents require a separate migration.
+- Windows x64 Release passed all 19 CTests. Run `ctest --test-dir build-win-plugins -C Release -R ostf_studio_read_ --output-on-failure` to check each historical version through score and package save/reopen. Ten of the eleven full 3.5 demos passed the round trip. The application also opened *City Lights Again* through its regular document entry point. The eleventh, *Shifting Ground*, reaches the existing mixed-meter diagnostic. The reader currently supports one meter, eight source tracks and 256 projected bars. The local development packages use `dist/windows-legacy-ostf/`. macOS execution and physical-device playback are unverified for this change.
+
 - On `feature/track-height-zoom`, the arrangement footer has a track-type selector and a height slider. Try **Buses** to resize both buses, then **Timeline lanes** to resize the global information rows. Individual row grips still fold and resize. Each editor has a separate horizontal zoom slider with a whole-song reset on double-click. Check these controls with `ostf_studio_track_view` and `ostf_studio_transport` in CTest.
 - Windows x64 Release passed all 14 CTests, including type isolation, new-track inheritance, mixed heights, independent zoom ranges and playback following. The 1280- and 680-pixel-wide UI snapshots are in the build's `transport-check` directory. Windows development packages use `dist/windows-track-zoom/`. macOS and physical-device operation are unverified for this change.
 

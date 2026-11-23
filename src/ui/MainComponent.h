@@ -130,6 +130,7 @@ private:
     TransportPanel deck_;
     juce::Label documentLabel_;
     juce::String currentFilename_;
+    juce::File legacySourceFile_;
     juce::int64 cursorTick_ = -1;
     juce::ComboBox trackPicker_;
     juce::ComboBox performanceLane_;

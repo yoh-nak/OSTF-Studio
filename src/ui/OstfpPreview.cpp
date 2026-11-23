@@ -1,6 +1,7 @@
 #include "ui/OstfpPreview.h"
 #include "StockEffects.h"
 #include "core/MidiGeneratorPattern.h"
+#include "core/ScoreSchema.h"
 #include <juce_cryptography/juce_cryptography.h>
 #include <algorithm>
 #include <cmath>
@@ -60,11 +61,50 @@ bool safeScorePath(const juce::String& path) {
     return !path.equalsIgnoreCase("mimetype") && !path.equalsIgnoreCase("manifest.json");
 }
 
+void validateVersion(const juce::String& version, const juce::MemoryBlock& bytes) {
+    validateScoreSchema(version.toStdString(), {static_cast<const char*>(bytes.getData()), bytes.getSize()});
+}
+
+juce::int64 scoreExtent(const juce::var& score) {
+    // Nominal duration is optional. A clip is a placement, not a gate on its notes.
+    const auto timeline = score["timeline"];
+    juce::int64 end = integer(timeline.getProperty("duration", 0));
+    require(end >= 0, "Invalid OSTF duration");
+    auto addTicks = [](juce::int64 origin, juce::int64 offset) {
+        require(origin >= 0 && offset >= -origin && offset <= std::numeric_limits<juce::int64>::max() - origin,
+                "OSTF event outside the score tick range");
+        return origin + offset;
+    };
+    auto include = [&](const juce::var& entries, const char* time, juce::int64 origin = 0) {
+        if (entries.isVoid()) return;
+        for (const auto& item : array(entries)) {
+            const auto start = addTicks(origin, integer(item[time]));
+            const auto length = integer(item.getProperty("duration", 1));
+            require(length >= 0, "Invalid OSTF event duration");
+            end = std::max(end, addTicks(start, length));
+        }
+    };
+    include(timeline["sections"], "start");
+    for (const auto* key : {"tempoChanges", "meterChanges", "keyChanges"}) include(timeline[key], "at");
+    include(score["harmony"]["chords"], "start");
+    include(score["harmony"]["scales"], "start");
+    for (const auto& track : array(score["tracks"])) {
+        const auto clips = track["clips"];
+        include(clips, "start");
+        if (clips.isArray()) for (const auto& clip : array(clips)) {
+            const auto start = integer(clip["start"]);
+            include(clip["notes"], "start", start);
+            include(clip["midiEvents"], "start", start);
+        }
+    }
+    return end;
+}
+
 std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
-    require(score["format"] == "OSTF" && score["version"] == "5.0.0", "Expected an OSTF 5.0.0 score");
+    require(score["format"] == "OSTF", "Expected an OSTF score");
     const auto timeline = score["timeline"];
     const auto ppq = integer(score["ppq"]);
-    const auto duration = integer(timeline["duration"]);
+    const auto duration = scoreExtent(score);
     const auto meters = timeline["meterChanges"];
     const auto& meterEntries = array(meters);
     require(meterEntries.size() == 1 && integer(meterEntries[0]["at"]) == 0, "Preview requires one meter starting at tick zero");
@@ -76,10 +116,11 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
     const auto ticksPerWholeBars = ppq * numerator * 4;
     require(ticksPerWholeBars % denominator == 0, "Preview requires an integral number of ticks per bar");
     const auto ticksPerBar = ticksPerWholeBars / denominator;
-    require(ticksPerBar > 0 && duration % ticksPerBar == 0 && duration / ticksPerBar <= 256,
-            "Preview requires a whole-bar score of at most 256 bars");
+    require(ticksPerBar > 0 && (duration - 1) / ticksPerBar < 256, "Preview supports at most 256 bars");
 
     auto out = std::make_unique<OstfpPreview>();
+    out->sourceVersion = score["version"].toString();
+    out->durationTicks = duration;
     out->ticksPerBar = ticksPerBar;
     out->ppq = ppq;
     require(denominator <= std::numeric_limits<int>::max(), "Unsupported meter denominator");
@@ -87,18 +128,14 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
     out->beatUnit = static_cast<int>(denominator);
     out->clock = TempoMap(ppq);
     out->title = score["song"]["title"].toString();
-    require(out->title.isNotEmpty(), "Missing song title");
-    out->bars.endBar = static_cast<int>(duration / ticksPerBar) + 1;
-    auto bar = [&](juce::int64 tick) {
-        require(tick >= 0 && tick <= duration && tick % ticksPerBar == 0, "Preview requires bar-aligned regions");
-        return static_cast<int>(tick / ticksPerBar) + 1;
-    };
+    if (out->title.isEmpty()) out->title = juce::translate("Untitled");
+    out->bars.endBar = static_cast<int>((duration - 1) / ticksPerBar) + 2;
     auto addLane = [&](std::vector<ArrangementLane>& lanes, juce::String title, std::vector<ArrangementRegion> regions,
                        TimelineLane kind = TimelineLane::none) {
         out->regions.push_back(std::move(regions));
         lanes.push_back({out->keepLabel(std::move(title)), out->regions.back(), kind});
     };
-    auto intervals = [&](const juce::var& value, const char* labelField, bool countNotes = false, bool exact = false) {
+    auto intervals = [&](const juce::var& value, const char* labelField, bool countNotes = false) {
         std::vector<ArrangementRegion> result;
         if (value.isVoid()) return result;
         for (const auto& event : array(value)) {
@@ -106,10 +143,9 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
             const auto length = integer(event["duration"]);
             require(start >= 0 && start < duration && length > 0 && length <= duration - start, "Invalid OSTF region duration");
             const auto finish = start + length;
-            const auto firstBar = exact ? static_cast<int>(start / ticksPerBar) + 1 : bar(start);
-            const auto endBar = exact ? static_cast<int>((finish - 1) / ticksPerBar) + 2 : bar(finish);
-            std::optional<TimelineExtent> position;
-            if (exact) position = TimelineExtent{1.0 + static_cast<double>(start) / ticksPerBar, 1.0 + static_cast<double>(finish) / ticksPerBar};
+            const auto firstBar = static_cast<int>(start / ticksPerBar) + 1;
+            const auto endBar = static_cast<int>((finish - 1) / ticksPerBar) + 2;
+            const TimelineExtent position{1.0 + static_cast<double>(start) / ticksPerBar, 1.0 + static_cast<double>(finish) / ticksPerBar};
             auto label = countNotes ? event["name"].toString() : juce::String{};
             if (label.isEmpty()) label = event[labelField].toString();
             const auto notes = countNotes ? event["notes"] : juce::var{};
@@ -121,7 +157,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
 
     addLane(out->globalLanes, "SECTION", intervals(timeline["sections"], "name"), TimelineLane::section);
     const auto chords = score["harmony"]["chords"];
-    const auto chordRegions = intervals(chords, "label", false, true);
+    const auto chordRegions = intervals(chords, "label");
     addLane(out->globalLanes, "CHORD", chordRegions, TimelineLane::chord);
     std::vector<ArrangementRegion> voicings;
     std::vector<PitchedNote> voicingNotes;
@@ -236,7 +272,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
         }
     }
     for (const auto& track : tracks) {
-        addLane(out->trackLanes, track["name"].toString(), intervals(track["clips"], "id", true, true));
+        addLane(out->trackLanes, track["name"].toString(), intervals(track["clips"], "id", true));
         out->trackKinds.push_back(track["trackType"] == "drum" ? TrackKind::drum : TrackKind::pitched);
         const auto role = track["role"].toString();
         auto& group = out->mixerGroups.emplace_back(
@@ -255,7 +291,6 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
         if (clips.isVoid()) continue;
         for (const auto& clip : array(clips)) {
             const auto clipStart = integer(clip["start"]);
-            const auto clipLength = integer(clip["duration"]);
             const auto events = clip["notes"];
             if (events.isArray()) for (const auto& event : array(events)) {
                 const auto slot = event["soundSlotId"].toString();
@@ -265,7 +300,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
                 const auto pitch = pitched ? integer(event["pitch"]) : drum->second;
                 const auto local = integer(event["start"]);
                 const auto length = integer(event["duration"]);
-                require(pitch >= 0 && pitch <= 127 && local >= 0 && local < clipLength && length > 0
+                require(pitch >= 0 && pitch <= 127 && local >= -clipStart && local < duration - clipStart && length > 0
                         && length <= duration - clipStart - local, "Invalid OSTF pitched note");
                 std::optional<int> velocity;
                 if (!event["velocity"].isVoid()) {
@@ -356,14 +391,24 @@ juce::var object(std::initializer_list<std::pair<const char*, juce::var>> fields
 }
 
 juce::MemoryBlock jsonBytes(const juce::var& value) {
-    const auto text = juce::JSON::toString(value) + "\n";
+    const auto text = juce::JSON::toString(value, false, 17) + "\n";
     return {text.toRawUTF8(), text.getNumBytesAsUTF8()};
 }
 
-juce::MemoryBlock savedScore(const OstfpPreview& project) {
+juce::MemoryBlock editedScoreBytes(const juce::MemoryBlock& original, const juce::var& edited,
+                                   std::initializer_list<std::string_view> fields) {
+    const auto changes = jsonBytes(edited);
+    const auto bytes = applyScoreFields({static_cast<const char*>(original.getData()), original.getSize()},
+                                        {static_cast<const char*>(changes.getData()), changes.getSize()}, fields);
+    return {bytes.data(), bytes.size()};
+}
+
+juce::MemoryBlock savedScore(const OstfpPreview& project, bool writing = false) {
     require(!project.sourceScore.isEmpty(), "No OSTF score to save");
-    if (project.addedClips.empty()) return project.sourceScore;
+    const bool upgrade = writing && project.sourceVersion != "5.0.0";
+    if (project.addedClips.empty() && !upgrade) return project.sourceScore;
     auto score = parseObject(project.sourceScore);
+    if (upgrade) score.getDynamicObject()->setProperty("version", "5.0.0");
     auto tracks = score["tracks"];
     for (const auto& edit : project.addedClips) {
         auto* track = (*tracks.getArray())[static_cast<int>(edit.track)].getDynamicObject();
@@ -385,11 +430,14 @@ juce::MemoryBlock savedScore(const OstfpPreview& project) {
         parents.add(object({{"documentId", document->getProperty("id")},
                             {"revisionId", document->getProperty("revisionId")},
                             {"sha256", juce::SHA256(project.sourceScore).toHexString()}}));
-        document->setProperty("revisionId", project.addedClips.back().id);
+        document->setProperty("revisionId", project.addedClips.empty() ? "studio-" + juce::Uuid().toString() : project.addedClips.back().id);
         document->setProperty("parents", parents);
         document->setProperty("modifiedBy", object({{"name", "OSTF Studio"}}));
     }
-    return jsonBytes(score);
+    auto bytes = project.addedClips.empty() ? editedScoreBytes(project.sourceScore, score, {"version", "document"})
+                                            : editedScoreBytes(project.sourceScore, score, {"version", "document", "tracks"});
+    if (upgrade) validateVersion("5.0.0", bytes);
+    return bytes;
 }
 
 juce::String busId(int bus) { return bus < 0 ? "master" : "bus-" + juce::String(bus + 1); }
@@ -696,7 +744,8 @@ std::optional<SessionMix> readEmbeddedMix(const juce::var& score) {
 
 juce::MemoryBlock scoreWithMix(const OstfpPreview& project, const SessionMix& mix,
                                const juce::Array<juce::var>& references = {}) {
-    auto score = parseObject(savedScore(project));
+    const auto core = savedScore(project, true);
+    auto score = parseObject(core);
     auto extensions = score["extensions"];
     if (!extensions.isObject()) extensions = object({});
     auto settings = productionMix(score, mix);
@@ -705,7 +754,9 @@ juce::MemoryBlock scoreWithMix(const OstfpPreview& project, const SessionMix& mi
         {"version", "1.0"}, {"status", "current"}, {"dependencies", object({{"scope", "document"}})},
         {"data", settings}}));
     score.getDynamicObject()->setProperty("extensions", extensions);
-    return jsonBytes(score);
+    auto bytes = editedScoreBytes(core, score, {"extensions"});
+    if (project.sourceVersion != "5.0.0") validateVersion("5.0.0", bytes);
+    return bytes;
 }
 
 void readAudioReferences(const juce::var& score, OstfpPreview& project) {
@@ -767,7 +818,7 @@ SongInformation OstfpPreview::songInformation() const {
     return info;
 }
 
-juce::Result OstfpPreview::applySongInformation(const SongInformation& info) {
+juce::Result OstfpPreview::applySongInformation(const SongInformation& info) try {
     if (info.title.trim().isEmpty()) return juce::Result::fail("Enter a song title.");
     const auto beforeEdit = savedScore(*this);
     auto score = parseObject(beforeEdit);
@@ -823,12 +874,14 @@ juce::Result OstfpPreview::applySongInformation(const SongInformation& info) {
         document->setProperty("revisionId", "metadata-" + juce::Uuid().toString());
         document->setProperty("modifiedBy", object({{"name", "OSTF Studio"}}));
     }
-    auto bytes = jsonBytes(score);
+    auto bytes = editedScoreBytes(beforeEdit, score, {"song", "contributors", "document"});
     if (bytes.getSize() > maxBytes) return juce::Result::fail("OSTF score is too large.");
     sourceScore = std::move(bytes);
     addedClips.clear();
     title = info.title;
     return juce::Result::ok();
+} catch (const std::exception& error) {
+    return juce::Result::fail(juce::String::fromUTF8(error.what()));
 }
 
 const char* OstfpPreview::keepLabel(juce::String label) {
@@ -883,7 +936,7 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
             document->setProperty("modifiedBy", object({{"name", "OSTF Studio"}}));
         }
         auto next = projectScore(score);
-        next->sourceScore = jsonBytes(score);
+        next->sourceScore = editedScoreBytes(before, score, {"tracks", "document", "extensions"});
         next->trackKinds = trackKinds;
         if (remove) next->trackKinds.erase(next->trackKinds.begin() + static_cast<std::ptrdiff_t>(*remove));
         else next->trackKinds.insert(next->trackKinds.begin() + static_cast<std::ptrdiff_t>(sourceTrackCount()), kind);
@@ -949,6 +1002,7 @@ juce::Result readOstfPreview(juce::InputStream& input, std::unique_ptr<OstfpPrev
         juce::MemoryBlock bytes;
         require(input.readIntoMemoryBlock(bytes, maxBytes + 1) == static_cast<std::size_t>(length), "Could not read OSTF score");
         const auto score = parseObject(bytes);
+        if (score["version"] != "5.0.0") validateVersion(score["version"].toString(), bytes);
         auto next = projectScore(score);
         next->savedMix = readEmbeddedMix(score);
         readAudioReferences(score, *next);
@@ -991,12 +1045,17 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
         const auto descriptor = manifest["score"];
         const auto path = descriptor["path"].toString();
         const auto scoreIndex = zip.getIndexOfFileName(path);
-        require(descriptor["format"] == "OSTF" && descriptor["version"] == "5.0.0" && safeScorePath(path)
+        require(descriptor["format"] == "OSTF" && (descriptor["version"] == "5.0.0" || descriptor["version"] == "4.3.0") && safeScorePath(path)
                 && scoreIndex >= 2, "Invalid or unsupported OSTFP score entry");
         auto scoreBytes = readMember(zip, scoreIndex);
         const auto hash = juce::SHA256(scoreBytes).toHexString();
         require(hash == descriptor["sha256"].toString(), "OSTFP score SHA-256 mismatch");
         const auto score = parseObject(scoreBytes);
+        require(score["version"] == descriptor["version"], "OSTFP manifest and score versions differ");
+        if (score["version"] == "4.3.0") {
+            require(documents.isEmpty(), "Import the standalone 4.3 score; historical session documents require separate migration");
+            validateVersion("4.3.0", scoreBytes);
+        }
         auto next = projectScore(score);
         readAudioReferences(score, *next);
         if (!documents.isEmpty()) {
@@ -1047,7 +1106,7 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
 
 juce::Result writeOstfPreview(const OstfpPreview& project, juce::OutputStream& output) {
     try {
-        const auto bytes = savedScore(project);
+        const auto bytes = savedScore(project, true);
         require(bytes.getSize() <= maxBytes && output.write(bytes.getData(), bytes.getSize()), "Could not write OSTF score");
         return juce::Result::ok();
     } catch (const std::runtime_error& error) {
@@ -1072,7 +1131,7 @@ juce::Result writeOstfpPreview(const OstfpPreview& project, const SessionMix& mi
                                {"sizeBytes", static_cast<juce::int64>(bytes.getSize())},
                                {"sha256", juce::SHA256(bytes).toHexString()}}));
         }
-        const auto score = references.isEmpty() ? savedScore(project) : scoreWithMix(project, mix, references);
+        const auto score = references.isEmpty() ? savedScore(project, true) : scoreWithMix(project, mix, references);
         const auto hash = juce::SHA256(score).toHexString();
         auto document = productionMix(parseObject(score), mix);
         auto* profile = document.getDynamicObject();

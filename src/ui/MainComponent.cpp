@@ -1058,6 +1058,8 @@ bool MainComponent::openPreview(juce::InputStream& input, const juce::String& fi
         scoreView_.reset();
         project_ = std::move(next);
         currentFilename_ = filename;
+        legacySourceFile_ = project_->sourceVersion != "5.0.0" && sourceFolder != juce::File{}
+            ? sourceFolder.getChildFile(filename) : juce::File{};
         updateDocumentLabel();
         displayTransportPosition(-1);
         updateHorizontalRange(false, true);
@@ -1110,6 +1112,8 @@ bool MainComponent::openPreview(juce::InputStream& input, const juce::String& fi
         }
     }
     statusLabel_.setText(result.wasOk() ? project_->title + " / " + juce::String(project_->bars.endBar - 1) + TRANS(" bars")
+                                         + (legacySourceFile_ == juce::File{} ? juce::String{} :
+                                            " / OSTF " + project_->sourceVersion + TRANS(" (saves as 5.0.0)"))
                                        : juce::translate(result.getErrorMessage()),
                          juce::dontSendNotification);
     repaint();
@@ -1123,8 +1127,13 @@ void MainComponent::saveDocument(SaveFormat format) {
     const juce::String extension = midi ? "mid" : package ? "ostfp" : "ostf";
     auto title = juce::File::createLegalFileName(project_->title).trim();
     if (title.isEmpty()) title = "Untitled";
-    const auto start = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(title + "." + extension);
-    chooser_ = std::make_unique<juce::FileChooser>(juce::translate(midi ? "Save as MIDI (SMF)" : package ? "Save as OSTFP" : "Save as OSTF"), start, "*." + extension);
+    const bool upgrading = !midi && legacySourceFile_ != juce::File{};
+    const auto start = upgrading
+        ? legacySourceFile_.getSiblingFile(legacySourceFile_.getFileNameWithoutExtension() + "-5.0.0." + extension)
+        : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(title + "." + extension);
+    const auto dialogTitle = juce::translate(midi ? "Save as MIDI (SMF)" : package ? "Save as OSTFP" : "Save as OSTF")
+        + (upgrading ? " (OSTF " + project_->sourceVersion + " → 5.0.0)" : juce::String{});
+    chooser_ = std::make_unique<juce::FileChooser>(dialogTitle, start, "*." + extension);
     chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                               | juce::FileBrowserComponent::warnAboutOverwriting,
         [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, package, midi, format,
@@ -1181,6 +1190,7 @@ void MainComponent::saveDocument(SaveFormat format) {
                 result = juce::Result::fail(TRANS("Could not replace the destination file"));
             if (result.wasOk() && !midi) {
                 safe->currentFilename_ = file.getFileName();
+                safe->legacySourceFile_ = {};
                 safe->updateDocumentLabel();
             }
             safe->statusLabel_.setText(result.wasOk() ? TRANS("Saved ") + file.getFileName() : juce::translate(result.getErrorMessage()),

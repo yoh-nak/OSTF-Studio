@@ -62,7 +62,8 @@ juce::Result writeSongMidi(const OstfpPreview& project, SmfFormat format, const 
     if (auto saved = writeOstfPreview(project, snapshot); saved.failed()) return saved;
     const auto score = juce::JSON::parse(snapshot.toUTF8());
     const auto timeline = score["timeline"];
-    const Tick end = timeline["duration"];
+    Tick end = project.durationTicks;
+    for (const auto& clip : project.addedClips) end = std::max(end, clip.start + clip.length);
     if (project.ppq < 1 || project.ppq > 32767 || end < 1 || end > 0x0fffffff)
         return juce::Result::fail("Song timing exceeds the SMF export range");
     try {

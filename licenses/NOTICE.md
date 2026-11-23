@@ -7,7 +7,7 @@ JUCE 9.0.5 is distributed under the GNU Affero General Public License, version 3
 Download OSTF_Studio_Corresponding_Source.tar.gz from the same GitHub Release as your installer. It contains the tagged Studio sources, the JUCE sources used in the build, the distributed FluidR3 GM bank and its notice, and the build and installer scripts. From the extracted source root, configure with a C++20 compiler and CMake 3.22 or newer:
 
 ```sh
-cmake -S . -B build -DFETCHCONTENT_SOURCE_DIR_JUCE="$PWD/vendor/JUCE" -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=ON
+cmake -S . -B build -DFETCHCONTENT_SOURCE_DIR_JUCE="$PWD/vendor/JUCE" -DFETCHCONTENT_SOURCE_DIR_JSONCONS="$PWD/vendor/jsoncons" -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=ON
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```

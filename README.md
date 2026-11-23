@@ -14,6 +14,10 @@ OSTF Studio is in active development. If a demo makes you want to write a song w
 
 **[Buy me a coffee](https://buymeacoffee.com/yohsukenak)**
 
+## Opening older scores in the development build
+
+Use **File → Open** to open a standalone OSTF 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.0 or 5.0.0 score directly. Opening an older song leaves the source file intact. **Save as OSTF** and **Save as OSTFP** write a 5.0.0 score and initially suggest a new filename. The preview supports one meter, up to eight source tracks and up to 256 bars.
+
 ## Transport and song information in the development build
 
 The transport shows bar, beat and tick alongside elapsed timecode at 30 fps. Its tempo, meter, key, scale and chord follow the audio clock, including chord and tempo changes within a bar. The gold playhead crosses both the notes and the controller lane of the piano roll. A zoomed piano roll follows it into the next visible range. The view toolbar shows the current song title and filename.
@@ -41,7 +45,7 @@ On Windows, run the Setup executable or extract the portable ZIP. On an Apple si
 ## This starter contains
 - Portable C++20 timeline model with unit tests (internal only; not OSTF spec definitions)
 - JUCE 9.0.5 desktop window with a **32-bar demo** ruler, global musical lanes, and named arrangement regions aligned to the same bar positions
-- `.ostf` and `.json` **basic JSON object/array inspection** using JUCE, without OSTF schema validation
+- Standalone `.ostf` scores open in the workspace. The `.json` inspector accepts generic JSON objects and arrays.
 - **OSTF 5.0.0 and OSTFP 1.0** support a bounded score and mixer subset. **File → Demo songs** opens the Studio gallery, including Copper Mile (Rock) and First Light Vector (Trance). **Open OSTF / OSTFP** opens supported files from disk.
 - Select an arrangement row to view its pitched notes in the read-only piano roll. The ruler shows song bar numbers and the keyboard follows the track's pitch range. Sound-slot percussion is outside the pitched view.
 - Studio starts with an untitled, empty 32-bar project in 4/4 at 120 BPM. Add the first part from the Track menu. **File → New project** opens another blank session. The transport sends pitched notes to assigned VST3 instruments. Enable a MIDI input and use **Record MIDI** to capture notes into the selected track. Recording starts at the beginning, and Stop turns the captured notes into a clip that can be saved. Audio recording is pending.

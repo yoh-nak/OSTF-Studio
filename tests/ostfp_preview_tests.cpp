@@ -3,6 +3,7 @@
 #include "ui/SongMidi.h"
 #include "ui/StudioLanguage.h"
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_cryptography/juce_cryptography.h>
 #include <algorithm>
 #include <iostream>
 #include <string_view>
@@ -228,7 +229,76 @@ static int checkSmf(const juce::File& demo) {
         && rejected.getDataSize() == 0 ? 0 : 7;
 }
 
+// Also accepts external official examples so the same checks can run without redistributing songs.
+static int legacyRoundTrip(const juce::File& file) {
+    using namespace ostfstudio;
+    juce::FileInputStream input(file);
+    std::unique_ptr<OstfpPreview> project;
+    const auto opened = readOstfPreview(input, project);
+    if (opened.failed()) { std::cerr << opened.getErrorMessage() << '\n'; return 1; }
+    juce::MemoryBlock original;
+    if (!file.loadFileAsData(original) || original != project->sourceScore) return 2;
+    auto expected = juce::JSON::parse(original.toString());
+    if (project->sourceVersion != expected["version"].toString() || project->sourceVersion == "5.0.0") return 3;
+
+    SessionMix mix;
+    mix.tracks.resize(project->sourceTrackCount());
+    for (int mode = 0; mode < 3; ++mode) {
+        juce::MemoryOutputStream output;
+        const auto saved = mode == 0 ? writeOstfPreview(*project, output)
+                         : mode == 1 ? writeOstfPreview(*project, mix, output) : writeOstfpPreview(*project, mix, output);
+        if (saved.failed()) { std::cerr << saved.getErrorMessage() << '\n'; return 4; }
+        juce::MemoryInputStream data(output.getData(), output.getDataSize(), false);
+        std::unique_ptr<OstfpPreview> next;
+        const auto read = mode == 2 ? readOstfpPreview(data, next) : readOstfPreview(data, next);
+        if (read.failed()) { std::cerr << read.getErrorMessage() << '\n'; return 5; }
+        auto actual = juce::JSON::parse(next->sourceScore.toString());
+        if (file.getFileName() == "4.0.0.ostf" && !next->sourceScore.toString().contains("0.1234567890123456789012345")) return 13;
+        if (actual["version"] != "5.0.0" || next->bars.endBar != project->bars.endBar
+            || next->sourceTrackCount() != project->sourceTrackCount()) return 6;
+        actual.getDynamicObject()->setProperty("version", expected["version"]);
+        if (expected.hasProperty("document")) {
+            const auto doc = actual["document"];
+            if (doc["id"] != expected["document"]["id"] || doc["revisionId"] == expected["document"]["revisionId"]
+                || doc["parents"][0]["revisionId"] != expected["document"]["revisionId"]
+                || doc["parents"][0]["sha256"] != juce::SHA256(original).toHexString()) return 7;
+            actual.getDynamicObject()->setProperty("document", expected["document"]);
+        }
+        if (mode == 1) {
+            auto ext = actual["extensions"];
+            ext.getDynamicObject()->removeProperty("org.ostf.studio");
+            if (!expected.hasProperty("extensions")) actual.getDynamicObject()->removeProperty("extensions");
+        }
+        if (juce::JSON::toString(actual, true, 17) != juce::JSON::toString(expected, true, 17)) return 8;
+        if (project->sourceScore != original) return 9;
+    }
+    if (file.getFileName() == "4.0.0.ostf") {
+        if (project->durationTicks != 3360 || project->bars.endBar != 3 || project->pitchedNotes[0].size() != 2
+            || project->pitchedNotes[0][0].startTick != 1800 || project->programChanges[0][0].tick != 1800) return 10;
+        juce::MemoryOutputStream midi;
+        if (writeSongMidi(*project, SmfFormat::multitrack, {}, midi).failed()) return 11;
+        // 3.5 cannot declare the 4.0 MIDI stream even though Studio understands it in 4.0.
+        for (const auto* unsupported : {"3.5.0", "3.4.0", "4.0.1", "5.1.0"}) {
+            expected.getDynamicObject()->setProperty("version", unsupported);
+            const auto text = juce::JSON::toString(expected);
+            juce::MemoryInputStream wrong(text.toRawUTF8(), text.getNumBytesAsUTF8(), false);
+            const auto* previous = project.get();
+            if (readOstfPreview(wrong, project).wasOk() || previous != project.get()) return 12;
+        }
+    }
+    if (file.getFileName() == "4.3.0.ostf") {
+        juce::FileInputStream packed(file.withFileExtension(".ostfp"));
+        std::unique_ptr<OstfpPreview> historical;
+        if (readOstfpPreview(packed, historical).failed() || historical->sourceVersion != "4.3.0") return 14;
+        juce::MemoryOutputStream upgraded;
+        if (writeOstfPreview(*historical, upgraded).failed() || juce::JSON::parse(upgraded.toUTF8())["version"] != "5.0.0") return 15;
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
+    if (argc == 3 && std::string_view(argv[1]) == "--legacy")
+        return legacyRoundTrip(juce::File::createFileWithoutCheckingPath(argv[2]));
     if (argc == 3 && std::string_view(argv[1]) == "--smf")
         return checkSmf(juce::File::createFileWithoutCheckingPath(argv[2]));
     if (argc == 3 && std::string_view(argv[1]) == "--languages") {
