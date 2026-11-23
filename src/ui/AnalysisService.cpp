@@ -215,10 +215,11 @@ juce::File codexExecutable() {
 class ChatGpt final : public AnalysisProvider {
     const juce::File executable, home;
     const juce::String model;
+    const AiStudioMode mode;
 public:
-    ChatGpt(juce::File cli, juce::File profile, juce::String selected)
-        : executable(std::move(cli)), home(std::move(profile)), model(std::move(selected)) {}
-    juce::StringArray availableModels() const override {
+    ChatGpt(juce::File cli, juce::File profile, juce::String selected, AiStudioMode studioMode)
+        : executable(std::move(cli)), home(std::move(profile)), model(std::move(selected)), mode(studioMode) {}
+    juce::StringArray availableModels(bool refresh) const override {
         auto visible = [](const juce::var& catalog) {
             juce::StringArray result;
             if (const auto* models = catalog["models"].getArray())
@@ -228,7 +229,8 @@ public:
             return result;
         };
         auto models = visible(juce::JSON::parse(home.getChildFile("models_cache.json")));
-        if (!models.isEmpty()) return models;
+        if (!refresh && !models.isEmpty()) return models;
+        models.clear();
         juce::String json;
         if (executable.existsAsFile() && studioCodex(home, {executable.getFullPathName(), "debug", "models"}, 20000, &json).wasOk()) {
             const int begin = json.indexOfChar('{'), end = json.lastIndexOfChar('}');
@@ -270,7 +272,12 @@ public:
         if (model.isNotEmpty()) { args.add("--model"); args.add(model); }
         if (image.existsAsFile()) { args.add("--image"); args.add(image.getFullPathName()); }
         args.add("--");
-        args.add(prompt);
+        const juce::String focus = mode == AiStudioMode::lyric
+            ? "AI Lyric Studio: prioritize sung text, syllabic rhythm and phrase boundaries where the supplied material supports them. "
+            : mode == AiStudioMode::vocal
+                ? "AI Vocal Studio: prioritize the vocal melody, register, timing and performance phrasing evident in the input. "
+                : "AI Arrangement Studio: prioritize structure, harmony, instrumentation and the roles of musical parts. ";
+        args.add(focus + "Follow the requested output schema. " + prompt);
         if (auto r = studioCodex(home,args, 300000); r.failed()) return r;
         if (!reply.existsAsFile() || reply.getSize() > 2 * 1024 * 1024 || juce::JSON::parse(reply.loadFileAsString(), response).failed())
             return juce::Result::fail(TRANS("Invalid musical proposal from AI."));
@@ -278,10 +285,10 @@ public:
     }
 };
 } // namespace
-AnalysisConnection chatGptProvider(juce::File executable, juce::File profile, juce::String model) {
+AnalysisConnection chatGptProvider(juce::File executable, juce::File profile, juce::String model, AiStudioMode mode) {
     if (executable == juce::File{}) executable = codexExecutable();
     if (profile == juce::File{}) profile = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
         .getChildFile("OSTF Studio/ChatGPT");
-    return std::make_shared<ChatGpt>(std::move(executable), std::move(profile), std::move(model));
+    return std::make_shared<ChatGpt>(std::move(executable), std::move(profile), std::move(model), mode);
 }
 }

@@ -352,6 +352,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
                     slotList.push_back(suggested);
         }
         if (clips.isVoid()) continue;
+        size_t ordinal = 0;
         for (const auto& clip : array(clips)) {
             const auto clipStart = integer(clip["start"]);
             const auto events = clip["notes"];
@@ -379,6 +380,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             }
             const auto midi = clip["midiEvents"];
             if (midi.isArray()) for (const auto& event : array(midi)) {
+                ++ordinal;
                 const auto type = event["type"].toString();
                 if (type == "programChange") {
                     const auto time = integer(event["start"]);
@@ -391,19 +393,18 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
                         require(value >= 1 && value <= 16, "Invalid OSTF MIDI channel");
                         channel = static_cast<int>(value);
                     }
-                    programs.push_back({clipStart + time, static_cast<int>(number), channel});
-                    continue;
+                    if (bool(clip.getProperty("enabled", true))) programs.push_back({clipStart + time, static_cast<int>(number), channel, integer(event.getProperty("order", 1)), ordinal});
                 }
-                if (type != "pitchBend" && type != "controlChange" && type != "channelPressure" && type != "polyPressure") continue;
+                if (type != "programChange" && type != "pitchBend" && type != "controlChange" && type != "channelPressure" && type != "polyPressure") continue;
                 MidiControl key{type, int(event[type == "controlChange" ? "controller" : "pitch"]), int(event["channel"])};
                 auto label = key.label();
                 const auto time = integer(event["start"]);
-                const int value = int(event[type == "pitchBend" ? "value14" : "value"]);
+                const int value = int(event[type == "programChange" ? "program" : type == "pitchBend" ? "value14" : "value"]);
                 if (time < -clipStart || time >= duration - clipStart || value < 0 || value > key.maximum()) continue;
                 const bool enabled = bool(clip.getProperty("enabled", true));
                 auto lane = std::find_if(curves.begin(), curves.end(), [&](const auto& c) { return c.label == label && c.enabled == enabled; });
                 if (lane == curves.end()) lane = curves.insert(curves.end(), {label, {}, false, true, false, key, enabled});
-                lane->points.push_back({clipStart + time, double(value) / key.maximum(), event["id"].toString()});
+                lane->points.push_back({clipStart + time, double(value) / key.maximum(), event["id"].toString(), integer(event.getProperty("order", 1)), ordinal});
             }
             const auto vocal = clip["vocalPerformances"];
             if (vocal.isArray()) for (const auto& voice : array(vocal)) {
@@ -610,6 +611,10 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
         if (index < mix.audioTracks.size() && mix.audioTracks[index])
         {
             local.getDynamicObject()->setProperty("audioTrack", true);
+            if (auto route = mix.audioInputs.find(id); route != mix.audioInputs.end()) {
+                local.getDynamicObject()->setProperty("inputFirstChannel", route->second.first);
+                local.getDynamicObject()->setProperty("inputGainDb", route->second.gainDb);
+            }
             if (const auto found = mix.captureChannels.find(id); found != mix.captureChannels.end())
                 local.getDynamicObject()->setProperty("captureChannels", found->second);
         }
@@ -805,6 +810,12 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
         const auto index = static_cast<std::size_t>(i);
         readEffects(route["effects"], mix.trackEffects[index]);
         mix.audioTracks[index] = static_cast<bool>(route["audioTrack"]);
+        if (mix.audioTracks[index]) {
+            auto first = integer(route.getProperty("inputFirstChannel", -1));
+            double db = double(route.getProperty("inputGainDb", 0.0));
+            require(first >= -1 && first < 64 && std::isfinite(db) && db >= -60 && db <= 24, "Invalid recording input.");
+            mix.audioInputs[route["trackId"].toString()] = {int(first), db};
+        }
         if (mix.audioTracks[index] && route.hasProperty("captureChannels")) {
             const auto channels = integer(route["captureChannels"]);
             require(channels == 1 || channels == 2, "Invalid capture channel count.");
@@ -1741,10 +1752,11 @@ juce::Result OstfpPreview::restoreNoteScore(const juce::MemoryBlock& bytes) try 
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
 namespace {
-juce::var editableClip(juce::var clips, juce::int64 tick, juce::int64 bar, juce::int64 limit) {
+juce::var editableClip(juce::var clips, juce::int64 tick, juce::int64 bar, juce::int64 limit, bool enabledOnly = false) {
     auto start = tick / bar * bar;
     auto end = std::min(limit, start + bar);
     for (const auto& c : array(clips)) {
+        if (enabledOnly && !bool(c.getProperty("enabled", true))) continue;
         const auto a = integer(c["start"]), b = a + integer(c["duration"]);
         if (a <= tick && tick < b) return c;
         if (b <= tick) start = std::max(start, b);
@@ -1756,10 +1768,47 @@ juce::var editableClip(juce::var clips, juce::int64 tick, juce::int64 bar, juce:
 }
 }
 
+juce::Result OstfpPreview::setPatchAt(std::size_t track, juce::int64 tick, int channel, std::array<int,3> values, juce::MemoryBlock& before) try {
+    require(track < sourceTrackCount() && tick >= 0 && tick < playbackEndTick() && channel >= 1 && channel <= 16, "Invalid patch destination.");
+    require(std::all_of(values.begin(), values.end(), [](int v) { return v >= -1 && v <= 127; }), "Invalid MIDI patch.");
+    before = savedScore(*this);
+    auto score = parseObject(before), owner = score["tracks"][int(track)], clips = arrayProperty(owner, "clips");
+    for (int field = 0; field < 3; ++field) {
+        const int cc = field == 0 ? 0 : 32;
+        const auto type = field == 2 ? "programChange" : "controlChange";
+        juce::var destination, previous;
+        for (auto clip : array(clips)) {
+            if (!bool(clip.getProperty("enabled", true))) continue;
+            auto events = clip["midiEvents"];
+            if (auto* list = events.getArray()) for (int i = list->size(); --i >= 0;) {
+                const auto e = (*list)[i];
+                if (integer(clip["start"]) + integer(e["start"]) == tick && e["type"] == type
+                    && (field == 2 || int(e["controller"]) == cc) && int(e.getProperty("channel", channel)) == channel) {
+                    destination = clip;
+                    previous = e;
+                    list->remove(i);
+                }
+            }
+        }
+        if (values[field] < 0) continue;
+        if (!destination.isObject()) destination = editableClip(clips, tick, ticksPerBar, playbackEndTick(), true);
+        auto event = previous.isObject() ? previous : object({{"id", "midi-" + juce::Uuid().toString()}, {"type", type}});
+        event.getDynamicObject()->setProperty("start", tick - integer(destination["start"]));
+        event.getDynamicObject()->setProperty("order", field == 2 ? 1 : field - 2);
+        if (owner["midi"]["mode"].isString() && owner["midi"]["mode"] != "singleChannel")
+            event.getDynamicObject()->setProperty("channel", channel);
+        if (field < 2) event.getDynamicObject()->setProperty("controller", cc);
+        event.getDynamicObject()->setProperty(field == 2 ? "program" : "value", values[field]);
+        arrayProperty(destination, "midiEvents").getArray()->add(event);
+    }
+    reviseDocument(score, before, "studio-" + juce::Uuid().toString());
+    return restoreNoteScore(editedScoreBytes(before, score, {"tracks", "document"}));
+} catch (const std::exception& e) { return juce::Result::fail(e.what()); }
+
 juce::Result OstfpPreview::editController(std::size_t track, const MidiControl& key, const juce::String& id,
                                           juce::int64 tick, std::optional<int> value, juce::MemoryBlock& before) try {
     require(track < sourceTrackCount() && trackKinds[track] != TrackKind::audio && tick >= 0 && tick < playbackEndTick(), "Invalid controller position.");
-    require(key.type == "controlChange" || key.type == "pitchBend" || key.type == "polyPressure" || key.type == "channelPressure", "Unknown controller.");
+    require(key.type == "programChange" || key.type == "controlChange" || key.type == "pitchBend" || key.type == "polyPressure" || key.type == "channelPressure", "Unknown controller.");
     require(key.number >= 0 && key.number <= (key.type == "controlChange" ? 119 : 127) && key.channel >= 0 && key.channel <= 16
             && (!value || (*value >= 0 && *value <= key.maximum())), "Invalid MIDI value.");
     before = savedScore(*this);
@@ -1776,7 +1825,10 @@ juce::Result OstfpPreview::editController(std::size_t track, const MidiControl& 
         if (!event.isObject()) {
             event = object({{"id", "midi-" + juce::Uuid().toString()}, {"type", key.type}});
             auto* e = event.getDynamicObject();
-            if (key.type == "controlChange") e->setProperty("controller", key.number);
+            if (key.type == "controlChange") {
+                e->setProperty("controller", key.number);
+                if (key.number == 0 || key.number == 32) e->setProperty("order", key.number == 0 ? -2 : -1);
+            }
             if (key.type == "polyPressure") e->setProperty("pitch", key.number);
             if (key.channel || (owner["midi"]["mode"].isString() && owner["midi"]["mode"] != "singleChannel")) e->setProperty("channel", key.channel ? key.channel : sourceMidiChannels[track]);
         }
@@ -1784,7 +1836,7 @@ juce::Result OstfpPreview::editController(std::size_t track, const MidiControl& 
         if (!dest.isObject() || tick < integer(dest["start"]) || tick >= integer(dest["start"]) + integer(dest["duration"]))
             dest = editableClip(clips, tick, ticksPerBar, playbackEndTick());
         event.getDynamicObject()->setProperty("start", tick - integer(dest["start"]));
-        event.getDynamicObject()->setProperty(key.type == "pitchBend" ? "value14" : "value", *value);
+        event.getDynamicObject()->setProperty(key.type == "programChange" ? "program" : key.type == "pitchBend" ? "value14" : "value", *value);
         auto events = arrayProperty(dest, "midiEvents");
         events.getArray()->add(event);
         std::stable_sort(events.getArray()->begin(), events.getArray()->end(), [](const auto& a, const auto& b){return integer(a["start"]) < integer(b["start"]);});

@@ -3,6 +3,7 @@
 #include "core/MixerState.h"
 #include "ui/OstfpPreview.h"
 #include "ui/LevelMeter.h"
+#include "ui/ViewButton.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <vector>
 
@@ -32,6 +33,7 @@ public:
     void setSendLevel(std::size_t index, std::size_t target, float level);
     std::size_t returnCount() const { return routing_.returnCount; }
     const ostfstudio::MixerRouting& routing() const { return routing_; }
+    void setCue(std::size_t index, bool enabled);
     void setMuted(std::size_t index, bool muted);
     void setSoloed(std::size_t index, bool soloed);
     ostfstudio::SessionMix snapshot() const;
@@ -50,9 +52,9 @@ private:
         juce::Label classification;
         juce::Slider volume, pan;
         LevelMeter meter {true};
-        juce::ToggleButton mute {"M"};
-        juce::ToggleButton solo {"S"};
-        juce::ToggleButton cue {"C"};
+        juce::TextButton mute {"M"};
+        juce::TextButton solo {"S"};
+        ViewButton cue {ViewButton::Icon::headphones};
         juce::ComboBox output, returnTarget;
         juce::Slider sendLevel;
         juce::Label status;

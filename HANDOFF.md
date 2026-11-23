@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Track inputs, cue and program editing
+
+Branch `feature/input-cue-program-editors` adds per-track recording input selection, digital recording gain, stopped-transport input meters, headphone cue controls and distinct mute/solo/arm colours. Use IN or arm the audio track to open its device. The Track menu sets the bank and program at the start or cursor. MIDI tracks also have editable program and bank lanes below the piano roll. MIDI-receiving track inserts share the destination's patch messages. The tempo grid follows both edges of the arrangement ruler.
+
+The global AI selector chooses arrangement, lyric or vocal guidance for import. The connection menu refreshes the official CLI model catalog for the isolated Studio sign-in. Audio devices, a third-party amp simulator and a live ChatGPT account still require interactive verification for this change.
+
+The Windows Release test suite passed 25 cases and the GUI-free core suite passed three. The recording test decodes the captured WAV, checks the chosen channels and gain, and exercises count-in and loop capture. The MIDI probe consumes messages in the instrument and first effect to verify delivery to the next insert. GUI coverage compares the tempo grid edges with the arrangement ruler. The account test uses an isolated CLI fixture. Windows packages for this branch are under `dist/windows-track-workspace`.
+
 ## Native SMK-25 II preset editor
 
 Branch `feature/native-mvave-editor` replaces the vendor application launcher with a JUCE preset editor in Settings → M-VAVE. It supports new and imported .mkcII presets, two banks, pad note/program, channel, RGB, absolute knob CCs, local input mapping and crash-recoverable edits. The Studio settings tab also accepts manual note/CC mappings for generic controllers. No vendor executables, preset binaries or libraries are included.

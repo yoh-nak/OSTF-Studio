@@ -3,6 +3,39 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 namespace {
+class AudioInputPeaks final : public juce::AudioIODeviceCallback {
+public:
+    void audioDeviceAboutToStart(juce::AudioIODevice* device) override {
+        const auto mask = device->getActiveInputChannels();
+        count = 0;
+        for (int i = 0; i < 64; ++i) if (mask[i]) physical[count++] = i;
+        clear();
+    }
+    void audioDeviceStopped() override { clear(); }
+    void audioDeviceIOCallbackWithContext(const float* const* inputs, int numInputs, float* const* outputs,
+                                         int numOutputs, int samples, const juce::AudioIODeviceCallbackContext&) override {
+        for (int i = 0; i < numOutputs; ++i) if (outputs[i]) juce::FloatVectorOperations::clear(outputs[i], samples);
+        for (int i = 0; i < std::min(count, numInputs); ++i) {
+            if (!inputs[i] || samples == 0) continue;
+            const auto range = juce::FloatVectorOperations::findMinAndMax(inputs[i], samples);
+            const float peak = std::max(std::abs(range.getStart()), std::abs(range.getEnd()));
+            auto& slot = peaks[physical[i]];
+            auto old = slot.load();
+            while (old < peak && !slot.compare_exchange_weak(old, peak)) {}
+        }
+    }
+    std::array<float, 64> take() {
+        std::array<float, 64> result{};
+        for (size_t i = 0; i < peaks.size(); ++i) result[i] = peaks[i].exchange(0);
+        return result;
+    }
+private:
+    void clear() { for (auto& p : peaks) p.store(0); }
+    int count = 0;
+    std::array<int,64> physical{};
+    std::array<std::atomic<float>,64> peaks{};
+};
+
 class DeviceSettingsContent final : public juce::Component, private juce::ChangeListener, private juce::MidiInputCallback, private juce::AsyncUpdater {
 public:
     DeviceSettingsContent() {
@@ -27,6 +60,8 @@ public:
         addAndMakeVisible(activity_);
         setSize(590, 610);
     }
+
+    AudioInputPeaks peaks;
 
     void prepareAudio() {
         if (selector_) return;
@@ -53,6 +88,7 @@ public:
         viewport_.setViewedComponent(selector_.get(), false);
         viewport_.setScrollBarsShown(true, false);
         addAndMakeVisible(viewport_);
+        devices_.addAudioCallback(&peaks);
         devices_.addChangeListener(this);
         resized();
     }
@@ -61,7 +97,7 @@ public:
         devices_.removeMidiInputDeviceCallback({}, this);
         cancelPendingUpdate();
         devices_.removeChangeListener(this);
-        if (selector_) save();
+        if (selector_) { devices_.removeAudioCallback(&peaks); save(); }
     }
 
     void resized() override {
@@ -157,4 +193,8 @@ juce::AudioDeviceManager& DeviceSettingsWindow::midiDevices() {
 
 bool DeviceSettingsWindow::enableTrackInput(const juce::MidiDeviceInfo& port) {
     return static_cast<DeviceSettingsContent*>(getContentComponent())->enableTrackInput(port);
+}
+
+std::array<float,64> DeviceSettingsWindow::takeInputPeaks() {
+    return static_cast<DeviceSettingsContent*>(getContentComponent())->peaks.take();
 }

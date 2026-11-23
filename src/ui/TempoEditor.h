@@ -28,6 +28,12 @@ public:
         }
         repaint();
     }
+    juce::Range<int> timelineColumns() const { return graph().getHorizontalRange(); }
+    void setTimelineColumns(int left, int right) {
+        graphLeft = left;
+        graphRight = right;
+        repaint();
+    }
     void resized() override {
         auto row = getLocalBounds().removeFromTop(26);
         heading.setBounds(row.removeFromLeft(135));
@@ -92,7 +98,11 @@ public:
         repaint();
     }
 private:
-    juce::Rectangle<int> graph() const { return getLocalBounds().withTrimmedTop(43).withTrimmedLeft(47).withTrimmedRight(9).withTrimmedBottom(12); }
+    int graphLeft = 47, graphRight = -1;
+    juce::Rectangle<int> graph() const {
+        auto bounds = getLocalBounds().withTrimmedTop(43).withTrimmedBottom(12);
+        return bounds.withLeft(graphLeft).withRight(graphRight >= 0 ? graphRight : bounds.getRight());
+    }
     float yFor(double bpm) const { const auto r = graph(); return float(r.getBottom() - (bpm - low) / (high - low) * r.getHeight()); }
     double bpmFor(int y) const {
         auto r = graph();

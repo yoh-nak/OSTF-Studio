@@ -41,6 +41,12 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
     addAndMakeVisible(volume);
     addAndMakeVisible(meter);
     addAndMakeVisible(status);
+    mute.setClickingTogglesState(true);
+    solo.setClickingTogglesState(true);
+    cue.setClickingTogglesState(true);
+    mute.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffffce42));
+    mute.setColour(juce::TextButton::textColourOnId, juce::Colour(0xff211f15));
+    solo.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff277bdf));
     mute.setTitle(title + " mute");
     if (group != "MONITOR") addAndMakeVisible(mute);
     if (isTrack) {
@@ -157,8 +163,7 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         strip->mute.onClick = [this, i, controls] { setMuted(i, controls->mute.getToggleState()); };
         strip->solo.onClick = [this, i, controls] { setSoloed(i, controls->solo.getToggleState()); };
         strip->cue.onClick = [this, i, controls] {
-            channels_[i].cue = controls->cue.getToggleState();
-            if (routingChanged) routingChanged();
+            setCue(i, controls->cue.getToggleState());
         };
         strip->output.onChange = [this, i, controls] {
             setOutputBus(i, controls->output.getSelectedId() - 2);
@@ -308,6 +313,12 @@ void MixerPanel::setSendLevel(std::size_t index, std::size_t target, float level
     if (strips_[index]->returnTarget.getSelectedId() == static_cast<int>(target + 1))
         strips_[index]->sendLevel.setValue(channels_[index].returnSends[target] * 100.0, juce::dontSendNotification);
     if (routingChanged) routingChanged();
+}
+
+void MixerPanel::setCue(std::size_t index, bool enabled) {
+    channels_.at(index).cue = enabled;
+    strips_.at(index)->cue.setToggleState(enabled, juce::dontSendNotification);
+    if (channelChanged) channelChanged(index);
 }
 
 void MixerPanel::setMuted(std::size_t index, bool muted) {

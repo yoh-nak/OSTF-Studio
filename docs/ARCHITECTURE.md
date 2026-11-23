@@ -141,3 +141,11 @@ External sample drops use the local WAV import path. The Melodyne external-edito
 Score analysis runs on a background worker. Its review window displays the candidate’s chord regions and note tracks, supports individual cross-window drops and can hand the complete in-memory score to the originating editor as an unsaved song. Local PDF recognition uses Audiveris and MuseScore 4. A connected AI provider can read page images.
 
 The ordered sound-slot membership of an OSTF drum kit drives both editors. The piano roll indexes distinct mapped pitches. Kit edits materialise implicit memberships and isolate shared assignments before remapping events. MIDI recording routes mapped notes to the selected instrument and stores sound-slot references with recorded velocities and timing.
+
+### Recording inputs, MIDI patches and analysis modes
+
+The recorder resolves a physical channel against the current active input mask before a take. Studio stores the first input channel, channel count and digital gain in its project routing extension. A peak monitor on the shared audio device manager measures inputs before transport mixing. Tracks using the same source have independent gain and meters.
+
+Initial and timed patches are OSTF clip MIDI events. The patch dialog writes CC 0, CC 32 and Program Change with same-tick ordering. At a seek or loop boundary the host replays the bank in effect at the last program change, followed by any subsequently staged bank. MIDI-capable track inserts receive independent copies of the patch messages. Cue switches use the existing mixer send. The tempo graph shares the arrangement ruler bounds and its visible bar range.
+
+AI focus and model selection live in Studio preferences. Each focus supplies musical guidance to the existing schema-constrained import analysis. Refresh uses the official CLI model catalog with the isolated Studio sign-in.

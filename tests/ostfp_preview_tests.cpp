@@ -317,6 +317,22 @@ static int legacyRoundTrip(const juce::File& file) {
         if (project->sourceScore != original) return 9;
     }
     if (file.getFileName() == "4.0.0.ostf") {
+        juce::MemoryBlock before;
+        if (project->setPatchAt(0, 0, 1, {2, 9, 127}, before).failed()) return 70;
+        auto lookup = [&](const char* type, int number) -> const ostfstudio::PerformanceCurve* {
+            for (const auto& curve : project->performanceCurves[0]) if (curve.control.type == type && curve.control.number == number) return &curve;
+            return nullptr;
+        };
+        auto* patch = lookup("programChange", 0);
+        const auto* bank = lookup("controlChange", 32);
+        if (!patch || !bank || !std::any_of(bank->points.begin(), bank->points.end(), [](const auto& p) { return p.tick == 0 && std::lround(p.value * 127) == 9; })) return 71;
+        juce::String point;
+        for (const auto& p : patch->points) if (p.tick == 0 && p.value == 1) point = p.id;
+        juce::MemoryBlock prior;
+        if (point.isEmpty() || project->editController(0, patch->control, point, 100, 19, prior).failed()) return 72;
+        const auto changes = project->programChanges[0];
+        if (!std::any_of(changes.begin(), changes.end(), [](const auto& e) { return e.tick == 100 && e.program == 19; })
+            || project->restoreNoteScore(before).failed()) return 73;
         if (project->durationTicks != 3360 || project->bars.endBar != 3 || project->pitchedNotes[0].size() != 2
             || project->pitchedNotes[0][0].startTick != 1800 || project->programChanges[0][0].tick != 1800) return 10;
         juce::MemoryOutputStream midi;
@@ -479,6 +495,7 @@ int main(int argc, char** argv) {
     mix.audioTracks.resize(project->sourceTrackCount(), false);
     mix.audioTracks[0] = true;
     mix.captureChannels[project->trackIds[0]] = 2;
+    mix.audioInputs[project->trackIds[0]] = {4, -7.5};
     juce::MemoryOutputStream withMedia, bundledMedia;
     const auto scoreFile = destination.getFile();
     if (ostfstudio::writeOstfPreview(*project, mix, scoreFile, withMedia).failed()
@@ -496,7 +513,8 @@ int main(int argc, char** argv) {
         || external->audio.size() != 1 || bundled->audio.size() != 1
         || bundled->audio.front().embedded != wav.getMemoryBlock()) return 1;
     for (auto* reopened : {external.get(), bundled.get()}) {
-        if (reopened->savedMix->captureChannels != mix.captureChannels) return 1;
+        const auto& route = reopened->savedMix->audioInputs.at(project->trackIds[0]);
+        if (route.first != 4 || route.gainDb != -7.5 || reopened->savedMix->captureChannels != mix.captureChannels) return 1;
         const auto& clip = reopened->audio.front();
         if (clip.durationTicks != 960 || !clip.timing.loop || clip.timing.cycleTicks != 240
             || clip.timing.markers.size() != 1 || clip.timing.markers[0].source != 0.6

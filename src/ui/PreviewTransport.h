@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/AudioTrackInput.h"
 #include "ui/ControllerMap.h"
 #include "ui/MidiInputRoute.h"
 
@@ -30,11 +31,14 @@ public:
     struct TakeOptions {
         juce::Range<juce::int64> cycle;
         int inputChannels = 0;
+        int firstInputBuffer = 0;
+        double inputGainDb = 0;
         bool countIn = false;
         const std::array<int, 128>* drumMapping = nullptr;
         ostfstudio::ControllerMap surface;
         ostfstudio::MidiInputRoute midiInput;
     };
+    void setInputGain(double db) { captureGain_.store(juce::Decibels::decibelsToGain(float(db))); }
     std::atomic<bool> metronome{false};
     juce::Range<juce::int64> recordedRange() const;
     bool countingIn() const { return countRemaining_.load() > 0; }
@@ -65,7 +69,7 @@ public:
 
 private:
     juce::Optional<PositionInfo> getPosition() const override;
-    void processEffects(const Chain& effects, juce::AudioBuffer<float>& audio, int count);
+    void processEffects(const Chain& effects, juce::AudioBuffer<float>& audio, int count, const juce::MidiBuffer* patches = nullptr);
     using Timelines = std::array<juce::MidiBuffer, maxTracks>;
     juce::Result makeMidiTimelines(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, int, Timelines&) const;
     void adoptPendingNotes();
@@ -104,7 +108,7 @@ private:
     };
     std::array<InstrumentTrack, maxTracks> instruments_;
     juce::AudioBuffer<float> pluginAudio_;
-    juce::MidiBuffer pluginMidi_;
+    juce::MidiBuffer pluginMidi_, patchMidi_;
     Inserts inserts_ {};
     std::array<juce::AudioBuffer<float>, outputCount> stems_;
     std::array<std::atomic<float>, outputCount> outputGains_ {};
@@ -136,6 +140,8 @@ private:
     ostfstudio::ControllerMap surface_;
     ostfstudio::MidiInputRoute midiInput_;
     juce::AudioBuffer<float> captured_;
+    int firstInputBuffer_ = 0;
+    std::atomic<float> captureGain_{1};
     int captureOrigin_ = 0, captureFirst_ = 0, captureEnd_ = 0;
     std::mutex recordingMutex_;
     std::array<juce::int64, 16 * 128> pressed_ {};

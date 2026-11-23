@@ -305,7 +305,12 @@ int checkTrackView(const juce::File& fixture) {
         main.mouseDown(gesture(&main, header, header));
     }
     if (!tempo->isVisible() || tracks->isVisible() || audioEditor->isVisible()) return 76;
-    const juce::Point<float> rampStart{90.f, 100.f}, rampEnd{320.f, 75.f};
+    const auto columns = tempo->timelineColumns();
+    auto* alignedRuler = dynamic_cast<ArrangementRuler*>(barRuler);
+    if (!alignedRuler || tempo->getX() + columns.getStart() != rulerArea.getX() + alignedRuler->headerWidth
+        || tempo->getX() + columns.getEnd() != rulerArea.getRight()) return 82;
+    const juce::Point<float> rampStart{float(columns.getStart() + columns.getLength()/8), 100.f},
+                            rampEnd{float(columns.getStart() + columns.getLength()/2), 75.f};
     tempo->mouseDown(gesture(tempo, rampStart, rampStart));
     tempo->mouseDrag(gesture(tempo, rampStart, rampEnd));
     tempo->mouseUp(gesture(tempo, rampStart, rampEnd));

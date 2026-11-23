@@ -218,3 +218,9 @@ The preview checks package inventory and hashes before displaying the supported 
 
 ## Licensing
 OSTF Studio's original application and bundled plug-in code is available under **GPL-3.0-only**. Distribution uses the GPLv3 option for the ASIO SDK and AGPLv3 for JUCE. Each release includes the matching source and build scripts. [GPLv3](LICENSE) · [Dependency licenses and source](licenses/NOTICE.md)
+
+### Track inputs and patch changes
+
+Track headers show mute in yellow, solo in blue and record arm in red. The headphone switch sends a pre-fader cue to output channels 3 and 4. On an audio track, IN selects an enabled mono input or adjacent stereo pair. Its input meter follows the recording gain even with playback stopped.
+
+The Track menu offers initial and cursor-position MIDI patches. Select Program Change, CC 0 or CC 32 below the piano roll to edit changes over time. ChatGPT import analysis has Arrangement, Lyric and Vocal focus modes and a model-list refresh in the connected account menu.

@@ -3,11 +3,12 @@
 
 namespace ostfstudio {
 // All operations run off the message and audio threads. Credentials belong to the provider.
+enum class AiStudioMode { arrangement, lyric, vocal };
 using SignInLink = std::function<void(const juce::URL&)>;
 class AnalysisProvider {
 public:
     virtual ~AnalysisProvider() = default;
-    virtual juce::StringArray availableModels() const { return {}; }
+    virtual juce::StringArray availableModels(bool refresh = false) const { return {}; }
     virtual juce::String name() const = 0;
     virtual bool connected() const = 0;
     virtual juce::Result connect(const SignInLink& = {}) const = 0;
@@ -16,7 +17,7 @@ public:
                                  const juce::File& image, juce::var& response) const = 0;
 };
 using AnalysisConnection = std::shared_ptr<const AnalysisProvider>;
-AnalysisConnection chatGptProvider(juce::File executable = {}, juce::File profile = {}, juce::String model = {});
+AnalysisConnection chatGptProvider(juce::File executable = {}, juce::File profile = {}, juce::String model = {}, AiStudioMode mode = AiStudioMode::arrangement);
 #if JUCE_WINDOWS && defined(_MSC_VER)
 void runWindowsScorePageRenderer(const juce::File& source, const juce::File& directory, int pageIndex);
 #endif

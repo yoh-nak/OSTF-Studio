@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/AudioTrackInput.h"
 #include "core/ClipTiming.h"
 
 #include "ui/ArrangementView.h"
@@ -34,7 +35,7 @@ struct MidiControl {
     int number = 0, channel = 0;
     int maximum() const { return type == "pitchBend" ? 16383 : 127; }
     juce::String label() const {
-        juce::String name = type == "controlChange" ? "CC " + juce::String(number)
+        juce::String name = type == "programChange" ? juce::String("Program Change") : type == "controlChange" ? "CC " + juce::String(number)
             : type == "pitchBend" ? juce::String("Pitch Bend") : type == "channelPressure" ? juce::String("Channel Aftertouch")
             : "Poly Aftertouch / note " + juce::String(number);
         return channel ? name + " / ch " + juce::String(channel) : name;
@@ -47,7 +48,7 @@ inline MeterPoint activeMeter(const std::vector<MeterPoint>& meters, double tick
 }
 struct DrumSlot { juce::String id, name; int pitch; };
 struct PerformanceCurve {
-    struct Point { juce::int64 tick; double value; juce::String id; };
+    struct Point { juce::int64 tick; double value; juce::String id; juce::int64 order = 1; size_t ordinal = 0; };
     juce::String label;
     std::vector<Point> points;
     bool isCurve = false;
@@ -93,6 +94,7 @@ struct SessionMix {
     juce::Range<juce::int64> recordCycle;
     bool cycleEnabled = false;
     std::map<juce::String, int> captureChannels;
+    std::map<juce::String, AudioTrackInput> audioInputs;
     std::vector<bool> audioTracks;
 };
 
@@ -151,7 +153,7 @@ struct OstfpPreview {
     juce::Result checkAudition(int shift, double rate) const;
     std::vector<ArrangementLane> globalLanes, trackLanes;
     std::vector<std::vector<PitchedNote>> pitchedNotes, drumNotes;
-    struct ProgramChange { juce::int64 tick; int program; std::optional<int> channel; };
+    struct ProgramChange { juce::int64 tick; int program; std::optional<int> channel; juce::int64 order = 1; size_t ordinal = 0; };
     std::vector<std::vector<ProgramChange>> programChanges;
     std::vector<int> sourceMidiChannels;
     std::vector<std::vector<PerformanceCurve>> performanceCurves;
@@ -191,6 +193,7 @@ struct OstfpPreview {
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);
     juce::Result editNotes(std::size_t track, const std::vector<NoteEdit>& edits, juce::MemoryBlock& before,
                            juce::StringArray& resultingIds);
+    juce::Result setPatchAt(std::size_t track, juce::int64 tick, int channel, std::array<int,3> values, juce::MemoryBlock& before);
     juce::Result editController(std::size_t track, const MidiControl&, const juce::String& id, juce::int64 tick,
                                 std::optional<int> value, juce::MemoryBlock& before);
     juce::Result restoreNoteScore(const juce::MemoryBlock& bytes);

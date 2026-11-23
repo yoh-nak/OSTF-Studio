@@ -95,6 +95,10 @@ private:
     juce::Range<juce::int64> editorCycle_;
     juce::TextButton editorRecord_{TRANS("Record")}, cycleButton_{TRANS("Loop range")};
     std::map<juce::String, int> captureChannels_;
+    std::map<juce::String, ostfstudio::AudioTrackInput> audioInputs_;
+    void showAudioInput(std::size_t track);
+    void updateInputMeters();
+    bool hasAudioInputs_ = false;
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
     void stopTransport();
     void navigateTransport(TransportKey::Action);
@@ -145,6 +149,7 @@ private:
                     std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched,
                     const ImportResultRow* import = nullptr, juce::int64 tick = 0);
     void renameTrack(std::size_t index, bool output = false);
+    void showPatch(std::size_t track, juce::int64 tick);
     void showRowMenu(bool output, std::size_t index);
     void confirmRemoval(bool output, std::size_t index);
     void editOutput(bool isReturn, std::optional<std::size_t> source = {}, bool remove = false);
@@ -244,7 +249,9 @@ private:
     std::deque<NoteRevision> noteHistory_;
     std::size_t noteHistoryCursor_ = 0;
     struct TrackControls {
-        LevelMeter meter;
+        LevelMeter meter, recordingMeter;
+        ViewButton cue{ViewButton::Icon::headphones};
+        juce::Slider inputGain;
         MidiActivityLamp inputLamp;
         juce::TextButton arm{"R"}, input{"IN"};
         TrackRowSize size;
@@ -330,6 +337,13 @@ private:
     void aiConnectionMenu();
     void displayAiState(const juce::String&, juce::uint32);
     juce::String aiModel_;
+    juce::ComboBox aiStudio_;
+    ostfstudio::AiStudioMode aiMode() const {
+        return static_cast<ostfstudio::AiStudioMode>(std::clamp(aiStudio_.getSelectedId(), 1, 3) - 1);
+    }
+    void applyAiSelection();
+    void refreshAiModels();
+    bool refreshingModels_ = false;
     juce::StringArray aiModels_;
     enum class AccountAction { restore, login, logout };
     void updateAiConnection(AccountAction);

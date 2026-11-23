@@ -9,10 +9,11 @@ namespace {
 // A two-channel source with a deterministic output lets us check the host mix and MIDI stream.
 class PerformanceProbe final : public juce::AudioPluginInstance {
 public:
-    PerformanceProbe() { setPlayConfigDetails(0, 2, 960, 96); }
+    explicit PerformanceProbe(bool insert = false) { setPlayConfigDetails(insert ? 2 : 0, 2, 960, 96); }
     juce::MidiBuffer received;
     void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer& midi) override {
         received.addEvents(midi, 0, -1, 0);
+        midi.clear();
         for (int ch = 0; ch < audio.getNumChannels(); ++ch)
             juce::FloatVectorOperations::fill(audio.getWritePointer(ch), .5f, audio.getNumSamples());
     }
@@ -50,10 +51,17 @@ bool checkPerformanceAudio() {
     for (MidiControl k :
          {MidiControl{"controlChange", 1, 3}, MidiControl{"pitchBend", 0, 3}, MidiControl{"channelPressure", 0, 3}})
         song.performanceCurves[0].push_back({k.label(), {{10, 1, "p"}}, false, true, false, k});
-    PerformanceProbe probe;
+    // The bank staged after program 40 must not change the bank of the chased program.
+    song.programChanges[0].push_back({10, 40, 3});
+    MidiControl bank{"controlChange", 0, 3};
+    song.performanceCurves[0].push_back({bank.label(), {{10, 2./127, "bank", -2}, {20, 7./127, "next-bank", -2}}, false, true, false, bank});
+    PerformanceProbe fx1(true), fx2(true), probe;
+    PreviewTransport::Inserts inserts{};
+    inserts[PreviewTransport::outputCount][0] = &fx1;
+    inserts[PreviewTransport::outputCount][1] = &fx2;
     PreviewTransport engine;
     const std::array<PreviewTransport::TrackSetup, 1> routes{{{{}, &probe, 10}}};
-    if (engine.preparePlayback(song, routes, {}, 960, 96).failed()) return false;
+    if (engine.preparePlayback(song, routes, inserts, 960, 96).failed()) return false;
     engine.setChannelMix(0, {}, true, 0);
     engine.setOutputMix({});
     juce::AudioBuffer<float> audio(2, 96);
@@ -101,6 +109,13 @@ bool checkPerformanceAudio() {
         if (!channels) capture.prepareRecording(song, {}, {});
         PreviewTransport::TakeOptions setup;
         setup.inputChannels = channels;
+        juce::BigInteger mask;
+        mask.setBit(0); mask.setBit(4); mask.setBit(5);
+        AudioTrackInput route{4, -6.020599913};
+        if (route.bufferIndex(mask, 2) != 1 || AudioTrackInput{0}.physical(mask, 2) >= 0
+            || AudioTrackInput{}.physical(mask, 2) != 4) return false;
+        setup.firstInputBuffer = route.bufferIndex(mask, channels ? channels : 1);
+        setup.inputGainDb = route.gainDb;
         setup.countIn = true;
         if (capture.prepareTake(setup).failed()) return false;
         capture.inputNote(juce::MidiMessage::noteOn(1, 62, juce::uint8(77)));
@@ -108,13 +123,14 @@ bool checkPerformanceAudio() {
         if (!capture.countingIn() || capture.positionTick() != 52 || audio.getMagnitude(0, 0, 96) < .01f) return false;
         for (int n = 1; n < 20; ++n) capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
         if (capture.countingIn() || capture.positionTick() != 52) return false;
-        juce::AudioBuffer<float> input(2, 96);
+        juce::AudioBuffer<float> input(3, 96);
         for (int i = 0; i < 96; ++i) {
-            input.setSample(0, i, .001f * i);
-            input.setSample(1, i, -.001f * i);
+            input.setSample(0, i, .75f);
+            input.setSample(1, i, .001f * i);
+            input.setSample(2, i, -.001f * i);
         }
         capture.inputNote(juce::MidiMessage::noteOn(1, 60, juce::uint8(88)));
-        capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96, input.getArrayOfReadPointers(), channels);
+        capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96, input.getArrayOfReadPointers(), input.getNumChannels());
         if (capture.positionTick() != 84) return false;
         const auto notes = capture.stop();
         if (capture.recordedRange() != juce::Range<juce::int64>(32, 96)) return false;
@@ -131,7 +147,7 @@ bool checkPerformanceAudio() {
             if (!reader->read(&check, 0, 64, 0, true, true)) return false;
             for (int c = 0; c < channels; ++c)
                 for (int i = 0; i < 64; ++i)
-                    if (std::abs(check.getSample(c, i) - input.getSample(c, i < 52 ? i + 44 : i - 20)) > .00005f) return false;
+                    if (std::abs(check.getSample(c, i) - .5f * input.getSample(c + 1, i < 52 ? i + 44 : i - 20)) > .00005f) return false;
         }
     }
     const auto heard = [&](int sample) {
@@ -145,11 +161,22 @@ bool checkPerformanceAudio() {
         }
         return cc && bend && at;
     };
-    if (!heard(10)) return false;
+    const auto patchOrder = [](const juce::MidiBuffer& buffer) {
+        std::vector<int> values;
+        for (auto event : buffer) {
+            auto m = event.getMessage();
+            if (m.getChannel() == 3 && (m.isProgramChange() || m.isControllerOfType(0)))
+                values.push_back(m.isProgramChange() ? 128 + m.getProgramChangeNumber() : m.getControllerValue());
+        }
+        return values == std::vector<int>{2,168,7};
+    };
+    if (!heard(10) || !patchOrder(probe.received) || !patchOrder(fx1.received) || !patchOrder(fx2.received)) return false;
+    fx1.received.clear();
+    fx2.received.clear();
     engine.seekToTick(48);
     probe.received.clear();
     engine.renderBlock(audio.getArrayOfWritePointers(), 2, 16);
-    if (!heard(0)) return false;
+    if (!heard(0) || !patchOrder(probe.received) || !patchOrder(fx2.received)) return false;
     engine.setLoop({48, 96});
     song.drumNotes[0].push_back({52, 60, 42, 111, true, "hat"});
     if (engine.updateLoopNotes(song).failed()) return false;

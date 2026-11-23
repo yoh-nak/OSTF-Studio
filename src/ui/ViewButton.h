@@ -4,7 +4,7 @@
 
 class ViewButton final : public juce::Button {
 public:
-    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic };
+    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
     std::function<void(juce::String)> onHint;
     void mouseEnter(const juce::MouseEvent& e) override { Button::mouseEnter(e); if (onHint) onHint(getTooltip()); }
@@ -28,6 +28,14 @@ public:
     static void drawIcon(juce::Graphics& g, Icon icon, float x, float y) {
         const auto line = [&](int x1, int y1, int x2, int y2) { g.drawLine(x+x1, y+y1, x+x2, y+y2, 1.6f); };
         switch (icon) {
+            case Icon::headphones: {
+                juce::Path band;
+                band.addCentredArc(x + 10, y + 10, 7, 8, 0, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
+                g.strokePath(band, juce::PathStrokeType(2));
+                g.fillRoundedRectangle(x + 2, y + 9, 4, 7, 1.5f);
+                g.fillRoundedRectangle(x + 14, y + 9, 4, 7, 1.5f);
+                break;
+            }
             case Icon::theory:
                 for (int i : {2,10,18}) { g.drawEllipse(x+i-2,y+(i==10?1:10),4,4,1.6f); }
                 line(3,10,9,5); line(11,5,17,10); line(3,16,17,16); break;
