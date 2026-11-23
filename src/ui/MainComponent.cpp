@@ -412,7 +412,7 @@ MainComponent::MainComponent() {
     addChildComponent(trackPicker_);
     addChildComponent(performanceLane_);
     performanceLane_.setTitle(TRANS("Performance lane"));
-    performanceLane_.onChange = [this] { repaint(); };
+    performanceLane_.onChange = [this] { pianoVelocity_.cancel(); resized(); repaint(); };
     for (auto* zoom : {&arrangementZoom_, &pianoZoom_}) {
         const bool piano = zoom == &pianoZoom_;
         zoom->setSliderStyle(juce::Slider::LinearHorizontal);
@@ -478,7 +478,7 @@ MainComponent::MainComponent() {
     midiDrag_.reportError = [this](const juce::String& error) { statusLabel_.setText(error, juce::dontSendNotification); };
     addChildComponent(mixer_);
     addChildComponent(pianoGrid_);
-    pianoGrid_.setTooltip(TRANS("Double-click to add a note. Drag its body to move or either edge to resize."));
+    addChildComponent(pianoVelocity_);
     pianoGrid_.tickRange = [this] {
         const auto span = horizontalRange(true);
         const auto bar = project_ ? project_->ticksPerBar : 1;
@@ -1108,7 +1108,7 @@ void MainComponent::showShortcutList() {
         {"Mouse wheel", "Scroll through tracks"}, {"Right-click a track name", "Open track actions"},
         {"Double-click empty piano grid", "Add a note"}, {"Drag note / edge", "Move / resize notes"},
         {"Shift-click / drag empty grid", "Select multiple notes"}, {"Alt / Option + drag", "Copy notes"},
-        {"Ctrl / Cmd + drag vertically", "Adjust note velocity"}, {"Delete / Backspace", "Delete selected notes"},
+        {"Drag a velocity handle", "Adjust note velocity"}, {"Ctrl / Cmd + drag vertically", "Adjust note velocity"}, {"Delete / Backspace", "Delete selected notes"},
         {"Arrow keys / Shift + Up or Down", "Nudge / transpose by an octave"},
         {"Ctrl / Cmd + Z / Shift + Z", "Undo / redo note edits"}, {"Wheel over piano grid", "Scroll pitches"}
     };
@@ -1118,7 +1118,7 @@ void MainComponent::showShortcutList() {
         void add(const juce::String& text, int x, int y, int width, bool key) {
             auto* label = labels.add(new juce::Label({}, text));
             label->setColour(juce::Label::textColourId, juce::Colour(key ? 0xff91e2d6 : 0xffe1e6eb));
-            label->setBounds(x, y, width, 29);
+            label->setBounds(x, y, width, 23);
             addAndMakeVisible(*label);
         }
     };
@@ -1127,7 +1127,7 @@ void MainComponent::showShortcutList() {
     for (const auto& [key, action] : rows) {
         guide->add(juce::translate(key), 12, y, 245, true);
         guide->add(juce::translate(action), 259, y, 267, false);
-        y += 31;
+        y += 24;
     }
     guide->setSize(535, y + 10);
     juce::DialogWindow::LaunchOptions options;
@@ -2258,9 +2258,14 @@ void MainComponent::refreshPianoNotes() {
     const auto& drums = project_->drumNotes[track];
     grid.notes.insert(grid.notes.end(), drums.begin(), drums.end());
     grid.editable = track < project_->sourceTrackCount() && project_->trackKinds[track] != ostfstudio::TrackKind::audio;
+    grid.setTooltip(grid.editable ? TRANS("Double-click to add a note. Drag its body to move or either edge to resize.")
+                                  : TRANS("Read only"));
     grid.endTick = project_->playbackEndTick();
     grid.quarter = project_->ppq;
-    if (changed) grid.resetRange(project_->trackKinds[track] == ostfstudio::TrackKind::drum);
+    if (changed) {
+        grid.resetRange(project_->trackKinds[track] == ostfstudio::TrackKind::drum);
+        pianoVelocity_.cancel();
+    }
     pianoSnap_.onChange();
 }
 
@@ -2360,6 +2365,7 @@ void MainComponent::refreshEditor() {
     const bool piano = arranging && project_ && editorVisible_ && !showMixer;
     refreshPianoNotes();
     pianoGrid_.setVisible(piano && selectedTrack_.has_value());
+    if (!pianoGrid_.isVisible()) pianoVelocity_.setVisible(false);
     pianoSnap_.setVisible(piano && pianoGrid_.editable);
     pianoButton_.setToggleState(piano, juce::dontSendNotification);
     outputButton_.setToggleState(arranging && showOutputTracks_, juce::dontSendNotification);
@@ -2566,7 +2572,11 @@ void MainComponent::resized() {
         }
     }
     editor.removeFromTop(arrangerHeight + 8);
-    pianoGrid_.setBounds(PianoLayout(editor.withTrimmedTop(30).withTrimmedBottom(timelineNavigationHeight)).grid);
+    const PianoLayout pianoLayout(editor.withTrimmedTop(30).withTrimmedBottom(timelineNavigationHeight));
+    pianoGrid_.setBounds(pianoLayout.grid);
+    pianoVelocity_.setBounds(pianoLayout.lane.withTrimmedTop(16));
+    pianoVelocity_.setVisible(pianoGrid_.isVisible() && pianoGrid_.editable && performanceLane_.getSelectedId() == 1
+                              && pianoLayout.lane.getHeight() >= 20);
     editor.reduce(6, 4);
     auto toolbar = editor.removeFromTop(26);
     if (midiDrag_.isVisible()) midiDrag_.setBounds(toolbar.removeFromRight(192));

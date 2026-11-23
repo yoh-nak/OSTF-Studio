@@ -124,6 +124,7 @@ private:
     void undoPianoEdit(bool redo);
     void finishNoteEdit(bool playing);
     PianoNoteGrid pianoGrid_;
+    PianoVelocityLane pianoVelocity_ {pianoGrid_};
     juce::ComboBox pianoSnap_;
     std::optional<std::size_t> pianoTrack_;
     std::size_t pianoGeneration_ = 0;

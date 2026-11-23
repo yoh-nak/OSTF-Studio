@@ -5,7 +5,7 @@
 using namespace ostfstudio;
 
 namespace {
-juce::MouseEvent pointer(PianoNoteGrid& grid, juce::Point<float> p, juce::Point<float> origin, int modifiers = 0) {
+juce::MouseEvent pointer(juce::Component& grid, juce::Point<float> p, juce::Point<float> origin, int modifiers = 0) {
     const auto now = juce::Time::getCurrentTime();
     return {juce::Desktop::getInstance().getMainMouseSource(), p, juce::ModifierKeys(juce::ModifierKeys::leftButtonModifier | modifiers),
             1, 0, 0, 0, 0, &grid, &grid, now, origin, now, 1, p != origin};
@@ -99,6 +99,14 @@ int checkPianoEdits(const juce::File& fixture) {
     if (grid->notes.size() != initial + 2 || selected().id == inserted.id) return 25;
     drag(grid->box(selected()).getCentre(), {0, -16}, juce::ModifierKeys::commandModifier);
     if (selected().velocity != 104) return 26;
+    auto* velocity = dynamic_cast<PianoVelocityLane*>(main.findChildWithID("piano-velocity-lane"));
+    if (!velocity || !velocity->isVisible()) return 33;
+    const juce::Point<float> handle{grid->box(selected()).getX(), velocity->getHeight() - 1.f - 104.f / 127 * (velocity->getHeight() - 3)};
+    const auto bottom = handle.withY(float(velocity->getHeight() - 1));
+    velocity->mouseDown(pointer(*velocity, handle, handle));
+    velocity->mouseDrag(pointer(*velocity, bottom, handle));
+    velocity->mouseUp(pointer(*velocity, bottom, handle));
+    if (selected().velocity != 1) return 34;
     grid->keyPressed(juce::KeyPress(juce::KeyPress::deleteKey));
     if (grid->notes.size() != initial + 1) return 27;
     grid->keyPressed(juce::KeyPress('Z', juce::ModifierKeys::commandModifier, 0));

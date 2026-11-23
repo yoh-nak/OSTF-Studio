@@ -444,3 +444,5 @@ countries: jp
 "This note is linked to lyrics or other score data." = "このノートには歌詞などの参照があるため、削除できません。"
 "Note outside the editable range." = "編集可能な範囲を超えています。"
 "A linked note must stay in its clip." = "歌詞などから参照されているノートは、元のクリップ内で移動してください。"
+"Drag a velocity handle" = "ベロシティレーンの点を上下ドラッグ"
+"Drag a velocity handle up or down." = "ノートの点を上下にドラッグしてベロシティを調整します。"

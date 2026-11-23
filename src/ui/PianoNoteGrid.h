@@ -3,6 +3,7 @@
 #include "ui/OstfpPreview.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <cmath>
+#include <limits>
 
 class PianoNoteGrid final : public juce::Component, public juce::SettableTooltipClient {
     using Note = ostfstudio::PitchedNote;
@@ -188,4 +189,67 @@ private:
     juce::StringArray originalSelection;
     bool copy = false;
     std::vector<Edit> pending;
+};
+
+class PianoVelocityLane final : public juce::Component, public juce::SettableTooltipClient {
+public:
+    explicit PianoVelocityLane(PianoNoteGrid& editor) : grid(editor) {
+        setComponentID("piano-velocity-lane");
+        setTooltip(TRANS("Drag a velocity handle up or down."));
+    }
+    void paint(juce::Graphics& g) override {
+        for (const auto& n : grid.notes) {
+            const auto x = grid.box(n).getX();
+            if (x < 0 || x >= getWidth()) continue;
+            const bool active = dragged && dragged->id == n.id;
+            const auto v = active ? candidate : n.velocity.value_or(96);
+            const float y = yAt(v);
+            g.setColour(juce::Colour(grid.selection.contains(n.id) ? 0xffffc57e : 0xff58c9bd));
+            if (n.velocity || active) g.fillEllipse(x - 3, y - 3, 6, 6);
+            else g.drawEllipse(x - 3, y - 3, 6, 6, 1);
+            if (active) {
+                g.drawLine(x, y, x, float(getHeight()), 2);
+                g.drawText(juce::String(v), std::clamp(int(x) + 5, 0, std::max(0, getWidth() - 40)), 0, 40, getHeight(), juce::Justification::centredLeft);
+            }
+        }
+    }
+    void mouseDown(const juce::MouseEvent& e) override {
+        dragged.reset();
+        if (!grid.editable || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu()) return;
+        const ostfstudio::PitchedNote* nearest = nullptr;
+        float best = std::numeric_limits<float>::max();
+        for (const auto& n : grid.notes) {
+            const auto dx = std::abs(e.position.x - grid.box(n).getX());
+            if (dx > 7) continue;
+            const float distance = dx * dx + std::pow(e.position.y - yAt(n.velocity.value_or(96)), 2.f);
+            if (distance < best || (distance == best && grid.selection.contains(n.id))) { nearest = &n; best = distance; }
+        }
+        if (!nearest) return;
+        dragged = *nearest;
+        candidate = nearest->velocity.value_or(96);
+        grid.selection = juce::StringArray(nearest->id);
+        if (grid.isShowing()) grid.grabKeyboardFocus();
+        grid.repaint(); repaint();
+    }
+    void mouseDrag(const juce::MouseEvent& e) override {
+        if (!dragged) return;
+        candidate = std::clamp(juce::roundToInt(127.f * (getHeight() - 1 - e.position.y) / std::max(1, getHeight() - 3)), 1, 127);
+        repaint();
+    }
+    void mouseUp(const juce::MouseEvent& e) override {
+        if (!dragged) return;
+        auto n = *dragged;
+        dragged.reset();
+        if (e.mouseWasDraggedSinceMouseDown() && n.velocity != candidate) {
+            n.velocity = candidate;
+            grid.commit({{ostfstudio::NoteEdit::change, n}});
+        }
+        repaint();
+    }
+    void cancel() { dragged.reset(); }
+private:
+    float yAt(int velocity) const { return getHeight() - 1.f - velocity / 127.f * (getHeight() - 3); }
+    PianoNoteGrid& grid;
+    std::optional<ostfstudio::PitchedNote> dragged;
+    int candidate = 96;
 };
