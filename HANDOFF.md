@@ -16,6 +16,8 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 - Toggle the proposed guitar scale row for a solo with an A-minor pentatonic improvisation direction. Verify that its range and strict/preferred labels stay local to the part, that drum rows remain neutral and that identical chord results are shown with the scale row open or closed.
 
+- The Theory Guide proposal supersedes chord-first layout. Check global harmonic functions and ii–V–I / V–I spans separately from the selected track’s chord and scale readouts. Test a note-only change and a reharmonisation, including preview dismissal and undo after acceptance.
+
 - Both bar rulers seek the shared transport using their own zoom and scroll. Audio regions draw stereo peaks from linked or embedded WAVs with source trims and tempo changes. Relay Circuit has four audio tracks; First Light Vector has five. Sample-by-sample rendering is reproducible with the demo generator. The transport smoke test checks the seek coordinates and waveform against a known pulse; the stock FX test checks both overlapping stems during playback.
 
 - The piano roll edits source MIDI notes, including mapped drum hits, by stable OSTF note ID. It supports multi-selection, copying, trimming either edge, grid nudge, velocity and bounded undo/redo. Test with `ostf_studio_piano_edits`, which exercises pointer gestures, round trips in both formats and SMF. A note referenced by vocal or other data stays in its owning clip. The chord voicing projection remains read-only.
