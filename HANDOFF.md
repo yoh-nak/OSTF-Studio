@@ -4,6 +4,8 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
+- The piano roll edits source MIDI notes, including mapped drum hits, by stable OSTF note ID. It supports multi-selection, copying, trimming either edge, grid nudge, velocity and bounded undo/redo. Test with `ostf_studio_piano_edits`, which exercises pointer gestures, round trips in both formats and SMF. A note referenced by vocal or other data stays in its owning clip. The chord voicing projection remains read-only.
+
 - `feature/track-actions-ui-scale` adds toolbar actions for melody, chorus, pitched, drum, audio, bus and return tracks. Right-click the name in the arrangement or mixer to duplicate a part or remove it after confirmation. Master, Cue and the derived chord voicing are fixed. Source parts can occupy 15 of the 16 playback channels. There are up to eight buses and eight returns. Existing output slot IDs remain compatible.
 - The magnifiers set application scale to 75%, 100%, 125% or 150% and save it in view settings. At narrow widths the toolbar wraps to a second line. Test with `ostf_studio_track_view`, the round-trip and gallery tests, and the core mixer tests. The Windows x64 Release passed all 19 CTests, including copying the vocal demo's notes, voices and lyric alignments. Local development packages use `dist/windows-track-actions/`. Physical-device playback has not been verified for these changes.
 
@@ -72,7 +74,7 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 - OSTF Studio is a JUCE UI bootstrap. The Global Timeline displays a 32-bar internal demo with sections, chords, key/scale, meter, tempo, phrasing and named arrangement regions in five tracks. The ruler and both lane groups use the same tested, bar-based projection. The separate fixed-meter beat converter and the JSON object/array inspector remain available.
 - The preview opens supported OSTF 5.0 scores and OSTFP projects. The bundled example opens at startup and via **File → Open demo song**. Full schema conformance, AI editing and remote collaboration are planned. [Fixture provenance](tests/fixtures/README.md) · [Architecture and roadmap](docs/ARCHITECTURE.md)
-- The OSTFP preview shows a piano roll when an arrangement row is selected. The official fixture tests verify pitch, note length and conversion from clip-relative to song ticks. Sound-slot percussion and direct note editing are pending.
+- The official fixture tests verify piano-roll pitch, note length and conversion from clip-relative to song ticks. Current editing and percussion coverage is listed above.
 - Startup selects the official demo's first pitched track. A track chooser supports keyboard selection. Mixer settings are session-local. The audio and MIDI selector uses JUCE and stores its configuration outside the project.
 - Windows builds enable JUCE ASIO by default. Use **Settings → Audio / MIDI Devices**. Arrangement rows share mix controls with the Mixer. A track slot can load one explicitly selected VST3 instance and open its native or generic parameter editor for the session. State persistence, third-party interoperability and ASIO hardware loopback checks remain pending.
 - The VST3 browser caches scan results locally, groups by manufacturer and loads on track drop. Transport supports playback of pitched notes at a fixed source tempo and MIDI note capture into the selected track. Audio recording remains pending.

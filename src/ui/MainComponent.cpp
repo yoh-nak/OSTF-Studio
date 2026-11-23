@@ -28,6 +28,20 @@ constexpr int trackNameWidth = 95;
 constexpr int arrangementHeadingHeight = 24;
 constexpr int globalRowHeight = 28;
 
+struct PianoLayout {
+    juce::Rectangle<int> heading, lane, keys, ruler, grid;
+    explicit PianoLayout(juce::Rectangle<int> area) {
+        const bool compact = area.getHeight() < 130;
+        area.reduce(13, compact ? 2 : 8);
+        heading = area.removeFromTop(compact ? 0 : 24);
+        lane = area.removeFromBottom(std::min(84, area.getHeight() / 3)).withTrimmedLeft(52);
+        keys = area.removeFromLeft(52);
+        ruler = area.removeFromTop(compact ? 13 : 18);
+        keys.removeFromTop(ruler.getHeight());
+        grid = area;
+    }
+};
+
 juce::String effectId(const juce::PluginDescription& description) {
     return description.pluginFormatName + "|" + description.manufacturerName + "|" + description.name
         + "|" + juce::String(description.uniqueId);
@@ -463,6 +477,26 @@ MainComponent::MainComponent() {
     midiDrag_.writeMidi = [this](juce::OutputStream& stream) { return selectedTrack_ && writeTrackMidi(*selectedTrack_, stream); };
     midiDrag_.reportError = [this](const juce::String& error) { statusLabel_.setText(error, juce::dontSendNotification); };
     addChildComponent(mixer_);
+    addChildComponent(pianoGrid_);
+    pianoGrid_.setTooltip(TRANS("Double-click to add a note. Drag its body to move or either edge to resize."));
+    pianoGrid_.tickRange = [this] {
+        const auto span = horizontalRange(true);
+        const auto bar = project_ ? project_->ticksPerBar : 1;
+        return juce::Range<double>((span.start - 1) * bar, (span.end - 1) * bar);
+    };
+    pianoGrid_.commit = [this](const auto& edits) { applyNoteGesture(edits); };
+    pianoGrid_.undoRedo = [this](bool redo) { undoPianoEdit(redo); };
+    addChildComponent(pianoSnap_);
+    pianoSnap_.setTitle(TRANS("Note grid"));
+    pianoSnap_.setTooltip(TRANS("Snap note edits to this grid"));
+    for (int division : {4, 8, 16, 32}) pianoSnap_.addItem(TRANS("Grid") + " 1/" + juce::String(division), division);
+    pianoSnap_.addItem(TRANS("Grid off"), 1);
+    pianoSnap_.setSelectedId(16, juce::dontSendNotification);
+    pianoSnap_.onChange = [this] {
+        pianoGrid_.grid = pianoSnap_.getSelectedId() == 1 ? 1
+            : std::max<juce::int64>(1, pianoGrid_.quarter * 4 / pianoSnap_.getSelectedId());
+        repaint();
+    };
     rowOverlay_.setInterceptsMouseClicks(false, true);
     addAndMakeVisible(rowOverlay_);
     ruler_.headerWidth = trackHeaderWidth;
@@ -1071,7 +1105,12 @@ void MainComponent::showShortcutList() {
         {"Space", "Play / stop"}, {"Home key", "Return to song start"}, {"F1", "Show shortcuts"},
         {"Click the bar ruler", "Move the playhead"}, {"Drag the bar ruler", "Scroll the timeline horizontally"},
         {"Shift + wheel / horizontal scroll", "Scroll the timeline horizontally"},
-        {"Mouse wheel", "Scroll through tracks"}, {"Right-click a track name", "Open track actions"}
+        {"Mouse wheel", "Scroll through tracks"}, {"Right-click a track name", "Open track actions"},
+        {"Double-click empty piano grid", "Add a note"}, {"Drag note / edge", "Move / resize notes"},
+        {"Shift-click / drag empty grid", "Select multiple notes"}, {"Alt / Option + drag", "Copy notes"},
+        {"Ctrl / Cmd + drag vertically", "Adjust note velocity"}, {"Delete / Backspace", "Delete selected notes"},
+        {"Arrow keys / Shift + Up or Down", "Nudge / transpose by an octave"},
+        {"Ctrl / Cmd + Z / Shift + Z", "Undo / redo note edits"}, {"Wheel over piano grid", "Scroll pitches"}
     };
     // The content owns its labels for the lifetime of the asynchronous dialog.
     struct Guide final : juce::Component {
@@ -2205,6 +2244,87 @@ void MainComponent::selectTrack(std::size_t index) {
     refreshEditor();
 }
 
+void MainComponent::refreshPianoNotes() {
+    const bool changed = pianoGeneration_ != projectGeneration_ || pianoTrack_ != selectedTrack_;
+    if (pianoGeneration_ != projectGeneration_) { noteHistory_.clear(); noteHistoryCursor_ = 0; }
+    pianoGeneration_ = projectGeneration_;
+    pianoTrack_ = selectedTrack_;
+    auto& grid = pianoGrid_;
+    grid.notes.clear();
+    grid.editable = false;
+    if (!project_ || !selectedTrack_) { grid.resetRange(false); return; }
+    const auto track = *selectedTrack_;
+    grid.notes = project_->pitchedNotes[track];
+    const auto& drums = project_->drumNotes[track];
+    grid.notes.insert(grid.notes.end(), drums.begin(), drums.end());
+    grid.editable = track < project_->sourceTrackCount() && project_->trackKinds[track] != ostfstudio::TrackKind::audio;
+    grid.endTick = project_->playbackEndTick();
+    grid.quarter = project_->ppq;
+    if (changed) grid.resetRange(project_->trackKinds[track] == ostfstudio::TrackKind::drum);
+    pianoSnap_.onChange();
+}
+
+void MainComponent::finishNoteEdit(bool playing) {
+    refreshTimelineLanes();
+    if (pianoScroll_.getMaximumRangeLimit() != project_->bars.endBar) {
+        updateHorizontalRange(true);
+        updateHorizontalRange(false);
+    }
+    refreshEditor();
+    if (playing) startTransport(false);
+}
+
+void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& edits) {
+    if (!project_ || !selectedTrack_ || edits.empty()) return;
+    if (recordTrack_) { statusLabel_.setText(TRANS("Finish recording before editing notes."), juce::dontSendNotification); return; }
+    const bool playing = transportActive_;
+    if (playing) stopTransport();
+    juce::MemoryBlock before;
+    juce::StringArray ids;
+    const auto result = project_->editNotes(*selectedTrack_, edits, before, ids);
+    if (result.failed()) {
+        if (playing) startTransport(false);
+        statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
+        return;
+    }
+    while (noteHistory_.size() > noteHistoryCursor_) noteHistory_.pop_back();
+    if (!noteHistory_.empty() && noteHistory_.back().after != before) noteHistory_.clear();
+    noteHistory_.push_back({std::move(before), project_->sourceScore});
+    std::size_t bytes = 0;
+    for (const auto& revision : noteHistory_) bytes += revision.before.getSize() + revision.after.getSize();
+    while (noteHistory_.size() > 1 && (noteHistory_.size() > 64 || bytes > 32 * 1024 * 1024)) {
+        bytes -= noteHistory_.front().before.getSize() + noteHistory_.front().after.getSize();
+        noteHistory_.pop_front();
+    }
+    noteHistoryCursor_ = noteHistory_.size();
+    pianoGrid_.selection = std::move(ids);
+    if (!edits.empty() && edits.front().action != ostfstudio::NoteEdit::erase) {
+        const int p = edits.front().note.pitch;
+        const int shift = p < pianoGrid_.low ? p - pianoGrid_.low : std::max(0, p - pianoGrid_.high);
+        pianoGrid_.low += shift; pianoGrid_.high += shift;
+    }
+    finishNoteEdit(playing);
+}
+
+void MainComponent::undoPianoEdit(bool redo) {
+    if (!project_ || recordTrack_ || (redo ? noteHistoryCursor_ >= noteHistory_.size() : noteHistoryCursor_ == 0)) return;
+    const auto& revision = noteHistory_[redo ? noteHistoryCursor_ : noteHistoryCursor_ - 1];
+    if (!project_->addedClips.empty() || project_->sourceScore != (redo ? revision.before : revision.after)) {
+        noteHistory_.clear(); noteHistoryCursor_ = 0; return;
+    }
+    const bool playing = transportActive_;
+    if (playing) stopTransport();
+    const auto result = project_->restoreNoteScore(redo ? revision.after : revision.before);
+    if (result.wasOk()) {
+        if (redo) ++noteHistoryCursor_; else --noteHistoryCursor_;
+        pianoGrid_.selection.clear();
+        finishNoteEdit(playing);
+    } else {
+        if (playing) startTransport(false);
+        statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
+    }
+}
+
 void MainComponent::setWorkspaceMode(WorkspaceMode mode) {
     if (mode != WorkspaceMode::arrangement && !project_) return;
     if (workspaceMode_ == mode) return;
@@ -2238,6 +2358,9 @@ void MainComponent::refreshEditor() {
     deck_.follow.setEnabled(arranging && project_ != nullptr);
     mixerButton_.setToggleState(showMixer, juce::dontSendNotification);
     const bool piano = arranging && project_ && editorVisible_ && !showMixer;
+    refreshPianoNotes();
+    pianoGrid_.setVisible(piano && selectedTrack_.has_value());
+    pianoSnap_.setVisible(piano && pianoGrid_.editable);
     pianoButton_.setToggleState(piano, juce::dontSendNotification);
     outputButton_.setToggleState(arranging && showOutputTracks_, juce::dontSendNotification);
     for (auto* button : {&pianoButton_, &mixerButton_, &leadButton_, &scoreButton_}) button->setEnabled(project_ != nullptr);
@@ -2443,6 +2566,7 @@ void MainComponent::resized() {
         }
     }
     editor.removeFromTop(arrangerHeight + 8);
+    pianoGrid_.setBounds(PianoLayout(editor.withTrimmedTop(30).withTrimmedBottom(timelineNavigationHeight)).grid);
     editor.reduce(6, 4);
     auto toolbar = editor.removeFromTop(26);
     if (midiDrag_.isVisible()) midiDrag_.setBounds(toolbar.removeFromRight(192));
@@ -2452,6 +2576,7 @@ void MainComponent::resized() {
     performanceLane_.setBounds(toolbar.removeFromLeft(250).withTrimmedRight(4));
     mixer_.setBounds(editor);
     auto pianoNavigation = editor.removeFromBottom(timelineNavigationHeight).reduced(7, 2);
+    if (pianoSnap_.isVisible()) pianoSnap_.setBounds(pianoNavigation.removeFromRight(104).reduced(2, 0));
     pianoZoomLabel_.setBounds(pianoNavigation.removeFromLeft(44));
     pianoZoom_.setBounds(pianoNavigation.removeFromLeft(162));
     pianoScroll_.setBounds(pianoNavigation.withTrimmedLeft(8).reduced(0, 3));
@@ -2709,15 +2834,14 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
 void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) const {
     g.setColour(juce::Colour(panel));
     g.fillRoundedRectangle(area.toFloat(), 10.0f);
-    // In a shallow pane the toolbar already names the selected track.
-    const bool compact = area.getHeight() < 130;
-    area.reduce(13, compact ? 2 : 8);
-    const auto heading = area.removeFromTop(compact ? 0 : 24);
+    const PianoLayout layout(area);
+    const auto heading = layout.heading;
     g.setColour(juce::Colour(accent));
     g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     const auto name = selectedTrack_ ? TRANS("PIANO ROLL  /  ") + juce::String::fromUTF8(project_->trackLanes[*selectedTrack_].label)
                                      : TRANS("PIANO ROLL");
-    g.drawFittedText(name, heading, juce::Justification::centredLeft, 1);
+    g.drawFittedText(selectedTrack_ && !pianoGrid_.editable ? name + "  /  " + TRANS("Read only") : name,
+                     heading, juce::Justification::centredLeft, 1);
     if (!selectedTrack_) {
         g.setColour(juce::Colour(muted));
         g.setFont(juce::FontOptions(13.0f));
@@ -2727,17 +2851,10 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
         return;
     }
 
-    const auto& notes = project_->pitchedNotes[*selectedTrack_];
+    const auto& notes = pianoGrid_.notes;
     const auto laneName = performanceLane_.getText();
     const auto& curves = project_->performanceCurves[*selectedTrack_];
-    int low = notes.empty() ? 55 : notes.front().pitch;
-    int high = notes.empty() ? 67 : low;
-    for (const auto& note : notes) {
-        low = std::min(low, note.pitch);
-        high = std::max(high, note.pitch);
-    }
-    low = std::max(0, low - 3);
-    high = std::min(127, high + 3);
+    const int low = pianoGrid_.low, high = pianoGrid_.high;
     const auto visible = horizontalRange(true);
     const auto barLength = project_->ticksPerBar;
     const auto firstBar = static_cast<juce::int64>(std::ceil(visible.start)) - 1;
@@ -2745,11 +2862,9 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     const auto origin = (visible.start - 1.0) * barLength;
     const auto length = (visible.end - visible.start) * barLength;
     if (length <= 0.0) return;
-    auto lane = area.removeFromBottom(std::min(84, area.getHeight() / 3));
-    auto keys = area.removeFromLeft(52);
-    lane.removeFromLeft(52);
-    const auto ruler = area.removeFromTop(compact ? 13 : 18);
-    keys.removeFromTop(ruler.getHeight());
+    auto lane = layout.lane;
+    const auto keys = layout.keys, ruler = layout.ruler;
+    area = layout.grid;
     if (area.isEmpty()) return;
 
     const auto rowHeight = static_cast<float>(area.getHeight()) / static_cast<float>(high - low + 1);
@@ -2775,6 +2890,12 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
         }
     }
 
+    const auto step = pianoGrid_.grid;
+    if (pianoGrid_.editable && step > 1 && double(step) * area.getWidth() / length >= 8) {
+        g.setColour(juce::Colour(0xff354653));
+        for (auto tick = static_cast<juce::int64>(std::ceil(origin / step)) * step; tick < origin + length; tick += step)
+            g.drawVerticalLine(juce::roundToInt(tickX(tick)), float(area.getY()), float(area.getBottom()));
+    }
     const auto barStep = std::max<juce::int64>(1, (endBar - firstBar + 7) / 8);
     for (auto bar = firstBar; bar < endBar; bar += barStep) {
         const auto x = juce::roundToInt(tickX(bar * barLength));

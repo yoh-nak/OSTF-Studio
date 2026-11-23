@@ -136,11 +136,24 @@ int checkStockEffects(const juce::StringArray& args) {
 
     // An actual hosted GM instrument must sound mid-note after a locate,
     // and become silent on an immediate jump to an empty part of the score.
-    song->pitchedNotes[piano] = {{song->ppq, 3 * song->ppq, 64, 100}};
+    auto isolated = juce::JSON::parse(song->sourceScore.toString());
+    isolated["tracks"][piano].getDynamicObject()->setProperty("clips", juce::Array<juce::var>{});
+    const auto text = juce::JSON::toString(isolated);
+    juce::MemoryInputStream input(text.toRawUTF8(), text.getNumBytesAsUTF8(), false);
+    std::unique_ptr<ostfstudio::OstfpPreview> edited;
+    if (ostfstudio::readOstfPreview(input, edited).failed()) return 32;
+    juce::MemoryBlock before;
+    juce::StringArray ids;
+    ostfstudio::PitchedNote authored {0, 2 * edited->ppq, 64, 100};
+    if (edited->editNotes(piano, {{ostfstudio::NoteEdit::insert, authored}}, before, ids).failed()) return 33;
+    authored.id = ids[0];
+    authored.startTick += edited->ppq;
+    authored.endTick += edited->ppq;
+    if (edited->editNotes(piano, {{ostfstudio::NoteEdit::change, authored}}, before, ids).failed()) return 34;
     PreviewTransport transport;
     transport.setOutputMix({});
     transport.setChannelMix(piano, {}, true, 0);
-    if (transport.preparePlayback(*song, tracks, {}, 48000, 256).failed()) return 27;
+    if (transport.preparePlayback(*edited, tracks, {}, 48000, 256).failed()) return 27;
     juce::AudioBuffer<float> audio(2, 256);
     const auto energyAt = [&](juce::int64 tick) {
         transport.seekToTick(tick);
@@ -157,6 +170,22 @@ int checkStockEffects(const juce::StringArray& args) {
     juce::FileInputStream mediaFile(juce::File(args[3]).getSiblingFile("paper-lantern-replies.ostfp"));
     std::unique_ptr<ostfstudio::OstfpPreview> cue;
     if (ostfstudio::readOstfpPreview(mediaFile, cue).failed() || cue->audio.size() != 1 || !cue->savedMix) return 29;
+    const auto lyricScore = juce::JSON::parse(cue->sourceScore.toString());
+    const auto lyricId = lyricScore["lyrics"]["alignments"][0]["noteIds"][0].toString();
+    bool testedLyric = false;
+    for (std::size_t i = 0; i < cue->sourceTrackCount() && !testedLyric; ++i) {
+        const auto& notes = cue->pitchedNotes[i];
+        auto pos = std::find_if(notes.begin(), notes.end(), [&](const auto& n) { return n.id == lyricId; });
+        if (pos == notes.end()) continue;
+        auto linked = *pos;
+        const auto original = cue->sourceScore;
+        if (cue->editNotes(i, {{ostfstudio::NoteEdit::erase, linked}}, before, ids).wasOk() || cue->sourceScore != original) return 35;
+        linked.velocity = 73;
+        if (cue->editNotes(i, {{ostfstudio::NoteEdit::change, linked}}, before, ids).failed() || ids[0] != lyricId) return 36;
+        if (juce::JSON::toString(juce::JSON::parse(cue->sourceScore.toString())["lyrics"]) != juce::JSON::toString(lyricScore["lyrics"])) return 37;
+        testedLyric = true;
+    }
+    if (!testedLyric) return 38;
     const auto& region = cue->audio.front();
     const auto& mixAudio = *cue->savedMix;
     inserts = {};

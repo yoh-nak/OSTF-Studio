@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <set>
 #include <stdexcept>
 
 namespace ostfstudio {
@@ -266,7 +267,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
     if (const auto slots = score["soundSlots"]; slots.isArray()) {
         for (const auto& slot : array(slots)) {
             const auto mapping = slot["midiMapping"];
-            if (mapping["standard"] == "gm1" && mapping["note"].isInt()) {
+            if ((mapping["standard"] == "gm1" || mapping["standard"] == "custom") && mapping["note"].isInt()) {
                 const auto pitch = static_cast<int>(mapping["note"]);
                 if (pitch >= 0 && pitch <= 127) drumMappings.emplace_back(slot["id"].toString(), pitch);
             }
@@ -311,7 +312,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
                 }
                 auto& target = pitched ? notes : drums;
                 target.push_back({clipStart + local, clipStart + local + length, static_cast<int>(pitch), velocity,
-                                  event["enabled"].isVoid() || static_cast<bool>(event["enabled"])});
+                                  event["enabled"].isVoid() || static_cast<bool>(event["enabled"]), event["id"].toString()});
             }
             const auto midi = clip["midiEvents"];
             if (midi.isArray()) for (const auto& event : array(midi)) {
@@ -1160,6 +1161,149 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
     }
 }
 
+namespace {
+juce::var arrayProperty(juce::var parent, const char* key) {
+    if (!parent[key].isArray()) parent.getDynamicObject()->setProperty(key, juce::Array<juce::var>{});
+    return parent[key];
+}
+
+bool referencesNote(const juce::var& value, const std::set<juce::String>& ids, bool referenceField = false) {
+    if (auto* items = value.getArray()) {
+        for (const auto& item : *items) if (referencesNote(item, ids, referenceField)) return true;
+    } else if (auto* obj = value.getDynamicObject()) {
+        for (const auto& property : obj->getProperties()) {
+            const auto key = property.name.toString();
+            if (ids.contains(key) || referencesNote(property.value, ids, key == "id" || key.endsWith("Id") || key.endsWith("Ids"))) return true;
+        }
+    } else if (referenceField && value.isString()) return ids.contains(value.toString());
+    return false;
+}
+
+juce::String drumSlot(juce::var score, juce::var track, int pitch) {
+    auto slots = arrayProperty(score, "soundSlots");
+    juce::var members;
+    if (track.hasProperty("drumKitId")) {
+        for (const auto& kit : array(score["drumKits"]))
+            if (kit["id"] == track["drumKitId"]) members = kit["soundSlotIds"];
+        require(members.isArray(), "Missing drum kit.");
+    }
+    for (const auto& slot : array(slots)) {
+        if (slot["midiMapping"].hasProperty("note") && int(slot["midiMapping"]["note"]) == pitch
+            && (!members.isArray() || members.getArray()->contains(slot["id"]))) return slot["id"].toString();
+    }
+    const auto id = "slot-" + juce::Uuid().toString();
+    slots.getArray()->add(object({{"id", id}, {"name", "MIDI " + juce::String(pitch)},
+                                 {"midiMapping", object({{"standard", pitch >= 35 && pitch <= 81 ? "gm1" : "custom"}, {"note", pitch}})}}));
+    if (members.isArray()) members.getArray()->add(id);
+    return id;
+}
+}
+
+juce::Result OstfpPreview::restoreNoteScore(const juce::MemoryBlock& bytes) try {
+    require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
+    auto next = projectScore(parseObject(bytes));
+    require(next->sourceTrackCount() == sourceTrackCount() && next->chordVoicingTrack == chordVoicingTrack, "Track layout changed.");
+    next->sourceScore = bytes;
+    next->sourceManifest = sourceManifest;
+    next->trackKinds = trackKinds;
+    next->savedMix = std::move(savedMix);
+    next->audio = std::move(audio);
+    *this = std::move(*next);
+    return juce::Result::ok();
+} catch (const std::exception& error) { return juce::Result::fail(error.what()); }
+
+juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEdit>& edits,
+                                     juce::MemoryBlock& before, juce::StringArray& resultingIds) try {
+    require(index < sourceTrackCount() && trackKinds[index] != TrackKind::audio && !edits.empty(), "Select a MIDI track.");
+    before = savedScore(*this);
+    auto score = parseObject(before);
+    auto track = score["tracks"][static_cast<int>(index)];
+    auto clips = arrayProperty(track, "clips");
+    juce::StringArray ids;
+    std::set<juce::String> deleted;
+    std::map<juce::String, std::pair<juce::var, juce::var>> existing;
+    for (const auto& owner : array(clips)) if (owner["notes"].isArray())
+        for (const auto& n : array(owner["notes"])) existing.emplace(n["id"].toString(), std::make_pair(owner, n));
+    for (const auto& edit : edits) {
+        const auto& n = edit.note;
+        juce::var clip, event;
+        if (edit.action != NoteEdit::insert) {
+            auto found = existing.find(n.id);
+            require(found != existing.end(), "The selected note has changed.");
+            clip = found->second.first;
+            event = found->second.second;
+            existing.erase(found);
+        }
+        if (edit.action == NoteEdit::erase) {
+            auto notes = clip["notes"];
+            notes.getArray()->removeFirstMatchingValue(event);
+            deleted.insert(n.id);
+            continue;
+        }
+        require(n.startTick >= 0 && n.endTick > n.startTick && n.endTick <= playbackEndTick()
+                && n.pitch >= 0 && n.pitch <= 127 && (!n.velocity || (*n.velocity >= 1 && *n.velocity <= 127)), "Note outside the editable range.");
+        const bool fresh = edit.action == NoteEdit::insert;
+        const auto oldStart = fresh ? 0 : integer(clip["start"]) + integer(event["start"]);
+        const bool crossing = !fresh && (n.startTick < integer(clip["start"])
+                              || n.startTick >= integer(clip["start"]) + integer(clip["duration"]));
+        const bool transfer = edit.action == NoteEdit::change && oldStart != n.startTick && crossing;
+        if (fresh || edit.action == NoteEdit::duplicate || transfer) {
+            if (transfer) {
+                auto oldEvents = clip["notes"];
+                oldEvents.getArray()->removeFirstMatchingValue(event);
+                require(!referencesNote(score, {n.id}), "A linked note must stay in its clip.");
+            } else {
+                event = fresh ? object({}) : event.clone();
+                event.getDynamicObject()->setProperty("id", "note-" + juce::Uuid().toString());
+            }
+            if (fresh || crossing) {
+                clip = juce::var();
+                for (const auto& candidate : array(clips)) {
+                    auto start = integer(candidate["start"]);
+                    if (n.startTick >= start && n.startTick < start + integer(candidate["duration"])) { clip = candidate; break; }
+                }
+                if (!clip.isObject()) {
+                    auto start = n.startTick / ticksPerBar * ticksPerBar;
+                    auto end = std::min(playbackEndTick(), start + ticksPerBar);
+                    for (const auto& candidate : array(clips)) {
+                        const auto left = integer(candidate["start"]), right = left + integer(candidate["duration"]);
+                        if (right <= n.startTick) start = std::max(start, right);
+                        if (left > n.startTick) end = std::min(end, left);
+                    }
+                    clip = object({{"id", "clip-" + juce::Uuid().toString()}, {"name", "MIDI"}, {"start", start}, {"duration", end - start}});
+                    clips.getArray()->add(clip);
+                }
+            }
+            if (fresh && track["midi"]["mode"].isString() && track["midi"]["mode"] != "singleChannel")
+                event.getDynamicObject()->setProperty("channel", sourceMidiChannels[index]);
+            arrayProperty(clip, "notes").getArray()->add(event);
+        }
+        auto* obj = event.getDynamicObject();
+        obj->setProperty("start", n.startTick - integer(clip["start"]));
+        obj->setProperty("duration", n.endTick - n.startTick);
+        if (event.hasProperty("soundSlotId") || (fresh && trackKinds[index] == TrackKind::drum)) {
+            // Keep the actual slot ID when multiple percussion articulations share a key.
+            const auto& drums = drumNotes[index];
+            auto old = std::find_if(drums.begin(), drums.end(), [&](const auto& d) { return d.id == n.id; });
+            if (fresh || old == drums.end() || old->pitch != n.pitch)
+                obj->setProperty("soundSlotId", drumSlot(score, track, n.pitch));
+        } else obj->setProperty("pitch", n.pitch);
+        if (n.velocity) {
+            obj->setProperty("velocity", *n.velocity);
+            const int deviation = int(event["velocityDeviation"]);
+            if (event.hasProperty("velocityDeviation"))
+                obj->setProperty("velocityDeviation", std::clamp(deviation, 1 - *n.velocity, 127 - *n.velocity));
+        }
+        ids.add(event["id"].toString());
+    }
+    if (!deleted.empty()) require(!referencesNote(score, deleted), "This note is linked to lyrics or other score data.");
+    reviseDocument(score, before, "studio-" + juce::Uuid().toString());
+    auto data = editedScoreBytes(before, score, {"tracks", "soundSlots", "drumKits", "document"});
+    const auto result = restoreNoteScore(data);
+    if (result.wasOk()) resultingIds = std::move(ids);
+    return result;
+} catch (const std::exception& error) { return juce::Result::fail(error.what()); }
+
 bool OstfpPreview::insertGeneratorPattern(std::size_t track, int bar) {
     if (track >= sourceTrackCount() || trackKinds[track] != TrackKind::pitched || track >= pitchedNotes.size() || track >= trackLanes.size() || bar < bars.firstBar || bar >= bars.endBar
         || ppq < 2 || ticksPerBar <= 0) return false;
@@ -1196,9 +1340,12 @@ bool OstfpPreview::addSessionClip(std::size_t track, juce::String name, std::vec
                             keepLabel(name), static_cast<int>(notes.size())});
     trackLanes[track].regions = trackRegions;
     auto& trackNotes = pitchedNotes[track];
+    const auto clipId = "studio-" + juce::Uuid().toString();
+    for (std::size_t i = 0; i < notes.size(); ++i)
+        notes[i].id = clipId + "-note-" + juce::String(static_cast<int>(i + 1));
     trackNotes.insert(trackNotes.end(), notes.begin(), notes.end());
     std::stable_sort(trackNotes.begin(), trackNotes.end(), [](const auto& a, const auto& b) { return a.startTick < b.startTick; });
-    addedClips.push_back({track, "studio-" + juce::Uuid().toString(), std::move(name), first * ticksPerBar,
+    addedClips.push_back({track, clipId, std::move(name), first * ticksPerBar,
                           (last - first) * ticksPerBar, std::move(notes)});
     return true;
 }

@@ -179,6 +179,7 @@ private:
 
 int checkStockEffects(const juce::StringArray&);
 int checkTrackView(const juce::File&);
+int checkPianoEdits(const juce::File&);
 int checkNotation(const juce::File&, const juce::File&);
 int checkTransport(const juce::File&, const juce::File&);
 
@@ -204,9 +205,10 @@ public:
             });
             return;
         }
-        if (args.size() == 2 && args[0] == "--track-view-smoke") {
+        if (args.size() == 2 && (args[0] == "--track-view-smoke" || args[0] == "--piano-edit-smoke")) {
             juce::MessageManager::callAsync([this, args] {
-                setApplicationReturnValue(checkTrackView(juce::File(args[1])));
+                const juce::File fixture(args[1]);
+                setApplicationReturnValue(args[0] == "--track-view-smoke" ? checkTrackView(fixture) : checkPianoEdits(fixture));
                 quit();
             });
             return;

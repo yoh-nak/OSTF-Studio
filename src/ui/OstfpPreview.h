@@ -17,6 +17,12 @@ struct PitchedNote {
     int pitch;
     std::optional<int> velocity;
     bool enabled = true;
+    juce::String id;
+};
+
+struct NoteEdit {
+    enum Action { insert, change, duplicate, erase } action;
+    PitchedNote note;
 };
 
 struct PerformanceCurve {
@@ -127,6 +133,9 @@ struct OstfpPreview {
                             std::optional<std::size_t> duplicate = {}, MixerTrackGroup group = MixerTrackGroup::pitched) const;
     bool insertGeneratorPattern(std::size_t track, int bar);
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);
+    juce::Result editNotes(std::size_t track, const std::vector<NoteEdit>& edits, juce::MemoryBlock& before,
+                           juce::StringArray& resultingIds);
+    juce::Result restoreNoteScore(const juce::MemoryBlock& bytes);
 };
 
 juce::Result readOstfPreview(juce::InputStream& input, std::unique_ptr<OstfpPreview>& result);

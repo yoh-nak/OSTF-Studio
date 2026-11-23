@@ -8,6 +8,7 @@
 #include "ui/PreviewTransport.h"
 #include "ui/ViewButton.h"
 #include "ui/ArrangementRuler.h"
+#include "ui/PianoNoteGrid.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
@@ -118,6 +119,17 @@ private:
     bool writeTrackMidi(std::size_t track, juce::OutputStream& stream) const;
     void drawArrangement(juce::Graphics& g, juce::Rectangle<int> area, const ostfstudio::ArrangementView& view);
     void drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) const;
+    void refreshPianoNotes();
+    void applyNoteGesture(const std::vector<ostfstudio::NoteEdit>&);
+    void undoPianoEdit(bool redo);
+    void finishNoteEdit(bool playing);
+    PianoNoteGrid pianoGrid_;
+    juce::ComboBox pianoSnap_;
+    std::optional<std::size_t> pianoTrack_;
+    std::size_t pianoGeneration_ = 0;
+    struct NoteRevision { juce::MemoryBlock before, after; };
+    std::deque<NoteRevision> noteHistory_;
+    std::size_t noteHistoryCursor_ = 0;
     struct TrackControls {
         LevelMeter meter;
         TrackRowSize size;

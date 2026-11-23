@@ -90,7 +90,8 @@ juce::Result writeSongMidi(const OstfpPreview& project, SmfFormat format, const 
         std::map<juce::String, int> percussion;
         for (const auto& slot : entries(score["soundSlots"])) {
             const auto mapping = slot["midiMapping"];
-            if (mapping["standard"] == "gm1") percussion.emplace(slot["id"].toString(), midiValue(mapping["note"]));
+            if (mapping["standard"] == "gm1" || mapping["standard"] == "custom")
+                percussion.emplace(slot["id"].toString(), midiValue(mapping["note"]));
         }
         const auto tracks = score["tracks"];
         for (int i = 0; i < tracks.size(); ++i) {
