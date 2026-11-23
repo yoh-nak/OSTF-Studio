@@ -14,7 +14,7 @@ A new session reads the embedded empty OSTF template through the same reader as 
 
 ## Independent modules
 
-The arranger design uses a single editable phrase for audition, Studio clip exchange and MIDI export. The proposed Studio adapter uses OSTF Plugin Context Exchange 1.0. External hosts can supply MIDI through playback or file import. The current preview still generates a fixed phrase. [Arranger workflows and acceptance criteria (Japanese)](ARRANGER_PHRASE_EXCHANGE.ja.md)
+In the proposed design, each open plug-in can request a read-only snapshot of the Studio selection through OSTF Plugin Context Exchange 1.0. Reading the selection and exporting a phrase are independent capabilities. The user auditions the result and drags it into Studio as a new clip or exports it as MIDI. The original selection may change or disappear during editing. The current preview still generates a fixed phrase. [Arranger workflows and acceptance criteria (Japanese)](ARRANGER_PHRASE_EXCHANGE.ja.md)
 
 The preview renderer publishes stereo sample peaks from the processed source audio, output stems and the independent Cue pair. The audio thread accumulates peaks in fixed-size lock-free mailboxes. The UI consumes each peak once per refresh and shares it with the mixer and arrangement. A shared instrument's combined audio is measured on the track that owns it. Track heights and vertical scrolling are view state scoped to the open song. Group height changes use the score track kind, global note role or output destination. New tracks inherit their group height. The bar ruler stays fixed. Each horizontal zoom slider sets a continuous visible range from the whole song down to one bar and shares its scrollbar with the renderer.
 
