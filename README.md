@@ -2,7 +2,7 @@
 
 **English** · [日本語](README.ja.md)
 
-**Download 1.0.0 alpha 2** · [Windows x64 installer](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.2/OSTF_Studio_Windows_x64_Setup.exe) · [Windows portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.2/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon Mac DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.2/OSTF_Studio_macOS_arm64.dmg)
+**Download 1.0.0 alpha 3** · [Windows x64 installer](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Setup.exe) · [Windows portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon Mac DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_macOS_arm64.dmg)
 
 **1.0.0 alpha** is the first public testing series for Windows x64 and Apple silicon Macs. Try a bundled demo to explore the Global Timeline, piano roll, VST3 instruments and session mixer. [Alpha downloads and release notes](https://github.com/yoh-nak/OSTF-Studio/releases)
 
@@ -14,11 +14,11 @@ OSTF Studio is in active development. If a demo makes you want to write a song w
 
 **[Buy me a coffee](https://buymeacoffee.com/yohsukenak)**
 
-## Opening older scores in the development build
+## Opening older scores in alpha 3
 
 Use **File → Open** to open a standalone OSTF 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.0 or 5.0.0 score directly. Opening an older song leaves the source file intact. **Save as OSTF** and **Save as OSTFP** write a 5.0.0 score and initially suggest a new filename. The preview supports one meter, up to eight source tracks and up to 256 bars.
 
-## Transport and song information in the development build
+## Transport and song information in alpha 3
 
 The transport shows the active section, tempo, meter, key, scale and chord alongside bar/beat/tick and 30 fps timecode. **Home** returns to the beginning. **Rewind** and **Forward** move one bar per click and repeat when held. Stop parks the playhead and Play resumes there. At the end of the song, Play starts again from the beginning.
 
@@ -26,19 +26,19 @@ The transport shows the active section, tempo, meter, key, scale and chord along
 
 Open **File → Song information** to edit the title, subtitle, description and ordered credits. Enter a contributor name and role for each credit (for example, `composer`, `lyricist` or `arranger`). Apply the changes, then save as OSTF or OSTFP. Both formats retain the credit assignments.
 
-## Notation and import in the development build
+## Notation and import in alpha 3
 
 The first three buttons on the view bar switch the main workspace between **Arrangement**, **Lead sheet** and **Score**. The View menu opens the same modes. Playback and the transport stay available as you switch. The moving gold line marks the current position. **Follow playback** advances the bars in view. Turn it off to browse another section during playback.
 
 In the lead sheet, switch chords, scales and lyrics on or off independently. Choose 1, 2, 4, 8 or 16 bars per line. For songs with timed lyrics, select the voice and display text, pronunciation or both. Pronunciation comes from the OSTF lyric unit, with its text as a fallback. In Score, choose a track and its treble, alto, bass, grand staff, guitar TAB, bass TAB or percussion notation. **PDF / Print** lays out the chosen content on A4 pages for printing. **MusicXML** exports the selected score part for a notation editor.
 
-**File → Import and transcription** creates a new project from a MIDI performance (SMF 0 or 1) or a WAV recording. WAV import keeps the recording alongside the score. The experimental melody mode adds draft notes from up to two minutes of isolated single-note audio. Review the result in the piano roll. These features are in the development build following alpha 2.
+**File → Import and transcription** creates a new project from a MIDI performance (SMF 0 or 1) or a WAV recording. WAV import keeps the recording alongside the score. The experimental melody mode adds draft notes from up to two minutes of isolated single-note audio. Review the result in the piano roll.
 
 ## Install OSTF Studio
 
 On Windows, run the Setup executable or extract the portable ZIP. On an Apple silicon Mac, open the DMG and run **Install OSTF Studio and VST3.pkg**. Public installers and matching source archives are listed under **Assets** on each [GitHub Release](https://github.com/yoh-nak/OSTF-Studio/releases). Development packages are available for seven days under **Actions → build run → Artifacts**.
 
-### New in alpha 2
+### MIDI export, language and view controls
 
 - Choose **File → Save as MIDI (SMF)** for a song-wide `.mid` file. Format 0 merges the parts into one track while retaining their MIDI channels. Format 1 writes a conductor track and named part tracks. Both preserve the source resolution, meter, tempo changes, notes, mapped GM percussion and supported channel events. Audio, plug-in state and vocal expression curves stay in the OSTF project. The derived Chord Voicing display does not create an extra MIDI part.
 - **Settings → Language** offers the system language, English and Japanese. The selection takes effect on the next launch. An unsupported system language uses English.
@@ -58,7 +58,7 @@ On Windows, run the Setup executable or extract the portable ZIP. On an Apple si
 
 ### Level meters and track height
 
-In the development build, each track header and mixer strip shows left and right sample peaks after its effects, pan and fader. The mixer also meters buses, returns, Master and the independent Cue output. The red indicator holds for one second when the signal reaches 0 dBFS.
+In alpha 3, each track header and mixer strip shows left and right sample peaks after its effects, pan and fader. The mixer also meters buses, returns, Master and the independent Cue output. The red indicator holds for one second when the signal reaches 0 dBFS.
 
 At the bottom of the arrangement, choose a track type beside **Height** and drag the adjacent slider to resize the group. You can target all tracks, a section, or a type such as drums, buses or returns. **Mixed** means the rows currently have different heights. The arrangement and piano roll each have a **Zoom** slider. Drag right to zoom in, double-click to fit the song, and use the adjacent scrollbar to move through it. Drag the lower edge of a track to change its height individually. Double-click the edge to fold the track or restore its previous height. Compact rows keep mute, solo, FX and metering within reach. Taller rows show more instrument and mix controls and display the notes inside their clips. Use the vertical scrollbar to reach the remaining tracks.
 
@@ -99,7 +99,7 @@ Use **Track** to add a pitched, drum/percussion or audio track, or to delete the
 
 Windows Setup registers a document icon for `.ostf` and a package icon for `.ostfp`. If another default app is already set, select **Open with → Choose another app → OSTF Studio → Always**. The Portable ZIP does not register file types. The macOS app bundle declares matching document icons.
 
-In this development build, the shared VST3 task in Windows Setup requests administrator approval to install both instruments and all nine effects in `%CommonProgramFiles%\VST3\OSTF Studio`. Other DAWs can find them with their system-folder scan. Setup keeps matching, versioned plug-in binaries in place and installs missing files. If a DAW is using a binary that needs updating, you can install Studio first. Save your session, close the DAW, and rerun Setup with the shared VST3 task selected to finish the update. After a successful shared install, recognized copies from older per-user installs move to `%LOCALAPPDATA%\OSTF Studio\Previous VST3`. The shared plug-ins have their own uninstaller. The Portable ZIP keeps them beside the app.
+In alpha 3, the shared VST3 task in Windows Setup requests administrator approval to install both instruments and all nine effects in `%CommonProgramFiles%\VST3\OSTF Studio`. Other DAWs can find them with their system-folder scan. Setup keeps matching, versioned plug-in binaries in place and installs missing files. If a DAW is using a binary that needs updating, you can install Studio first. Save your session, close the DAW, and rerun Setup with the shared VST3 task selected to finish the update. After a successful shared install, recognized copies from older per-user installs move to `%LOCALAPPDATA%\OSTF Studio\Previous VST3`. The shared plug-ins have their own uninstaller. The Portable ZIP keeps them beside the app.
 
 On macOS arm64, run **Install OSTF Studio and VST3.pkg** inside the DMG to install the plug-ins in `/Library/Audio/Plug-Ins/VST3`. Dragging just the app installs the application alone. Signing and notarization are pending.
 - GitHub Actions Windows + macOS **preview** builds, unsigned
@@ -108,9 +108,9 @@ On macOS arm64, run **Install OSTF Studio and VST3.pkg** inside the DMG to insta
 
 Pending work includes full OSTFP conformance, SVP export, network sync, AI connection and signed binaries.
 
-## Stock effects and mixed demos (development build)
+## Stock effects and mixed demos in alpha 3
 
-The development build includes nine stereo VST3 effects by OSTF Studio. Open **File → Demo songs → Paper Lantern Replies** and inspect the lead vocal's **EQ → Compressor** chain. Drums and bass share Bus A. Accompaniment shares Bus B. Individual post-fader sends feed a fully wet reverb on Return 1, which returns to Master. Both file formats recall the mix. The demo gallery lists starting points for listening and testing each song. [Demo mixes](examples/demo-songs/README.md)
+Alpha 3 includes nine stereo VST3 effects by OSTF Studio. Open **File → Demo songs → Paper Lantern Replies** and inspect the lead vocal's **EQ → Compressor** chain. Drums and bass share Bus A. Accompaniment shares Bus B. Individual post-fader sends feed a fully wet reverb on Return 1, which returns to Master. Both file formats recall the mix. The demo gallery lists starting points for listening and testing each song. [Demo mixes](examples/demo-songs/README.md)
 
 ## Resume development from GitHub
 
