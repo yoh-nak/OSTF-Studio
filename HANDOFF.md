@@ -4,7 +4,7 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
-- The [arranger exchange design](docs/ARRANGER_PHRASE_EXCHANGE.ja.md) proposes that an open plug-in can request a read-only copy of the Studio selection. The user places its result as a new independent clip. The design covers edits or deletion of the source during generation, and loading a project after removing the plug-in. The first implementation milestone is an edited phrase that matches across audition, SMF and Studio insertion.
+- The [arranger exchange design](docs/ARRANGER_PHRASE_EXCHANGE.ja.md) proposes placing a generated progression on the global chord lane, then using it for bass and keys even before any performance clips exist. Selecting an existing OSTF phrase also imports the chords sounding in its range. The first end-to-end check uses a mid-bar chord change shared by both parts. Audition, SMF and Studio insertion should agree on the generated notes. The current preview still uses its fixed pattern.
 
 - Both bar rulers seek the shared transport using their own zoom and scroll. Audio regions draw stereo peaks from linked or embedded WAVs with source trims and tempo changes. Relay Circuit has four audio tracks; First Light Vector has five. Sample-by-sample rendering is reproducible with the demo generator. The transport smoke test checks the seek coordinates and waveform against a known pulse; the stock FX test checks both overlapping stems during playback.
 

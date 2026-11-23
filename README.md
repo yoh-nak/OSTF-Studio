@@ -86,7 +86,7 @@ When Studio opens **OSTF Arranger**, the editor also displays **Drag notes to an
 
 ### OSTF Arranger and piano-roll performance lanes
 
-The proposed next stage lets a compatible plug-in take a copy of the Studio selection and drag its result to an empty location as a new clip. Phrases can also come from OSTF files, MIDI files or MIDI capture. Chords are optional and can be added later. [Arranger design (Japanese)](docs/ARRANGER_PHRASE_EXCHANGE.ja.md)
+The proposed arranger workflow starts with a chord tool on a new song. Place the chosen progression on the global chord lane and use the same bars to generate bass, keys or other parts. Importing an existing OSTF phrase automatically includes the chords sounding in its range. MIDI phrases can still be edited and auditioned without chords. [Arranger design (Japanese)](docs/ARRANGER_PHRASE_EXCHANGE.ja.md)
 
 Double-click an empty cell to add a note. Drag its body to move it, either edge to trim it, or Alt/Option-drag to copy it. Shift-click or drag a selection box to edit several notes together. Ctrl/Command-drag vertically to adjust velocity. Choose a snap division in the piano-roll footer. Delete removes the selection, and Ctrl/Command+Z undoes the last note edit. The Help menu lists the shortcuts.
 
