@@ -119,7 +119,7 @@ public:
         stop.setToggleState(true, juce::dontSendNotification);
         setComponentID("transport");
     }
-    static int panelHeight(int width) { return width < 1220 ? 101 : 65; }
+    static int panelHeight(int width) { return width < 1400 ? 101 : 65; }
     void setPosition(const ostfstudio::OstfpPreview& song, juce::int64 tick, double seconds, int shift = 0, double rate = 1) {
         const auto withinBar = tick % song.ticksPerBar;
         const auto meter = ostfstudio::activeMeter(song.meters, double(tick), {0, song.meterBeats, song.beatUnit});

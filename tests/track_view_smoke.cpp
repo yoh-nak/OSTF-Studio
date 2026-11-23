@@ -382,6 +382,17 @@ int checkTrackView(const juce::File& fixture) {
         main.mouseDown(gesture(&main, header, header));
     }
     if (!tempo->isVisible() || tracks->isVisible() || audioEditor->isVisible()) return 76;
+    auto* arrangementMode = findControl<juce::TextButton>(main, "AI Arrangement Studio");
+    auto* vocalMode = findControl<juce::TextButton>(main, "AI Vocal Studio");
+    auto* picker = findControl<juce::ComboBox>(main, TRANS("Analysis model"));
+    auto* deck = dynamic_cast<TransportPanel*>(main.findChildWithID("transport"));
+    if (!deck || !deck->click.getClickingTogglesState() || deck->countIn.getNumItems() != 9
+        || !arrangementMode || !vocalMode || !picker || arrangementMode->getX() != vocalMode->getX()
+        || arrangementMode->getBottom() >= vocalMode->getY() || arrangementMode->getRight() >= picker->getX()) return 140;
+    const juce::Font heading(juce::FontOptions(15.f, juce::Font::bold));
+    const auto reserved = juce::GlyphArrangement::getStringWidth(heading, TRANS("Degree") + " / " + TRANS("Progression"));
+    auto* topRuler = dynamic_cast<ArrangementRuler*>(barRuler);
+    if (!topRuler || picker->getRight() + reserved + 5 > topRuler->headerWidth) return 141;
     const auto columns = tempo->timelineColumns();
     auto* alignedRuler = dynamic_cast<ArrangementRuler*>(barRuler);
     if (!alignedRuler || tempo->getX() + columns.getStart() != rulerArea.getX() + alignedRuler->headerWidth

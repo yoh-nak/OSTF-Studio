@@ -5783,7 +5783,16 @@ void MainComponent::resized() {
         importTrackDrop_.setBounds(arrangement.withTop(std::max(arrangement.getY(), arrangement.getBottom() - 36)).reduced(4, 2));
         ruler_.setBounds(rowOverlay_.getLocalBounds().removeFromTop(timelineRowHeight()));
         ruler_.toFront(false);
-        const int panelWidth = std::clamp(trackHeaderWidth - 120, 150, 460);
+        const juce::Font headingFont(juce::FontOptions(15.f, juce::Font::bold));
+        const auto headingWidth = [&](const juce::String& label) {
+            return juce::roundToInt(std::ceil(juce::GlyphArrangement::getStringWidth(headingFont, label)));
+        };
+        int labelsWidth = headingWidth(TRANS("BARS"));
+        for (const auto& lane : view.globalLanes)
+            labelsWidth = std::max(labelsWidth, headingWidth(juce::translate(lane.label)));
+        if (theoryVisible_) labelsWidth = std::max({labelsWidth, headingWidth(TRANS("Degree") + " / " + TRANS("Progression")),
+                                                    headingWidth(TRANS("Function"))});
+        const int panelWidth = std::min(460, trackHeaderWidth - labelsWidth - 20);
         const bool columns = panelWidth >= 282;
         const int panelHeight = columns ? 88 : (activeAi_ ? 113 : 84);
         const int aiY = std::max(0, (globalHeight - panelHeight) / 2) - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
@@ -6349,7 +6358,7 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
         g.setColour(juce::Colour(0xffe1e9ef));
         g.setFont(juce::FontOptions(15.f, juce::Font::bold));
         auto header = labels.withY(y).withHeight(height);
-        auto title = track ? header.removeFromLeft(trackNameWidth) : header.removeFromRight(trackNameWidth);
+        auto title = track ? header.removeFromLeft(trackNameWidth) : header;
         g.drawText(name, title.reduced(5, 0), track ? juce::Justification::centredLeft : juce::Justification::centredRight);
         g.setColour(juce::Colour(hardwareAmber));
         if (track) g.drawText(current, header.reduced(4, 0), juce::Justification::centredLeft);
