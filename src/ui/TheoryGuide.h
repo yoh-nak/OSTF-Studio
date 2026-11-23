@@ -20,7 +20,7 @@ public:
         std::vector<int> scales;
         std::vector<juce::String> sections;
     };
-    struct Chord { juce::String id, name; int root, intervals, mask; };
+    struct Chord { juce::String id, name; int root, intervals, mask, extensions = 0; };
     struct Function { Tick start, end; int chord, key; juce::String degree, function; };
     struct Progression { Tick start, end; juce::String label; };
     struct Fit {
@@ -49,7 +49,7 @@ public:
     }
     std::vector<TrackCell> analyse(std::size_t track, const std::vector<PitchedNote>& notes, int reference = -1) const;
     int scaleForNote(const TrackCell&, const PitchedNote&) const;
-    enum class Tone { unknown, root, guide, chord, scale, outside };
+    enum class Tone { unknown, root, guide, fifth, chord, tension, avoid, scale, outside };
     static Tone tone(int pitch, const Chord* chord, int scaleMask);
     static const char* interval(int pitch, int root);
     int chordMask(const Cell& c) const { return c.chord < 0 ? 0 : chords[static_cast<std::size_t>(c.chord)].mask; }

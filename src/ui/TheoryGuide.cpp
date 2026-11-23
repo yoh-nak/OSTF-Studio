@@ -45,7 +45,12 @@ TheoryGuide::TheoryGuide(const juce::var& score, Tick end) {
         auto mask = intervals;
         const auto bass = pitchClass(entry["bass"]);
         if (mask && bass >= 0) mask |= 1 << bass;
-        chords.push_back({entry["id"].toString(), entry["label"].toString(), pitchClass(entry["root"]), intervals, mask});
+        int extensions = 0;
+        const int root = pitchClass(entry["root"]);
+        each(entry["intervals"], [&](const auto& interval) {
+            if (root >= 0 && int(interval) >= 12) extensions |= 1 << ((root + int(interval) % 12) % 12);
+        });
+        chords.push_back({entry["id"].toString(), entry["label"].toString(), pitchClass(entry["root"]), intervals, mask, extensions});
     });
     std::vector<juce::String> sectionIds;
     each(timeline["sections"], [&](const auto& entry) {
@@ -118,7 +123,7 @@ void TheoryGuide::buildFunctions() {
         if (k.root < 0 || h.root < 0 || (k.mode != "major" && k.mode != "minor")) continue;
         const bool minor = k.mode == "minor";
         const auto degree = (h.root + 12 - k.root) % 12;
-        const auto has = [&](int interval) { return contains(h.intervals, h.root + interval); };
+        const auto has = [&](int interval) { return contains(h.intervals & ~h.extensions, h.root + interval); };
         const bool maj = has(4) && !has(3) && has(7), min = has(3) && !has(4) && has(7);
         if (degree == 0 && (minor ? min : maj)) { f.degree = minor ? "i" : "I"; f.function = "Tonic"; }
         else if (degree == 2 && ((!minor && min) || (minor && has(3) && has(6) && !has(7)))) {
@@ -140,6 +145,13 @@ void TheoryGuide::buildFunctions() {
         auto& from = functions[i - 1];
         const auto& to = functions[i];
         const auto& h = chords[from.chord];
+        if (from.key == to.key && from.end == to.start && (to.degree == "I" || to.degree == "i")
+            && h.root >= 0 && (h.root - chords[to.chord].root + 12) % 12 == 1
+            && contains(h.intervals, h.root + 4) && contains(h.intervals, h.root + 10)
+            && !contains(h.intervals, h.root + 11)) {
+            from.degree = "subV";
+            from.function = "Dominant substitute";
+        }
         if (from.key != to.key || from.end != to.start || h.root < 0 || to.degree.isEmpty()
             || to.degree == "I" || to.degree == "i" || to.degree.contains("/") || from.degree == "V"
             || (h.root - chords[to.chord].root + 12) % 12 != 7) continue;
@@ -149,17 +161,43 @@ void TheoryGuide::buildFunctions() {
             from.function = "Secondary dominant";
         }
     }
+    auto addProgression = [&](Tick start, Tick end, const juce::String& name) {
+        // A resolution can immediately begin the next cadence. Give that beat to the new phrase.
+        if (!progressions.empty() && progressions.back().end > start) {
+            if (progressions.back().start >= start) progressions.pop_back();
+            else progressions.back().end = start;
+        }
+        progressions.push_back({start, end, name});
+    };
     for (std::size_t i = 1; i < functions.size(); ++i) {
         const auto& v = functions[i-1]; const auto& tonic = functions[i];
-        if (v.degree != "V" || (tonic.degree != "I" && tonic.degree != "i") || v.end != tonic.start || v.key != tonic.key) continue;
+        if (v.function == "Secondary dominant" && v.end == tonic.start && v.key == tonic.key) {
+            juce::String label = "V/" + tonic.degree;
+            Tick start = v.start;
+            if (i >= 2) {
+                const auto& pre = functions[i-2];
+                const auto& h = chords[pre.chord];
+                const int targetRoot = chords[tonic.chord].root;
+                const int structural = h.intervals & ~h.extensions;
+                if (pre.key == v.key && pre.end == v.start && h.root >= 0 && (h.root + 12 - targetRoot) % 12 == 2
+                    && contains(structural, h.root + 3) && !contains(structural, h.root + 4)
+                    && (contains(structural, h.root + 6) || contains(structural, h.root + 7))) {
+                    start = pre.start;
+                    label = "(ii-V)/" + tonic.degree;
+                }
+            }
+            addProgression(start, tonic.end, label);
+            continue;
+        }
+        if ((v.degree != "V" && v.degree != "subV") || (tonic.degree != "I" && tonic.degree != "i") || v.end != tonic.start || v.key != tonic.key) continue;
         if (i >= 2) {
             const auto& ii = functions[i-2];
-            if (ii.degree.startsWith("ii") && ii.end == v.start && ii.key == v.key) {
-                progressions.push_back({ii.start, tonic.end, ii.degree + "-V-" + tonic.degree + "  /  V-" + tonic.degree});
+            if ((ii.degree.startsWith("ii") || ii.degree.equalsIgnoreCase("IV")) && ii.end == v.start && ii.key == v.key) {
+                addProgression(ii.start, tonic.end, ii.degree + "-" + v.degree + "-" + tonic.degree + "  /  " + v.degree + "-" + tonic.degree);
                 continue;
             }
         }
-        progressions.push_back({v.start, tonic.end, "V-" + tonic.degree});
+        addProgression(v.start, tonic.end, v.degree + "-" + tonic.degree);
     }
 }
 
@@ -172,12 +210,20 @@ TheoryGuide::Tone TheoryGuide::tone(int pitch, const Chord* chord, int scaleMask
     if (chord && contains(chord->mask, pitch)) {
         const auto degree = (pitch - chord->root + 12) % 12;
         if (degree == 0) return Tone::root;
+        if (contains(chord->extensions, pitch)) return Tone::tension;
+        if (degree == 7) return Tone::fifth;
         // A #9 can coexist with the major third. It is a chord colour, not a minor third.
         if ((degree == 3 && !contains(chord->intervals, chord->root + 4)) || degree == 4
             || degree == 10 || degree == 11) return Tone::guide;
         return Tone::chord;
     }
-    if (contains(scaleMask, pitch)) return Tone::scale;
+    if (contains(scaleMask, pitch)) {
+        if (!chord || !chord->intervals) return Tone::scale;
+        // A sustained minor ninth above a structural chord tone is an avoid candidate.
+        // Explicit extensions and suspended chord members were handled above.
+        const int structural = chord->intervals & ~chord->extensions;
+        return contains(structural, pitch + 11) ? Tone::avoid : Tone::tension;
+    }
     return (chord && chord->mask) || scaleMask ? Tone::outside : Tone::unknown;
 }
 
@@ -195,6 +241,14 @@ int TheoryGuide::scaleForNote(const TrackCell& cell, const PitchedNote& note) co
 std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, const std::vector<PitchedNote>& notes, int reference) const {
     std::vector<TrackCell> result(cells.size());
     const auto id = track < trackIds.size() ? trackIds[track] : juce::String{};
+    std::set<juce::String> noteIds, clipIds;
+    const bool scoped = std::any_of(scales.begin(), scales.end(), [](const auto& scale) {
+        return std::any_of(scale.targets.begin(), scale.targets.end(), [](const auto& t) { return t.type == "clip" || t.type == "note"; });
+    });
+    if (scoped) for (const auto& note : notes) {
+        noteIds.insert(note.id);
+        clipIds.insert(note.clipId);
+    }
     for (std::size_t j = 0; j < cells.size(); ++j) {
         const auto& c = cells[j];
         auto& dest = result[j];
@@ -206,7 +260,7 @@ std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, cons
                 whole |= (t.type == "track" && t.id == id)
                       || (t.type == "chord" && c.chord >= 0 && t.id == chords[c.chord].id)
                       || (t.type == "section" && std::find(c.sections.begin(), c.sections.end(), t.id) != c.sections.end());
-                individual |= t.type == "note" || t.type == "clip";
+                individual |= (t.type == "note" && noteIds.contains(t.id)) || (t.type == "clip" && clipIds.contains(t.id));
             }
             if (whole) dest.backgroundScale = combine(dest.backgroundScale, i);
             else if (individual) dest.noteScoped.push_back(i);

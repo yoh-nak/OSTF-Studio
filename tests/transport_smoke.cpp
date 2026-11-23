@@ -171,23 +171,19 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     if (!reads("section", juce::String::charToString(0x2014))) return 26;
     main.displayTransportPosition(1440);
     if (!reads("section", "Verse")) return 27;
-    juce::Slider* pianoZoom = nullptr;
     juce::Slider* arrangementZoom = nullptr;
-    for (auto* child : main.getChildren()) {
-        auto* slider = dynamic_cast<juce::Slider*>(child);
-        if (slider && slider->getTitle() == TRANS("Piano roll horizontal zoom")) pianoZoom = slider;
-        if (slider && slider->getTitle() == TRANS("Arrangement horizontal zoom")) arrangementZoom = slider;
-    }
-    auto* pianoScroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("piano-horizontal-scroll"));
+    for (auto* child : main.getChildren())
+        if (auto* slider = dynamic_cast<juce::Slider*>(child); slider && slider->getTitle() == TRANS("Timeline horizontal zoom"))
+            arrangementZoom = slider;
     auto* arrangementScroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-horizontal-scroll"));
-    if (!pianoZoom || !arrangementZoom || !pianoScroll || !arrangementScroll) return 19;
-    const auto full = pianoScroll->getCurrentRangeSize();
-    pianoZoom->setValue(0.63, juce::sendNotificationSync);
-    const auto span = pianoScroll->getCurrentRangeSize();
-    if (std::abs(span - std::pow(full, 0.37)) > 0.001 || arrangementScroll->getCurrentRangeSize() != full) return 20;
+    auto* pianoRuler = dynamic_cast<ArrangementRuler*>(main.findChildWithID("piano-ruler"));
+    if (!arrangementZoom || !arrangementScroll || !pianoRuler) return 19;
+    const auto full = arrangementScroll->getCurrentRangeSize();
+    arrangementZoom->setValue(0.63, juce::sendNotificationSync);
+    if (std::abs(pianoRuler->visibleBars().getLength() - std::pow(full, 0.37)) > 0.001) return 20;
     arrangementZoom->setValue(1, juce::sendNotificationSync);
     arrangementScroll->setCurrentRangeStart(full, juce::sendNotificationSync);
-    if (arrangementScroll->getCurrentRangeSize() != 1 || pianoScroll->getCurrentRangeSize() != span) return 21;
+    if (pianoRuler->visibleBars() != arrangementScroll->getCurrentRange() || pianoRuler->visibleBars().getLength() != 1) return 21;
     arrangementZoom->setValue(0, juce::sendNotificationSync);
     if (arrangementScroll->getCurrentRangeStart() != 1 || arrangementScroll->getCurrentRangeSize() != full
         || arrangementScroll->isEnabled()) return 22;
@@ -204,12 +200,12 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     next->onClick();
     if (!reads("bar-beat-tick", "002.01.000") || !arrangementScroll->getCurrentRange().contains(2.0)) return 29;
     const auto arrangementPage = arrangementScroll->getCurrentRange();
-    const auto pianoPage = pianoScroll->getCurrentRange();
+    const auto pianoPage = pianoRuler->visibleBars();
     follow->setToggleState(false, juce::sendNotificationSync);
     main.displayTransportPosition(10 * song->ticksPerBar + 960);
-    if (arrangementScroll->getCurrentRange() != arrangementPage || pianoScroll->getCurrentRange() != pianoPage) return 30;
+    if (arrangementScroll->getCurrentRange() != arrangementPage || pianoRuler->visibleBars() != pianoPage) return 30;
     follow->setToggleState(true, juce::sendNotificationSync);
-    if (!arrangementScroll->getCurrentRange().contains(11.25) || !pianoScroll->getCurrentRange().contains(11.25)) return 31;
+    if (!arrangementScroll->getCurrentRange().contains(11.25) || !pianoRuler->visibleBars().contains(11.25)) return 31;
     main.displayTransportPosition(song->playbackEndTick() - 960);
     next->onClick();
     next->onClick();
@@ -220,11 +216,13 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     home->onClick();
     back->onClick();
     if (!reads("section", "Opening") || !reads("bar-beat-tick", "001.01.000")
-        || arrangementScroll->getCurrentRangeStart() != 1 || pianoScroll->getCurrentRangeStart() != 1) return 34;
+        || arrangementScroll->getCurrentRangeStart() != 1 || pianoRuler->visibleBars().getStart() != 1) return 34;
     ArrangementRuler* ruler = nullptr;
     for (auto* child : main.getChildren())
         if (auto* r = dynamic_cast<ArrangementRuler*>(child->findChildWithID("arrangement-ruler"))) ruler = r;
     if (!ruler || !ruler->isVisible()) return 35;
+    const auto origin = main.getLocalPoint(ruler, juce::Point<int>{ruler->headerWidth, 0});
+    if (origin.x != pianoRuler->getX() || ruler->getWidth() - ruler->headerWidth != pianoRuler->getWidth()) return 47;
     const int width = ruler->getWidth() - ruler->headerWidth;
     const int centre = ruler->headerWidth + width / 2;
     const auto pointer = [&](int x, int origin, bool down, int modifiers = 0) {
@@ -249,12 +247,12 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     if (!main.keyPressed(juce::KeyPress(juce::KeyPress::homeKey)) || ruler->playheadBar() != 1) return 39;
     ruler = dynamic_cast<ArrangementRuler*>(main.findChildWithID("piano-ruler"));
     if (!ruler || !ruler->isVisible()) return 40;
-    pianoZoom->setValue(1, juce::sendNotificationSync);
-    pianoScroll->setCurrentRangeStart(7, juce::sendNotificationSync);
-    const auto pianoRange = pianoScroll->getCurrentRange();
+    arrangementZoom->setValue(1, juce::sendNotificationSync);
+    arrangementScroll->setCurrentRangeStart(7, juce::sendNotificationSync);
+    const auto pianoRange = pianoRuler->visibleBars();
     const auto half = ruler->getWidth() / 2;
     ruler->mouseDown(pointer(half, half, true)); ruler->mouseUp(pointer(half, half, false));
-    if (std::abs(ruler->playheadBar() - 7.5) > .003 || pianoScroll->getCurrentRange() != pianoRange
+    if (std::abs(ruler->playheadBar() - 7.5) > .003 || pianoRuler->visibleBars() != pianoRange
         || !arrangementScroll->getCurrentRange().contains(ruler->playheadBar()) || pianoCursorX(main) < 0) return 41;
     home->onClick();
     main.setSize(680, 550);

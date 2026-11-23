@@ -71,13 +71,45 @@ int modelChecks(const juce::File& fixture) {
 
 int checkPianoEdits(const juce::File& fixture) {
     if (const auto failed = modelChecks(fixture)) return failed;
+    {
+        PianoNoteGrid editor;
+        editor.setSize(500, 190);
+        editor.editable = true;
+        editor.grid = 50;
+        editor.endTick = 500;
+        editor.tickRange = [] { return juce::Range<double>(0, 500); };
+        editor.notes = {{63, 119, 60, 80, true, "a"}, {63, 144, 64, 90, true, "b"},
+                        {232, 280, 65, 96, true, "c"}, {475, 500, 66, 96, true, "d"}};
+        editor.selection = {"a", "b", "c", "d"};
+        std::vector<NoteEdit> results;
+        editor.commit = [&](const auto& edits) { results = edits; };
+        editor.quantizeSelection(50);
+        if (results.size() != 3 || results[0].note.startTick != 56 || results[0].note.endTick != 112
+            || results[1].note.startTick != 56 || results[2].note.startTick != 241) return 48;
+        editor.shapeVelocity(40, 120);
+        if (results.size() != 4 || results[0].note.velocity != 40 || results[1].note.velocity != 40
+            || results[2].note.velocity != 73 || results[3].note.velocity != 120) return 49;
+        editor.selection = {"a"};
+        editor.absoluteSnap = true;
+        auto resize = [&](bool bypass) {
+            auto start = editor.box(editor.notes[0]).getCentre().withX(64.f);
+            auto end = start.translated(21.f, 0);
+            editor.mouseDown(pointer(editor, start, start));
+            editor.mouseDrag(pointer(editor, end, start, bypass ? juce::ModifierKeys::shiftModifier : 0));
+            editor.mouseUp(pointer(editor, end, start));
+        };
+        resize(false);
+        if (results.size() != 1 || results.front().note.startTick != 100 || results.front().note.endTick != 119) return 50;
+        resize(true);
+        if (results.size() != 1 || results.front().note.startTick != 84 || results.front().note.endTick != 119) return 51;
+    }
     MainComponent main;
     main.setVisible(true); main.setSize(1280, 900);
     if (!main.openDocument(fixture)) return 20;
     auto* grid = dynamic_cast<PianoNoteGrid*>(main.findChildWithID("piano-note-grid"));
     if (!grid || !grid->editable || !grid->isVisible() || grid->getWidth() < 200 || grid->getHeight() < 20) return 21;
     for (auto* child : main.getChildren()) if (auto* slider = dynamic_cast<juce::Slider*>(child))
-        if (slider->getTitle() == TRANS("Piano roll horizontal zoom")) slider->setValue(1, juce::sendNotificationSync);
+        if (slider->getTitle() == TRANS("Timeline horizontal zoom")) slider->setValue(1, juce::sendNotificationSync);
     const auto initial = grid->notes.size();
     const juce::Point<float> empty {grid->getWidth() * .25f, grid->getHeight() * .45f};
     grid->mouseDoubleClick(pointer(*grid, empty, empty));
@@ -127,5 +159,34 @@ int checkPianoEdits(const juce::File& fixture) {
         if (std::none_of(grid->notes.begin(), grid->notes.end(), [&](const auto& n) { return n.id == old.id && n.pitch == old.pitch + 1; }))
             return 32;
     }
+    auto* divider = main.findChildWithID("piano-divider");
+    if (!divider || !divider->isVisible()) return 52;
+    const int initialY = divider->getY(), initialGridTop = grid->getY();
+    divider->mouseDrag(pointer(*divider, {12.f, -26.f}, {12.f, 0.f}));
+    if (grid->getY() >= initialGridTop || grid->getWidth() < 200) return 53;
+    divider->mouseDrag(pointer(*divider, {12.f, float(initialY - divider->getY())}, {12.f, 0.f}));
+    auto* column = main.findChildWithID("piano-column-divider");
+    if (!column || !column->isVisible()) return 58;
+    const int gridX = grid->getX(), columnX = column->getX();
+    const int shift = gridX < 700 ? 32 : -32;
+    column->mouseDrag(pointer(*column, {float(shift + 6), 10.f}, {0.f, 10.f}));
+    if (grid->getX() != gridX + shift) return 59;
+    column->mouseDrag(pointer(*column, {float(columnX - column->getX() + 6), 10.f}, {0.f, 10.f}));
+    juce::Button* shape = nullptr;
+    for (auto* child : main.getChildren())
+        if (auto* view = dynamic_cast<juce::Viewport*>(child); view && view->getViewedComponent())
+            shape = dynamic_cast<juce::Button*>(view->getViewedComponent()->findChildWithID("shape-velocity"));
+    if (!shape || !shape->isEnabled()) return 54;
+    shape->onClick();
+    const auto firstOnset = grid->notes.front().startTick;
+    const auto lastOnset = grid->notes.back().startTick;
+    for (const auto& note : grid->notes) {
+        const double fraction = double(note.startTick - firstOnset) / std::max<juce::int64>(1, lastOnset - firstOnset);
+        if (note.velocity != juce::roundToInt(65 + 40 * fraction)) return 55;
+    }
+    grid->keyPressed(juce::KeyPress('Z', juce::ModifierKeys::commandModifier, 0));
+    for (const auto& note : grid->notes)
+        if (std::none_of(prior.begin(), prior.end(), [&](const auto& old) { return note.id == old.id && note.velocity == old.velocity; }))
+            return 56;
     return 0;
 }

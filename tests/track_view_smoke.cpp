@@ -121,10 +121,11 @@ int checkTrackView(const juce::File& fixture) {
     if (!guitar->expanded() || guitar->height() != TrackRowSize::normal + 80
         || bass->getY() != bassY + 80 || bass->height() != TrackRowSize::normal) return 4;
     const auto image = main.createComponentSnapshot(main.getLocalBounds());
+    const juce::Image::BitmapData pixels(image, juce::Image::BitmapData::readOnly);
     bool hasNotePreview = false;
     for (int y = 0; y < image.getHeight() && !hasNotePreview; ++y)
         for (int x = 425; x < image.getWidth(); ++x)
-            if (image.getPixelAt(x, y) == juce::Colour(0xffb3ebdc)) { hasNotePreview = true; break; }
+            if (pixels.getPixelColour(x, y) == juce::Colour(0xffb3ebdc)) { hasNotePreview = true; break; }
     if (!hasNotePreview) return 5;
     guitar->mouseDoubleClick(pointer(*guitar, 2));
     if (!guitar->compact() || bass->getY() != bassY + TrackRowSize::minimum - TrackRowSize::normal) return 6;

@@ -9,7 +9,7 @@
 #include "ui/ViewButton.h"
 #include "ui/ArrangementRuler.h"
 #include "ui/AudioClipWaveforms.h"
-#include "ui/PianoNoteGrid.h"
+#include "ui/PianoInspector.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
@@ -39,7 +39,7 @@ private:
     std::optional<std::size_t> pluginDropTrack(juce::Point<int> position) const;
     void timerCallback() override;
     void scrollBarMoved(juce::ScrollBar*, double) override;
-    void updateHorizontalRange(bool piano, bool reset = false);
+    void updateHorizontalRange(bool reset = false);
     enum class HeightGroup { all = 1, global, lanes, voicing, melody, vocal, arrangement, pitched, drums, audio,
                              outputs, master, bus, returns, count };
     HeightGroup trackHeightGroup(std::size_t index) const;
@@ -47,7 +47,7 @@ private:
     static bool includesHeightGroup(HeightGroup scope, HeightGroup group);
     void applyGroupHeight();
     void refreshGroupHeight();
-    ostfstudio::TimelineExtent horizontalRange(bool piano) const;
+    ostfstudio::TimelineExtent horizontalRange() const;
     void startTransport(bool recording);
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
     void stopTransport();
@@ -150,6 +150,11 @@ private:
     void undoPianoEdit(bool redo);
     void finishNoteEdit(bool playing);
     PianoNoteGrid pianoGrid_;
+    PianoInspector pianoInspector_ {pianoGrid_};
+    juce::Viewport pianoInspectorView_;
+    EditorDivider pianoDivider_, columnDivider_ {true};
+    int preferredHeaderWidth_ = 487, trackHeaderWidth = 487, trackNameWidth = 172;
+    double arrangementFraction_ = 0.6;
     PianoVelocityLane pianoVelocity_ {pianoGrid_};
     juce::ComboBox pianoSnap_, pianoColours_;
     juce::Rectangle<int> functionRow_;
@@ -198,12 +203,12 @@ private:
     juce::int64 cursorTick_ = -1;
     juce::ComboBox trackPicker_;
     juce::ComboBox performanceLane_;
-    juce::Slider arrangementZoom_, pianoZoom_, groupHeight_;
+    juce::Slider arrangementZoom_, groupHeight_;
     juce::ComboBox heightScope_;
-    juce::Label heightLabel_, arrangementZoomLabel_, pianoZoomLabel_;
+    juce::Label heightLabel_, arrangementZoomLabel_;
     std::array<int, static_cast<std::size_t>(HeightGroup::count)> groupDefaults_ {};
     bool mixedHeights_ = false;
-    juce::ScrollBar arrangementScroll_ {false}, pianoScroll_ {false};
+    juce::ScrollBar arrangementScroll_ {false};
     juce::Component rowOverlay_;
     ArrangementRuler ruler_, pianoRuler_;
     AudioClipWaveforms waveforms_;

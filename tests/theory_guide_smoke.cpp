@@ -72,18 +72,44 @@ int modelChecks() {
     const auto& g7 = guide.chords[1];
     const auto& cmaj = guide.chords[2];
     const auto ionian = guide.scales[0].mask;
-    // The same sustained F is the seventh of G7, then a scale tone over Cmaj7.
-    if (TheoryGuide::tone(65, &g7, ionian) != Tone::guide || TheoryGuide::tone(65, &cmaj, ionian) != Tone::scale
+    // The same sustained F is the seventh of G7, then an avoid candidate over Cmaj7.
+    if (TheoryGuide::tone(65, &g7, ionian) != Tone::guide || TheoryGuide::tone(65, &cmaj, ionian) != Tone::avoid
         || juce::String(TheoryGuide::interval(65, g7.root)) != "b7" || juce::String(TheoryGuide::interval(65, cmaj.root)) != "4"
-        || TheoryGuide::tone(60, &cmaj, ionian) != Tone::root || TheoryGuide::tone(67, &cmaj, ionian) != Tone::chord
+        || TheoryGuide::tone(60, &cmaj, ionian) != Tone::root || TheoryGuide::tone(67, &cmaj, ionian) != Tone::fifth
         || TheoryGuide::tone(61, &cmaj, ionian) != Tone::outside || TheoryGuide::tone(61, nullptr, 0) != Tone::unknown) return 23;
+    if (TheoryGuide::tone(62, &cmaj, ionian) != Tone::tension || TheoryGuide::tone(65, nullptr, ionian) != Tone::scale
+        || TheoryGuide::tone(62, &cmaj, 0) != Tone::outside) return 44;
+    auto substitution = juce::JSON::parse(R"({"song":{"key":{"state":"tonal","tonic":{"step":"C"},"mode":"major"}},
+        "harmony":{"chords":[{"root":{"step":"D"},"intervals":[0,3,7,10],"start":0,"duration":4},
+        {"root":{"step":"D","alter":-1},"intervals":[0,4,7,10],"start":4,"duration":4},
+        {"root":{"step":"C"},"intervals":[0,4,7],"start":8,"duration":4}]}})");
+    const TheoryGuide sub(substitution, 12);
+    if (sub.progressions.size() != 1 || sub.progressions[0].label != "ii-subV-I  /  subV-I"
+        || sub.functions[1].function != "Dominant substitute") return 45;
+    auto subChord = (*substitution["harmony"]["chords"].getArray())[1];
+    subChord.getDynamicObject()->setProperty("intervals", juce::JSON::parse("[0,4,7,11]"));
+    if (!TheoryGuide(substitution, 12).progressions.empty()) return 46;
+    subChord.getDynamicObject()->setProperty("root", juce::JSON::parse(R"({"step":"G"})"));
+    subChord.getDynamicObject()->setProperty("intervals", juce::JSON::parse("[0,4,7,10]"));
+    auto predominant = (*substitution["harmony"]["chords"].getArray())[0];
+    predominant.getDynamicObject()->setProperty("root", juce::JSON::parse(R"({"step":"F"})"));
+    predominant.getDynamicObject()->setProperty("intervals", juce::JSON::parse("[0,4,7]"));
+    const TheoryGuide iv(substitution, 12);
+    if (iv.progressions.size() != 1 || iv.progressions.front().label != "IV-V-I  /  V-I") return 47;
     auto applied = juce::JSON::parse(R"({"song":{"key":{"state":"tonal","tonic":{"step":"C"},"mode":"major"}},
         "harmony":{"chords":[{"root":{"step":"A"},"intervals":[0,4,7,10,15],"start":0,"duration":4},
         {"root":{"step":"D"},"intervals":[0,3,7,10],"start":4,"duration":4},
         {"root":{"step":"A"},"intervals":[0,3,7],"start":8,"duration":4}]}})");
     const TheoryGuide intoTwo(applied, 12);
-    if (intoTwo.functions[0].degree != "V/ii" || intoTwo.functions[2].degree != "vi"
-        || TheoryGuide::tone(60, &intoTwo.chords[0], ionian) != Tone::chord) return 24;
+    if (intoTwo.progressions.size() != 1 || intoTwo.progressions[0].label != "V/ii" || intoTwo.functions[0].degree != "V/ii" || intoTwo.functions[2].degree != "vi"
+        || TheoryGuide::tone(60, &intoTwo.chords[0], ionian) != Tone::tension) return 24;
+    auto localChain = applied.clone();
+    auto chainChords = localChain["harmony"]["chords"];
+    for (auto& entry : *chainChords.getArray())
+        entry.getDynamicObject()->setProperty("start", int(entry["start"]) + 4);
+    chainChords.getArray()->insert(0, juce::JSON::parse(R"({"root":{"step":"E"},"intervals":[0,3,7,10],"start":0,"duration":4})"));
+    const TheoryGuide localCadence(localChain, 16);
+    if (localCadence.progressions.empty() || localCadence.progressions.front().label != "(ii-V)/ii") return 57;
     (*applied["harmony"]["chords"].getArray())[1].getDynamicObject()->setProperty("start", 5);
     if (TheoryGuide(applied, 12).functions.front().degree == "V/ii") return 25;
     return 0;
@@ -182,6 +208,7 @@ int checkTheoryGuide(const juce::File& demo) {
         set("Scale fit", scale.checked); set("Show Theory Guide", show.checked);
     });
     if (!set("Show Theory Guide", false)) return 16;
+    colours->setSelectedId(2, juce::sendNotificationSync);
     const int normal = grid->getHeight();
     set("Show Theory Guide", true); set("Chord tone fit", true); set("Scale fit", true);
     const int both = grid->getHeight();
@@ -190,13 +217,11 @@ int checkTheoryGuide(const juce::File& demo) {
     for (auto* child : main.getChildren()) {
         if (auto* picker = dynamic_cast<juce::ComboBox*>(child); picker && picker->getTitle() == TRANS("Arrangement track"))
             picker->setSelectedId(static_cast<int>(keys + 1), juce::sendNotificationSync);
-        if (auto* slider = dynamic_cast<juce::Slider*>(child); slider && (slider->getTitle() == TRANS("Piano roll horizontal zoom")
-                || slider->getTitle() == TRANS("Arrangement horizontal zoom")))
+        if (auto* slider = dynamic_cast<juce::Slider*>(child); slider && slider->getTitle() == TRANS("Timeline horizontal zoom"))
             slider->setValue(0.68, juce::sendNotificationSync);
     }
     main.displayTransportPosition(13 * project->ticksPerBar);
-    for (const auto* id : {"piano-horizontal-scroll", "arrangement-horizontal-scroll"})
-        if (auto* scroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID(id)))
+    if (auto* scroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-horizontal-scroll")))
             scroll->setCurrentRangeStart(13, juce::sendNotificationSync);
     const auto snapshot = main.createComponentSnapshot(main.getLocalBounds());
     const auto snapshotPath = juce::SystemStats::getEnvironmentVariable("OSTF_THEORY_SMOKE_PNG", {});
@@ -219,9 +244,9 @@ int checkTheoryGuide(const juce::File& demo) {
     for (int mode = 1; mode <= 4; ++mode) {
         colours->setSelectedId(mode, juce::sendNotificationSync);
         const auto hint = grid->theoryHint(0, c);
-        if (hint.contains("Cmaj7") != (mode == 2 || mode == 4)
+        if (hint.contains("Cmaj7") != (mode != 1)
             || hint.contains("Ionian") != (mode == 3 || mode == 4)
-            || grid->getHeight() != normal) return 26;
+            || (mode == 1 ? grid->getHeight() <= normal : grid->getHeight() != both)) return 26;
     }
     auto* guideButton = dynamic_cast<ViewButton*>(main.findChildWithID("theory-guide"));
     auto* musicButton = dynamic_cast<ViewButton*>(main.findChildWithID("song-settings"));
@@ -230,9 +255,9 @@ int checkTheoryGuide(const juce::File& demo) {
     if (!guideButton->getToggleState() || !find(*model, TRANS("Show Theory Guide")).checked) return 40;
     // Drag C to C-sharp over the opening Cmaj7. Inspect the actual readout before release and after committing.
     for (auto* child : main.getChildren())
-        if (auto* slider = dynamic_cast<juce::Slider*>(child); slider && slider->getTitle() == TRANS("Piano roll horizontal zoom"))
+        if (auto* slider = dynamic_cast<juce::Slider*>(child); slider && slider->getTitle() == TRANS("Timeline horizontal zoom"))
             slider->setValue(1, juce::sendNotificationSync);
-    auto* scroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("piano-horizontal-scroll"));
+    auto* scroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-horizontal-scroll"));
     scroll->setCurrentRangeStart(1, juce::sendNotificationSync);
     grid->commit({{NoteEdit::insert, {0, project->ppq, 84, 96, true, {}}}});
     auto changed = std::find_if(grid->notes.begin(), grid->notes.end(), [&](const auto& n){ return grid->selection.contains(n.id); });

@@ -15,15 +15,38 @@ public:
     std::function<void(const std::vector<Edit>&)> previewEdit;
     std::function<void(const Note&)> inspectNote;
     std::function<void(bool)> undoRedo;
+    std::function<void()> selectionChanged;
     std::function<juce::String(juce::int64, const Note&)> theoryHint;
     std::vector<Note> notes;
     juce::StringArray selection;
     juce::int64 grid = 1, endTick = 1, quarter = 1;
     int low = 52, high = 70;
-    bool editable = false;
+    bool editable = false, absoluteSnap = false;
     const std::vector<Edit>& pendingEdits() const { return pending; }
 
     PianoNoteGrid() { setWantsKeyboardFocus(true); setComponentID("piano-note-grid"); }
+
+    void quantizeSelection(int strength) {
+        if (grid <= 1 || strength <= 0) return;
+        editSelection([&](Note& note) {
+            const auto nearest = std::llround(double(note.startTick) / grid) * grid;
+            const auto delta = std::clamp<juce::int64>(std::llround((nearest - note.startTick) * strength / 100.0),
+                                                      -note.startTick, endTick - note.endTick);
+            note.startTick += delta;
+            note.endTick += delta;
+        });
+    }
+    void shapeVelocity(int first, int last) {
+        juce::int64 from = endTick, to = 0;
+        for (const auto& note : notes) if (selection.contains(note.id)) {
+            from = std::min(from, note.startTick);
+            to = std::max(to, note.startTick);
+        }
+        editSelection([&](Note& note) {
+            const double position = to > from ? double(note.startTick - from) / (to - from) : 0.0;
+            note.velocity = std::clamp(juce::roundToInt(first + (last - first) * position), 1, 127);
+        });
+    }
 
     juce::String getTooltip() override {
         if (theoryHint && tickRange && getWidth() > 0) {
@@ -107,14 +130,16 @@ public:
             gesture = marquee;
         } else {
             if (inspectNote) inspectNote(*hit);
-            if (e.mods.isShiftDown() && selection.contains(hit->id)) { selection.removeString(hit->id); repaint(); return; }
+            if (e.mods.isShiftDown() && selection.contains(hit->id)) { selection.removeString(hit->id); if (selectionChanged) selectionChanged(); repaint(); return; }
             if (!selection.contains(hit->id)) {
                 if (!e.mods.isShiftDown()) selection.clear();
                 selection.add(hit->id);
             }
             gesture = part(*hit, e);
+            snapAnchor = gesture == trimEnd ? hit->endTick : hit->startTick;
             copy = e.mods.isAltDown() && gesture == move;
         }
+        if (selectionChanged) selectionChanged();
         repaint();
     }
     void mouseDoubleClick(const juce::MouseEvent& e) override {
@@ -133,9 +158,12 @@ public:
             selection = originalSelection;
             const auto rect = juce::Rectangle<int>(anchor, current).toFloat();
             for (const auto& n : notes) if (rect.intersects(box(n))) selection.addIfNotAlreadyThere(n.id);
+            if (selectionChanged) selectionChanged();
         } else {
             const auto dx = (current.x - anchor.x) * tickRange().getLength() / std::max(1, getWidth());
-            const auto dt = std::llround(dx / grid) * grid;
+            const auto step = e.mods.isShiftDown() ? juce::int64(1) : grid;
+            const auto origin = absoluteSnap ? snapAnchor : juce::int64(0);
+            const auto dt = current.x == anchor.x ? 0 : std::llround((origin + dx) / step) * step - origin;
             makeChanges(dt, pitchAt(current.y) - pitchAt(anchor.y), (anchor.y - current.y) / 2);
         }
         repaint();
@@ -156,10 +184,10 @@ public:
         const auto m = k.getModifiers();
         if (m.isCommandDown()) {
             if (k.isKeyCode('Z') || k.isKeyCode('Y')) { cancel(); undoRedo(m.isShiftDown() || k.isKeyCode('Y')); return true; }
-            if (k.isKeyCode('A')) { selection.clear(); for (const auto& n : notes) selection.add(n.id); repaint(); return true; }
+            if (k.isKeyCode('A')) { selection.clear(); for (const auto& n : notes) selection.add(n.id); if (selectionChanged) selectionChanged(); repaint(); return true; }
             return false;
         }
-        if (k.isKeyCode(juce::KeyPress::escapeKey)) { cancel(); selection.clear(); return true; }
+        if (k.isKeyCode(juce::KeyPress::escapeKey)) { cancel(); selection.clear(); if (selectionChanged) selectionChanged(); return true; }
         if (selection.isEmpty()) return false;
         if (k.isKeyCode(juce::KeyPress::deleteKey) || k.isKeyCode(juce::KeyPress::backspaceKey)) {
             std::vector<Edit> changes;
@@ -178,6 +206,24 @@ public:
         return true;
     }
 private:
+    template<class Transform> void editSelection(Transform transform) {
+        if (!editable || !commit || selection.isEmpty()) return;
+        std::vector<Edit> changes;
+        for (const auto& original : notes) if (selection.contains(original.id)) {
+            auto updated = original;
+            transform(updated);
+            if (original.startTick != updated.startTick || original.velocity != updated.velocity)
+                changes.push_back({Edit::change, updated});
+        }
+        if (!changes.empty()) {
+            const auto selected = selection;
+            commit(changes);
+            selection = selected;
+            if (selectionChanged) selectionChanged();
+            repaint();
+        }
+    }
+    juce::int64 snapAnchor = 0;
     int pitchAt(int y) const { return std::clamp(high - int(std::floor(double(y) * (high - low + 1) / std::max(1, getHeight()))), 0, 127); }
     const Note* hitNote(juce::Point<float> p) const {
         for (auto it = notes.rbegin(); it != notes.rend(); ++it)
@@ -262,6 +308,7 @@ public:
         dragged = *nearest;
         candidate = nearest->velocity.value_or(96);
         grid.selection = juce::StringArray(nearest->id);
+        if (grid.selectionChanged) grid.selectionChanged();
         if (grid.isShowing()) grid.grabKeyboardFocus();
         grid.repaint(); repaint();
     }
