@@ -42,6 +42,8 @@ The nine stock audio effects use separate VST3 component classes and share a JUC
 
 The source tempo map integrates quarter-note BPM over successive tick intervals. The preview engine uses it to schedule notes and program changes in samples and to convert the device sample counter back to musical time for recording, plug-in playheads and all views. The transport displays elapsed 30 fps non-drop timecode from that sample counter. The musical counter uses the denominator of the source meter. The current reader supports a single meter. The piano roll uses the same tick-to-pixel transform for notes and the playhead.
 
+Seeking uses the same tempo map for the instrument timeline, plug-in playheads and WAV position. The message thread reconstructs program changes and held pitched notes per destination and MIDI channel before the audio block resumes. The device callback lock protects the cursor and processor reset during the handover. Stop retains the final cursor for the next play or recording. The section readout uses the source section intervals even when their lane is hidden. Arrangement and piano-roll follow share a switch while keeping independent scroll and zoom ranges.
+
 The key, chord and scale readouts use unfiltered source regions. A chord ends at its exclusive end tick. General scale regions can overlap, and the readout shows each active label. A target-specific scale only belongs to its authored scope. The song scale supplies the fallback. Song information edits update the existing score, retaining ordered credit IDs and contributor identities, localized metadata, notes and other fields. The package writer updates its manifest title and score digest on save.
 
 ## Notation and transcription

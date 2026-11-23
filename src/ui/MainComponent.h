@@ -43,6 +43,7 @@ private:
     void startTransport(bool recording);
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
     void stopTransport();
+    void navigateTransport(TransportKey::Action);
     void updateTransportMix();
     void togglePluginBrowser();
     juce::Rectangle<int> getWorkspace() const;

@@ -79,6 +79,18 @@ bool checkImport(const juce::File& dir) {
         project->pitchedNotes[1].size() != 2 || project->pitchedNotes[1][0].pitch != 69 ||
         project->pitchedNotes[1][1].pitch != 72 || std::abs(project->pitchedNotes[1][1].startTick - 768) > 60)
         return false;
+    PreviewTransport player;
+    player.setOutputMix({});
+    player.setChannelMix(0, {}, true, 0);
+    if (player.preparePlayback(*project, {}, {}, 8000, 128).failed()) return false;
+    juce::AudioBuffer<float> block(2, 128);
+    const auto wavLevelAt = [&](double seconds) {
+        player.seekToTick(std::llround(project->clock.tickAt(seconds)));
+        player.renderBlock(block.getArrayOfWritePointers(), 2, block.getNumSamples());
+        return block.getMagnitude(0, 0, block.getNumSamples());
+    };
+    if (wavLevelAt(.9) < .4f || wavLevelAt(.65) != 0.0f || wavLevelAt(.1) < .4f) return false;
+    player.stop();
     auto score = dir.getChildFile("melody.ostf");
     if (saveMediaImport(*project, score).failed())
         return false;

@@ -130,7 +130,28 @@ int checkStockEffects(const juce::StringArray& args) {
                          && drained.cue == ostfstudio::StereoPeak{};
         return energy;
     };
-    return render(true, false, true, true) > .001 && render(false, true, true, true) > .0001
+    if (!(render(true, false, true, true) > .001 && render(false, true, true, true) > .0001
         && render(false, true, false, true) == 0 && render(true, true, true, false) == 0
-        && render(true, true, true, true, true) == 0 && metersMatchAudio ? 0 : 26;
+        && render(true, true, true, true, true) == 0 && metersMatchAudio)) return 26;
+
+    // An actual hosted GM instrument must sound mid-note after a locate,
+    // and become silent on an immediate jump to an empty part of the score.
+    song->pitchedNotes[piano] = {{song->ppq, 3 * song->ppq, 64, 100}};
+    PreviewTransport transport;
+    transport.setOutputMix({});
+    transport.setChannelMix(piano, {}, true, 0);
+    if (transport.preparePlayback(*song, tracks, {}, 48000, 256).failed()) return 27;
+    juce::AudioBuffer<float> audio(2, 256);
+    const auto energyAt = [&](juce::int64 tick) {
+        transport.seekToTick(tick);
+        float peak = 0;
+        for (int block = 0; block < 12; ++block) {
+            transport.renderBlock(audio.getArrayOfWritePointers(), 2, 256);
+            peak = std::max(peak, audio.getMagnitude(0, 0, 256));
+        }
+        return peak;
+    };
+    if (energyAt(2 * song->ppq) <= .0001f || energyAt(4 * song->ppq) > .00001f
+        || energyAt(2 * song->ppq) <= .0001f || energyAt(0) > .00001f) return 28;
+    return 0;
 }

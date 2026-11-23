@@ -373,6 +373,10 @@ MainComponent::MainComponent() {
     deck_.play.onClick = [this] { startTransport(false); };
     deck_.stop.onClick = [this] { stopTransport(); };
     deck_.record.onClick = [this] { startTransport(true); };
+    deck_.home.onClick = [this] { navigateTransport(TransportKey::home); };
+    deck_.rewind.onClick = [this] { navigateTransport(TransportKey::rewind); };
+    deck_.forward.onClick = [this] { navigateTransport(TransportKey::forward); };
+    deck_.follow.onClick = [this] { displayTransportPosition(cursorTick_); };
     addChildComponent(trackPicker_);
     addChildComponent(performanceLane_);
     performanceLane_.setTitle(TRANS("Performance lane"));
@@ -918,7 +922,10 @@ void MainComponent::startTransport(bool recording) {
         statusLabel_.setText(TRANS("MIDI recording requires a pitched track in this preview"), juce::dontSendNotification);
         return;
     }
-    if (transportActive_) stopTransport();
+    if (transportActive_) {
+        if (transport_.isRunning() && recording == recordTrack_.has_value()) return;
+        stopTransport();
+    }
     if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
     if (!canEditTracks()) {
         statusLabel_.setText(TRANS("Waiting for instruments and effects to finish loading"), juce::dontSendNotification);
@@ -944,7 +951,8 @@ void MainComponent::startTransport(bool recording) {
     for (std::size_t i = 0; i < outputControls_.size(); ++i) copyEffects(outputControls_[i].effects, inserts[i]);
     for (std::size_t i = 0; i < std::min(trackControls_.size(), PreviewTransport::maxTracks); ++i)
         copyEffects(trackControls_[i]->effects, inserts[PreviewTransport::outputCount + i]);
-    const auto result = transport_.start(deviceSettings_->devices(), *project_, recording, tracks, inserts);
+    const auto start = cursorTick_ >= project_->playbackEndTick() ? 0 : std::max<juce::int64>(0, cursorTick_);
+    const auto result = transport_.start(deviceSettings_->devices(), *project_, recording, tracks, inserts, start);
     if (result.failed()) {
         statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
         return;
@@ -954,6 +962,8 @@ void MainComponent::startTransport(bool recording) {
     deck_.play.setToggleState(!recording, juce::dontSendNotification);
     deck_.stop.setToggleState(false, juce::dontSendNotification);
     deck_.record.setToggleState(recording, juce::dontSendNotification);
+    for (auto* button : {&deck_.home, &deck_.rewind, &deck_.forward}) button->setEnabled(!recording);
+    displayTransportPosition(start);
     statusLabel_.setText(recording ? TRANS("Recording MIDI into the selected track") : TRANS("Playing arrangement"),
                          juce::dontSendNotification);
     if (!unavailable.empty())
@@ -967,7 +977,8 @@ void MainComponent::startTransport(bool recording) {
 
 void MainComponent::stopTransport() {
     if (!transportActive_) return;
-    auto recorded = transport_.stop();
+    PreviewTransport::Cursor parked{};
+    auto recorded = transport_.stop(&parked);
     if (recordTrack_ && project_) {
         const auto count = static_cast<int>(recorded.size());
         const bool added = project_->addSessionClip(*recordTrack_, "Recorded MIDI", std::move(recorded));
@@ -982,7 +993,8 @@ void MainComponent::stopTransport() {
     deck_.play.setToggleState(false, juce::dontSendNotification);
     deck_.stop.setToggleState(true, juce::dontSendNotification);
     deck_.record.setToggleState(false, juce::dontSendNotification);
-    displayTransportPosition(-1);
+    for (auto* button : {&deck_.home, &deck_.rewind, &deck_.forward}) button->setEnabled(true);
+    displayTransportPosition(parked.tick, parked.seconds);
     stopTimer();
     for (auto& track : trackControls_) track->meter.clear();
     for (auto& output : outputControls_) output.meter.clear();
@@ -990,15 +1002,31 @@ void MainComponent::stopTransport() {
     repaint();
 }
 
+void MainComponent::navigateTransport(TransportKey::Action action) {
+    if (!project_ || recordTrack_) return;
+    if (transportActive_ && !transport_.isRunning()) stopTransport();
+    const auto now = transportActive_ ? transport_.positionTick() : std::max<juce::int64>(0, cursorTick_);
+    const auto end = project_->playbackEndTick();
+    juce::int64 target = 0;
+    if (action == TransportKey::forward) target = now + std::min(project_->ticksPerBar, end - now);
+    if (action == TransportKey::rewind) target = std::max<juce::int64>(0, now - project_->ticksPerBar);
+    if (transportActive_) transport_.seekToTick(target);
+    displayTransportPosition(target);
+}
+
 void MainComponent::displayTransportPosition(juce::int64 tick, double seconds) {
     cursorTick_ = tick;
     if (scoreView_ && scoreView_->isVisible()) scoreView_->playbackPosition(tick);
     if (!project_) return;
     deck_.setPosition(*project_, std::max<juce::int64>(0, tick), seconds);
-    if (pianoScroll_.isVisible() && pianoScroll_.isEnabled()) {
-        const auto bar = 1.0 + double(std::max<juce::int64>(0, tick)) / project_->ticksPerBar;
-        const auto range = pianoScroll_.getCurrentRange();
-        if (!range.contains(bar)) pianoScroll_.setCurrentRangeStart(std::floor(bar), juce::dontSendNotification);
+    if (deck_.follow.getToggleState() && tick >= 0) {
+        const auto bar = 1.0 + double(tick) / project_->ticksPerBar;
+        for (auto* scroll : {&arrangementScroll_, &pianoScroll_}) {
+            if (!scroll->isEnabled() || !scroll->isVisible()) continue;
+            const auto range = scroll->getCurrentRange();
+            if (bar < range.getStart() || bar >= range.getEnd() - range.getLength() * 0.05)
+                scroll->setCurrentRangeStart(bar - range.getLength() * 0.15, juce::dontSendNotification);
+        }
     }
     repaint();
 }
@@ -1061,7 +1089,7 @@ bool MainComponent::openPreview(juce::InputStream& input, const juce::String& fi
         legacySourceFile_ = project_->sourceVersion != "5.0.0" && sourceFolder != juce::File{}
             ? sourceFolder.getChildFile(filename) : juce::File{};
         updateDocumentLabel();
-        displayTransportPosition(-1);
+        displayTransportPosition(0);
         updateHorizontalRange(false, true);
         updateHorizontalRange(true, true);
         for (auto& control : outputControls_) {
@@ -1847,6 +1875,7 @@ void MainComponent::refreshEditor() {
     leadButton_.setToggleState(reading && workspaceMode_ == WorkspaceMode::leadSheet, juce::dontSendNotification);
     scoreButton_.setToggleState(reading && workspaceMode_ == WorkspaceMode::score, juce::dontSendNotification);
     const bool showMixer = arranging && mixerSelected_;
+    deck_.follow.setEnabled(arranging && project_ != nullptr);
     mixerButton_.setToggleState(showMixer, juce::dontSendNotification);
     const bool piano = arranging && project_ && editorVisible_ && !showMixer;
     pianoButton_.setToggleState(piano, juce::dontSendNotification);
@@ -2286,9 +2315,9 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
     }
     if (cursorTick_ >= 0 && project_) {
         const auto bar = 1.0 + static_cast<double>(cursorTick_) / project_->ticksPerBar;
-        if (bar >= visible.start && bar < visible.end) {
+        if (bar >= visible.start && (bar < visible.end || (bar == visible.end && bar == project_->bars.endBar))) {
             g.setColour(juce::Colour(hardwareAmber));
-            g.drawVerticalLine(positionX(bar, ruler), static_cast<float>(ruler.getY()), static_cast<float>(y - 4));
+            g.drawVerticalLine(std::min(positionX(bar, ruler), ruler.getRight() - 1), static_cast<float>(ruler.getY()), static_cast<float>(y - 4));
         }
     }
 }
@@ -2384,7 +2413,9 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     // Use the exact same tick-to-pixel mapping as the notes, including when the piano roll is zoomed.
     const auto drawCursor = [&](int bottom) {
         if (cursorTick_ < 0) return;
-        const auto x = tickX(cursorTick_);
+        auto x = tickX(cursorTick_);
+        if (cursorTick_ == project_->playbackEndTick() && visible.end == project_->bars.endBar)
+            x = static_cast<float>(area.getRight() - 1);
         if (x < area.getX() || x >= area.getRight()) return;
         g.setColour(juce::Colour(hardwareAmber));
         g.drawLine(x, static_cast<float>(ruler.getY()), x, static_cast<float>(bottom), 2);

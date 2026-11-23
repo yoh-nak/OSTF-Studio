@@ -25,8 +25,10 @@ public:
     static bool supportsInsert(const juce::AudioPluginInstance& effect);
     ~PreviewTransport() override;
     juce::Result start(juce::AudioDeviceManager& devices, const ostfstudio::OstfpPreview& project,
-                       bool record, std::span<const TrackSetup> tracks, const Inserts& inserts = {});
-    std::vector<ostfstudio::PitchedNote> stop();
+                       bool record, std::span<const TrackSetup> tracks, const Inserts& inserts = {}, juce::int64 startTick = 0);
+    struct Cursor { juce::int64 tick; double seconds; };
+    std::vector<ostfstudio::PitchedNote> stop(Cursor* stoppedAt = nullptr);
+    void seekToTick(juce::int64 tick);
     juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
                                  double sampleRate, int blockSize);
     void renderBlock(float* const* output, int channels, int samples);
@@ -34,7 +36,6 @@ public:
     void setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb);
     void setOutputMix(const ostfstudio::MixerRouting& mix);
     bool isRunning() const { return running_.load(); }
-    struct Cursor { juce::int64 tick; double seconds; };
     Cursor cursor() const;
     juce::int64 positionTick() const;
 
@@ -61,6 +62,7 @@ private:
     struct InstrumentTrack {
         juce::AudioPluginInstance* instance = nullptr;
         juce::MidiBuffer timeline;
+        juce::MidiBuffer seekEvents;
         juce::AudioBuffer<float> wav;
         double wavRate = 0.0;
     };

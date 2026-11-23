@@ -4,7 +4,7 @@
 
 class TransportKey final : public juce::Button {
 public:
-    enum Action { play, stop, record };
+    enum Action { home, rewind, play, stop, record, forward, follow };
     TransportKey(Action action, const juce::String& caption) : Button(caption), action_(action) {
         setTooltip(caption);
         setTitle(caption);
@@ -14,7 +14,7 @@ private:
     void paintButton(juce::Graphics& g, bool hover, bool down) override {
         auto key = getLocalBounds().toFloat().reduced(2);
         const bool on = getToggleState();
-        const juce::Colour ink(action_ == record ? 0xfffa7469 : action_ == play ? 0xff78e4bd : 0xffdae4e7);
+        const juce::Colour ink(action_ == record ? 0xfffa7469 : action_ == play || (action_ == follow && on) ? 0xff78e4bd : 0xffdae4e7);
         g.setColour(juce::Colour(0xff101419));
         g.fillRoundedRectangle(key.translated(0, 2), 4);
         if (down) key.translate(0, 1);
@@ -24,13 +24,36 @@ private:
         g.setColour(on || hasKeyboardFocus(false) ? ink : juce::Colour(0xff626b72));
         g.drawRoundedRectangle(key.reduced(0.5f), 4, 1);
         auto symbol = juce::Rectangle<float>(13, 13).withCentre({key.getCentreX(), key.getCentreY() - 6});
-        g.setColour(ink);
+        g.setColour(ink.withMultipliedAlpha(isEnabled() ? 1.0f : 0.4f));
         if (action_ == record) g.fillEllipse(symbol);
         else if (action_ == stop) g.fillRoundedRectangle(symbol.reduced(1), 1.5f);
-        else {
+        else if (action_ == play) {
             juce::Path arrow;
             arrow.addTriangle(symbol.getX(), symbol.getY(), symbol.getRight(), symbol.getCentreY(), symbol.getX(), symbol.getBottom());
             g.fillPath(arrow);
+        } else if (action_ == follow) {
+            const auto x = symbol.getX(), y = symbol.getY();
+            juce::Path head;
+            head.addTriangle(x, y, x + 8, y, x + 4, y + 4);
+            g.fillPath(head);
+            g.drawLine(x + 4, y + 3, x + 4, y + 13, 1.5f);
+            g.drawArrow({x + 6, y + 7, x + 16, y + 7}, 1.5f, 7, 4);
+        } else {
+            const bool right = action_ == forward;
+            const float mid = symbol.getCentreX(), y = symbol.getY(), h = symbol.getHeight();
+            const auto triangle = [&](float left) {
+                juce::Path p;
+                const float base = right ? left : left + 7;
+                p.addTriangle(base, y, right ? left + 7 : left, y + h / 2, base, y + h);
+                g.fillPath(p);
+            };
+            if (action_ == home) {
+                triangle(mid - 4);
+                g.fillRect(mid - 7, y, 2.0f, h);
+            } else {
+                triangle(mid - 8);
+                triangle(mid);
+            }
         }
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
         g.drawFittedText(getName(), key.toNearestInt().removeFromBottom(19), juce::Justification::centred, 1);
@@ -39,12 +62,28 @@ private:
 
 class TransportPanel final : public juce::Component {
 public:
-    TransportKey play{TransportKey::play, TRANS("Play")}, stop{TransportKey::stop, TRANS("Stop")},
-                 record{TransportKey::record, TRANS("Record MIDI")};
+    TransportKey home{TransportKey::home, TRANS("Home")}, rewind{TransportKey::rewind, TRANS("Rewind")},
+                 forward{TransportKey::forward, TRANS("Forward")}, play{TransportKey::play, TRANS("Play")},
+                 stop{TransportKey::stop, TRANS("Stop")}, record{TransportKey::record, TRANS("Record MIDI")},
+                 follow{TransportKey::follow, TRANS("Follow")};
     TransportPanel() {
-        for (auto* b : {&play, &stop, &record}) addAndMakeVisible(*b);
-        constexpr const char* ids[] = {"bar-beat-tick", "timecode", "tempo", "meter", "key", "scale", "chord"};
-        for (int i = 0; i < 7; ++i) {
+        for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow}) addAndMakeVisible(*b);
+        home.setComponentID("return-to-start");
+        rewind.setComponentID("rewind");
+        forward.setComponentID("fast-forward");
+        follow.setComponentID("follow-playhead");
+        home.setTooltip(TRANS("Return to start of song"));
+        rewind.setTooltip(TRANS("Back one bar. Hold to rewind."));
+        forward.setTooltip(TRANS("Forward one bar. Hold to fast-forward."));
+        for (auto* b : {&rewind, &forward}) {
+            b->setTriggeredOnMouseDown(true);
+            b->setRepeatSpeed(400, 160, 75);
+        }
+        follow.setTooltip(TRANS("Follow the playhead in the arrangement and piano roll"));
+        follow.setClickingTogglesState(true);
+        follow.setToggleState(true, juce::dontSendNotification);
+        constexpr const char* ids[] = {"bar-beat-tick", "timecode", "tempo", "meter", "key", "scale", "chord", "section"};
+        for (int i = 0; i < fieldCount; ++i) {
             auto& readout = readouts_[i];
             readout.setComponentID(ids[i]);
             readout.setTitle(captions_[i]);
@@ -59,7 +98,7 @@ public:
         stop.setToggleState(true, juce::dontSendNotification);
         setComponentID("transport");
     }
-    static int panelHeight(int width) { return width < 940 ? 101 : 65; }
+    static int panelHeight(int width) { return width < 1220 ? 101 : 65; }
     void setPosition(const ostfstudio::OstfpPreview& song, juce::int64 tick, double seconds) {
         const auto withinBar = tick % song.ticksPerBar;
         const double beatLength = song.ppq * 4.0 / song.beatUnit;
@@ -82,21 +121,23 @@ public:
         set(4, song.contextAt(ostfstudio::TimelineLane::key, tick));
         set(5, song.contextAt(ostfstudio::TimelineLane::scale, tick));
         set(6, song.contextAt(ostfstudio::TimelineLane::chord, tick));
+        set(7, song.contextAt(ostfstudio::TimelineLane::section, tick));
     }
     void resized() override {
         auto r = getLocalBounds().reduced(9, 7);
         const bool stacked = getHeight() > 70;
         auto top = stacked ? r.removeFromTop(46) : r;
-        for (auto* b : {&play, &stop, &record}) b->setBounds(top.removeFromLeft(b == &record ? 70 : 49));
+        for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow})
+            b->setBounds(top.removeFromLeft(b == &record ? 74 : 48));
         top.removeFromLeft(9);
         const int clockWidth = stacked ? top.getWidth() / 2 : juce::jlimit(122, 158, getWidth() / 8);
         for (int i = 0; i < 2; ++i) fields_[i] = top.removeFromLeft(clockWidth).reduced(1, 0);
         auto rest = stacked ? r.withTrimmedTop(4) : top.withTrimmedLeft(6);
-        const int weights[] = {16, 13, 23, 28, 20};
+        const int weights[] = {12, 9, 17, 21, 15, 26};
         const auto width = rest.getWidth();
-        for (int i = 2; i < 7; ++i)
-            fields_[i] = rest.removeFromLeft(i == 6 ? rest.getWidth() : width * weights[i - 2] / 100).reduced(1, 0);
-        for (int i = 0; i < 7; ++i)
+        for (int i = 2; i < fieldCount; ++i)
+            fields_[i] = rest.removeFromLeft(i == fieldCount - 1 ? rest.getWidth() : width * weights[i - 2] / 100).reduced(1, 0);
+        for (int i = 0; i < fieldCount; ++i)
             readouts_[i].setBounds(fields_[i].reduced(7, 2).withTrimmedTop(14));
     }
     void paint(juce::Graphics& g) override {
@@ -105,7 +146,7 @@ public:
         g.fillRoundedRectangle(bounds, 6);
         g.setColour(juce::Colour(0xff4b565f));
         g.drawRoundedRectangle(bounds, 6, 1);
-        for (int i = 0; i < 7; ++i) {
+        for (int i = 0; i < fieldCount; ++i) {
             auto rect = fields_[i];
             g.setColour(juce::Colour(0xff111c20));
             g.fillRoundedRectangle(rect.toFloat(), 3);
@@ -118,8 +159,9 @@ public:
     }
 private:
     static juce::String padded(juce::int64 n, int width) { return juce::String(n).paddedLeft('0', width); }
-    const std::array<juce::String, 7> captions_{TRANS("Bar / Beat / Tick"), TRANS("Timecode / 30 fps"),
-        TRANS("Tempo (BPM)"), TRANS("Meter"), TRANS("Key"), TRANS("Scale"), TRANS("Chord")};
-    std::array<juce::Label, 7> readouts_;
-    std::array<juce::Rectangle<int>, 7> fields_;
+    static constexpr int fieldCount = 8;
+    const std::array<juce::String, fieldCount> captions_{TRANS("Bar / Beat / Tick"), TRANS("Timecode / 30 fps"),
+        TRANS("Tempo (BPM)"), TRANS("Meter"), TRANS("Key"), TRANS("Scale"), TRANS("Chord"), TRANS("Section")};
+    std::array<juce::Label, fieldCount> readouts_;
+    std::array<juce::Rectangle<int>, fieldCount> fields_;
 };

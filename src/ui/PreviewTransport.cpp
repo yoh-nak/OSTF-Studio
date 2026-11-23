@@ -7,6 +7,37 @@
 
 PreviewTransport::~PreviewTransport() { stop(); }
 
+namespace {
+// Reconstruct the state immediately before the first sample of the new block.
+// Events on that sample are still delivered normally from the timeline.
+juce::MidiBuffer midiAtSeek(const juce::MidiBuffer& timeline, int sample) {
+    std::array<int, 16> programs;
+    programs.fill(-1);
+    std::array<std::array<juce::uint8, 128>, 16> sounding{};
+    for (auto event : timeline) {
+        if (event.samplePosition > sample) break;
+        const auto msg = event.getMessage();
+        const auto channel = msg.getChannel() - 1;
+        if (msg.isProgramChange() && event.samplePosition < sample)
+            programs[channel] = msg.getProgramChangeNumber();
+        if (msg.isNoteOff() || msg.isNoteOn()) {
+            auto& velocity = sounding[channel][msg.getNoteNumber()];
+            velocity = msg.isNoteOn() && event.samplePosition < sample ? msg.getVelocity() : 0;
+        }
+    }
+    juce::MidiBuffer result;
+    for (int ch = 0; ch < 16; ++ch) {
+        result.addEvent(juce::MidiMessage::allSoundOff(ch + 1), 0);
+        result.addEvent(juce::MidiMessage::allNotesOff(ch + 1), 0);
+        if (programs[ch] >= 0) result.addEvent(juce::MidiMessage::programChange(ch + 1, programs[ch]), 0);
+        for (int pitch = 0; pitch < 128; ++pitch)
+            if (const auto velocity = sounding[ch][pitch])
+                result.addEvent(juce::MidiMessage::noteOn(ch + 1, pitch, velocity), 0);
+    }
+    return result;
+}
+}
+
 bool PreviewTransport::supportsInstrument(const juce::AudioPluginInstance& instrument) {
     const auto outputs = instrument.getMainBusNumOutputChannels();
     const auto description = instrument.getPluginDescription();
@@ -21,7 +52,7 @@ bool PreviewTransport::supportsInsert(const juce::AudioPluginInstance& effect) {
 }
 
 juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const ostfstudio::OstfpPreview& project,
-                                    bool record, std::span<const TrackSetup> tracks, const Inserts& inserts) {
+                                    bool record, std::span<const TrackSetup> tracks, const Inserts& inserts, juce::int64 startTick) {
     stop();
     auto* device = devices.getCurrentAudioDevice();
     if (!device || !device->isOpen() || device->getActiveOutputChannels().isZero())
@@ -34,6 +65,7 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const os
     }
     const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples());
     if (result.failed()) return result;
+    if (startTick > 0) seekToTick(startTick);
     recording_ = record;
     devices_ = &devices;
     devices.addAudioCallback(this);
@@ -52,7 +84,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     ppq_ = project.ppq;
     meterBeats_ = project.meterBeats;
     beatUnit_ = project.beatUnit;
-    scoreTicks_ = static_cast<juce::int64>(project.bars.endBar - 1) * project.ticksPerBar;
+    scoreTicks_ = project.playbackEndTick();
     const auto total = clock_.secondsAt(scoreTicks_) * sampleRate_;
     if (!std::isfinite(total) || total < 1.0 || total > sampleRate_ * 3600.0
         || total > std::numeric_limits<int>::max() - 1)
@@ -62,6 +94,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     int outputChannels = 0;
     for (auto& slot : instruments_) {
         slot.timeline.clear();
+        slot.seekEvents.clear();
         slot.wav.setSize(0, 0);
     }
     juce::WavAudioFormat wavFormat;
@@ -145,7 +178,36 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     return juce::Result::ok();
 }
 
-std::vector<ostfstudio::PitchedNote> PreviewTransport::stop() {
+void PreviewTransport::seekToTick(juce::int64 tick) {
+    if (!running_ || recording_) return;
+    tick = std::clamp(tick, juce::int64(0), scoreTicks_);
+    const auto sample = tick == scoreTicks_ ? lastSample_ : std::llround(clock_.secondsAt(tick) * sampleRate_);
+    std::array<juce::MidiBuffer, maxTracks> events;
+    for (std::size_t i = 0; i < instruments_.size(); ++i)
+        if (instruments_[i].instance)
+            events[i] = midiAtSeek(instruments_[i].timeline, static_cast<int>(sample));
+
+    // Timelines are immutable during playback. Only the handover and processor
+    // reset need to exclude the device callback.
+    const auto apply = [&] {
+        for (std::size_t i = 0; i < instruments_.size(); ++i) {
+            if (auto* instance = instruments_[i].instance) instance->reset();
+            instruments_[i].seekEvents.swapWith(events[i]);
+        }
+        for (const auto& chain : inserts_)
+            for (auto* effect : chain) if (effect) effect->reset();
+        sample_ = sample;
+        running_ = sample < lastSample_;
+    };
+    if (devices_) {
+        const juce::ScopedLock lock(devices_->getAudioCallbackLock());
+        apply();
+    } else {
+        apply();
+    }
+}
+
+std::vector<ostfstudio::PitchedNote> PreviewTransport::stop(Cursor* stoppedAt) {
     running_ = false;
     if (devices_) {
         if (recording_) devices_->removeMidiInputDeviceCallback({}, this);
@@ -164,7 +226,9 @@ std::vector<ostfstudio::PitchedNote> PreviewTransport::stop() {
         effect->releaseResources();
         effect->setPlayHead(nullptr);
     }
-    const auto tick = positionTick();
+    const auto finalCursor = cursor();
+    if (stoppedAt) *stoppedAt = finalCursor;
+    const auto tick = finalCursor.tick;
     const std::scoped_lock lock(recordingMutex_);
     if (recording_) {
         for (std::size_t key = 0; key < pressed_.size(); ++key)
@@ -243,6 +307,8 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
         if (channelCount < 1 || channelCount > pluginAudio_.getNumChannels()) continue;
         juce::AudioBuffer<float> block(pluginAudio_.getArrayOfWritePointers(), channelCount, count);
         pluginMidi_.clear();
+        pluginMidi_.addEvents(slot.seekEvents, 0, -1, 0);
+        slot.seekEvents.clear();
         pluginMidi_.addEvents(slot.timeline, first, end - first, -first);
         block.clear();
         if (slot.instance) {

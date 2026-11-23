@@ -67,6 +67,7 @@ struct SongInformation {
 };
 
 struct OstfpPreview {
+    juce::int64 playbackEndTick() const { return (bars.endBar - 1) * ticksPerBar; }
     static constexpr std::size_t maxTracks = 8;
     juce::String title;
     juce::String sourceVersion;

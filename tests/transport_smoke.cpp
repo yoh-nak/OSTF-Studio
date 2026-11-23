@@ -36,6 +36,7 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     meter->setProperty("numerator", 8);
     meter->setProperty("denominator", 8);
     timeline->setProperty("tempoChanges", juce::JSON::parse(R"([{"at":0,"bpm":120},{"at":960,"bpm":60}])"));
+    timeline->setProperty("sections", juce::JSON::parse(R"([{"id":"opening","name":"Opening","start":0,"duration":1440},{"id":"verse","name":"Verse","start":1440,"duration":2400}])"));
     timeline->setProperty("keyChanges", juce::JSON::parse(R"([{"id":"mod","at":960,"key":{"state":"tonal","tonic":{"step":"G","alter":0},"mode":"major"}}])"));
     auto harmony = score["harmony"].getDynamicObject();
     harmony->setProperty("scales", juce::JSON::parse(R"([{"id":"lyd","start":960,"duration":480,"label":"G Lydian","tonic":{"step":"G","alter":0},"intervals":[0,2,4,6,7,9,11]}])"));
@@ -57,7 +58,15 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     if (engine.preparePlayback(*song, {}, {}, 8000, 400).failed()) return 4;
     for (int i = 0; i < 30; ++i) engine.renderBlock(buffer.getArrayOfWritePointers(), 2, 400);
     if (engine.positionTick() != 1920) return 5;
-    engine.stop();
+    engine.seekToTick(480);
+    if (engine.positionTick() != 480 || std::abs(engine.cursor().seconds - .25) > 1e-8) return 23;
+    engine.renderBlock(buffer.getArrayOfWritePointers(), 2, 400);
+    if (engine.positionTick() != 576) return 24;
+    engine.seekToTick(1920);
+    engine.renderBlock(buffer.getArrayOfWritePointers(), 2, 400);
+    PreviewTransport::Cursor parked{};
+    engine.stop(&parked);
+    if (parked.tick != 1968 || std::abs(parked.seconds - 1.55) > 1e-8) return 25;
     auto info = song->songInformation();
     info.title = "After Hours";
     info.subtitle = "Studio session";
@@ -98,10 +107,13 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     };
     if (!reads("bar-beat-tick", "001.03.000") || !reads("timecode", "00:00:00:15") || !reads("meter", "8/8")
         || !reads("key", "G major") || !reads("scale", "G Lydian") || !reads("tempo", "60")
-        || !reads("chord", juce::String::charToString(0x2014))) return 18;
+        || !reads("chord", juce::String::charToString(0x2014)) || !reads("section", "Opening")) return 18;
     const auto first = pianoCursorX(main);
     main.displayTransportPosition(5760);
     if (first < 0 || pianoCursorX(main) <= first || !savePng(dir.getChildFile("transport-piano.png"), main)) return 14;
+    if (!reads("section", juce::String::charToString(0x2014))) return 26;
+    main.displayTransportPosition(1440);
+    if (!reads("section", "Verse")) return 27;
     juce::Slider* pianoZoom = nullptr;
     juce::Slider* arrangementZoom = nullptr;
     for (auto* child : main.getChildren()) {
@@ -124,6 +136,34 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
         || arrangementScroll->isEnabled()) return 22;
     main.displayTransportPosition(10 * song->ticksPerBar + 960);
     if (pianoCursorX(main) < 0) return 15;
+    const auto button = [&](const char* id) { return dynamic_cast<juce::Button*>(deck->findChildWithID(id)); };
+    auto* home = button("return-to-start");
+    auto* back = button("rewind");
+    auto* next = button("fast-forward");
+    auto* follow = button("follow-playhead");
+    if (!home || !back || !next || !follow || !follow->getToggleState()) return 28;
+    home->onClick();
+    arrangementZoom->setValue(1, juce::sendNotificationSync);
+    next->onClick();
+    if (!reads("bar-beat-tick", "002.01.000") || !arrangementScroll->getCurrentRange().contains(2.0)) return 29;
+    const auto arrangementPage = arrangementScroll->getCurrentRange();
+    const auto pianoPage = pianoScroll->getCurrentRange();
+    follow->setToggleState(false, juce::sendNotificationSync);
+    main.displayTransportPosition(10 * song->ticksPerBar + 960);
+    if (arrangementScroll->getCurrentRange() != arrangementPage || pianoScroll->getCurrentRange() != pianoPage) return 30;
+    follow->setToggleState(true, juce::sendNotificationSync);
+    if (!arrangementScroll->getCurrentRange().contains(11.25) || !pianoScroll->getCurrentRange().contains(11.25)) return 31;
+    main.displayTransportPosition(song->playbackEndTick() - 960);
+    next->onClick();
+    next->onClick();
+    if (!reads("bar-beat-tick", juce::String(song->bars.endBar).paddedLeft('0', 3) + ".01.000")
+        || arrangementScroll->getCurrentRange().getEnd() != song->bars.endBar) return 32;
+    back->onClick();
+    if (!reads("bar-beat-tick", juce::String(song->bars.endBar - 1).paddedLeft('0', 3) + ".01.000")) return 33;
+    home->onClick();
+    back->onClick();
+    if (!reads("section", "Opening") || !reads("bar-beat-tick", "001.01.000")
+        || arrangementScroll->getCurrentRangeStart() != 1 || pianoScroll->getCurrentRangeStart() != 1) return 34;
     main.setSize(680, 550);
     main.displayTransportPosition(960);
     if (!savePng(dir.getChildFile("transport-compact.png"), main) || pianoCursorX(main) < 0) return 16;
