@@ -110,6 +110,17 @@ struct ProjectAudio {
     int sampleRate = 0, channels = 0;
     juce::int64 assetFrames = 0;
     ClipTiming timing;
+    juce::int64 sourceTick() const { return startTick + timing.leadingTicks; }
+    void resizeBounds(juce::int64 start, juce::int64 end, juce::int64 previousEnd) {
+        const auto onset = sourceTick();
+        if (!timing.loop && end > previousEnd && previousEnd > onset) {
+            const auto audible = previousEnd - onset;
+            if (!timing.sourceLimitTicks || audible < timing.sourceLimitTicks) timing.sourceLimitTicks = audible;
+        }
+        startTick = start;
+        timing.leadingTicks = onset - start;
+        durationTicks = end - start;
+    }
 };
 
 enum class TrackKind { pitched, drum, audio };
@@ -190,6 +201,8 @@ struct OstfpPreview {
     juce::Result editDrumPad(size_t track, int row, std::optional<int> pitch, juce::MemoryBlock &before,
                              std::optional<int> moveTo = {});
     juce::Result addRecordedClip(size_t track, juce::Range<juce::int64>, const std::vector<PitchedNote>&, juce::MemoryBlock& before, const juce::String& name = "Recorded MIDI");
+    enum class MidiClipEdit { split, toggleLoop, resizeLoop };
+    juce::Result editMidiClip(size_t track, const juce::String& id, MidiClipEdit edit, juce::int64 tick, juce::MemoryBlock& before);
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);
     juce::Result editNotes(std::size_t track, const std::vector<NoteEdit>& edits, juce::MemoryBlock& before,
                            juce::StringArray& resultingIds);

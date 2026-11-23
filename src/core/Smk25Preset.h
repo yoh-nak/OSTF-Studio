@@ -73,7 +73,7 @@ public:
                 auto control = result.control(bank, i);
                 control.channel = slot + 9;
                 if (i < 16) {
-                    if (bank == 0) control.rgb = i < 4 ? std::array{240,100,24} : i < 8 ? std::array{30,170,140} : std::array{70,120,210};
+                    if (bank == 0) control.rgb = i < 8 ? std::array{240,190,30} : std::array{70,120,210};
                     else if (i < 8) control.rgb = {40,160,215};
                     else {
                         constexpr std::array<std::array<int,3>,8> commands {{

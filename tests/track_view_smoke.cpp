@@ -1,3 +1,4 @@
+#include "ui/MixerShortcuts.h"
 #include "ui/MainComponent.h"
 #include "ui/SmkPresetEditor.h"
 
@@ -53,6 +54,13 @@ int checkTrackView(const juce::File& fixture) {
         if (!deviceSlot || !channel) return 136;
         deviceSlot->setSelectedId(8, juce::sendNotificationSync);
         if (channel->getSelectedId() != 16) return 137;
+    }
+    {
+        const auto first = mixerShortcut("Volume", 0, MixerShortcut::volume);
+        const auto last = mixerShortcut("Pan", 63, MixerShortcut::pan);
+        if (!first.contains("P1 A") || !first.contains("Ch 9  CC 16") || !last.contains("P8 B") || !last.contains("Ch 16  CC 31")
+            || mixerShortcut("Volume", 64, MixerShortcut::volume) != "Volume"
+            || !mixerShortcut("Solo", 8, MixerShortcut::solo).contains("Ch 10  Note 44")) return 161;
     }
     ControllerMap profile;
     profile.model = surfaceModel("SMK25II-bt");

@@ -8,17 +8,22 @@ public:
     using Preset = ostfstudio::Smk25Preset;
     using PresetReadbacks = std::array<std::optional<Preset>, 8>;
     void showVerifiedSetup(const PresetReadbacks& slots, int displayed) {
+        showingRecommended = false;
         verifiedSlots = slots;
         if (displayed >= 0 && displayed < int(slots.size()) && slots[displayed])
             displayVerifiedPreset(displayed);
     }
-    std::function<bool(const Preset&, int, const juce::String&)> applyBindings;
-    std::function<bool(const juce::String&)> resetRig;
-
-    std::function<bool(const juce::String&, bool)> useRig;
-    std::function<void(int)> changeTarget;
-    juce::ComboBox target;
-    juce::TextButton automatic{TRANS("Studio control mode")};
+    void loadRecommended() {
+        confirmReplacement([this] {
+            for (int i = 0; i < 8; ++i) recommendedSlots[i] = Preset::studioPreset().forStudioSlot(i);
+            showingRecommended = true;
+            preset = recommendedSlots[deviceSlot.getSelectedId() - 1];
+            source = {};
+            clearDraft();
+            status.setText(TRANS("Recommended mixer layout loaded for all eight presets."), juce::dontSendNotification);
+            refresh();
+        });
+    }
 #if JUCE_WINDOWS && defined(_MSC_VER)
     void beginRecommended() {
         if (bluetooth.getSelectedId() > 0) { confirmSetup(); return; }
@@ -30,11 +35,6 @@ public:
         if (isEnabled()) scanDevices();
     }
 #endif
-    void showRig(bool active, int mode) {
-        automatic.setToggleState(active, juce::dontSendNotification);
-        target.setSelectedId(mode + 1, juce::dontSendNotification);
-        target.setEnabled(active);
-    }
     void visibilityChanged() override {
 #if JUCE_WINDOWS && defined(_MSC_VER)
         if (!scanned && isShowing()) { scanned = true; scanDevices(); }
@@ -43,17 +43,33 @@ public:
     explicit SmkPresetEditor(juce::PropertiesFile& settings) : prefs(settings) {
         for (juce::Component* c : std::initializer_list<juce::Component*>{&create, &open, &save, &filename, &status, &bank,
                   &mode, &channel, &number, &modeLabel, &channelLabel, &numberLabel, &colourLabel}) addAndMakeVisible(c);
-        automatic.setClickingTogglesState(true);
-        addAndMakeVisible(automatic);
-        addAndMakeVisible(target);
-        target.addItem(TRANS("Follow active editor"), 1);
-        target.addItem(TRANS("Mixer"), 2);
-        target.addItem(TRANS("Instrument"), 3);
-        target.onChange = [this] { if (changeTarget) changeTarget(target.getSelectedId() - 1); };
-        automatic.onClick = [this] {
-            const bool on = automatic.getToggleState();
-            if (!useRig || !useRig(destination, on)) automatic.setToggleState(!on, juce::dontSendNotification);
-        };
+        addAndMakeVisible(load);
+        load.onClick = [this] { loadRecommended(); };
+        addAndMakeVisible(legend);
+        for (int i = 0; i < int(pages.size()); ++i) {
+            auto& page = pages[i];
+            const int first = (i % 8) * 8 + 1;
+            page.setButtonText("P" + juce::String(i % 8 + 1) + (i < 8 ? " A" : " B"));
+            page.setTooltip(TRANS("Tracks") + " " + juce::String(first) + "-" + juce::String(first + 7)
+                            + "  /  " + (i < 8 ? TRANS("Volume") : TRANS("Pan")));
+            addAndMakeVisible(page);
+            page.onClick = [this, i] {
+                const int next = i % 8;
+                const auto choosePage = [this, next, i] {
+                    if (next != deviceSlot.getSelectedId() - 1) {
+                        source = {};
+                        clearDraft();
+                        preset = showingRecommended ? recommendedSlots[next] : verifiedSlots[next];
+                        if (!preset) preset = Preset::studioPreset().forStudioSlot(next);
+                    }
+                    deviceSlot.setSelectedId(next + 1, juce::dontSendNotification);
+                    bank.setSelectedId(i / 8 + 1, juce::dontSendNotification);
+                    refresh();
+                };
+                if (next != deviceSlot.getSelectedId() - 1) confirmReplacement(choosePage);
+                else choosePage();
+            };
+        }
         bank.setTitle(TRANS("Preset bank"));
         bank.addItem(TRANS("Bank A"), 1);
         bank.addItem(TRANS("Bank B"), 2);
@@ -131,17 +147,27 @@ public:
         if (destination == id && destinationName == name) return;
         destination = std::move(id);
         destinationName = std::move(name);
-        automatic.setEnabled(destination.isNotEmpty());
+
         refresh();
     }
 
     void resized() override {
         auto area = getLocalBounds().reduced(16, 12);
+        auto actions = area.removeFromTop(32);
+        load.setBounds(actions.removeFromLeft(actions.getWidth() / 2).reduced(2));
+#if JUCE_WINDOWS && defined(_MSC_VER)
+        setup.setBounds(actions.reduced(2));
+#endif
+        for (int b = 0; b < 2; ++b) {
+            auto row = area.removeFromTop(25);
+            for (int col = 0; col < 8; ++col) pages[b * 8 + col].setBounds(row.removeFromLeft(row.getWidth() / (8 - col)).reduced(1));
+        }
+        legend.setBounds(area.removeFromTop(28));
         auto top = area.removeFromTop(33);
         create.setBounds(top.removeFromLeft(80).reduced(1));
         open.setBounds(top.removeFromLeft(142).reduced(1));
         save.setBounds(top.removeFromLeft(148).reduced(1));
-        bank.setBounds(top.removeFromRight(116).reduced(1));
+        bank.setVisible(false);
         filename.setBounds(top.reduced(8, 0));
         area.removeFromTop(9);
         for (int row = 0; row < 3; ++row) {
@@ -165,24 +191,22 @@ public:
         auto deviceRow = area.removeFromTop(32);
         scan.setBounds(deviceRow.removeFromLeft(118).reduced(2));
         bluetooth.setBounds(deviceRow.removeFromLeft(208).reduced(2));
-        deviceSlot.setBounds(deviceRow.removeFromLeft(108).reduced(2));
+        deviceSlot.setVisible(false);
         readDevice.setBounds(deviceRow.removeFromLeft(118).reduced(2));
         writeDevice.setBounds(deviceRow.removeFromLeft(140).reduced(2));
 #else
-        deviceSlot.setBounds(area.removeFromTop(32).removeFromLeft(135).reduced(2));
-#endif
-        auto rigRow = area.removeFromTop(34);
-        automatic.setBounds(rigRow.removeFromLeft(166).reduced(2));
-        target.setBounds(rigRow.removeFromLeft(180).reduced(2));
-#if JUCE_WINDOWS && defined(_MSC_VER)
-        setup.setBounds(rigRow.reduced(2));
+        deviceSlot.setVisible(false);
 #endif
         auto bottom = area.removeFromBottom(40);
         status.setBounds(bottom);
     }
 
 private:
-    PresetReadbacks verifiedSlots{};
+    PresetReadbacks verifiedSlots{}, recommendedSlots{};
+    bool showingRecommended = false;
+    juce::TextButton load{TRANS("Load recommended mixer layout")};
+    std::array<juce::TextButton,16> pages;
+    juce::Label legend;
     void displayVerifiedPreset(int index) {
         preset = verifiedSlots[index];
         source = {};
@@ -233,9 +257,8 @@ private:
         auto complete = juce::ModalCallbackFunction::create(
             [safe = juce::Component::SafePointer<SmkPresetEditor>(this), device, port, displayed](int choice) {
                 if (choice == 0 || !safe || !safe->isEnabled() || safe->destination != port) return;
-                const bool assign = port.isNotEmpty() && choice == 1;
                 safe->setEnabled(false);
-                safe->jobs.addJob([safe, device, port, displayed, assign] {
+                safe->jobs.addJob([safe, device, port, displayed] {
                     PresetReadbacks readbacks{};
                     int verified = 0;
                     juce::String failure;
@@ -251,30 +274,21 @@ private:
                         readbacks[i] = result.preset;
                         ++verified;
                     }
-                    juce::MessageManager::callAsync([safe, verified, failure, port, readbacks = std::move(readbacks), displayed, assign] {
+                    juce::MessageManager::callAsync([safe, verified, failure, port, readbacks = std::move(readbacks), displayed] {
                         if (!safe) return;
                         safe->setEnabled(true);
                         safe->showVerifiedSetup(readbacks, displayed);
                         auto message = TRANS("Verified presets") + " " + juce::String(verified) + "/8";
                         if (failure.isNotEmpty()) message += "  #" + juce::String(verified + 1) + " " + failure;
-                        else if (assign) {
-                            const bool applied = safe->resetRig && safe->resetRig(port);
-                            message += "  " + (applied ? TRANS("All MIDI assignments applied.") : TRANS("Select the MIDI input and enable All Studio banks."));
-                        } else message += "  " + TRANS("Device only. Studio assignments retained.");
+                        else message += "  " + TRANS("SMK-25 II mixer shortcuts");
                         safe->status.setText(message, juce::dontSendNotification);
                         safe->status.setTooltip(message);
                         safe->refresh();
                     });
                 });
             });
-        if (port.isEmpty()) {
-            explanation += "\n" + TRANS("Select a controller MIDI input in Studio assignments.");
-            juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, setup.getButtonText(), explanation,
-                TRANS("Send only"), TRANS("Cancel"), this, complete);
-        } else {
-            juce::AlertWindow::showYesNoCancelBox(juce::MessageBoxIconType::QuestionIcon, setup.getButtonText(), explanation,
-                TRANS("Send + MIDI Learn"), TRANS("Send only"), TRANS("Cancel"), this, complete);
-        }
+        juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, setup.getButtonText(), explanation,
+            TRANS("Send"), TRANS("Cancel"), this, complete);
     }
     void scanDevices() {
         verifiedSlots = {};
@@ -322,6 +336,7 @@ private:
                 auto message = result.message;
                 if (message.isEmpty()) {
                     if (!writing && result.preset) {
+                        safe->showingRecommended = false;
                         safe->preset = result.preset;
                         safe->source = {};
                         safe->slot = 0;
@@ -329,9 +344,6 @@ private:
                         safe->storeDraft();
                     }
                     message = writing ? TRANS("Device preset verified.") : TRANS("Device preset loaded.");
-                    if (writing && port.isNotEmpty() && result.preset && safe->applyBindings &&
-                        !safe->applyBindings(*result.preset, index, port))
-                        message += " " + TRANS("Check the selected input and give each pad or knob a unique MIDI address across all presets.");
                 }
                 if (result.backup.existsAsFile()) message += "  " + TRANS("Backup") + " " + result.backup.getFullPathName();
                 safe->status.setText(message, juce::dontSendNotification);
@@ -354,6 +366,11 @@ private:
         readDevice.setEnabled(deviceReady);
         writeDevice.setEnabled(deviceReady && preset.has_value());
 #endif
+        const int page = deviceSlot.getSelectedId() - 1;
+        for (int i = 0; i < int(pages.size()); ++i) pages[i].setToggleState(i == b * 8 + page, silent);
+        const auto range = TRANS("Tracks") + " " + juce::String(page * 8 + 1) + "-" + juce::String(page * 8 + 8);
+        const auto mapping = b == 0 ? TRANS("Knobs: volume / Pads: mute, solo") : TRANS("Knobs: pan / Pads: select track, transport and cue");
+        legend.setText(range + "   /   " + TRANS("Recommended") + "   " + mapping, silent);
         bank.setEnabled(preset.has_value());
         filename.setText((source == juce::File{} ? TRANS("Studio preset") : source.getFileName()) + (dirty ? " *" : ""), silent);
         save.setEnabled(preset.has_value());
@@ -407,7 +424,8 @@ private:
         refresh();
     }
     void storeDraft() {
-        verifiedSlots = {};
+        showingRecommended = false;
+        verifiedSlots[deviceSlot.getSelectedId() - 1].reset();
         dirty = true;
         const auto& bytes = preset->bytes();
         prefs.setValue("smk25Draft", juce::MemoryBlock(bytes.data(), bytes.size()).toBase64Encoding());
@@ -419,6 +437,7 @@ private:
         prefs.removeValue("smk25DraftSource");
     }
     void newPreset() {
+        showingRecommended = false;
         verifiedSlots = {};
         preset = Preset::studioPreset().forStudioSlot(deviceSlot.getSelectedId() - 1);
         source = {};
@@ -441,6 +460,7 @@ private:
         if (file.getFileExtension().equalsIgnoreCase(".mkcII") && file.getSize() == Preset::fileSize && file.loadFileAsData(bytes)) {
             if (auto parsed = decode(bytes)) {
                 verifiedSlots = {};
+                showingRecommended = false;
                 preset = std::move(parsed);
                 source = file;
                 clearDraft();

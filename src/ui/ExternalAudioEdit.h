@@ -13,9 +13,10 @@ inline juce::MemoryBlock sourceWavBytes(const ProjectAudio& clip) {
 
 inline juce::int64 editableClipFrames(const ProjectAudio& clip, const TempoMap& clock, juce::int64 frames, double rate) {
     if (clip.durationTicks <= 0) return frames;
-    const auto end = clip.startTick + clip.durationTicks;
-    const double fraction = clip.timing.cycleTicks ? double(clip.durationTicks) / clip.timing.cycleTicks
-        : (clock.secondsAt(end) - clock.secondsAt(clip.startTick)) * rate / frames;
+    auto end = clip.startTick + clip.durationTicks;
+    if (!clip.timing.loop && clip.timing.sourceLimitTicks) end = std::min(end, clip.sourceTick() + clip.timing.sourceLimitTicks);
+    const double fraction = clip.timing.cycleTicks ? double(end - clip.sourceTick()) / clip.timing.cycleTicks
+        : (clock.secondsAt(end) - clock.secondsAt(clip.sourceTick())) * rate / frames;
     return std::clamp<juce::int64>(std::llround(clip.timing.sourcePhase(std::clamp(fraction, 0.0, 1.0)) * frames), 1, frames);
 }
 inline std::unique_ptr<juce::AudioFormatReader> wavReader(const juce::MemoryBlock& data) {

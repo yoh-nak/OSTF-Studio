@@ -16,10 +16,6 @@ public:
     int learningControl = -1, rigPage = 0, rigBank = 0;
     bool rig = false;
     std::array<juce::Colour,16> rigColours;
-    juce::ComboBox controlTarget;
-    juce::StringArray parameterNames;
-    std::array<double,8> parameterValues{};
-    bool showingParameters = false;
     static juce::String binding(int key, bool note) {
         if (key < 0) return TRANS("Unassigned");
         return "Ch" + juce::String(key / 128 + 1) + (note ? " N" : " CC") + juce::String(key % 128);
@@ -51,7 +47,7 @@ public:
         inputLamp.pulse();
         inputLabel.setText("MIDI IN  " + event, juce::dontSendNotification);
     }
-    juce::TextButton learning{TRANS("MIDI Learn")}, recommended{TRANS("Send Studio recommended setup")};
+    juce::TextButton learning{TRANS("MIDI Learn")}, recommended{TRANS("Load recommended mixer layout")};
     juce::Label status;
     ostfstudio::SurfaceModel model = ostfstudio::SurfaceModel::none;
     explicit ControllerSurface() {
@@ -78,10 +74,6 @@ public:
         addAndMakeVisible(recommended);
         recommended.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff17634f));
 #endif
-        addChildComponent(controlTarget);
-        controlTarget.addItem(TRANS("Follow active editor"), 1);
-        controlTarget.addItem(TRANS("Mixer"), 2);
-        controlTarget.addItem(TRANS("Instrument"), 3);
         addAndMakeVisible(inputLamp);
         addAndMakeVisible(inputLabel);
         inputLabel.setText("MIDI IN", juce::dontSendNotification);
@@ -133,7 +125,6 @@ public:
         layer.setBounds(top.removeFromLeft(132).reduced(2));
         recommended.setBounds(top.removeFromRight(207).reduced(2));
         learning.setBounds(top.reduced(2));
-        controlTarget.setBounds(layer.getBounds().getUnion(top).withWidth(215));
         auto footer = getLocalBounds().reduced(12).removeFromBottom(88);
         auto form = footer.removeFromTop(32);
         target.setBounds(form.removeFromLeft(110).reduced(2));
@@ -165,12 +156,12 @@ public:
             g.setColour(juce::Colour(0xffb8c6cf));
             g.setFont(13.f);
             if (!mixer) g.drawFittedText(binding(knobInputs[i], false), knob.removeFromBottom(15), juce::Justification::centred, 1);
-            g.drawFittedText(showingParameters ? parameterNames[i] : tracks[i], knob.removeFromBottom(16), juce::Justification::centred, 1);
+            g.drawFittedText(tracks[i], knob.removeFromBottom(16), juce::Justification::centred, 1);
             auto dial = knob.toFloat().withSizeKeepingCentre(30, 30);
             g.setColour(juce::Colour(learningControl == i + 16 ? 0xff9b6932 : 0xff445561));
             g.fillEllipse(dial);
             auto c = dial.getCentre();
-            float a = float(((showingParameters ? parameterValues[i] : (rig ? rigBank == 1 : mixer || layer.getSelectedId() == 2) ? pans[i] : levels[i]) * 1.5 - .75) *
+            float a = float((((rig ? rigBank == 1 : mixer || layer.getSelectedId() == 2) ? pans[i] : levels[i]) * 1.5 - .75) *
                             juce::MathConstants<double>::pi);
             g.setColour(juce::Colour(0xff8dd9d2));
             g.drawLine(c.x, c.y, c.x + 11 * std::sin(a), c.y - 11 * std::cos(a), 2.f);

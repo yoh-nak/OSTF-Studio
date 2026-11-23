@@ -1,11 +1,11 @@
 #pragma once
-#include "ui/ControlTargetButton.h"
+#include <juce_gui_basics/juce_gui_basics.h>
 #include "ui/OstfpPreview.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class TransportKey final : public juce::Button {
 public:
-    enum Action { home, rewind, play, stop, record, forward, follow, metronome };
+    enum Action { home, rewind, play, stop, record, forward, follow, metronome, end };
     TransportKey(Action action, const juce::String& caption) : Button(caption), action_(action) {
         setTooltip(caption);
         setTitle(caption);
@@ -24,6 +24,7 @@ private:
         g.fillRoundedRectangle(key, 4);
         g.setColour(on || hasKeyboardFocus(false) ? ink : juce::Colour(0xff626b72));
         g.drawRoundedRectangle(key.reduced(0.5f), 4, 1);
+        if (action_ == metronome) key = key.withWidth(key.getWidth() * .5f);
         auto symbol = juce::Rectangle<float>(13, 13).withCentre({key.getCentreX(), key.getCentreY() - 6});
         g.setColour(ink.withMultipliedAlpha(isEnabled() ? 1.0f : 0.4f));
         if (action_ == record) g.fillEllipse(symbol);
@@ -47,7 +48,7 @@ private:
             g.drawLine(x + 4, y + 3, x + 4, y + 13, 1.5f);
             g.drawArrow({x + 6, y + 7, x + 16, y + 7}, 1.5f, 7, 4);
         } else {
-            const bool right = action_ == forward;
+            const bool right = action_ == forward || action_ == end;
             const float mid = symbol.getCentreX(), y = symbol.getY(), h = symbol.getHeight();
             const auto triangle = [&](float left) {
                 juce::Path p;
@@ -55,9 +56,9 @@ private:
                 p.addTriangle(base, y, right ? left + 7 : left, y + h / 2, base, y + h);
                 g.fillPath(p);
             };
-            if (action_ == home) {
+            if (action_ == home || action_ == end) {
                 triangle(mid - 4);
-                g.fillRect(mid - 7, y, 2.0f, h);
+                g.fillRect(action_ == home ? mid - 7 : mid + 5, y, 2.0f, h);
             } else {
                 triangle(mid - 8);
                 triangle(mid);
@@ -71,26 +72,29 @@ private:
 class TransportPanel final : public juce::Component {
 public:
     TransportKey home{TransportKey::home, TRANS("Home")}, rewind{TransportKey::rewind, TRANS("Rewind")},
-                 forward{TransportKey::forward, TRANS("Forward")}, play{TransportKey::play, TRANS("Play")},
+                 forward{TransportKey::forward, TRANS("Forward")}, end{TransportKey::end, TRANS("Song end")}, play{TransportKey::play, TRANS("Play")},
                  stop{TransportKey::stop, TRANS("Stop")}, record{TransportKey::record, TRANS("Record")},
                  follow{TransportKey::follow, TRANS("Follow")};
     TransportKey click{TransportKey::metronome, TRANS("Metronome")};
     juce::ComboBox countIn;
     static constexpr int maxCountInBars = 8;
-    ControlTargetButton control;
     TransportPanel() {
-        addAndMakeVisible(control);
         addAndMakeVisible(click);
         click.setClickingTogglesState(true);
-        addAndMakeVisible(countIn);
+        click.addAndMakeVisible(countIn);
+        countIn.setLookAndFeel(&countStyle_);
+        countIn.setJustificationType(juce::Justification::centred);
+        countIn.setComponentID("metronome-count-in");
         countIn.setTitle(TRANS("Count-in"));
         countIn.setTooltip(TRANS("Bars to count before recording"));
         countIn.addItem(TRANS("Off"), 1);
         for (int n = 1; n <= maxCountInBars; ++n)
             countIn.addItem(juce::String(n) + " " + (n == 1 ? TRANS("bar") : TRANS("bars")), n + 1);
-        for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow}) addAndMakeVisible(*b);
+        for (auto* b : {&home, &rewind, &forward, &end, &play, &stop, &record, &follow}) addAndMakeVisible(*b);
         home.setComponentID("return-to-start");
         rewind.setComponentID("rewind");
+        end.setComponentID("go-to-end");
+        end.setTooltip(TRANS("Go to end of song"));
         forward.setComponentID("fast-forward");
         follow.setComponentID("follow-playhead");
         home.setTooltip(TRANS("Return to start of song"));
@@ -145,18 +149,15 @@ public:
         set(6, ostfstudio::shiftedLabel(song.contextAt(ostfstudio::TimelineLane::chord, tick), shift));
         set(7, song.contextAt(ostfstudio::TimelineLane::section, tick));
     }
+    ~TransportPanel() override { countIn.setLookAndFeel(nullptr); }
     void resized() override {
         auto r = getLocalBounds().reduced(9, 7);
         const bool stacked = getHeight() > 70;
         auto top = stacked ? r.removeFromTop(46) : r;
-        for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow})
-            b->setBounds(top.removeFromLeft(b == &record ? 74 : 48));
-        const bool narrow = stacked && getWidth() < 800;
-        click.setBounds(top.removeFromLeft(64));
-        auto settings = (narrow ? r.removeFromRight(86) : top.removeFromLeft(86)).reduced(2, 0);
-        countCaption_ = settings.removeFromTop(16);
-        countIn.setBounds(settings.removeFromTop(26));
-        control.setBounds(top.removeFromLeft(37).reduced(1, 3));
+        for (auto* b : {&home, &rewind, &forward, &end, &play, &stop, &record, &follow})
+            b->setBounds(top.removeFromLeft(getWidth() < 800 ? (b == &record ? 50 : 38) : (b == &record ? 74 : 48)));
+        click.setBounds(top.removeFromLeft(126));
+        countIn.setBounds(click.getLocalBounds().removeFromRight(63).reduced(1, 5));
         top.removeFromLeft(5);
         const int clockWidth = stacked ? top.getWidth() / 2 : juce::jlimit(122, 158, getWidth() / 8);
         for (int i = 0; i < 2; ++i) fields_[i] = top.removeFromLeft(clockWidth).reduced(1, 0);
@@ -176,7 +177,6 @@ public:
         g.drawRoundedRectangle(bounds, 6, 1);
         g.setColour(juce::Colour(0xffc7d2dc));
         g.setFont(juce::FontOptions(11.f));
-        g.drawText(TRANS("Count-in"), countCaption_, juce::Justification::centredLeft);
         for (int i = 0; i < fieldCount; ++i) {
             auto rect = fields_[i];
             g.setColour(juce::Colour(0xff111c20));
@@ -194,6 +194,20 @@ private:
     const std::array<juce::String, fieldCount> captions_{TRANS("Bar / Beat / Tick"), TRANS("Timecode / 30 fps"),
         TRANS("Tempo (BPM)"), TRANS("Meter"), TRANS("Key"), TRANS("Scale"), TRANS("Chord"), TRANS("Section")};
     std::array<juce::Label, fieldCount> readouts_;
-    juce::Rectangle<int> countCaption_;
+    struct CountStyle final : juce::LookAndFeel_V4 {
+        void drawComboBox(juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& combo) override {
+            g.setColour(juce::Colour(0xff61757e));
+            g.drawVerticalLine(0, 4.f, float(h - 4));
+            g.setColour(combo.hasKeyboardFocus(true) ? juce::Colours::white : juce::Colour(0xffa9c9ce));
+            juce::Path arrow;
+            arrow.addTriangle(float(w - 12), h * .45f, float(w - 4), h * .45f, float(w - 8), h * .57f);
+            g.fillPath(arrow);
+        }
+        void positionComboBoxText(juce::ComboBox&, juce::Label& label) override {
+            auto bounds = label.getParentComponent()->getLocalBounds();
+            label.setBounds(bounds.withTrimmedRight(13).withTrimmedLeft(2));
+            label.setFont(juce::FontOptions(12.f));
+        }
+    } countStyle_;
     std::array<juce::Rectangle<int>, fieldCount> fields_;
 };

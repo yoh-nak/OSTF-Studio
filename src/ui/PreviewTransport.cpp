@@ -235,10 +235,12 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
             return juce::Result::fail("Invalid WAV source range: " + audio.path);
         if (!audio.timing.valid()) return juce::Result::fail("Invalid WAV timing");
         slot.wavTiming = audio.timing;
-        slot.wavStartTick = audio.startTick;
-        slot.wavStart = juce::roundToInt(clock_.secondsAt(audio.startTick) * sampleRate_);
+        slot.wavStartTick = audio.sourceTick();
+        slot.wavStart = juce::roundToInt(clock_.secondsAt(audio.sourceTick()) * sampleRate_);
         slot.wavEnd = audio.durationTicks > 0 ? juce::roundToInt(clock_.secondsAt(audio.startTick + audio.durationTicks) * sampleRate_)
                                               : static_cast<int>(lastSample_);
+        if (!audio.timing.loop && audio.timing.sourceLimitTicks)
+            slot.wavEnd = std::min(slot.wavEnd, juce::roundToInt(clock_.secondsAt(audio.sourceTick() + audio.timing.sourceLimitTicks) * sampleRate_));
         slot.wavGain = audio.muted ? 0.0f : juce::Decibels::decibelsToGain(static_cast<float>(audio.gainDb));
         slot.wav.setSize(static_cast<int>(reader->numChannels), static_cast<int>(frames));
         if (!reader->read(&slot.wav, 0, slot.wav.getNumSamples(), audio.startFrame, true, true))
@@ -796,8 +798,7 @@ void PreviewTransport::inputFromDevice(const juce::MidiMessage& message, const j
         if (surface.model == ostfstudio::SurfaceModel::mixer) return;
         const auto action = surface.action(message);
         if (action.kind == ostfstudio::SurfaceAction::knob) return;
-        if (surface.studioRig && action.page >= 0 &&
-            (message.isController() || action.bank == 1 || !mapInput_)) return;
+        if (surface.studioRig && action.page >= 0) return;
         const int index = mapInput_ ? surface.padIndex(message) : -1;
         if (index >= 0) {
             if (surface.pitches[index] >= 0) {

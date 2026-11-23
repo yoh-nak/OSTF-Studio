@@ -31,42 +31,44 @@ public:
     double nativeTicks(const ostfstudio::ProjectAudio& clip, const ostfstudio::TempoMap& clock) const {
         const auto it = entries_.find(clip.track);
         if (it == entries_.end()) return 0;
-        return clock.tickAt(clock.secondsAt(clip.startTick) + double(sourceFrames(clip, it->second)) / it->second.rate) - clip.startTick;
+        return clock.tickAt(clock.secondsAt(clip.sourceTick()) + double(sourceFrames(clip, it->second)) / it->second.rate) - clip.sourceTick();
     }
     double endTick(const ostfstudio::ProjectAudio& clip, const ostfstudio::TempoMap& clock) const {
         if (clip.durationTicks > 0) return double(clip.startTick + clip.durationTicks);
         const auto it = entries_.find(clip.track);
         return it == entries_.end() ? double(clip.startTick)
-             : clock.tickAt(clock.secondsAt(clip.startTick) + sourceFrames(clip, it->second) / it->second.rate);
+             : clock.tickAt(clock.secondsAt(clip.sourceTick()) + sourceFrames(clip, it->second) / it->second.rate);
     }
 
+    static constexpr juce::uint32 seamColour = 0xfff1d398;
     void draw(juce::Graphics& g, juce::Rectangle<int> area, const ostfstudio::ProjectAudio& clip,
               const ostfstudio::TempoMap& clock, double firstTick, double lastTick,
               const ostfstudio::ClipTiming* preview = nullptr) const {
         const auto it = entries_.find(clip.track);
         if (it == entries_.end() || area.isEmpty() || lastTick <= firstTick) return;
         const auto& data = it->second;
-        const auto onset = clock.secondsAt(clip.startTick);
+        const auto onset = clock.secondsAt(clip.sourceTick());
         const auto seconds = double(sourceFrames(clip, data)) / data.rate;
-        if (seconds <= 0 || firstTick < clip.startTick - 0.001) return;
+        if (seconds <= 0) return;
         const auto secondsAt = [&](double tick) {
             const auto n = static_cast<juce::int64>(std::floor(tick));
             return clock.secondsAt(n) + (tick - n) * (clock.secondsAt(n + 1) - clock.secondsAt(n));
         };
         const auto& timing = preview ? *preview : clip.timing;
         const auto phaseAt = [&](double tick) {
-            return timing.cycleTicks ? (tick - clip.startTick) / timing.cycleTicks : (secondsAt(tick) - onset) / seconds;
+            return timing.cycleTicks ? (tick - clip.sourceTick()) / timing.cycleTicks : (secondsAt(tick) - onset) / seconds;
         };
         const auto tickAt = [&](double phase) {
-            return timing.cycleTicks ? clip.startTick + phase * timing.cycleTicks : clock.tickAt(onset + phase * seconds);
+            return timing.cycleTicks ? clip.sourceTick() + phase * timing.cycleTicks : clock.tickAt(onset + phase * seconds);
         };
         const auto xAt = [&](double tick) {
             return area.getX() + juce::roundToInt((tick - firstTick) / (lastTick - firstTick) * area.getWidth());
         };
-        const double end = timing.loop ? lastTick : std::min(lastTick, tickAt(1));
+        double end = timing.loop ? lastTick : std::min(lastTick, tickAt(1));
+        if (!timing.loop && timing.sourceLimitTicks) end = std::min(end, double(clip.sourceTick() + timing.sourceLimitTicks));
         const double offset = clip.startFrame / data.rate;
-        g.setColour(juce::Colour(0xffa8e7df));
-        for (double tick = firstTick; tick < end - 1e-7;) {
+        for (double tick = std::max(firstTick, double(clip.sourceTick())); tick < end - 1e-7;) {
+            g.setColour(juce::Colour(0xffa8e7df));
             const double phase = std::max(0.0, phaseAt(tick));
             const double cycle = std::floor(phase + 1e-9);
             const double local = std::max(0.0, phase - cycle);
@@ -87,6 +89,11 @@ public:
                 if (!segment.isEmpty())
                     data.thumbnail->drawChannels(g, segment, offset + seconds * timing.sourcePhase(local),
                         offset + seconds * timing.sourcePhase(std::clamp(phaseAt(next) - cycle, 0., 1.)), 1.f);
+            }
+            if (timing.loop && cycle >= 1 && local < 1e-8 && xAt(tickAt(cycle + 1)) - left >= 3) {
+                g.setColour(juce::Colour(seamColour));
+                g.drawVerticalLine(left, float(area.getY()), float(area.getBottom()));
+                g.fillRect(left, area.getY(), 4, 3);
             }
             if (next <= tick + 1e-8) break;
             tick = next;

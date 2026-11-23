@@ -117,8 +117,8 @@ public:
         if (timing.cycleTicks <= 0 || timing.markers.empty()) return;
         const double period = timing.cycleTicks;
         const double cyclePixels = period / ticksPerBar / visible.getLength() * area.getWidth();
-        if (cyclePixels < 2. || (!timing.loop && start >= clip->startTick + period)) return;
-        for (double origin = clip->startTick + std::floor((start - clip->startTick) / period) * period;
+        if (cyclePixels < 2. || (!timing.loop && start >= clip->sourceTick() + period)) return;
+        for (double origin = clip->sourceTick() + std::max(0., std::floor((start - clip->sourceTick()) / period)) * period;
              origin < end; origin += period) {
             for (const auto marker : timing.markers) {
                 const double tick = origin + marker.position * period;
@@ -184,11 +184,12 @@ private:
         auto* clip = sourceClip();
         if (!clip || !canvas().contains(point) || !recordRuler.visibleBars) return false;
         const auto tick = tickAtX(point.x);
-        return tick >= clip->startTick && tick < waves.endTick(*clip, clock())
-            && (timing.loop || !timing.cycleTicks || tick < clip->startTick + timing.cycleTicks);
+        return tick >= clip->sourceTick() && tick < waves.endTick(*clip, clock())
+            && (timing.loop || !timing.sourceLimitTicks || tick < clip->sourceTick() + timing.sourceLimitTicks)
+            && (timing.loop || !timing.cycleTicks || tick < clip->sourceTick() + timing.cycleTicks);
     }
     double cycleStart(int x) const {
-        const double start = sourceClip()->startTick;
+        const double start = sourceClip()->sourceTick();
         return timing.loop ? start + std::floor((tickAtX(x) - start) / timing.cycleTicks) * timing.cycleTicks : start;
     }
     double phase(int x, double origin) const { return (tickAtX(x) - origin) / timing.cycleTicks; }

@@ -312,6 +312,7 @@ bool checkWaveform(const juce::File& directory) {
     region.timing = {true, 960, {{0.25, 0.5}}};
     juce::Image repeats(juce::Image::ARGB, 128, 48, true, juce::SoftwareImageType{});
     { juce::Graphics g(repeats); waveforms.draw(g, repeats.getBounds(), region, clock, 960, 2880); }
+    if (repeats.getPixelAt(64, 4).getARGB() != AudioClipWaveforms::seamColour) return false;
     if (repeats.getPixelAt(8, 6).getAlpha() || repeats.getPixelAt(72, 6).getAlpha()
         || !repeats.getPixelAt(30, 6).getAlpha() || !repeats.getPixelAt(94, 6).getAlpha()) return false;
     OstfpPreview song;
@@ -338,6 +339,8 @@ bool checkWaveform(const juce::File& directory) {
     // The trimmed native sample repeats every second, including across the tempo change.
     if (!run({true, 0, {}}) || level(2320) < 0.15f || level(2450) > 0.01f) return false;
     if (!run({false, 960, {}}) || level(1445) < 0.15f || level(2200) > 0.01f) return false;
+    if (!run({false, 960, {}, 240, 800}) || level(1000) > 0.01f || level(1750) < 0.15f
+        || level(2050) > 0.01f) return false;
     const auto hash = juce::SHA256(region.embedded).toHexString();
     const auto editFile = directory.getChildFile("edited-source.wav");
     auto editedBytes = region.embedded;
@@ -558,8 +561,19 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
         || arrangementScroll->isEnabled()) return 22;
     main.displayTransportPosition(10 * song->ticksPerBar + 960);
     if (pianoCursorX(main) < 0) return 15;
+    ostfstudio::ProjectAudio padded;
+    padded.startTick = 240;
+    padded.durationTicks = 480;
+    padded.resizeBounds(120, 840, 720);
+    if (padded.sourceTick() != 240 || padded.durationTicks != 720 || padded.timing.sourceLimitTicks != 480) return 163;
     const auto button = [&](const char* id) { return dynamic_cast<juce::Button*>(deck->findChildWithID(id)); };
     auto* home = button("return-to-start");
+    auto* end = button("go-to-end");
+    auto* metronome = dynamic_cast<TransportPanel*>(deck);
+    if (!end || !metronome || metronome->countIn.getParentComponent() != &metronome->click
+        || metronome->countIn.getNumItems() != 9) return 161;
+    end->onClick();
+    if (!reads("bar-beat-tick", juce::String(song->bars.endBar).paddedLeft('0', 3) + ".01.000")) return 162;
     auto* back = button("rewind");
     auto* next = button("fast-forward");
     auto* follow = button("follow-playhead");

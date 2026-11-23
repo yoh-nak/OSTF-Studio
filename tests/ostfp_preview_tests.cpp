@@ -32,6 +32,28 @@ static int checkGallery(const juce::File& directory) {
             return 2;
         }
     }
+    {
+        using Project = ostfstudio::OstfpPreview;
+        std::unique_ptr<Project> midi;
+        if (fresh->editTracks(ostfstudio::TrackKind::pitched, {}, midi).failed()
+            || !midi->addSessionClip(0, "Loop test", {{60, 180, 62, 81}})) return 80;
+        const juce::String id(midi->trackLanes[0].regions.back().clipId);
+        juce::MemoryBlock before;
+        auto edit = [&](const juce::String& clip, Project::MidiClipEdit action, juce::int64 tick) {
+            const auto result = midi->editMidiClip(0, clip, action, tick, before);
+            if (result.failed()) std::cerr << result.getErrorMessage() << '\n';
+            return result.wasOk();
+        };
+        if (!edit(id, Project::MidiClipEdit::split, 120) || midi->pitchedNotes[0].size() != 2) return 81;
+        const auto& halves = midi->pitchedNotes[0];
+        if (halves[0].endTick != 120 || halves[1].startTick != 120 || halves[1].endTick != 180) return 82;
+        if (!edit(id, Project::MidiClipEdit::toggleLoop, 0) || !edit(id, Project::MidiClipEdit::resizeLoop, 210)
+            || !edit(id, Project::MidiClipEdit::resizeLoop, 240)) return 83;
+        auto match = std::find_if(midi->pitchedNotes[0].begin(), midi->pitchedNotes[0].end(),
+            [](const auto& n) { return n.startTick == 180 && n.endTick == 240 && n.pitch == 62; });
+        if (match == midi->pitchedNotes[0].end()) return 84;
+        if (midi->restoreNoteScore(before).failed() || midi->trackLanes[0].regions[0].loopTicks != 120) return 85;
+    }
     struct Expectation { const char* file; int bars; int tracks; double bpm; };
     constexpr Expectation cases[] {
         {"neon-platforms.ostfp", 76, 8, 106.0},

@@ -14,7 +14,10 @@ struct ClipTiming {
     bool loop = false;
     std::int64_t cycleTicks = 0; // Zero plays at the recorded sample rate.
     std::vector<WarpPoint> markers;
+    std::int64_t leadingTicks = 0; // Silence before the source onset.
+    std::int64_t sourceLimitTicks = 0; // Retain a cropped one-shot when its container grows.
     bool valid() const {
+        if (leadingTicks < 0 || sourceLimitTicks < 0) return false;
         if (cycleTicks < 0 || markers.size() > 128 || (!cycleTicks && !markers.empty())) return false;
         WarpPoint previous{0, 0};
         for (auto p : markers) {

@@ -35,6 +35,7 @@ constexpr int maxBytes = 4 * 1024 * 1024;
 constexpr int maxAudioBytes = 16 * 1024 * 1024;
 // Allow four full-size WAV stems plus score, session and ZIP overhead.
 constexpr int maxPackageBytes = 4 * maxAudioBytes + 4 * maxBytes;
+constexpr char loopNamespace[] = "org.ostf.studio.midi-loops";
 constexpr char mixNamespace[] = "org.ostf.studio";
 constexpr char mixDocument[] = "session/studio.production.json";
 
@@ -176,6 +177,15 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             const auto notes = countNotes ? event["notes"] : juce::var{};
             result.push_back({{firstBar, endBar}, out->keepLabel(label.isNotEmpty() ? label : event["id"].toString()),
                               notes.isArray() ? array(notes).size() : 0, position});
+            if (countNotes) {
+                const auto id = event["id"].toString();
+                result.back().clipId = out->keepLabel(id);
+                const auto extension = score["extensions"][loopNamespace];
+                if (extension["version"] == "1.0" && extension["data"].hasProperty(id)) {
+                    const auto period = integer(extension["data"].getProperty(id, 0));
+                    if (period > 0 && period <= length) result.back().loopTicks = period;
+                }
+            }
         }
         return result;
     };
@@ -878,12 +888,13 @@ void storeClipTiming(juce::var& production, const OstfpPreview& project) {
     for (const auto& clip : project.audio) {
         const auto& timing = clip.timing;
         require(timing.valid(), "Invalid audio clip timing");
-        if (!timing.loop && timing.markers.empty()
+        if (!timing.loop && !timing.leadingTicks && !timing.sourceLimitTicks && timing.markers.empty()
             && (!timing.cycleTicks || timing.cycleTicks == clip.durationTicks)) continue;
         juce::Array<juce::var> points;
         for (auto p : timing.markers) points.add(object({{"position", p.position}, {"source", p.source}}));
         edits.getDynamicObject()->setProperty("region-" + juce::String(int(clip.track + 1)),
-            object({{"loop", timing.loop}, {"cycleTicks", juce::int64(timing.cycleTicks)}, {"markers", points}}));
+            object({{"loop", timing.loop}, {"cycleTicks", juce::int64(timing.cycleTicks)}, {"markers", points},
+                    {"leadingTicks", juce::int64(timing.leadingTicks)}, {"sourceLimitTicks", juce::int64(timing.sourceLimitTicks)}}));
     }
     if (edits.getDynamicObject()->getProperties().size()) host.getDynamicObject()->setProperty("clipTiming", edits);
 }
@@ -966,6 +977,11 @@ void readAudioReferences(const juce::var& score, const juce::var& production, Os
                 ? host[0]["data"]["clipTiming"][juce::Identifier(region["id"].toString())] : juce::var{};
             if (!timing.isVoid()) {
                 require(timing["loop"].isBool() && timing["markers"].isArray(), "Invalid Studio audio timing");
+                item.timing.leadingTicks = integer(timing.getProperty("leadingTicks", 0));
+                item.timing.sourceLimitTicks = integer(timing.getProperty("sourceLimitTicks", 0));
+                require(item.startTick >= 0 && item.startTick <= project.playbackEndTick()
+                        && item.timing.leadingTicks <= project.playbackEndTick() - item.startTick
+                        && item.timing.sourceLimitTicks <= project.playbackEndTick(), "Invalid audio padding");
                 item.timing.loop = static_cast<bool>(timing["loop"]);
                 item.timing.cycleTicks = integer(timing["cycleTicks"]);
                 require(array(timing["markers"]).size() <= 128, "Too many warp markers");
@@ -1049,7 +1065,7 @@ void describeWav(const OstfpPreview& project, const ProjectAudio& audio, const j
     regions.add(object({{"id", "region-" + number}, {"channelId", "track-" + number}, {"sourceAssetId", id},
         {"startTick", audio.startTick}, {"durationTicks", length}, {"sourceStartFrame", audio.startFrame},
         {"sourceFrameCount", frames}, {"playbackMode", "native"}, {"gainDb", audio.gainDb}, {"mute", audio.muted}}));
-    if (audio.timing.cycleTicks && !audio.timing.loop) {
+    if (audio.timing.cycleTicks == length && !audio.timing.loop && !audio.timing.leadingTicks && !audio.timing.sourceLimitTicks) {
         regions.getLast().getDynamicObject()->setProperty("playbackMode", "fit");
         regions.getLast().getDynamicObject()->setProperty("pitchPolicy", "followRate");
     }
@@ -1738,6 +1754,140 @@ juce::Result OstfpPreview::extendedForImport(juce::int64 end, std::unique_ptr<Os
     return juce::Result::ok();
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
+juce::Result OstfpPreview::editMidiClip(size_t track, const juce::String& id, MidiClipEdit edit,
+                                          juce::int64 tick, juce::MemoryBlock& before) try {
+    require(track < sourceTrackCount() && trackKinds[track] != TrackKind::audio, "Select a MIDI clip.");
+    const auto original = savedScore(*this);
+    const auto base = savedScore(*this, true);
+    auto score = parseObject(base);
+    auto clips = score["tracks"][int(track)]["clips"];
+    juce::var clip;
+    for (const auto& c : array(clips)) if (c["id"] == id) { clip = c; break; }
+    require(clip.isObject(), "Select a MIDI clip.");
+    const auto start = integer(clip["start"]), length = integer(clip["duration"]);
+    auto extensions = score["extensions"];
+    if (!extensions.isObject()) extensions = object({});
+    auto settings = extensions[loopNamespace];
+    require(settings.isVoid() || settings["version"] == "1.0", "Unknown MIDI loop settings version.");
+    if (settings.isVoid()) settings = object({{"version", "1.0"}, {"status", "current"},
+        {"dependencies", object({{"scope", "document"}})}, {"data", object({})}});
+    auto periods = settings["data"];
+    require(periods.isObject(), "Invalid MIDI loop settings.");
+    const auto period = integer(periods.getProperty(id, 0));
+    require(!clip.hasProperty("vocalPerformances") || (edit == MidiClipEdit::toggleLoop && period > 0),
+            "This clip contains linked vocal performances.");
+    auto fresh = [](const char* prefix) { return juce::String(prefix) + juce::Uuid().toString(); };
+    std::set<juce::String> removedIds;
+    if (edit == MidiClipEdit::split) {
+        const auto split = tick - start;
+        require(split > 0 && split < length, "Choose a point inside the clip.");
+        auto right = clip.clone();
+        right.getDynamicObject()->setProperty("id", fresh("clip-"));
+        right.getDynamicObject()->setProperty("start", tick);
+        right.getDynamicObject()->setProperty("duration", length - split);
+        clip.getDynamicObject()->setProperty("duration", split);
+        for (const auto key : {"notes", "midiEvents"}) {
+            if (!clip.hasProperty(key)) continue;
+            juce::Array<juce::var> leftEvents, rightEvents;
+            for (auto event : array(clip[key])) {
+                const auto at = integer(event["start"]);
+                const auto gate = integer(event.getProperty("duration", 0));
+                if (at < split) leftEvents.add(event);
+                if (at >= split || at + gate > split) {
+                    auto moved = event.clone();
+                    moved.getDynamicObject()->setProperty("start", std::max<juce::int64>(0, at - split));
+                    if (at < split) {
+                        moved.getDynamicObject()->setProperty("id", fresh("note-"));
+                        moved.getDynamicObject()->setProperty("duration", at + gate - split);
+                        event.getDynamicObject()->setProperty("duration", split - at);
+                    }
+                    rightEvents.add(moved);
+                }
+            }
+            clip.getDynamicObject()->setProperty(key, leftEvents);
+            right.getDynamicObject()->setProperty(key, rightEvents);
+        }
+        clips.getArray()->add(right);
+        periods.getDynamicObject()->removeProperty(id);
+    } else if (edit == MidiClipEdit::toggleLoop) {
+        if (period > 0) periods.getDynamicObject()->removeProperty(id);
+        else {
+            for (const auto key : {"notes", "midiEvents"}) if (clip[key].isArray())
+                for (const auto& e : array(clip[key])) {
+                    const auto at = integer(e["start"]);
+                    require(at >= 0 && at < length && integer(e.getProperty("duration", 0)) <= length - at,
+                            "Split or trim events outside the clip before looping.");
+                }
+            periods.getDynamicObject()->setProperty(id, length);
+        }
+    } else {
+        const auto size = tick - start;
+        require(period > 0 && size >= period && tick <= std::numeric_limits<int>::max() * double(ticksPerBar),
+                "Keep at least one complete MIDI cycle.");
+        for (const auto key : {"notes", "midiEvents"}) {
+            if (!clip[key].isArray()) continue;
+            const bool notes = juce::String(key) == "notes";
+            juce::Array<juce::var> output, pattern;
+            std::multimap<juce::int64, juce::var> clippedNotes;
+            for (auto event : array(clip[key])) {
+                const auto at = integer(event["start"]);
+                if (at < period && at >= 0) pattern.add(event);
+                if (at >= size) { removedIds.insert(event["id"].toString()); continue; }
+                if (notes) {
+                    const auto end = at + integer(event["duration"]);
+                    if (end > size) event.getDynamicObject()->setProperty("duration", size - at);
+                    if (end == length && at >= period) clippedNotes.emplace(at, event);
+                }
+                output.add(event);
+            }
+            if (size > length && !pattern.isEmpty()) {
+                const auto cycles = (size - 1) / period - length / period + 1;
+                require(cycles <= 100000 / pattern.size(), "Too many MIDI events in this loop.");
+                for (auto origin = length / period * period; origin < size; origin += period) {
+                    for (const auto& source : pattern) {
+                        const auto at = origin + integer(source["start"]);
+                        if (at >= size) continue;
+                        const auto gate = notes ? std::min(integer(source["duration"]), size - at) : 0;
+                        if (at < length) {
+                            if (!notes || at + gate <= length) continue;
+                            const auto matches = clippedNotes.equal_range(at);
+                            for (auto it = matches.first; it != matches.second; ++it) {
+                                auto e = it->second;
+                                if (e["pitch"] == source["pitch"] && e["soundSlotId"] == source["soundSlotId"] && e["channel"] == source["channel"]) {
+                                    e.getDynamicObject()->setProperty("duration", gate);
+                                    clippedNotes.erase(it);
+                                    break;
+                                }
+                            }
+                            continue;
+                        }
+                        auto copy = source.clone();
+                        copy.getDynamicObject()->setProperty("id", fresh(notes ? "note-" : "midi-"));
+                        copy.getDynamicObject()->setProperty("start", at);
+                        if (notes) copy.getDynamicObject()->setProperty("duration", gate);
+                        output.add(copy);
+                    }
+                }
+            }
+            clip.getDynamicObject()->setProperty(key, output);
+        }
+        clip.getDynamicObject()->setProperty("duration", size);
+        if (tick > durationTicks) score["timeline"].getDynamicObject()->setProperty("duration", tick);
+    }
+    require(removedIds.empty() || !referencesNote(score, removedIds), "A linked MIDI event cannot be removed.");
+    if (periods.getDynamicObject()->getProperties().size()) extensions.getDynamicObject()->setProperty(loopNamespace, settings);
+    else extensions.getDynamicObject()->removeProperty(loopNamespace);
+    if (extensions.getDynamicObject()->getProperties().size() || score.hasProperty("extensions"))
+        score.getDynamicObject()->setProperty("extensions", extensions);
+    reviseDocument(score, original, fresh("studio-"));
+    auto bytes = editedScoreBytes(base, score, {"tracks", "timeline", loopNamespace, "document"});
+    require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
+    validateVersion("5.0.0", bytes);
+    auto result = restoreNoteScore(bytes);
+    if (result.wasOk()) before = original;
+    return result;
+} catch (const std::exception& e) { return juce::Result::fail(e.what()); }
+
 juce::Result OstfpPreview::restoreNoteScore(const juce::MemoryBlock& bytes) try {
     require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
     auto next = projectScore(parseObject(bytes), chordVoicingTrack.has_value());
@@ -1988,11 +2138,13 @@ bool OstfpPreview::addSessionClip(std::size_t track, juce::String name, std::vec
     auto& trackRegions = editedTrackRegions[track];
     if (trackRegions.empty() && !trackLanes[track].regions.empty())
         trackRegions.assign(trackLanes[track].regions.begin(), trackLanes[track].regions.end());
+    const auto clipId = "studio-" + juce::Uuid().toString();
     trackRegions.push_back({{bars.firstBar + static_cast<int>(first), bars.firstBar + static_cast<int>(last)},
-                            keepLabel(name), static_cast<int>(notes.size())});
+                            keepLabel(name), static_cast<int>(notes.size()),
+                            TimelineExtent{double(bars.firstBar + first), double(bars.firstBar + last)}});
+    trackRegions.back().clipId = keepLabel(clipId);
     trackLanes[track].regions = trackRegions;
     auto& trackNotes = pitchedNotes[track];
-    const auto clipId = "studio-" + juce::Uuid().toString();
     for (std::size_t i = 0; i < notes.size(); ++i) {
         notes[i].id = clipId + "-note-" + juce::String(static_cast<int>(i + 1));
         notes[i].clipId = clipId;

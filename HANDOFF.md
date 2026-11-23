@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Mixer shortcuts and clip loops
+
+SMK-25 II presets select permanent groups of eight tracks. Banks A and B control volume and pan. Mapped controls display channel and CC or note in their tooltip. The editor previews all sixteen banks and the Windows BLE bulk transfer uses its existing slot backup and read-back path. The recommended mixer mapping is independent of MIDI Learn and plug-in focus.
+
+One-shot audio region extensions retain the source onset and trimmed end. Waveforms indicate loop boundaries and all warp cycles share one marker set. MIDI loops materialise standard notes and MIDI events and save their edit period in the Studio MIDI-loops extension. The score format remains OSTF 5.0. The transport combines click and count-in and can jump to the end of the song.
+
+Windows Release passed all 26 CTest cases, including mixer shortcut addresses, warp repeats, silence, the transport controls and split/loop/undo. The independent core configuration passed all three tests. Bulk hardware writes with this mapping and macOS execution still require device/platform validation.
+
 ## Studio mode menu and prompt guide
 
 On `feature/studio-mode-prompt-guide`, the Mode menu changes the stored AI analysis mode and its two examples. The ChatGPT connection, model and refresh controls sit at the right of the toolbar. The read-only guide occupies the space left of the global lane headings and scrolls out of view above the track headers. The examples are local text. Prompt submission and generation are future work.

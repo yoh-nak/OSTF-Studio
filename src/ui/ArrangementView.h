@@ -13,6 +13,8 @@ struct ArrangementRegion {
     // Exact source positions in one-based, fractional bars when the event falls inside a measure.
     std::optional<TimelineExtent> exactBars;
     bool isScoped = false;
+    const char* clipId = nullptr;
+    std::int64_t loopTicks = 0;
 };
 
 struct ArrangementLane {

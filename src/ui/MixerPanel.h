@@ -1,5 +1,5 @@
 #pragma once
-#include "ui/ControlTargetButton.h"
+#include <juce_gui_basics/juce_gui_basics.h>
 
 #include "core/MixerState.h"
 #include "ui/OstfpPreview.h"
@@ -10,7 +10,6 @@
 
 class MixerPanel final : public juce::Component {
 public:
-    ControlTargetButton control;
     MixerPanel();
     void addReturn();
     void addBus();
