@@ -87,8 +87,16 @@ int main(int argc, char** argv) {
     auto custom = starter.bytes();
     custom[12] = 42; custom.back() = 82;
     auto base = Preset::read(custom).value();
+    auto duplicate = base.control(0, 16);
+    duplicate.number = 20;
+    if (!base.edit(0, 16, duplicate)) return 25;
     for (int page = 0; page < 8; ++page) {
         const auto rig = base.forStudioSlot(page);
+        for (int bank = 0; bank < 2; ++bank)
+            for (int knob = 0; knob < 8; ++knob) {
+                const auto cc = rig.control(bank, 16 + knob);
+                if (cc.number != 16 + 8 * bank + knob || cc.channel != 9 + page) return 26;
+            }
         if (rig.bytes()[12] != 42 || rig.bytes().back() != 82 || rig.forStudioSlot(page).bytes() != rig.bytes()) return 19;
         for (int bank = 0; bank < 2; ++bank) {
             const auto map = rig.studioBindings(bank).value();

@@ -141,14 +141,14 @@ public:
     }
     void resized() override {
         auto area = getLocalBounds();
-        control.setBounds(area.removeFromTop(28).removeFromRight(138).reduced(2));
+        control.setBounds(area.removeFromTop(28).removeFromRight(38).reduced(2));
         plugin->setBounds(area);
     }
     void childBoundsChanged(juce::Component* child) override {
         if (child == plugin.get() && getWidth() > 0)
             setSize(std::max(150, child->getWidth()), child->getHeight() + 28);
     }
-    juce::TextButton control{TRANS("Control here")};
+    ControlTargetButton control;
 private:
     std::unique_ptr<juce::Component> plugin;
 };
@@ -790,6 +790,9 @@ MainComponent::MainComponent() {
         };
         ruler.pan = [this, &scroll](double fraction) { panTimeline(scroll, fraction); };
     };
+    for (auto* pan : {&viewportPan_, &pianoGrid_.viewportPan, &pianoVelocity_.viewportPan, &controllerEditor_.viewportPan,
+                      &clipLane_.viewportPan, &audioEditor_.viewportPan, &tempoEditor_.viewportPan})
+        pan->scroll = [this](double fraction) { panArrangement(fraction); };
     setupRuler(ruler_, arrangementScroll_);
     setupRuler(pianoRuler_, arrangementScroll_);
     setupRuler(audioEditor_.recordRuler, arrangementScroll_);
@@ -840,13 +843,14 @@ MainComponent::MainComponent() {
     };
     auto* preferences = viewPreferences_.getUserSettings();
     deck_.click.setToggleState(preferences->getBoolValue("metronome"), juce::dontSendNotification);
-    deck_.countIn.setToggleState(preferences->getBoolValue("countIn"), juce::dontSendNotification);
+    deck_.countIn.setSelectedId(1 + std::clamp(preferences->getIntValue("countInBars", preferences->getBoolValue("countIn") ? 1 : 0),
+                                               0, TransportPanel::maxCountInBars), juce::dontSendNotification);
     transport_.metronome = deck_.click.getToggleState();
     deck_.click.onClick = [this] {
         transport_.metronome = deck_.click.getToggleState();
         viewPreferences_.getUserSettings()->setValue("metronome", deck_.click.getToggleState());
     };
-    deck_.countIn.onClick = [this] { viewPreferences_.getUserSettings()->setValue("countIn", deck_.countIn.getToggleState()); };
+    deck_.countIn.onChange = [this] { viewPreferences_.getUserSettings()->setValue("countInBars", deck_.countIn.getSelectedId() - 1); };
     audioEditor_.channels.onChange = [this] {
         if (selectedTrack_ && project_) {
             captureChannels_[project_->trackIds[int(*selectedTrack_)]] = audioEditor_.channels.getSelectedId();
@@ -923,7 +927,7 @@ MainComponent::MainComponent() {
         if (playing) startTransport(false);
     };
     audioEditor_.sourceClip = [this] { return selectedTrack_ ? clipOn(*selectedTrack_) : nullptr; };
-    audioEditor_.clock = [this]() -> const ostfstudio::TempoMap& { return project_->clock; };
+    audioEditor_.clock = [this]() -> const ostfstudio::TempoMap& { return auditionClock_ ? *auditionClock_ : project_->clock; };
     audioEditor_.onSplice = [this] { openSplice(); };
     audioEditor_.selectWave = [this] {
         if (!clipLane_.clips.empty()) selectEditorClip(clipLane_.clips.front().bars.getStart(), false);
@@ -1793,10 +1797,6 @@ void MainComponent::openController(bool show) {
         surfacePanel_->recommended.onClick = [this, tabs] {
             if (recordTrack_) return;
             if (surfaceMap_.port.isEmpty()) surfacePanel_->selectOnlySmkInput();
-            if (!surfaceMap_.learnable() || surfaceMap_.port.isEmpty()) {
-                surfacePanel_->status.setText(TRANS("Select a controller MIDI input in Studio assignments."), juce::dontSendNotification);
-                return;
-            }
             tabs->setCurrentTabIndex(1);
             presetEditor_->beginRecommended();
         };
@@ -2248,7 +2248,7 @@ void MainComponent::assignControlTarget(const juce::MidiDeviceInfo& port, const 
 }
 
 void MainComponent::refreshControlButtons() {
-    const auto mark = [this](juce::TextButton& button, const juce::String& target) {
+    const auto mark = [this](ControlTargetButton& button, const juce::String& target) {
         juce::StringArray assigned;
         for (const auto& [id, name] : controlPortNames_) {
             if (id != surfaceMap_.port && !otherSurfaces_.contains(id)) continue;
@@ -2257,8 +2257,8 @@ void MainComponent::refreshControlButtons() {
             if (activeControlTarget(id, preset) == target)
                 assigned.add(name + (preset < 0 ? juce::String{} : " P" + juce::String(preset + 1)));
         }
-        button.setButtonText(assigned.isEmpty() ? TRANS("Control here") : TRANS("Controlling"));
-        button.setColour(juce::TextButton::buttonColourId, juce::Colour(assigned.isEmpty() ? 0xff334854 : 0xff147367));
+        button.setToggleState(!assigned.isEmpty(), juce::dontSendNotification);
+        button.setTitle(targetCaption(target) + " / " + (assigned.isEmpty() ? TRANS("Control here") : TRANS("Controlling")));
         button.setTooltip(targetCaption(target) + "  " + assigned.joinIntoString(", ") + "\n"
                           + TRANS("Assign a controller here. Shift-click to choose any MIDI input."));
     };
@@ -2699,7 +2699,7 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
         const auto input = midiRoutes_.find(project_->trackIds[int(*inputTrack)]);
         if (input != midiRoutes_.end()) take.midiInput = input->second;
     }
-    take.countIn = recording && deck_.countIn.getToggleState();
+    take.countInBars = recording ? deck_.countIn.getSelectedId() - 1 : 0;
     if (audioTake) {
         const auto it = captureChannels_.find(project_->trackIds[int(*selectedTrack_)]);
         take.inputChannels = it == captureChannels_.end() ? 1 : it->second;
@@ -2833,6 +2833,7 @@ void MainComponent::showShortcutList() {
     const std::pair<const char*, const char*> rows[] = {
         {"Space", "Play / stop"}, {"Home key", "Return to song start"}, {"F1", "Show shortcuts"},
         {"Click the bar ruler", "Move the playhead"}, {"Drag the bar ruler", "Scroll the timeline horizontally"},
+        {"Alt/Option + Shift + drag", "Scroll the timeline horizontally"},
         {"Shift + wheel / horizontal scroll", "Scroll the timeline horizontally"},
         {"Mouse wheel", "Scroll through tracks"}, {"Right-click a track name", "Open track actions"},
         {"Double-click empty piano grid", "Add a note"}, {"Drag note / edge", "Move / resize notes"},
@@ -5033,6 +5034,7 @@ void MainComponent::globalCommand(int command) {
 }
 
 void MainComponent::mouseDown(const juce::MouseEvent& event) {
+    if (rowOverlay_.isVisible() && viewportPan_.begin(*this, event, rowOverlay_.getBounds().withTrimmedLeft(trackHeaderWidth))) return;
     resizingAudio_.reset();
     pendingMidiDrag_.reset();
     const bool wasTempo = selectedGlobal_ == TimelineLane::tempo;
@@ -5100,6 +5102,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
 }
 
 void MainComponent::mouseDoubleClick(const juce::MouseEvent& event) {
+    if (TimelinePan::requested(event.mods)) return;
     if (!event.mods.isLeftButtonDown() || !project_)
         return;
     const auto p = event.getPosition();
@@ -5116,6 +5119,7 @@ void MainComponent::mouseDoubleClick(const juce::MouseEvent& event) {
 }
 
 void MainComponent::mouseDrag(const juce::MouseEvent& event) {
+    if (viewportPan_.move(event)) return;
     if (resizingAudio_) {
         if (const auto* clip = clipOn(*resizingAudio_)) {
             auto maxLength = project_->playbackEndTick() - clip->startTick;
@@ -5135,6 +5139,7 @@ void MainComponent::mouseDrag(const juce::MouseEvent& event) {
 }
 
 void MainComponent::mouseUp(const juce::MouseEvent& event) {
+    if (viewportPan_.end(*this)) return;
     if (!resizingAudio_) return;
     auto* clip = clipOn(*resizingAudio_);
     resizingAudio_.reset();
@@ -5568,7 +5573,7 @@ void MainComponent::refreshEditor() {
     const bool audio = editing && !tempo && selectedTrack_ && project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::audio;
     audioEditor_.setVisible(audio);
     if (audio) {
-        audioEditor_.bind(project_->ppq, !recordTrack_.has_value());
+        audioEditor_.bind(project_->ppq, project_->ticksPerBar, project_->bars.firstBar, !recordTrack_.has_value());
         const auto it = captureChannels_.find(project_->trackIds[int(*selectedTrack_)]);
         audioEditor_.channels.setSelectedId(it == captureChannels_.end() ? 1 : it->second, juce::dontSendNotification);
     }
@@ -5662,7 +5667,7 @@ void MainComponent::refreshEditor() {
     pianoDivider_.setVisible(editing);
     parameterDivider_.setVisible(piano && !steps);
     pitchZoom_.setVisible(piano && !drum);
-    columnDivider_.setVisible(piano);
+    columnDivider_.setVisible(piano || audio);
     arrangementColumnDivider_.setVisible(arranging && project_ != nullptr);
     midiDrag_.setVisible(piano);
     midiDrag_.setEnabled(selectedTrack_ && canExportTrack(*selectedTrack_));
@@ -5778,8 +5783,9 @@ void MainComponent::resized() {
         importTrackDrop_.setBounds(arrangement.withTop(std::max(arrangement.getY(), arrangement.getBottom() - 36)).reduced(4, 2));
         ruler_.setBounds(rowOverlay_.getLocalBounds().removeFromTop(timelineRowHeight()));
         ruler_.toFront(false);
-        const int panelHeight = activeAi_ ? 87 : 60;
-        const int panelWidth = std::min(344, trackHeaderWidth - 115);
+        const int panelWidth = std::clamp(trackHeaderWidth - 120, 150, 460);
+        const bool columns = panelWidth >= 282;
+        const int panelHeight = columns ? 88 : (activeAi_ ? 113 : 84);
         const int aiY = std::max(0, (globalHeight - panelHeight) / 2) - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
         const int visibleBottom = std::min(globalHeight, rowOverlay_.getHeight());
         auto placeAi = [visibleBottom](juce::Component& item, int x, int y, int w, int h, bool show = true) {
@@ -5787,14 +5793,23 @@ void MainComponent::resized() {
             item.setVisible(show && y >= 0 && y + h <= visibleBottom);
             item.toFront(false);
         };
-        placeAi(aiButton_, 8, aiY, std::min(panelWidth, 207), 32);
-        const int first = panelWidth * 4 / 10;
-        const int second = (panelWidth - first) / 2;
-        placeAi(aiStudios_[0], 8, aiY + 34, first - 2, 24);
-        placeAi(aiStudios_[1], 8 + first, aiY + 34, second - 2, 24);
-        placeAi(aiStudios_[2], 8 + first + second, aiY + 34, panelWidth - first - second, 24);
-        placeAi(modelPicker_, 8, aiY + 60, panelWidth - 100, 24, activeAi_ != nullptr);
-        placeAi(fetchModels_, 10 + panelWidth - 100, aiY + 60, 98, 24, activeAi_ != nullptr);
+        const int gap = 4;
+        if (columns) {
+            const int modes = std::clamp(panelWidth * 42 / 100, 134, 164);
+            const int right = 8 + modes + gap, settings = panelWidth - modes - gap;
+            for (int i = 0; i < 3; ++i) placeAi(aiStudios_[i], 8, aiY + 30 * i, modes, 26);
+            placeAi(aiButton_, right, aiY, settings, 27);
+            placeAi(modelPicker_, right, aiY + 30, settings, 26, activeAi_ != nullptr);
+            placeAi(fetchModels_, right, aiY + 60, settings, 26, activeAi_ != nullptr);
+        } else {
+            placeAi(aiButton_, 8, aiY, panelWidth, 25);
+            placeAi(aiStudios_[0], 8, aiY + 29, panelWidth, 23);
+            const int half = (panelWidth - gap) / 2;
+            placeAi(aiStudios_[1], 8, aiY + 55, half, 23);
+            placeAi(aiStudios_[2], 8 + half + gap, aiY + 55, panelWidth - half - gap, 23);
+            placeAi(modelPicker_, 8, aiY + 82, panelWidth - 84, 24, activeAi_ != nullptr);
+            placeAi(fetchModels_, 8 + panelWidth - 80, aiY + 82, 80, 24, activeAi_ != nullptr);
+        }
 
         const bool besideTransport = topBasicsHeight() == 0;
         basics_.setBounds(besideTransport
@@ -5945,8 +5960,8 @@ void MainComponent::resized() {
                                   pitchedSelection() && pianoColours_.getSelectedId() != plainNotes,
                                   parameterFraction_, drumSteps_.isVisible() ? DrumSteps::labelWidth : 52);
     audioEditor_.setBounds(editor.withTrimmedTop(30 + clipHeight));
-    auto clipBounds = audioEditor_.isVisible() ? audioEditor_.getBounds().reduced(8, 0) : pianoLayout.ruler;
-    clipLane_.setBounds(clipBounds.withY(editor.getY() + 30).withHeight(clipHeight));
+    audioEditor_.setTimelineColumns(pianoLayout.ruler.getX() - audioEditor_.getX(), pianoLayout.ruler.getRight() - audioEditor_.getX());
+    clipLane_.setBounds(pianoLayout.ruler.withY(editor.getY() + 30).withHeight(clipHeight));
     tempoEditor_.setBounds(editor);
     tempoEditor_.setTimelineColumns(rowOverlay_.getX() + trackHeaderWidth - editor.getX(), rowOverlay_.getRight() - editor.getX());
     pianoGrid_.setBounds(pianoLayout.grid);
@@ -5961,7 +5976,7 @@ void MainComponent::resized() {
                               && pianoLayout.lane.getHeight() >= 20);
     editor.reduce(6, 4);
     auto toolbar = editor.removeFromTop(26);
-    if (paneControl_.isVisible()) paneControl_.setBounds(toolbar.removeFromRight(std::min(100, toolbar.getWidth() / 8)).reduced(1));
+    if (paneControl_.isVisible()) paneControl_.setBounds(toolbar.removeFromRight(std::min(38, toolbar.getWidth() / 8)).reduced(1));
     if (editorRecord_.isVisible()) editorRecord_.setBounds(toolbar.removeFromRight(88).reduced(1));
     if (cycleButton_.isVisible()) cycleButton_.setBounds(toolbar.removeFromRight(90).reduced(1));
     if (midiDrag_.isVisible() && toolbar.getWidth() < 720) midiDrag_.setBounds({});
@@ -5977,7 +5992,7 @@ void MainComponent::resized() {
     const int gripTop = drumSteps_.isVisible() ? drumSteps_.getY() + DrumSteps::headerHeight
                       : clipLane_.isVisible() ? clipLane_.getY() : pianoLayout.ruler.getY();
     columnDivider_.setBounds(pianoLayout.ruler.getX() - columnGripWidth, gripTop, columnGripWidth,
-                             std::max(0, pianoLayout.lane.getBottom() - gripTop));
+                             std::max(0, (audioEditor_.isVisible() ? audioEditor_.getBottom() : pianoLayout.lane.getBottom()) - gripTop));
     columnDivider_.toFront(false);
     auto pianoNavigation = inspector.removeFromTop(28).reduced(2, 1);
     if (pianoSnap_.isVisible()) pianoSnap_.setBounds(pianoNavigation.removeFromRight(137).reduced(2, 0));

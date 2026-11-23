@@ -1,10 +1,11 @@
 #pragma once
+#include "ui/ControlTargetButton.h"
 #include "ui/OstfpPreview.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class TransportKey final : public juce::Button {
 public:
-    enum Action { home, rewind, play, stop, record, forward, follow };
+    enum Action { home, rewind, play, stop, record, forward, follow, metronome };
     TransportKey(Action action, const juce::String& caption) : Button(caption), action_(action) {
         setTooltip(caption);
         setTitle(caption);
@@ -14,7 +15,7 @@ private:
     void paintButton(juce::Graphics& g, bool hover, bool down) override {
         auto key = getLocalBounds().toFloat().reduced(2);
         const bool on = getToggleState();
-        const juce::Colour ink(action_ == record ? 0xfffa7469 : action_ == play || (action_ == follow && on) ? 0xff78e4bd : 0xffdae4e7);
+        const juce::Colour ink(action_ == record ? 0xfffa7469 : action_ == play || ((action_ == follow || action_ == metronome) && on) ? 0xff78e4bd : 0xffdae4e7);
         g.setColour(juce::Colour(0xff101419));
         g.fillRoundedRectangle(key.translated(0, 2), 4);
         if (down) key.translate(0, 1);
@@ -31,6 +32,13 @@ private:
             juce::Path arrow;
             arrow.addTriangle(symbol.getX(), symbol.getY(), symbol.getRight(), symbol.getCentreY(), symbol.getX(), symbol.getBottom());
             g.fillPath(arrow);
+        } else if (action_ == metronome) {
+            const auto x = symbol.getX(), y = symbol.getY();
+            juce::Path outline;
+            outline.startNewSubPath(x + 4, y + 1); outline.lineTo(x + 8, y + 1);
+            outline.lineTo(x + 12, y + 13); outline.lineTo(x + 1, y + 13); outline.closeSubPath();
+            g.strokePath(outline, juce::PathStrokeType(1.5f));
+            g.drawLine(x + 6, y + 10, x + 13, y + 2, 1.5f);
         } else if (action_ == follow) {
             const auto x = symbol.getX(), y = symbol.getY();
             juce::Path head;
@@ -66,12 +74,20 @@ public:
                  forward{TransportKey::forward, TRANS("Forward")}, play{TransportKey::play, TRANS("Play")},
                  stop{TransportKey::stop, TRANS("Stop")}, record{TransportKey::record, TRANS("Record")},
                  follow{TransportKey::follow, TRANS("Follow")};
-    juce::ToggleButton click{TRANS("Metronome")}, countIn{TRANS("Count-in")};
-    juce::TextButton control{TRANS("Control here")};
+    TransportKey click{TransportKey::metronome, TRANS("Metronome")};
+    juce::ComboBox countIn;
+    static constexpr int maxCountInBars = 8;
+    ControlTargetButton control;
     TransportPanel() {
         addAndMakeVisible(control);
-        for (auto* button : {&click, &countIn}) addAndMakeVisible(button);
-        countIn.setTooltip(TRANS("Count one bar before recording"));
+        addAndMakeVisible(click);
+        click.setClickingTogglesState(true);
+        addAndMakeVisible(countIn);
+        countIn.setTitle(TRANS("Count-in"));
+        countIn.setTooltip(TRANS("Bars to count before recording"));
+        countIn.addItem(TRANS("Off"), 1);
+        for (int n = 1; n <= maxCountInBars; ++n)
+            countIn.addItem(juce::String(n) + " " + (n == 1 ? TRANS("bar") : TRANS("bars")), n + 1);
         for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow}) addAndMakeVisible(*b);
         home.setComponentID("return-to-start");
         rewind.setComponentID("rewind");
@@ -136,10 +152,11 @@ public:
         for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow})
             b->setBounds(top.removeFromLeft(b == &record ? 74 : 48));
         const bool narrow = stacked && getWidth() < 800;
-        auto switches = narrow ? r.removeFromRight(105) : top.removeFromLeft(101);
-        click.setBounds(switches.removeFromTop(switches.getHeight() / 2));
-        countIn.setBounds(switches);
-        control.setBounds(top.removeFromLeft(stacked ? 57 : 90).reduced(1, 3));
+        click.setBounds(top.removeFromLeft(64));
+        auto settings = (narrow ? r.removeFromRight(86) : top.removeFromLeft(86)).reduced(2, 0);
+        countCaption_ = settings.removeFromTop(16);
+        countIn.setBounds(settings.removeFromTop(26));
+        control.setBounds(top.removeFromLeft(37).reduced(1, 3));
         top.removeFromLeft(5);
         const int clockWidth = stacked ? top.getWidth() / 2 : juce::jlimit(122, 158, getWidth() / 8);
         for (int i = 0; i < 2; ++i) fields_[i] = top.removeFromLeft(clockWidth).reduced(1, 0);
@@ -157,6 +174,9 @@ public:
         g.fillRoundedRectangle(bounds, 6);
         g.setColour(juce::Colour(0xff4b565f));
         g.drawRoundedRectangle(bounds, 6, 1);
+        g.setColour(juce::Colour(0xffc7d2dc));
+        g.setFont(juce::FontOptions(11.f));
+        g.drawText(TRANS("Count-in"), countCaption_, juce::Justification::centredLeft);
         for (int i = 0; i < fieldCount; ++i) {
             auto rect = fields_[i];
             g.setColour(juce::Colour(0xff111c20));
@@ -174,5 +194,6 @@ private:
     const std::array<juce::String, fieldCount> captions_{TRANS("Bar / Beat / Tick"), TRANS("Timecode / 30 fps"),
         TRANS("Tempo (BPM)"), TRANS("Meter"), TRANS("Key"), TRANS("Scale"), TRANS("Chord"), TRANS("Section")};
     std::array<juce::Label, fieldCount> readouts_;
+    juce::Rectangle<int> countCaption_;
     std::array<juce::Rectangle<int>, fieldCount> fields_;
 };

@@ -1,10 +1,12 @@
 #pragma once
+#include "ui/TimelinePan.h"
 #include "ui/AudioClipWaveforms.h"
 #include "ui/ArrangementRuler.h"
 
-// Clip view shows one complete source cycle so that markers remain reachable after trimming or looping.
+// The ruler, waveform and warp handles share the visible arrangement time range.
 class AudioClipEditor final : public juce::Component, public juce::SettableTooltipClient {
 public:
+    TimelinePan viewportPan;
     explicit AudioClipEditor(AudioClipWaveforms& source) : waves(source) {
         setComponentID("audio-clip-editor");
         for (auto* button : {&loop, &warp, &melodyne, &apply, &splice}) addAndMakeVisible(button);
@@ -48,7 +50,14 @@ public:
     std::function<bool()> hasWorkingCopy;
     ArrangementRuler recordRuler;
     juce::ComboBox channels;
-    void bind(juce::int64 resolution, bool editable) {
+    void setTimelineColumns(int left, int right) {
+        timelineLeft = left;
+        timelineRight = right;
+        resized();
+    }
+    void bind(juce::int64 resolution, juce::int64 barLength, int first, bool editable) {
+        ticksPerBar = std::max<juce::int64>(1, barLength);
+        firstBar = first;
         ppq = std::max<juce::int64>(1, resolution);
         auto* clip = sourceClip();
         drag = -1;
@@ -63,49 +72,70 @@ public:
         sync();
     }
     void resized() override {
-        auto area = getLocalBounds().reduced(8, 4);
-        auto row = area.removeFromTop(26);
-        recordRuler.setBounds(area.removeFromTop(23));
-        channels.setBounds(row.removeFromLeft(110).reduced(2, 0));
-        loop.setBounds(row.removeFromLeft(76).reduced(2, 0));
-        warp.setBounds(row.removeFromLeft(123).reduced(2, 0));
-        beats.setBounds(row.removeFromLeft(78).reduced(2, 0));
-        row.removeFromLeft(70);
-        melodyne.setBounds(row.removeFromLeft(105).reduced(2, 0));
-        if (apply.isVisible()) apply.setBounds(row.removeFromLeft(134).reduced(2, 0));
-        splice.setBounds(row.removeFromLeft(90).reduced(2, 0));
+        const auto left = std::clamp(timelineLeft, 0, getWidth());
+        auto tools = getLocalBounds().withWidth(left).reduced(8, 3);
+        const int h = std::clamp(tools.getHeight() / 3, 1, 29);
+        auto row = tools.removeFromTop(h);
+        channels.setBounds(row.removeFromLeft(row.getWidth() / 2).reduced(2, 1));
+        loop.setBounds(row.reduced(2, 1));
+        row = tools.removeFromTop(h);
+        warp.setBounds(row.removeFromLeft(row.getWidth() / 2).reduced(2, 1));
+        beatCaption = row.removeFromRight(std::min(40, row.getWidth() / 3));
+        beats.setBounds(row.reduced(2, 1));
+        row = tools.removeFromTop(h);
+        melodyne.setBounds(row.removeFromLeft(row.getWidth() / (apply.isVisible() ? 3 : 2)).reduced(2, 1));
+        if (apply.isVisible()) apply.setBounds(row.removeFromLeft(row.getWidth() / 2).reduced(2, 1));
+        splice.setBounds(row.reduced(2, 1));
+        recordRuler.setBounds(left, 0, std::max(0, std::min(timelineRight, getWidth()) - left), std::min(23, getHeight()));
     }
     void paint(juce::Graphics& g) override {
-        auto area = canvas();
+        const auto area = canvas();
+        g.setColour(juce::Colour(0xffd2e5ee));
+        g.drawText(TRANS("beats"), beatCaption, juce::Justification::centredLeft);
+        if (area.isEmpty() || !recordRuler.visibleBars) return;
         g.setColour(juce::Colour(0xff1b303d));
         g.fillRect(area);
-        g.setColour(juce::Colours::white);
-        g.drawText(TRANS("beats"), beats.getBounds().translated(beats.getWidth() + 3, 0), juce::Justification::centredLeft);
+        const auto visible = recordRuler.visibleBars();
+        if (visible.isEmpty()) return;
+        const double step = std::max(1., std::ceil(8 * visible.getLength() / area.getWidth()));
+        g.setColour(juce::Colour(0xff365467));
+        for (double bar = std::ceil(visible.getStart() / step) * step; bar < visible.getEnd(); bar += step)
+            g.drawVerticalLine(xAtTick((bar - firstBar) * ticksPerBar), float(area.getY()), float(area.getBottom()));
         auto* clip = sourceClip();
         if (!clip || nativeLength <= 0) {
+            g.setColour(juce::Colour(0xffd2e5ee));
             g.drawFittedText(clip ? TRANS("Missing WAV") : TRANS("Drop a WAV from Splice or a folder onto this audio track"),
                              area, juce::Justification::centred, 2);
             return;
         }
-        const double duration = timing.cycleTicks ? double(timing.cycleTicks) : nativeLength;
-        const auto ruler = area.removeFromTop(20);
-        const double step = std::max(1.0, std::ceil(duration / ppq * 46 / std::max(1, area.getWidth())));
-        for (double beat = 0; beat * double(ppq) < duration; beat += step) {
-            const int x = area.getX() + juce::roundToInt(beat * double(ppq) / duration * area.getWidth());
-            g.setColour(juce::Colour(0xff365467)); g.drawVerticalLine(x, float(ruler.getY()), float(area.getBottom()));
-            g.setColour(juce::Colour(0xffd2e5ee)); g.drawText(juce::String(beat + 1, 0), x + 3, ruler.getY(), 44, 18, juce::Justification::left);
-        }
-        waves.draw(g, area.reduced(0, 3), *clip, clock(), double(clip->startTick), clip->startTick + duration, &timing);
-        for (const auto p : timing.markers) {
-            const int x = area.getX() + juce::roundToInt(p.position * area.getWidth());
-            g.setColour(juce::Colour(0xffffbc63)); g.drawVerticalLine(x, float(ruler.getY()), float(area.getBottom()));
-            g.fillRect(x - 3, ruler.getY(), 7, 9);
+        const double start = std::max(double(clip->startTick), tickAtX(area.getX()));
+        const double clipEnd = waves.endTick(*clip, clock());
+        const double end = std::min(clipEnd, tickAtX(area.getRight()));
+        if (end <= start) return;
+        auto body = area.withLeft(xAtTick(start)).withRight(xAtTick(end));
+        waves.draw(g, body.reduced(0, 3), *clip, clock(), start, end, &timing);
+        if (timing.cycleTicks <= 0 || timing.markers.empty()) return;
+        const double period = timing.cycleTicks;
+        const double cyclePixels = period / ticksPerBar / visible.getLength() * area.getWidth();
+        if (cyclePixels < 2. || (!timing.loop && start >= clip->startTick + period)) return;
+        for (double origin = clip->startTick + std::floor((start - clip->startTick) / period) * period;
+             origin < end; origin += period) {
+            for (const auto marker : timing.markers) {
+                const double tick = origin + marker.position * period;
+                if (tick < start || tick >= end) continue;
+                const int x = xAtTick(tick);
+                g.setColour(juce::Colour(0xffffbc63));
+                g.drawVerticalLine(x, float(area.getY()), float(area.getBottom()));
+                g.fillRect(x - 3, area.getY(), 7, 9);
+            }
+            if (!timing.loop) break;
         }
     }
     void mouseDoubleClick(const juce::MouseEvent& e) override {
-        if (!warp.isEnabled() || !timing.cycleTicks || !canvas().contains(e.getPosition())) return;
+        if (TimelinePan::requested(e.mods)) return;
+        if (!warp.isEnabled() || !timing.cycleTicks || !overClip(e.getPosition())) return;
         auto edit = timing;
-        const auto x = phase(e.x);
+        const auto x = phase(e.x, cycleStart(e.x));
         const int index = hit(e.x);
         if (index >= 0) edit.markers.erase(edit.markers.begin() + index);
         else if (edit.markers.size() < 128 && x > 0 && x < 1) {
@@ -116,26 +146,56 @@ public:
         commit(edit);
     }
     void mouseDown(const juce::MouseEvent& e) override {
-        if (canvas().contains(e.getPosition()) && selectWave) selectWave();
-        drag = warp.isEnabled() && canvas().contains(e.getPosition()) ? hit(e.x) : -1;
+        if (viewportPan.begin(*this, e, canvas())) return;
+        drag = -1;
+        if (!overClip(e.getPosition())) return;
+        if (selectWave) selectWave();
+        if (timing.cycleTicks > 0 && warp.isEnabled()) {
+            dragCycle = cycleStart(e.x);
+            drag = hit(e.x);
+        }
     }
     void mouseDrag(const juce::MouseEvent& e) override {
+        if (viewportPan.move(e)) return;
         if (drag < 0) return;
         const double low = drag ? timing.markers[size_t(drag - 1)].position : 0.;
         const double high = size_t(drag + 1) < timing.markers.size() ? timing.markers[size_t(drag + 1)].position : 1.;
-        timing.markers[size_t(drag)].position = std::clamp(phase(e.x), std::nextafter(low, high), std::nextafter(high, low));
+        timing.markers[size_t(drag)].position = std::clamp(phase(e.x, dragCycle), std::nextafter(low, high), std::nextafter(high, low));
         repaint();
     }
     void mouseUp(const juce::MouseEvent& e) override {
+        if (viewportPan.end(*this)) return;
         if (drag >= 0 && e.mouseWasDraggedSinceMouseDown()) commit(timing);
         drag = -1;
     }
 private:
-    juce::Rectangle<int> canvas() const { return getLocalBounds().reduced(8, 4).withTrimmedTop(56); }
-    double phase(int x) const { const auto r = canvas(); return double(x - r.getX()) / std::max(1, r.getWidth()); }
+    juce::Rectangle<int> canvas() const {
+        return recordRuler.getBounds().withTop(recordRuler.getBottom()).withBottom(getHeight());
+    }
+    double tickAtX(int x) const {
+        const auto bars = recordRuler.visibleBars();
+        return (bars.getStart() - firstBar + (x - canvas().getX()) * bars.getLength() / std::max(1, canvas().getWidth())) * ticksPerBar;
+    }
+    int xAtTick(double tick) const {
+        const auto bars = recordRuler.visibleBars();
+        return canvas().getX() + juce::roundToInt((firstBar + tick / ticksPerBar - bars.getStart()) * canvas().getWidth() / bars.getLength());
+    }
+    bool overClip(juce::Point<int> point) const {
+        auto* clip = sourceClip();
+        if (!clip || !canvas().contains(point) || !recordRuler.visibleBars) return false;
+        const auto tick = tickAtX(point.x);
+        return tick >= clip->startTick && tick < waves.endTick(*clip, clock())
+            && (timing.loop || !timing.cycleTicks || tick < clip->startTick + timing.cycleTicks);
+    }
+    double cycleStart(int x) const {
+        const double start = sourceClip()->startTick;
+        return timing.loop ? start + std::floor((tickAtX(x) - start) / timing.cycleTicks) * timing.cycleTicks : start;
+    }
+    double phase(int x, double origin) const { return (tickAtX(x) - origin) / timing.cycleTicks; }
     int hit(int x) const {
+        const double origin = cycleStart(x);
         for (size_t i = 0; i < timing.markers.size(); ++i)
-            if (std::abs(phase(x) - timing.markers[i].position) * canvas().getWidth() <= 5) return int(i);
+            if (std::abs(tickAtX(x) - (origin + timing.markers[i].position * timing.cycleTicks)) <= (tickAtX(x + 5) - tickAtX(x))) return int(i);
         return -1;
     }
     void commit(ostfstudio::ClipTiming edit) { if (edit.valid() && onEdit) onEdit(edit); }
@@ -150,7 +210,10 @@ private:
     ostfstudio::ClipTiming timing;
     double nativeLength = 0;
     juce::int64 ppq = 1;
-    int drag = -1;
+    int drag = -1, timelineLeft = 0, timelineRight = 0, firstBar = 1;
+    juce::int64 ticksPerBar = 1;
+    double dragCycle = 0;
+    juce::Rectangle<int> beatCaption;
     juce::TextButton loop{TRANS("Loop")}, warp{TRANS("Warp (re-pitch)")}, melodyne{"Melodyne"}, apply{TRANS("Apply edited WAV")}, splice{"Splice Sounds"};
     juce::ComboBox beats;
 };

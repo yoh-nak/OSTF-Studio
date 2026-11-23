@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/ControlTargetButton.h"
 #include "ui/EditorClipLane.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <JuceHeader.h>
@@ -75,7 +76,7 @@ private:
     juce::String pluginTarget(bool output, size_t track, int slot) const;
     juce::String targetCaption(const juce::String&) const;
     void refreshControlButtons();
-    juce::TextButton paneControl_{TRANS("Control here")};
+    ControlTargetButton paneControl_;
     std::map<juce::String, ostfstudio::ControllerMap> otherSurfaces_;
     std::map<juce::String, int> lastControlPages_;
     std::map<juce::String, juce::String> controlPortNames_;
@@ -125,6 +126,7 @@ private:
     void stopTransport();
     void navigateTransport(TransportKey::Action);
     void locateTransport(juce::int64 tick, const juce::ScrollBar* anchoredView = nullptr);
+    TimelinePan viewportPan_;
     void panArrangement(double fraction);
     void panTimeline(juce::ScrollBar&, double fraction);
     void showShortcutList();

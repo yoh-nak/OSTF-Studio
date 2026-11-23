@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/TimelinePan.h"
 
 #include <cmath>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -69,7 +70,8 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override {
         tracking_ = e.mods.isLeftButtonDown() && !e.mods.isPopupMenu() && e.x >= headerWidth && getWidth() > headerWidth;
-        choosing_ = tracking_ && chooseCycle && (cycleMode || e.mods.isShiftDown());
+        panOnly_ = TimelinePan::requested(e.mods);
+        choosing_ = tracking_ && !panOnly_ && chooseCycle && (cycleMode || e.mods.isShiftDown());
         anchor_ = fraction(e.x);
         dragged_ = false;
         lastX_ = e.x;
@@ -83,14 +85,14 @@ public:
         setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     }
     void mouseUp(const juce::MouseEvent& e) override {
-        if (tracking_ && !dragged_ && getLocalBounds().contains(e.getPosition()) && e.x >= headerWidth && getWidth() > headerWidth)
+        if (tracking_ && !panOnly_ && !dragged_ && getLocalBounds().contains(e.getPosition()) && e.x >= headerWidth && getWidth() > headerWidth)
             locate(double(e.x - headerWidth) / (getWidth() - headerWidth));
         tracking_ = false;
         setMouseCursor(juce::MouseCursor::NormalCursor);
     }
 private:
     double fraction(int x) const { return std::clamp(double(x - headerWidth) / std::max(1, getWidth() - headerWidth), 0., 1.); }
-    bool choosing_ = false;
+    bool choosing_ = false, panOnly_ = false;
     double anchor_ = 0;
     int lastX_ = 0;
     bool tracking_ = false, dragged_ = false;

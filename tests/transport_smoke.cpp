@@ -176,12 +176,20 @@ bool checkPerformanceAudio() {
             || AudioTrackInput{}.physical(mask, 2) != 4) return false;
         setup.firstInputBuffer = route.bufferIndex(mask, channels ? channels : 1);
         setup.inputGainDb = route.gainDb;
-        setup.countIn = true;
+        setup.countInBars = 1 + channels;
         if (capture.prepareTake(setup).failed()) return false;
         capture.inputNote(juce::MidiMessage::noteOn(1, 62, juce::uint8(77)));
         capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
         if (!capture.countingIn() || capture.positionTick() != 52 || audio.getMagnitude(0, 0, 96) < .01f) return false;
-        for (int n = 1; n < 20; ++n) capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
+        const juce::AudioBuffer<float> firstDownbeat(audio);
+        for (int n = 1; n < 20 * setup.countInBars; ++n) {
+            capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
+            if (n % 20 == 0) {
+                if (!capture.countingIn() || capture.positionTick() != 52) return false;
+                for (int frame = 0; frame < 96; ++frame)
+                    if (std::abs(firstDownbeat.getSample(0, frame) - audio.getSample(0, frame)) > .0001f) return false;
+            }
+        }
         if (capture.countingIn() || capture.positionTick() != 52) return false;
         juce::AudioBuffer<float> input(3, 96);
         for (int i = 0; i < 96; ++i) {

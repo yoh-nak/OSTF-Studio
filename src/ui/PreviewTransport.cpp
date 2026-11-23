@@ -730,7 +730,7 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
             const auto played = countLength_ - remaining;
             const auto age = played % countBeat_;
             const int n = int(std::min<juce::int64>({count - done, remaining, countBeat_ - age}));
-            mixClick(output, channels, done, n, int(age), played < countBeat_);
+            mixClick(output, channels, done, n, int(age), played % countBar_ < countBeat_);
             countRemaining_ -= n;
             done += n;
             continue;
@@ -888,11 +888,12 @@ juce::Result PreviewTransport::prepareTake(const TakeOptions& options) {
         captureFirst_ = captured_.getNumSamples();
         captureEnd_ = 0;
     }
-    if (options.countIn) {
+    if (options.countInBars > 0) {
         const auto tick = positionTick();
         const auto meter = ostfstudio::activeMeter(meters_, double(tick), {0, meterBeats_, beatUnit_});
         countBeat_ = std::max(1LL, std::llround(sampleRate_ * 60.0 / clock_.bpmAt(tick) * 4 / meter.denominator));
-        countLength_ = countBeat_ * meter.numerator;
+        countBar_ = countBeat_ * meter.numerator;
+        countLength_ = countBar_ * std::clamp(options.countInBars, 1, 8);
         countRemaining_ = countLength_;
     }
     return juce::Result::ok();

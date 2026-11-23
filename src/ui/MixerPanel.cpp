@@ -403,7 +403,7 @@ void MixerPanel::restore(const ostfstudio::SessionMix& mix) {
 void MixerPanel::resized() {
     auto area = getLocalBounds().reduced(6, 0);
     auto toolbar = area.removeFromTop(24);
-    control.setBounds(toolbar.removeFromRight(100).reduced(1));
+    control.setBounds(toolbar.removeFromRight(38).reduced(1));
     addReturnButton_.setBounds(toolbar.removeFromRight(94).reduced(1));
     caption_.setBounds(toolbar);
     const auto outputCount = static_cast<int>(buses_.size() + returns_.size()) + 2;

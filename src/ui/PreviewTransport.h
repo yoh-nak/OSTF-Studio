@@ -39,7 +39,7 @@ public:
         int inputChannels = 0;
         int firstInputBuffer = 0;
         double inputGainDb = 0;
-        bool countIn = false;
+        int countInBars = 0;
         ostfstudio::LinkSession* link = nullptr;
         double linkQuantum = 4, linkTempo = 0;
         bool announceLinkStart = true;
@@ -154,7 +154,7 @@ private:
     void mixClick(float* const*, int channels, int offset, int samples, int age, bool accent) const;
     std::vector<std::pair<int, bool>> beatSamples_;
     std::atomic<juce::int64> elapsed_{0}, countRemaining_{0};
-    juce::int64 takeStart_ = 0, countLength_ = 0, countBeat_ = 1;
+    juce::int64 takeStart_ = 0, countLength_ = 0, countBeat_ = 1, countBar_ = 1;
     std::array<int, 128> inputMap_{};
     bool mapInput_ = false;
     ostfstudio::ControllerMap surface_;

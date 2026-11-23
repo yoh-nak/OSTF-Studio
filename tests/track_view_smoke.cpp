@@ -44,6 +44,15 @@ int checkTrackView(const juce::File& fixture) {
         if (!bank || !number || number->getValue() != 36) return 114;
         bank->setSelectedId(2, juce::sendNotificationSync);
         if (number->getValue() != 75 || !settings.containsKey("smk25Draft")) return 115;
+        SmkPresetEditor::PresetReadbacks verified{};
+        for (int page = 0; page < 8; ++page) verified[page] = example.forStudioSlot(page);
+        restored.showVerifiedSetup(verified, 0);
+        if (settings.containsKey("smk25Draft") || number->getValue() != 52) return 135;
+        auto* deviceSlot = findControl<juce::ComboBox>(restored, TRANS("Device preset slot"));
+        auto* channel = findControl<juce::ComboBox>(restored, TRANS("MIDI channel"));
+        if (!deviceSlot || !channel) return 136;
+        deviceSlot->setSelectedId(8, juce::sendNotificationSync);
+        if (channel->getSelectedId() != 16) return 137;
     }
     ControllerMap profile;
     profile.model = surfaceModel("SMK25II-bt");
@@ -77,6 +86,19 @@ int checkTrackView(const juce::File& fixture) {
             if (legend.getPixelAt(8 + 40 * pc, PianoInspector::controlsHeight + 20) != pianoHarmony::degreeColour(pc + 60, 0)) return 67;
         if (legend.getPixelAt(7, PianoInspector::controlsHeight + 67) != pianoHarmony::toneColour(pianoHarmony::Tone::root)) return 68;
     }
+    double scrolled = 0;
+    grid.setSize(200, 90);
+    grid.viewportPan.scroll = [&](double fraction) { scrolled += fraction; };
+    const auto when = juce::Time::getCurrentTime();
+    const auto panEvent = [&](float x, int modifiers) {
+        return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), {x, 30}, modifiers,
+            1.f, 0, 0, 0, 0, &grid, &grid, when, {100, 30}, when, 1, x != 100);
+    };
+    constexpr int left = juce::ModifierKeys::leftButtonModifier;
+    grid.mouseDown(panEvent(100, left | juce::ModifierKeys::altModifier | juce::ModifierKeys::shiftModifier));
+    grid.mouseDrag(panEvent(60, left));
+    grid.mouseUp(panEvent(60, 0));
+    if (std::abs(scrolled - .2) > .0001 || !grid.selection.isEmpty()) return 134;
     ControlTargetMap targets;
     targets[{"SMK input A", -1}] = "mix";
     targets[{"SMK input A", 2}] = "synth";
@@ -224,7 +246,22 @@ int checkTrackView(const juce::File& fixture) {
             b->onClick();
         }
     if (!imported->timing.loop || !imported->timing.cycleTicks) return 56;
-    const auto editorPoint = audioEditor->getLocalBounds().getCentre().toFloat();
+    auto* clipLane = findControl<EditorClipLane>(main, TRANS("Clips"));
+    const auto audioGrid = audioEditor->recordRuler.getBounds();
+    if (!clipLane || clipLane->clips.empty()
+        || main.getLocalArea(&audioEditor->recordRuler, audioEditor->recordRuler.getLocalBounds()).getX() != clipLane->getX()
+        || audioGrid.getWidth() != clipLane->getWidth() || audioEditor->channels.getRight() > audioGrid.getX()) return 132;
+    auto* audioGrip = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
+    auto* upperRuler = audioGrip ? dynamic_cast<ArrangementRuler*>(audioGrip->getParentComponent()->findChildWithID("arrangement-ruler")) : nullptr;
+    if (!upperRuler) return 138;
+    const auto upperArea = main.getLocalArea(upperRuler, upperRuler->getLocalBounds()).withTrimmedLeft(upperRuler->headerWidth);
+    if (upperArea.getX() != clipLane->getX() || upperArea.getRight() != clipLane->getRight()) return 139;
+    const auto bars = audioEditor->recordRuler.visibleBars();
+    const auto shown = bars.getIntersectionWith(clipLane->clips.front().bars);
+    if (shown.isEmpty()) return 133;
+    const auto editorPoint = juce::Point<float>(
+        float(audioGrid.getX() + ((shown.getStart() + shown.getLength() * .25) - bars.getStart()) * audioGrid.getWidth() / bars.getLength()),
+        float(std::max(audioGrid.getBottom() + 2, audioEditor->getHeight() / 2)));
     const auto gesture = [](juce::Component* target, juce::Point<float> from, juce::Point<float> to) {
         const auto time = juce::Time::getCurrentTime();
         return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), to,

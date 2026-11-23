@@ -1,9 +1,11 @@
 #pragma once
+#include "ui/TimelinePan.h"
 #include "ui/PianoNoteGrid.h"
 
 // Editable MIDI values are discrete; the production pan envelope can also interpolate.
 class PerformanceEditor final : public juce::Component, public juce::SettableTooltipClient {
 public:
+    TimelinePan viewportPan;
     using Point = ostfstudio::PerformanceCurve::Point;
     explicit PerformanceEditor(PianoNoteGrid& editor) : grid(editor) {
         setComponentID("performance-editor");
@@ -62,6 +64,7 @@ public:
         }
     }
     void mouseDown(const juce::MouseEvent& e) override {
+        if (viewportPan.begin(*this, e, getLocalBounds())) return;
         active = false;
         const Point* nearest = nullptr;
         float distance = 9;
@@ -85,6 +88,7 @@ public:
         repaint();
     }
     void mouseDrag(const juce::MouseEvent& e) override {
+        if (viewportPan.move(e)) return;
         if (active && e.mouseWasDraggedSinceMouseDown()) {
             moved = true;
             update(e);
@@ -92,6 +96,7 @@ public:
         }
     }
     void mouseUp(const juce::MouseEvent&) override {
+        if (viewportPan.end(*this)) return;
         if (!active) return;
         active = false;
         repaint();

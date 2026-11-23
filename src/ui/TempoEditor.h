@@ -1,9 +1,11 @@
 #pragma once
+#include "ui/TimelinePan.h"
 #include "ui/OstfpPreview.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class TempoEditor final : public juce::Component {
 public:
+    TimelinePan viewportPan;
     TempoEditor() {
         setComponentID("tempo-editor");
         heading.setText(TRANS("Tempo editor"), juce::dontSendNotification);
@@ -82,15 +84,18 @@ public:
         }
     }
     void mouseDown(const juce::MouseEvent& e) override {
+        if (viewportPan.begin(*this, e, graph())) return;
         if (!song || !graph().contains(e.getPosition()) || !e.mods.isLeftButtonDown()) return;
         first = lastTick = tickFor(e.x); firstBpm = lastBpm = bpmFor(e.y);
         dragging = true; showGesture();
     }
     void mouseDrag(const juce::MouseEvent& e) override {
+        if (viewportPan.move(e)) return;
         if (!dragging) return;
         lastTick = tickFor(e.x); lastBpm = bpmFor(e.y); showGesture();
     }
     void mouseUp(const juce::MouseEvent& e) override {
+        if (viewportPan.end(*this)) return;
         if (!dragging) return;
         dragging = false;
         hint.setText(TRANS("Click to set BPM. Drag to draw a tempo ramp."), juce::dontSendNotification);

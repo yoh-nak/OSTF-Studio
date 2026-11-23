@@ -1,9 +1,11 @@
 #pragma once
+#include "ui/TimelinePan.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 // Arrangement coordinates let the lower editors select the same phrase or source region.
 class EditorClipLane final : public juce::Component {
 public:
+    TimelinePan viewportPan;
     struct Clip { juce::Range<double> bars; juce::String label; };
     std::vector<Clip> clips;
     std::optional<double> selected;
@@ -29,7 +31,10 @@ public:
         for (const auto& clip : clips) if (clip.bars.contains(bar)) return clip.bars.getStart();
         return {};
     }
+    void mouseDrag(const juce::MouseEvent& e) override { viewportPan.move(e); }
+    void mouseUp(const juce::MouseEvent&) override { viewportPan.end(*this); }
     void mouseDown(const juce::MouseEvent& e) override {
+        if (viewportPan.begin(*this, e, getLocalBounds())) return;
         if (!visible || !select || !getWidth()) return;
         const auto range = visible();
         select(at(range.getStart() + e.x * range.getLength() / getWidth()));

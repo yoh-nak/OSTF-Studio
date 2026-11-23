@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/TimelinePan.h"
 
 #include "ui/OstfpPreview.h"
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -12,6 +13,7 @@ class PianoNoteGrid final : public juce::Component, public juce::SettableTooltip
     using Edit = ostfstudio::NoteEdit;
     enum Gesture { idle, marquee, draw, repeat, move, trimStart, trimEnd, velocity };
 public:
+    TimelinePan viewportPan;
     std::function<juce::Range<double>()> tickRange;
     std::function<void(const std::vector<Edit>&)> commit;
     std::function<void(const std::vector<Edit>&)> previewEdit;
@@ -217,6 +219,7 @@ public:
             : mode == velocity ? juce::MouseCursor::UpDownResizeCursor : (!hit && pencil && editable ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::NormalCursor));
     }
     void mouseDown(const juce::MouseEvent& e) override {
+        if (viewportPan.begin(*this, e, getLocalBounds())) return;
         cancel();
         if (!editable || rowCount() == 0 || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu())
             return;
@@ -250,6 +253,7 @@ public:
         repaint();
     }
     void mouseDoubleClick(const juce::MouseEvent& e) override {
+        if (TimelinePan::requested(e.mods)) return;
         if (pencil || !editable || rowCount() == 0 || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu() ||
             hitNote(e.position) || getHeight() < 1)
             return;
@@ -257,6 +261,7 @@ public:
         commit({{Edit::insert, newNoteAt(e)}});
     }
     void mouseDrag(const juce::MouseEvent& e) override {
+        if (viewportPan.move(e)) return;
         if (gesture == idle || !e.mouseWasDraggedSinceMouseDown()) return;
         current = e.getPosition();
         if (gesture == repeat) {
@@ -284,6 +289,7 @@ public:
         repaint();
     }
     void mouseUp(const juce::MouseEvent&) override {
+        if (viewportPan.end(*this)) return;
         auto changes = std::move(pending);
         cancel();
         if (!changes.empty()) commit(changes);
@@ -435,6 +441,7 @@ private:
 
 class PianoVelocityLane final : public juce::Component, public juce::SettableTooltipClient {
 public:
+    TimelinePan viewportPan;
     explicit PianoVelocityLane(PianoNoteGrid& editor) : grid(editor) {
         setComponentID("piano-velocity-lane");
         setTooltip(TRANS("Drag a velocity handle up or down."));
@@ -456,6 +463,7 @@ public:
         }
     }
     void mouseDown(const juce::MouseEvent& e) override {
+        if (viewportPan.begin(*this, e, getLocalBounds())) return;
         dragged.reset();
         if (!grid.editable || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu()) return;
         const ostfstudio::PitchedNote* nearest = nullptr;
@@ -475,11 +483,13 @@ public:
         grid.repaint(); repaint();
     }
     void mouseDrag(const juce::MouseEvent& e) override {
+        if (viewportPan.move(e)) return;
         if (!dragged) return;
         candidate = std::clamp(juce::roundToInt(127.f * (getHeight() - 1 - e.position.y) / std::max(1, getHeight() - 3)), 1, 127);
         repaint();
     }
     void mouseUp(const juce::MouseEvent& e) override {
+        if (viewportPan.end(*this)) return;
         if (!dragged) return;
         auto n = *dragged;
         dragged.reset();

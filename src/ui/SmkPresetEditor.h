@@ -6,6 +6,12 @@
 class SmkPresetEditor final : public juce::Component, public juce::FileDragAndDropTarget {
 public:
     using Preset = ostfstudio::Smk25Preset;
+    using PresetReadbacks = std::array<std::optional<Preset>, 8>;
+    void showVerifiedSetup(const PresetReadbacks& slots, int displayed) {
+        verifiedSlots = slots;
+        if (displayed >= 0 && displayed < int(slots.size()) && slots[displayed])
+            displayVerifiedPreset(displayed);
+    }
     std::function<bool(const Preset&, int, const juce::String&)> applyBindings;
     std::function<bool(const juce::String&)> resetRig;
 
@@ -15,10 +21,6 @@ public:
     juce::TextButton automatic{TRANS("Studio control mode")};
 #if JUCE_WINDOWS && defined(_MSC_VER)
     void beginRecommended() {
-        if (destination.isEmpty()) {
-            status.setText(TRANS("Select a controller MIDI input in Studio assignments."), juce::dontSendNotification);
-            return;
-        }
         if (bluetooth.getSelectedId() > 0) { confirmSetup(); return; }
         if (devices.size() > 1 && isEnabled()) {
             status.setText(TRANS("Choose a Bluetooth device"), juce::dontSendNotification);
@@ -75,6 +77,11 @@ public:
         deviceSlot.setTitle(TRANS("Device preset slot"));
         for (int i = 1; i <= 8; ++i) deviceSlot.addItem(TRANS("Preset") + " " + juce::String(i), i);
         deviceSlot.setSelectedId(1, juce::dontSendNotification);
+        deviceSlot.onChange = [this] {
+            const int index = deviceSlot.getSelectedId() - 1;
+            if (index >= 0 && index < int(verifiedSlots.size()) && verifiedSlots[index] && !dirty)
+                displayVerifiedPreset(index);
+        };
         for (int i = 0; i < 24; ++i) {
             addAndMakeVisible(controls[i]);
             controls[i].onClick = [this, i] { slot = i; refresh(); };
@@ -83,7 +90,7 @@ public:
         for (juce::Component* c : std::initializer_list<juce::Component*>{&scan, &bluetooth, &deviceSlot, &readDevice, &writeDevice, &setup}) addAndMakeVisible(c);
         bluetooth.setTitle(TRANS("Bluetooth settings device"));
         bluetooth.setTextWhenNothingSelected(TRANS("Choose a Bluetooth device"));
-        bluetooth.onChange = [this] { refresh(); };
+        bluetooth.onChange = [this] { verifiedSlots = {}; refresh(); };
         setup.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff17634f));
         setup.onClick = [this] { beginRecommended(); };
         scan.onClick = [this] { scanDevices(); };
@@ -175,6 +182,13 @@ public:
     }
 
 private:
+    PresetReadbacks verifiedSlots{};
+    void displayVerifiedPreset(int index) {
+        preset = verifiedSlots[index];
+        source = {};
+        clearDraft();
+        refresh();
+    }
     juce::PropertiesFile& prefs;
     std::optional<Preset> preset;
     juce::File source;
@@ -209,19 +223,20 @@ private:
     bool scanned = false;
     void confirmSetup() {
         const int deviceIndex = bluetooth.getSelectedId() - 1;
-        if (deviceIndex < 0 || deviceIndex >= int(devices.size()) || destination.isEmpty()) return;
+        if (deviceIndex < 0 || deviceIndex >= int(devices.size())) return;
         const auto device = devices[size_t(deviceIndex)];
         const auto port = destination;
         const auto displayed = deviceSlot.getSelectedId() - 1;
-        const auto explanation = bluetooth.getText() + " / " + destinationName + "\n" +
+        auto explanation = bluetooth.getText() + " / " + destinationName + "\n" +
             TRANS("Replace the pads and knobs in presets 1-8, banks A and B? Each changed slot is backed up and read back. Keyboard settings are preserved.");
-        juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, setup.getButtonText(), explanation,
-            TRANS("Write presets"), TRANS("Cancel"), this, juce::ModalCallbackFunction::create(
-            [safe = juce::Component::SafePointer<SmkPresetEditor>(this), device, port, displayed](int ok) {
-                if (!ok || !safe || !safe->isEnabled() || safe->destination != port) return;
+        if (dirty) explanation += "\n" + TRANS("The verified preset will replace the unsaved edits in this editor.");
+        auto complete = juce::ModalCallbackFunction::create(
+            [safe = juce::Component::SafePointer<SmkPresetEditor>(this), device, port, displayed](int choice) {
+                if (choice == 0 || !safe || !safe->isEnabled() || safe->destination != port) return;
+                const bool assign = port.isNotEmpty() && choice == 1;
                 safe->setEnabled(false);
-                safe->jobs.addJob([safe, device, port, displayed] {
-                    std::optional<Preset> loaded;
+                safe->jobs.addJob([safe, device, port, displayed, assign] {
+                    PresetReadbacks readbacks{};
                     int verified = 0;
                     juce::String failure;
                     for (int i = 0; i < 8; ++i) {
@@ -229,29 +244,40 @@ private:
                             if (safe) safe->status.setText(TRANS("Setting up preset") + " " + juce::String(i + 1) + "/8", juce::dontSendNotification);
                         });
                         const auto result = ostfstudio::smkble::transfer(device, i, {}, true);
-                        if (result.message.isNotEmpty()) { failure = result.message; break; }
-                        if (i == displayed) loaded = result.preset;
+                        if (result.message.isNotEmpty() || !result.preset) {
+                            failure = result.message.isNotEmpty() ? result.message : TRANS("No verified preset was returned.");
+                            break;
+                        }
+                        readbacks[i] = result.preset;
                         ++verified;
                     }
-                    juce::MessageManager::callAsync([safe, verified, failure, port, loaded] {
+                    juce::MessageManager::callAsync([safe, verified, failure, port, readbacks = std::move(readbacks), displayed, assign] {
                         if (!safe) return;
                         safe->setEnabled(true);
-                        if (loaded && !safe->dirty) {
-                            safe->preset = loaded;
-                            safe->source = {};
-                            safe->clearDraft();
-                        }
+                        safe->showVerifiedSetup(readbacks, displayed);
                         auto message = TRANS("Verified presets") + " " + juce::String(verified) + "/8";
                         if (failure.isNotEmpty()) message += "  #" + juce::String(verified + 1) + " " + failure;
-                        else if (!safe->resetRig || !safe->resetRig(port)) message += "  " + TRANS("Select the MIDI input and enable All Studio banks.");
+                        else if (assign) {
+                            const bool applied = safe->resetRig && safe->resetRig(port);
+                            message += "  " + (applied ? TRANS("All MIDI assignments applied.") : TRANS("Select the MIDI input and enable All Studio banks."));
+                        } else message += "  " + TRANS("Device only. Studio assignments retained.");
                         safe->status.setText(message, juce::dontSendNotification);
                         safe->status.setTooltip(message);
                         safe->refresh();
                     });
                 });
-            }));
+            });
+        if (port.isEmpty()) {
+            explanation += "\n" + TRANS("Select a controller MIDI input in Studio assignments.");
+            juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, setup.getButtonText(), explanation,
+                TRANS("Send only"), TRANS("Cancel"), this, complete);
+        } else {
+            juce::AlertWindow::showYesNoCancelBox(juce::MessageBoxIconType::QuestionIcon, setup.getButtonText(), explanation,
+                TRANS("Send + MIDI Learn"), TRANS("Send only"), TRANS("Cancel"), this, complete);
+        }
     }
     void scanDevices() {
+        verifiedSlots = {};
         setEnabled(false);
         status.setText(TRANS("Searching for SMK-25 II controllers..."), juce::dontSendNotification);
         jobs.addJob([safe = juce::Component::SafePointer<SmkPresetEditor>(this)] {
@@ -285,6 +311,7 @@ private:
         if (i >= devices.size() || (writing && !preset)) return;
         const int index = deviceSlot.getSelectedId() - 1;
         const auto port = destination;
+        verifiedSlots = {};
         setEnabled(false);
         status.setText(writing ? TRANS("Backing up and writing the device preset...") : TRANS("Reading the device preset..."), juce::dontSendNotification);
         jobs.addJob([safe = juce::Component::SafePointer<SmkPresetEditor>(this), device = devices[i], index, port, data = writing ? preset : std::nullopt] {
@@ -323,8 +350,7 @@ private:
         const bool pad = slot < 16;
 #if JUCE_WINDOWS && defined(_MSC_VER)
         const bool deviceReady = size_t(bluetooth.getSelectedId() - 1) < devices.size();
-        setup.setEnabled(destination.isNotEmpty());
-        setup.setTooltip(destination.isEmpty() ? TRANS("Select a controller MIDI input in Studio assignments.") : TRANS("Set up all 8 presets..."));
+        setup.setTooltip(TRANS("Set up all 8 presets..."));
         readDevice.setEnabled(deviceReady);
         writeDevice.setEnabled(deviceReady && preset.has_value());
 #endif
@@ -381,6 +407,7 @@ private:
         refresh();
     }
     void storeDraft() {
+        verifiedSlots = {};
         dirty = true;
         const auto& bytes = preset->bytes();
         prefs.setValue("smk25Draft", juce::MemoryBlock(bytes.data(), bytes.size()).toBase64Encoding());
@@ -392,6 +419,7 @@ private:
         prefs.removeValue("smk25DraftSource");
     }
     void newPreset() {
+        verifiedSlots = {};
         preset = Preset::studioPreset().forStudioSlot(deviceSlot.getSelectedId() - 1);
         source = {};
         clearDraft();
@@ -412,6 +440,7 @@ private:
         juce::MemoryBlock bytes;
         if (file.getFileExtension().equalsIgnoreCase(".mkcII") && file.getSize() == Preset::fileSize && file.loadFileAsData(bytes)) {
             if (auto parsed = decode(bytes)) {
+                verifiedSlots = {};
                 preset = std::move(parsed);
                 source = file;
                 clearDraft();
