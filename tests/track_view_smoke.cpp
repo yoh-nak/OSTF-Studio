@@ -1,4 +1,5 @@
 #include "ui/MainComponent.h"
+#include "ui/SmkPresetEditor.h"
 
 namespace {
 juce::MouseEvent pointer(juce::Component& target, int y) {
@@ -19,6 +20,31 @@ T* findControl(juce::Component& root, const juce::String& title) {
 
 int checkTrackView(const juce::File& fixture) {
     using namespace ostfstudio;
+    {
+        juce::TemporaryFile preferencesFile(".settings"), source(".mkcII");
+        juce::PropertiesFile settings(preferencesFile.getFile(), juce::PropertiesFile::Options{});
+        const auto example = Smk25Preset::studioPreset();
+        if (!source.getFile().replaceWithData(example.bytes().data(), example.bytes().size())) return 110;
+        const juce::StringArray path{source.getFile().getFullPathName()};
+        {
+            SmkPresetEditor editor(settings);
+            editor.setSize(760, 400);
+            if (!editor.isInterestedInFileDrag(path) || editor.isInterestedInFileDrag({"sample.mkc"})) return 111;
+            editor.filesDropped(path, 20, 20);
+            auto* bank = findControl<juce::ComboBox>(editor, TRANS("Preset bank"));
+            auto* number = findControl<juce::Slider>(editor, TRANS("Note number"));
+            if (!bank || !number) return 112;
+            bank->setSelectedId(2, juce::sendNotificationSync);
+            if (number->getValue() != 52) return 113;
+            number->setValue(75, juce::sendNotificationSync);
+        }
+        SmkPresetEditor restored(settings);
+        auto* bank = findControl<juce::ComboBox>(restored, TRANS("Preset bank"));
+        auto* number = findControl<juce::Slider>(restored, TRANS("Note number"));
+        if (!bank || !number || number->getValue() != 36) return 114;
+        bank->setSelectedId(2, juce::sendNotificationSync);
+        if (number->getValue() != 75 || !settings.containsKey("smk25Draft")) return 115;
+    }
     ControllerMap profile;
     profile.model = surfaceModel("SMK25II-bt");
     profile.pitches[0] = 74;

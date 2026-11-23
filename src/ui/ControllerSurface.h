@@ -20,7 +20,24 @@ public:
     std::array<double, 8> levels{}, pans{};
     std::array<juce::uint32, 16> flashes{};
     juce::ComboBox devices, layer;
-    juce::TextButton hardware{TRANS("Open Midi Suite...")};
+    juce::ComboBox target, inputChannel;
+    juce::Slider inputNumber;
+    juce::TextButton assign{TRANS("Assign input")}, unassign{TRANS("Unassign")};
+    std::function<void(int, int)> manualBinding;
+    void showBinding() {
+        const int i = target.getSelectedId() - 1;
+        if (i < 0 || i >= 24) return;
+        const int key = i < 16 ? padInputs[i] : knobInputs[i - 16];
+        inputChannel.setSelectedId(key < 0 ? 1 : key / 128 + 1, juce::dontSendNotification);
+        inputNumber.setValue(key < 0 ? 0 : key % 128, juce::dontSendNotification);
+        inputNumber.setTitle(i < 16 ? TRANS("Note number") : TRANS("CC number"));
+    }
+    void showManualControls(bool visible, bool enabled) {
+        for (juce::Component* c : std::initializer_list<juce::Component*>{&target, &inputChannel, &inputNumber, &assign, &unassign}) {
+            c->setVisible(visible);
+            c->setEnabled(enabled);
+        }
+    }
     MidiActivityLamp inputLamp;
     juce::Label inputLabel;
     void received(const juce::String& event) {
@@ -33,7 +50,21 @@ public:
     explicit ControllerSurface() {
         for (juce::Component *c : std::array<juce::Component *, 4>{&devices, &layer, &learning, &status})
             addAndMakeVisible(c);
-        addAndMakeVisible(hardware);
+        for (juce::Component* c : std::initializer_list<juce::Component*>{&target, &inputChannel, &inputNumber, &assign, &unassign}) addChildComponent(c);
+        for (int i = 0; i < 24; ++i)
+            target.addItem((i < 16 ? TRANS("Pad") : TRANS("Knob")) + " " + juce::String(i < 16 ? i + 1 : i - 15), i + 1);
+        target.setSelectedId(1, juce::dontSendNotification);
+        target.setTitle(TRANS("Control to assign"));
+        target.onChange = [this] { showBinding(); };
+        for (int i = 1; i <= 16; ++i) inputChannel.addItem("Ch " + juce::String(i), i);
+        inputChannel.setTitle(TRANS("MIDI channel"));
+        inputNumber.setRange(0, 127, 1);
+        inputNumber.setSliderStyle(juce::Slider::LinearHorizontal);
+        inputNumber.setTextBoxStyle(juce::Slider::TextBoxRight, false, 44, 24);
+        assign.onClick = [this] {
+            if (manualBinding) manualBinding(target.getSelectedId() - 1, (inputChannel.getSelectedId() - 1) * 128 + int(inputNumber.getValue()));
+        };
+        unassign.onClick = [this] { if (manualBinding) manualBinding(target.getSelectedId() - 1, -1); };
         addAndMakeVisible(inputLamp);
         addAndMakeVisible(inputLabel);
         inputLabel.setText("MIDI IN", juce::dontSendNotification);
@@ -71,18 +102,24 @@ public:
     }
     void resized() override {
         auto top = getLocalBounds().reduced(12).removeFromTop(30);
-        hardware.setBounds(top.removeFromRight(135).reduced(2));
+
         devices.setBounds(top.removeFromLeft(245).reduced(2));
         layer.setBounds(top.removeFromLeft(132).reduced(2));
         learning.setBounds(top);
-        auto footer = getLocalBounds().reduced(12).removeFromBottom(54);
+        auto footer = getLocalBounds().reduced(12).removeFromBottom(88);
+        auto form = footer.removeFromTop(32);
+        target.setBounds(form.removeFromLeft(110).reduced(2));
+        inputChannel.setBounds(form.removeFromLeft(96).reduced(2));
+        inputNumber.setBounds(form.removeFromLeft(160).reduced(2));
+        assign.setBounds(form.removeFromLeft(125).reduced(2));
+        unassign.setBounds(form.removeFromLeft(110).reduced(2));
         auto activity = footer.removeFromTop(22);
         inputLamp.setBounds(activity.removeFromLeft(18));
         inputLabel.setBounds(activity);
         status.setBounds(footer);
     }
     juce::Rectangle<int> cell(int col, int row) const {
-        auto b = getLocalBounds().reduced(12).withTrimmedTop(42).withTrimmedBottom(64);
+        auto b = getLocalBounds().reduced(12).withTrimmedTop(42).withTrimmedBottom(98);
         return {b.getX() + col * b.getWidth() / 8, b.getY() + row * b.getHeight() / 3,
                 (col + 1) * b.getWidth() / 8 - col * b.getWidth() / 8, b.getHeight() / 3};
     }
@@ -136,6 +173,7 @@ public:
             const auto hit = i < 16 ? cell(i % 8, 1 + i / 8) : cell(i - 16, 0);
             if (!hit.contains(e.getPosition()))
                 continue;
+            target.setSelectedId(i + 1, juce::sendNotificationSync);
             if (learning.getToggleState() && learn)
                 learn(i);
             else if (i < 16 && audition)

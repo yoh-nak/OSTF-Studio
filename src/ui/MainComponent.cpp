@@ -1,4 +1,5 @@
 #include "ui/MainComponent.h"
+#include "ui/SmkPresetEditor.h"
 #include "ui/GlobalTimelineEdit.h"
 #include "ui/ExternalAudioEdit.h"
 #include "ui/MediaImport.h"
@@ -1665,42 +1666,47 @@ void MainComponent::updateTransportMix() {
     transport_.setOutputMix(mixer_.routing());
 }
 
-void MainComponent::openHardwareEditor() {
-    auto* prefs = viewPreferences_.getUserSettings();
-    auto launch = [prefs](const juce::File& app) {
-        if (!app.exists() || !app.startAsProcess()) return false;
-        prefs->setValue("mvaveEditor", app.getFullPathName());
-        return true;
-    };
-    const auto path = prefs->getValue("mvaveEditor");
-    if (juce::File::isAbsolutePath(path) && launch(juce::File(path))) return;
-#if JUCE_WINDOWS
-    auto supplied = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
-                        .getChildFile("MidiSuite_new/Midi Suite/Midi Suite.exe");
-    if (launch(supplied)) return;
-    const auto filter = "*.exe";
-#else
-    if (launch(juce::File("/Applications/Midi Suite.app"))) return;
-    const auto filter = "*.app";
-#endif
-    hardwareChooser_ = std::make_unique<juce::FileChooser>(TRANS("Choose the M-VAVE Midi Suite application"), juce::File{}, filter);
-    hardwareChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-        [safe = juce::Component::SafePointer<MainComponent>(this)](const auto& fc) {
-            if (!safe || fc.getResult() == juce::File{}) return;
-            const auto app = fc.getResult();
-            if (app.startAsProcess()) safe->viewPreferences_.getUserSettings()->setValue("mvaveEditor", app.getFullPathName());
-            else safe->surfacePanel_->status.setText(TRANS("Could not open Midi Suite."), juce::dontSendNotification);
-        });
-}
-
 void MainComponent::openController(bool show) {
     if (!surfaceWindow_) {
         surfaceWindow_ = std::make_unique<PluginWindow>("M-VAVE");
         surfacePanel_ = new ControllerSurface();
-        surfaceWindow_->setContentOwned(surfacePanel_, true);
-        surfaceWindow_->centreWithSize(700, 306);
-        surfacePanel_->status.setText(TRANS("Open Midi Suite to edit device presets."), juce::dontSendNotification);
-        surfacePanel_->hardware.onClick = [this] { openHardwareEditor(); };
+        auto* tabs = new juce::TabbedComponent(juce::TabbedButtonBar::TabsAtTop);
+        presetEditor_ = new SmkPresetEditor(*viewPreferences_.getUserSettings());
+        tabs->addTab(TRANS("Studio assignments"), juce::Colour(panel), surfacePanel_, true);
+        tabs->addTab(TRANS("SMK-25 II preset editor"), juce::Colour(panel), presetEditor_, true);
+        tabs->setSize(766, 471);
+        surfaceWindow_->setContentOwned(tabs, true);
+        surfaceWindow_->centreWithSize(tabs->getWidth(), tabs->getHeight());
+        presetEditor_->applyBindings = [this](const auto& bindings, const juce::String& port) {
+            if (recordTrack_ || !surfaceMap_.learnable() || surfaceMap_.port != port) return false;
+            {
+                const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+                surfaceLearn_ = -1;
+                surfaceCount_ = 0;
+                surfaceMap_.notes = bindings.notes;
+                surfaceMap_.cc = bindings.cc;
+            }
+            saveControllerBindings();
+            return true;
+        };
+        surfacePanel_->manualBinding = [this](int index, int key) {
+            if (recordTrack_ || !surfaceMap_.learnable() || index < 0 || index >= 24 || key < -1 || key >= 2048) return;
+            auto duplicate = [key](const auto& keys, int slot) {
+                auto it = std::find(keys.begin(), keys.end(), key);
+                return key >= 0 && it != keys.end() && int(it - keys.begin()) != slot;
+            };
+            if (index < 16 ? duplicate(surfaceMap_.notes, index) : duplicate(surfaceMap_.cc, index - 16)) {
+                surfacePanel_->status.setText(TRANS("This input is already assigned to another control."), juce::dontSendNotification);
+                return;
+            }
+            {
+                const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+                surfaceLearn_ = -1;
+                surfaceCount_ = 0;
+                surfaceMap_.bind(index, key);
+            }
+            saveControllerBindings();
+        };
         surfacePanel_->selected = [this](auto port) { connectController(port); };
         surfacePanel_->learn = [this](int index) {
             if (recordTrack_) return;
@@ -1811,7 +1817,7 @@ void MainComponent::connectController(juce::MidiDeviceInfo port) {
             ? TRANS("Select a drum track for the pads. Use MIDI Learn, select a control, then move it on the device.")
         : next.model == ostfstudio::SurfaceModel::mixer
             ? TRANS("Mackie Control input: faders control volume and encoders control pan.")
-            : next.model == ostfstudio::SurfaceModel::generic ? TRANS("Use MIDI Learn, select a pad or knob, then play or move the hardware control.") : TRANS("Open Midi Suite to edit device presets."),
+            : next.model == ostfstudio::SurfaceModel::generic ? TRANS("Use MIDI Learn, select a pad or knob, then play or move the hardware control.") : TRANS("Select a MIDI input for live assignments."),
         juce::dontSendNotification);
     refreshController();
     attachPadInput(project_ != nullptr || next.port.isNotEmpty());
@@ -1846,8 +1852,12 @@ void MainComponent::refreshController() {
             p.levels[i] = strip.volume.valueToProportionOfLength(strip.volume.getValue());
             p.pans[i] = strip.pan.valueToProportionOfLength(strip.pan.getValue());
         }
+    const bool newBindings = p.padInputs != surfaceMap_.notes || p.knobInputs != surfaceMap_.cc;
     p.padInputs = surfaceMap_.notes;
     p.knobInputs = surfaceMap_.cc;
+    if (newBindings) p.showBinding();
+    p.showManualControls(surfaceMap_.learnable(), !recordTrack_);
+    presetEditor_->setDestination(surfaceMap_.learnable() && !recordTrack_ ? surfaceMap_.port : juce::String{}, p.devices.getText());
     p.layer.setVisible(surfaceMap_.learnable());
     p.learning.setVisible(p.layer.isVisible());
     p.learning.setEnabled(!recordTrack_);
@@ -1855,23 +1865,28 @@ void MainComponent::refreshController() {
     p.repaint();
 }
 
+void MainComponent::saveControllerBindings() {
+    auto* prefs = viewPreferences_.getUserSettings();
+    const auto prefix = "surface" + juce::String::toHexString(surfaceMap_.port.hashCode64()) + ".";
+    for (int i = 0; i < 24; ++i)
+        prefs->setValue(prefix + juce::String(i), i < 16 ? surfaceMap_.notes[i] : surfaceMap_.cc[i - 16]);
+    cancelPadLearn();
+    surfacePanel_->learningControl = -1;
+    surfacePanel_->learning.setToggleState(false, juce::dontSendNotification);
+    refreshController();
+    surfacePanel_->showBinding();
+    surfacePanel_->status.setText(TRANS("MIDI assignment saved."), juce::dontSendNotification);
+}
+
 void MainComponent::applySurfaceAction(ostfstudio::SurfaceAction a) {
     using A = ostfstudio::SurfaceAction;
     if (!surfacePanel_) return;
     if (a.kind == A::learned) {
-        auto* prefs = viewPreferences_.getUserSettings();
-        const auto prefix = "surface" + juce::String::toHexString(surfaceMap_.port.hashCode64()) + ".";
         {
             const juce::SpinLock::ScopedLockType lock(surfaceLock_);
             surfaceMap_.bind(a.index, a.value);
         }
-        for (int i = 0; i < 24; ++i)
-            prefs->setValue(prefix + juce::String(i), i < 16 ? surfaceMap_.notes[i] : surfaceMap_.cc[i - 16]);
-        cancelPadLearn();
-        surfacePanel_->learningControl = -1;
-        surfacePanel_->learning.setToggleState(false, juce::dontSendNotification);
-        refreshController();
-        surfacePanel_->status.setText(TRANS("MIDI assignment saved."), juce::dontSendNotification);
+        saveControllerBindings();
         return;
     }
     if (a.kind == A::pad) {

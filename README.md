@@ -2,13 +2,19 @@
 
 **English** · [日本語](README.ja.md)
 
-In the Windows development build, the global timeline header shows the ChatGPT connection state. Once connected, click the button to choose the analysis model. Open **Settings → M-VAVE controllers** for device assignments. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
+In the Windows development build, the global timeline header shows the ChatGPT connection state. Once connected, click the button to choose the analysis model. Open **Settings → M-VAVE controllers** to assign live controls or edit an SMK-25 II preset inside Studio. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
 
 **Download 1.0.0 alpha 3** · [Windows x64 installer](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Setup.exe) · [Windows portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon Mac DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_macOS_arm64.dmg)
 
 **1.0.0 alpha** is the first public testing series for Windows x64 and Apple silicon Macs. Try a bundled demo to explore the Global Timeline, piano roll, VST3 instruments and session mixer. [Alpha downloads and release notes](https://github.com/yoh-nak/OSTF-Studio/releases)
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
+
+## M-VAVE controller editor (development build)
+
+The SMK-25 II preset editor works without Midi Suite or a connected controller. Create a preset or open a `.mkcII` file. Select bank A or B and click a pad or knob to edit its MIDI channel, note, program change, pad colour or absolute CC. Save a copy, or use the bank as the live Note/CC mapping for a selected Studio input. The Studio assignments tab also accepts direct entry and MIDI Learn for generic note/CC controllers. Hardware mappings and editor drafts live in local settings.
+
+On Windows, **Scan Bluetooth** in the preset editor searches for the SMK-25 II settings service. Select a device and one of its eight preset slots. Reading loads both banks. Writing checks the model, backs up the original file in `OSTF Studio/Controller Backups` in user application data, and verifies the result by reading it back. Bluetooth preset transfer is specific to the SMK-25 II. Other model profiles use their existing Studio input mappings.
 
 ## Recording in the lower editor (development build)
 

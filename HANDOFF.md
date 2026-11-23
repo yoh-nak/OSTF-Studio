@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## Native SMK-25 II preset editor
+
+Branch `feature/native-mvave-editor` replaces the vendor application launcher with a JUCE preset editor in Settings → M-VAVE. It supports new and imported .mkcII presets, two banks, pad note/program, channel, RGB, absolute knob CCs, local input mapping and crash-recoverable edits. The Studio settings tab also accepts manual note/CC mappings for generic controllers. No vendor executables, preset binaries or libraries are included.
+
+Windows Bluetooth settings transfer uses the SMK-25 II vendor service, independent of its performance MIDI port. A device model query and addressed reads identify the target. Preset writes save the original slot in the user application data backup directory, send changed spans, and compare the full slot before and after the device save command. The manufacturer distributes the Android CubeSuite app and lists SMK-25 II support on its [downloads page](https://www.m-vave.com/download).
+
+On this Windows machine the native transport discovered and identified a physical SMK-25 II and read slot 1 successfully. Repeat with `OSTF Studio.exe --smk25-read-smoke <absolute-path-to-new-report>` and exactly one matching device. The check reads only. Physical writes and macOS execution are unverified. Direct settings transfer currently targets the SMK-25 II on Windows over Bluetooth. File editing and Studio mappings use the cross-platform UI. Other models and USB preset transfer need their own transport validation.
+
+The GUI-free tests cover bank offsets, unsupported controls, byte-preserving edits, MIDI bindings, slot bounds, bad acknowledgements and read-back mismatches. Eight existing user .mkcII exports also round-tripped byte for byte. The GUI regression exercises bank selection and recovery of a changed note. The Windows x64 Release passed all 25 CTest cases and the GUI-free build passed its three tests. Local Windows packaging uses `dist/windows-native-mvave-editor`.
+
 ## MIDI input routing
 
 On `feature/midi-input-routing`, open M-VAVE from Settings. The generic profile learns up to 16 notes and eight CC controls. The panel can launch the installed vendor editor. Per-track IN filters by port and channel, a lamp shows matching input, and R arms one destination. Audio rows omit all fit lanes. ChatGPT shows connection state in the global header and supports a locally saved choice of analysis model.

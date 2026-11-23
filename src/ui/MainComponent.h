@@ -22,6 +22,8 @@
 #include "ui/SongBasicsPanel.h"
 #include "ui/TheoryGuide.h"
 
+class SmkPresetEditor;
+
 class MainComponent final : public juce::Component, public juce::TooltipClient, public juce::DragAndDropContainer,
                             public juce::FileDragAndDropTarget, public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::MidiInputCallback, private juce::Timer, private juce::ScrollBar::Listener {
 public:
@@ -62,8 +64,8 @@ private:
     void connectController(juce::MidiDeviceInfo);
     void refreshController();
     void applySurfaceAction(ostfstudio::SurfaceAction);
-    void openHardwareEditor();
-    std::unique_ptr<juce::FileChooser> hardwareChooser_;
+    void saveControllerBindings();
+    SmkPresetEditor* presetEditor_ = nullptr;
     std::unique_ptr<juce::DocumentWindow> surfaceWindow_;
     ControllerSurface* surfacePanel_ = nullptr;
     juce::MidiDeviceListConnection surfaceDevices_;

@@ -4,6 +4,10 @@
 #include "ui/StudioLanguage.h"
 #include "ui/PluginRoles.h"
 #include <cmath>
+#if JUCE_WINDOWS && defined(_MSC_VER)
+#include "ui/Smk25Bluetooth.h"
+#include <future>
+#endif
 
 namespace {
 int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const juce::String& arrangerPath) {
@@ -193,6 +197,21 @@ public:
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
 #if JUCE_WINDOWS && defined(_MSC_VER)
+        if (args.size() == 2 && args[0] == "--smk25-read-smoke") {
+            // Optional physical check. Only reads slot 1 when discovery is unambiguous.
+            const auto result = std::async(std::launch::async, [] {
+                auto found = ostfstudio::smkble::discover();
+                if (found.devices.size() != 1)
+                    return found.message.isEmpty() ? juce::String("Expected exactly one SMK-25 II.") : found.message;
+                auto read = ostfstudio::smkble::transfer(found.devices.front(), 0, {});
+                return read.preset && read.message.isEmpty() ? juce::String{} : found.devices.front().name + " / " + read.message;
+            }).get();
+            const juce::File report(args[1]);
+            const bool saved = !report.exists() && report.replaceWithText(result.isEmpty() ? "Read SMK-25 II preset 1." : result);
+            setApplicationReturnValue(saved && result.isEmpty() ? 0 : 1);
+            quit();
+            return;
+        }
         if (args.size() == 4 && args[0] == "--render-score-page") {
             ostfstudio::runWindowsScorePageRenderer(juce::File(args[1]), juce::File(args[2]), args[3].getIntValue());
             quit();
