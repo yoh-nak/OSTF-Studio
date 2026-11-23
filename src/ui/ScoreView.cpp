@@ -420,7 +420,7 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
         }
         project = std::move(parsed);
         heading.setText(project->title, juce::dontSendNotification);
-        summary.setText(info + "\n" + TRANS("Drag a musical part to its track, or open the whole score in this window."),
+        summary.setText(info + "\n" + TRANS("Drop a part on a matching track or elsewhere in the arrangement to add a track. Drop chords on the chord lane."),
                         juce::dontSendNotification);
         auto add = [this](int index, const juce::String& name) {
             auto row = std::make_unique<ImportResultRow>(name, *project, index);

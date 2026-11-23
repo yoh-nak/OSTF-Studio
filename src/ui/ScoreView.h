@@ -20,7 +20,7 @@ using OpenImportedSong = std::function<void(std::unique_ptr<ostfstudio::OstfpPre
 class ImportResultRow final : public juce::TextButton {
   public:
     ImportResultRow(const juce::String& label, const ostfstudio::OstfpPreview& song, int sourceIndex)
-        : TextButton(label), source(song), index(sourceIndex) {}
+        : TextButton(label), source(song), index(sourceIndex) { setViewportIgnoreDragFlag(true); }
     void paintButton(juce::Graphics &g, bool over, bool down) override {
         g.setColour(juce::Colour(over || down ? 0xff35556a : 0xff283d4e));
         g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(1), 4.f);
@@ -68,8 +68,15 @@ class ImportResultRow final : public juce::TextButton {
         if (e.getDistanceFromDragStart() < 4)
             return;
         if (auto* host = juce::DragAndDropContainer::findParentDragContainerFor(this);
-            host && !host->isDragAndDropActive())
-            host->startDragging("ostf-import-result", this, juce::ScaledImage{}, true);
+            host && !host->isDragAndDropActive()) {
+            juce::Image badge(juce::Image::ARGB, 200, 30, true);
+            juce::Graphics g(badge);
+            g.setColour(juce::Colour(0xf02c4957)); g.fillRoundedRectangle(badge.getBounds().toFloat(), 4);
+            g.setColour(juce::Colours::white);
+            g.drawFittedText(getButtonText(), badge.getBounds().reduced(8,0), juce::Justification::centredLeft,1);
+            const juce::Point<int> offset(-12,-10);
+            host->startDragging("ostf-import-result", this, juce::ScaledImage(badge), true, &offset, &e.source);
+        }
     }
     const ostfstudio::OstfpPreview& source;
     const int index; // -1 is the inferred chord progression.

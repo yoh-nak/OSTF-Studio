@@ -12,7 +12,7 @@ public:
 
     std::function<void(double, double)> chooseCycle;
     std::function<juce::Range<double>()> cycleBars;
-    bool cycleMode = false;
+    bool cycleMode = false, alignHeaderRight = false;
 
     // Return a component-local pixel so rulers and their grids use the same rounding origin.
     int playheadColumn() const {
@@ -29,7 +29,7 @@ public:
         const juce::Font rulerFont(juce::FontOptions(std::clamp(float(getHeight() - 3), 12.f, 15.f), juce::Font::bold));
         g.setFont(rulerFont);
         g.setColour(juce::Colour(0xffc7d2dc));
-        g.drawText(TRANS("BARS"), getLocalBounds().removeFromLeft(headerWidth).withTrimmedLeft(labelInset).reduced(5, 0), juce::Justification::centredLeft);
+        g.drawText(TRANS("BARS"), getLocalBounds().removeFromLeft(headerWidth).withTrimmedLeft(labelInset).reduced(5, 0), alignHeaderRight ? juce::Justification::centredRight : juce::Justification::centredLeft);
         auto row = getLocalBounds().withTrimmedLeft(headerWidth).withTrimmedBottom(3);
         if (row.isEmpty() || !visibleBars) return;
         g.setColour(juce::Colour(0xff233443));

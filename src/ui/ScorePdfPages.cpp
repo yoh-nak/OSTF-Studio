@@ -1,6 +1,7 @@
 #include "ui/AnalysisService.h"
 #if JUCE_WINDOWS && defined(_MSC_VER)
 #include <windows.data.pdf.h>
+#include <thread>
 #include <wrl.h>
 #include <wrl/wrappers/corewrappers.h>
 #include <shcore.h>
@@ -12,16 +13,15 @@
 #endif
 
 namespace ostfstudio {
-juce::Result readScorePages(const juce::File& source, const juce::File& directory,
-                            const std::function<juce::Result(const juce::File&)>& readPage) {
-    auto failed = [] { return juce::Result::fail(TRANS("Could not read the selected PDF.")); };
 #if JUCE_WINDOWS && defined(_MSC_VER)
+namespace {
+int renderWindowsPage(const juce::File& source, const juce::File& directory, int pageIndex) {
     namespace pdf = ABI::Windows::Data::Pdf;
     using ABI::Windows::Storage::Streams::IRandomAccessStream;
     using Microsoft::WRL::ComPtr;
     using Microsoft::WRL::Wrappers::HStringReference;
     Microsoft::WRL::Wrappers::RoInitializeWrapper apartment(RO_INIT_MULTITHREADED);
-    if (FAILED(apartment)) return failed();
+    if (FAILED(apartment)) return 1;
     // Release idle COM renderers while the desktop graphics runtime is still available.
     struct ReleaseRenderers { ~ReleaseRenderers() { CoFreeUnusedLibrariesEx(0, 0); } } releaseRenderers;
     auto fileStream = [](const juce::File& file, bool write, ComPtr<IRandomAccessStream>& stream) {
@@ -54,26 +54,58 @@ juce::Result readScorePages(const juce::File& source, const juce::File& director
     if (!fileStream(source, false, input) ||
         FAILED(RoGetActivationFactory(HStringReference(RuntimeClass_Windows_Data_Pdf_PdfDocument).Get(), IID_PPV_ARGS(&factory))) ||
         FAILED(factory->LoadFromStreamAsync(input.Get(), &loading)) || !complete(loading) || FAILED(loading->GetResults(&doc)) ||
-        FAILED(doc->get_PageCount(&count)) || !count) return failed();
+        FAILED(doc->get_PageCount(&count)) || !count) return 1;
     const auto png = directory.getChildFile("page.png");
-    for (UINT32 i = 0; i < count; ++i) {
-        {
-            ComPtr<pdf::IPdfPage> page;
-            ABI::Windows::Foundation::Size size{};
-            ComPtr<IInspectable> object;
-            ComPtr<pdf::IPdfPageRenderOptions> options;
-            if (FAILED(doc->GetPage(i, &page)) || FAILED(page->get_Size(&size)) || size.Width <= 0 || size.Height <= 0 ||
-                FAILED(RoActivateInstance(HStringReference(RuntimeClass_Windows_Data_Pdf_PdfPageRenderOptions).Get(), &object)) ||
-                FAILED(object.As(&options)) || FAILED(options->put_BitmapEncoderId(CLSID_WICPngEncoder)) ||
-                FAILED(size.Width >= size.Height ? options->put_DestinationWidth(2000) : options->put_DestinationHeight(2000))) return failed();
-            ComPtr<IRandomAccessStream> output;
-            ComPtr<ABI::Windows::Foundation::IAsyncAction> render;
-            if (!fileStream(png, true, output) ||
-                FAILED(page->RenderWithOptionsToStreamAsync(output.Get(), options.Get(), &render)) ||
-                !complete(render) || FAILED(render->GetResults())) return failed();
-            ComPtr<ABI::Windows::Foundation::IClosable> closable;
-            if (SUCCEEDED(page.As(&closable))) closable->Close();
+    if (pageIndex < 0 || static_cast<UINT32>(pageIndex) >= count) return 1;
+    {
+        ComPtr<pdf::IPdfPage> page;
+        ABI::Windows::Foundation::Size size{};
+        ComPtr<IInspectable> object;
+        ComPtr<pdf::IPdfPageRenderOptions> options;
+        if (FAILED(doc->GetPage(static_cast<UINT32>(pageIndex), &page)) || FAILED(page->get_Size(&size)) || size.Width <= 0 || size.Height <= 0 ||
+            FAILED(RoActivateInstance(HStringReference(RuntimeClass_Windows_Data_Pdf_PdfPageRenderOptions).Get(), &object)) ||
+            FAILED(object.As(&options)) || FAILED(options->put_BitmapEncoderId(CLSID_WICPngEncoder)) ||
+            FAILED(size.Width >= size.Height ? options->put_DestinationWidth(2000) : options->put_DestinationHeight(2000))) return 1;
+        ComPtr<IRandomAccessStream> output;
+        ComPtr<ABI::Windows::Foundation::IAsyncAction> render;
+        if (!fileStream(png, true, output) ||
+            FAILED(page->RenderWithOptionsToStreamAsync(output.Get(), options.Get(), &render)) ||
+            !complete(render) || FAILED(render->GetResults())) return 1;
+        ComPtr<ABI::Windows::Foundation::IClosable> closable;
+        if (SUCCEEDED(page.As(&closable))) closable->Close();
+    }
+    if (pageIndex == 0 && !directory.getChildFile("page-count").replaceWithText(juce::String(count))) return 1;
+    return 0;
+}
+}
+
+void runWindowsScorePageRenderer(const juce::File& source, const juce::File& directory, int pageIndex) {
+    // JUCE's message thread can already be in an STA. WinRT PDF uses an MTA here.
+    int exitCode = 1;
+    std::thread worker([&] { exitCode = renderWindowsPage(source, directory, pageIndex); });
+    worker.join();
+    // The page, streams and COM apartment have been closed. Windows.Data.Pdf
+    // can create a D3D device from its DLL detach handler during ExitProcess.
+    // Stop just this disposable worker without running process-detach handlers.
+    TerminateProcess(GetCurrentProcess(), static_cast<UINT>(exitCode));
+}
+#endif
+
+juce::Result readScorePages(const juce::File& source, const juce::File& directory,
+                            const std::function<juce::Result(const juce::File&)>& readPage) {
+    auto failed = [] { return juce::Result::fail(TRANS("Could not read the selected PDF.")); };
+#if JUCE_WINDOWS && defined(_MSC_VER)
+    const auto executable = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+    const auto png = directory.getChildFile("page.png");
+    int pageCount = 1;
+    for (int i = 0; i < pageCount; ++i) {
+        if (auto r = runAnalysisTool({executable.getFullPathName(), "--render-score-page", source.getFullPathName(),
+                                      directory.getFullPathName(), juce::String(i)}, 180000); r.failed()) return failed();
+        if (i == 0) {
+            pageCount = directory.getChildFile("page-count").loadFileAsString().getIntValue();
+            if (pageCount < 1) return failed();
         }
+        if (!png.existsAsFile()) return failed();
         if (auto r = readPage(png); r.failed()) return r;
     }
     return juce::Result::ok();

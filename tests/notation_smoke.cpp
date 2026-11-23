@@ -16,7 +16,8 @@ public:
     bool authenticated = true, invalid = false;
     juce::String name() const override { return "Test"; }
     bool connected() const override { return authenticated; }
-    juce::Result connect() const override { return juce::Result::ok(); }
+    juce::Result disconnect() const override { return juce::Result::ok(); }
+    juce::Result connect(const SignInLink&) const override { return juce::Result::ok(); }
     juce::Result request(const juce::String& prompt, const juce::String&, const juce::File& image, juce::var& reply) const override {
         if (prompt.startsWith("Read the printed score")) {
             juce::FileInputStream page(image);
@@ -354,7 +355,10 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
     slower.getDynamicObject()->setProperty("bpm", 60);
     if (notesTarget->changeGlobalEvents(TimelineLane::tempo, {oldTempo}, {slower}, before).failed() ||
         placeImportTrack(*project, 1, *notesTarget, 0, 120, before).failed()) return false;
-    const auto& imported = notesTarget->addedClips.back().notes;
+    std::vector<PitchedNote> imported;
+    const auto placement = juce::JSON::parse(notesTarget->sourceScore.toString())["tracks"][0]["clips"];
+    const auto id = placement.getArray()->getLast()["id"].toString();
+    for (const auto& n : notesTarget->pitchedNotes[0]) if (n.clipId == id) imported.push_back(n);
     if (imported.size() != 2) return false;
     for (std::size_t i = 0; i < imported.size(); ++i) {
         const double originalTime = project->clock.secondsAt(project->pitchedNotes[1][i].startTick);
@@ -362,6 +366,17 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
         // MIDI ticks are integral. Preserve the transcription's initial offset within half a destination tick.
         if (std::abs(placedTime - originalTime) > 0.500001 / notesTarget->ppq) return false;
     }
+    const auto previousEnd = notesTarget->playbackEndTick();
+    const auto previousScore = notesTarget->sourceScore;
+    if (placeImportTrack(*project, 1, *notesTarget, 0, previousEnd, before).failed()
+        || notesTarget->durationTicks <= previousEnd || before != previousScore) return false;
+    juce::MemoryOutputStream extended;
+    if (writeOstfPreview(*notesTarget, extended).failed()) return false;
+    juce::MemoryInputStream roundTrip(extended.getData(), extended.getDataSize(), false);
+    std::unique_ptr<OstfpPreview> extendedScore;
+    if (readOstfPreview(roundTrip, extendedScore).failed() || extendedScore->durationTicks != notesTarget->durationTicks
+        || extendedScore->pitchedNotes[0].back().endTick <= previousEnd
+        || notesTarget->restoreNoteScore(before).failed() || notesTarget->sourceScore != previousScore) return false;
     PreviewTransport player;
     player.setOutputMix({});
     player.setChannelMix(0, {}, true, 0);

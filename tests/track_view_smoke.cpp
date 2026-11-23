@@ -18,6 +18,19 @@ T* findControl(juce::Component& root, const juce::String& title) {
 }
 
 int checkTrackView(const juce::File& fixture) {
+    using namespace ostfstudio;
+    ControllerMap profile;
+    profile.model = surfaceModel("SMK25II-bt");
+    profile.pitches[0] = 74;
+    auto on = [](int channel, int pitch) { return juce::MidiMessage::noteOn(channel,pitch,juce::uint8(95)); };
+    if (surfaceModel("SMK25II-bt-DAW") != SurfaceModel::none || profile.action(on(10,36)).value != 74
+        || profile.action(on(1,36)).kind != SurfaceAction::none) return 93;
+    profile.bind(1, 9*128+36);
+    if (profile.padIndex(juce::MidiMessage::noteOff(10,36)) != 1 || profile.notes[0] != -1) return 94;
+    profile.model = surfaceModel("SMC-Mixer");
+    if (profile.action(juce::MidiMessage::pitchWheel(8,16383)).index != 7
+        || profile.action(juce::MidiMessage::controllerEvent(1,16,65)).value != -1
+        || profile.action(juce::MidiMessage::pitchWheel(9,8192)).kind != SurfaceAction::none) return 95;
     PianoNoteGrid grid;
     PianoInspector colours(grid);
     colours.showLegend = true;
@@ -97,7 +110,10 @@ int checkTrackView(const juce::File& fixture) {
             icons.add(button->getBounds());
         }
     }
-    if (!click("Add melody track") || !click("Add chorus vocal track") || !click("Add drum / percussion track")
+    if (!click("Add melody track")) return 91;
+    auto* melody = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
+    if (!melody || melody->height() != 100) return 92;
+    if (!click("Add chorus vocal track") || !click("Add drum / percussion track")
         || !click("Add audio track") || tracks->getNumItems() != 5) return 34;
     auto* audioEditor = dynamic_cast<AudioClipEditor*>(main.findChildWithID("audio-clip-editor"));
     if (!audioEditor || !audioEditor->isVisible() || audioEditor->getWidth() < 200) return 51;
@@ -173,6 +189,43 @@ int checkTrackView(const juce::File& fixture) {
     if (!click(atMaxScale ? "Zoom out interface" : "Zoom in interface") || scale == desktop.getGlobalScaleFactor()
         || !click(atMaxScale ? "Zoom in interface" : "Zoom out interface") || scale != desktop.getGlobalScaleFactor()) return 38;
     main.setSize(1450, 1200);
+    {
+        std::unique_ptr<OstfpPreview> source;
+        juce::FileInputStream input(fixture);
+        if (readOstfpPreview(input,source).failed()) return 96;
+        auto it = std::find_if(source->pitchedNotes.begin(), source->pitchedNotes.end(), [](const auto& n){ return !n.empty(); });
+        if (it == source->pitchedNotes.end()) return 97;
+        const int index = int(it - source->pitchedNotes.begin());
+        ImportResultRow importedRow("Drop test",*source,index);
+        auto* dropRuler = busC->getParentComponent()->findChildWithID("arrangement-ruler");
+        if (!dropRuler) return 98;
+        const auto pos = main.getLocalPoint(dropRuler,juce::Point<int>(12,4));
+        const auto count = tracks->getNumItems();
+        // Resolve the receiving component from the arrangement position, just as JUCE
+        // does when a row from a separate drag container is released over a child.
+        struct Review : juce::Component, juce::DragAndDropContainer {} review;
+        juce::Viewport viewport;
+        juce::Component rows;
+        rows.addAndMakeVisible(importedRow);
+        viewport.setViewedComponent(&rows, false);
+        review.addAndMakeVisible(viewport);
+        if (!importedRow.getViewportIgnoreDragFlag()
+            || juce::DragAndDropContainer::findParentDragContainerFor(&importedRow) != &review) return 99;
+        juce::DragAndDropTarget::SourceDetails details("ostf-import-result", &importedRow, {});
+        juce::DragAndDropTarget* receiver = nullptr;
+        for (auto* hit = main.getComponentAt(pos); hit != nullptr; hit = hit->getParentComponent()) {
+            auto* target = dynamic_cast<juce::DragAndDropTarget*>(hit);
+            if (target && target->isInterestedInDragSource(details)) {
+                receiver = target;
+                details.localPosition = hit->getLocalPoint(&main, pos);
+                break;
+            }
+        }
+        if (!receiver) return 99;
+        receiver->itemDragMove(details);
+        receiver->itemDropped(details);
+        if (tracks->getNumItems() != count+1 || tracks->getText()!=juce::String::fromUTF8(source->trackLanes[index].label)) return 100;
+    }
     if (!main.openDocument(fixture)) return 1;
     auto* guitar = findControl<TrackRowSize>(main, "Lead Guitar track height");
     auto* bass = findControl<TrackRowSize>(main, "Bass track height");

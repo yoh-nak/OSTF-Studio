@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## Controller workspace
+
+Branch `feature/controller-workspace` uses a dedicated Studio CLI profile for browser sign-in and puts the connection controls to the left of the global timeline labels. Import placement can extend a score transactionally and write pitched and drum notes into editable clips. The arrangement accepts new parts outside compatible tracks. Melody rows start at 100 px plus independent fit lanes.
+
+Open M-VAVE in the timeline header. The SMK-25 II profile follows the selected drum kit. Its initial input preset is notes 36–51 on channel 10 and CC16–23 on channel 1. MIDI Learn can adapt it to the physical preset. The SMC-Mixer input profile supports the first eight Mackie faders and pan encoders in each track bank. Account consent, physical control movement, hardware output and macOS require separate verification.
+
+Windows PDF analysis renders each page in a disposable worker. A debugger reproduced an intermittent shutdown exception (0x87a) inside Windows.Data.Pdf and DXGI after the analysis had already succeeded. The worker releases its page, files and COM objects before stopping. The main process consumes one rendered page at a time.
+
+Windows x64 Release passed all 24 CTest cases, both GUI-free core tests passed, and the notation/import smoke passed five consecutive runs after isolating PDF rendering. The OAuth fixture checks separate credentials and a new sign-in URL on each connect. The arrangement test checks the viewport drag source, target hit testing and clip placement. Physical mouse dragging, external account consent, hardware signalling and macOS still need hands-on validation. The local installer and portable build are in `dist/windows-controller-workspace`.
+
 Read this file after `AGENTS.md` when resuming work on another computer. Update it in the same change as significant implementations, fixes, or validation results. Record what changed, what was verified on each platform, and what remains to be done. Keep durable policy in `AGENTS.md` and detailed procedures in the linked documents.
 
 ## Current state

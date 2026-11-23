@@ -721,6 +721,7 @@ MainComponent::MainComponent() {
     importTrackDrop_.setColour(juce::Label::outlineColourId, juce::Colour(0xff73d8cc));
     addChildComponent(importTrackDrop_);
     ruler_.headerWidth = trackHeaderWidth;
+    ruler_.alignHeaderRight = true;
     basics_.setVisible(project_ && workspaceMode_ == WorkspaceMode::arrangement);
     ruler_.setComponentID("arrangement-ruler");
     pianoRuler_.setComponentID("piano-ruler");
@@ -800,8 +801,12 @@ MainComponent::MainComponent() {
     addChildComponent(pianoRuler_);
     rowOverlay_.addAndMakeVisible(ruler_);
     rowOverlay_.addAndMakeVisible(aiButton_);
+    rowOverlay_.addAndMakeVisible(surfaceButton_);
+    surfaceButton_.onClick = [this] { openController(true); };
+    if (viewPreferences_.getUserSettings()->getValue("surfacePort").isNotEmpty())
+        juce::MessageManager::callAsync([safe = juce::Component::SafePointer<MainComponent>(this)] { if (safe) safe->openController(false); });
     aiButton_.onClick = [this] { aiConnectionMenu(); };
-    if (viewPreferences_.getUserSettings()->getBoolValue("chatGptAnalysis", false)) updateAiConnection(false);
+    if (viewPreferences_.getUserSettings()->getBoolValue("studioChatGptBrowserLogin", false)) updateAiConnection(AccountAction::restore);
     addChildComponent(audioEditor_);
     addChildComponent(tempoEditor_);
     tempoEditor_.visibleBars = [this] { return arrangementScroll_.getCurrentRange(); };
@@ -861,6 +866,7 @@ MainComponent::MainComponent() {
         controls.volume.setValue(mix.volumeDb, juce::dontSendNotification);
         controls.pan.setValue(mix.pan * 100.0f, juce::dontSendNotification);
         updateTransportMix();
+        refreshController();
     };
     mixer_.routingChanged = [this] {
         markSessionEdited();
@@ -1537,9 +1543,13 @@ void MainComponent::itemDropped(const SourceDetails& details) {
     if (auto* row = dynamic_cast<ImportResultRow*>(details.sourceComponent.get())) {
         auto pos = details.localPosition;
         const auto track = pluginDropTrack(pos);
-        const bool create = row->index >= 0 && importTrackDrop_.getBounds().contains(pos);
-        if (!create && !track && globalLaneAt(pos) != TimelineLane::chord) {
-            statusLabel_.setText(TRANS("Choose a matching destination track."), juce::dontSendNotification);
+        const auto lane = globalLaneAt(pos);
+        if (!rowOverlay_.getBounds().contains(pos)) return;
+        const bool matched = track && *track < project_->sourceTrackCount() && row->index >= 0
+            && project_->trackKinds[*track] == row->source.trackKinds[size_t(row->index)];
+        const bool create = row->index >= 0 && (!matched || importTrackDrop_.getBounds().contains(pos));
+        if (row->index < 0 && lane != TimelineLane::chord) {
+            statusLabel_.setText(TRANS("Drop the progression on the chord lane."), juce::dontSendNotification);
             return;
         }
         if (recordTrack_)
@@ -1547,9 +1557,13 @@ void MainComponent::itemDropped(const SourceDetails& details) {
         const auto grid = std::max(1.0, pianoGrid_.grid);
         const auto hit = arrangementTickAt(pos.x);
         auto tick = static_cast<juce::int64>(std::llround(std::round(hit / grid) * grid));
-        if (pos.x < rowOverlay_.getX() + trackHeaderWidth) tick = cursorTick_;
+        if (pos.x < rowOverlay_.getX() + trackHeaderWidth) tick = std::max<juce::int64>(0,cursorTick_);
         if (create) {
             const auto i = static_cast<std::size_t>(row->index);
+            if (!canEditTracks() || project_->sourceTrackCount() >= ostfstudio::OstfpPreview::maxTracks) {
+                statusLabel_.setText(TRANS("Choose a matching destination track."),juce::dontSendNotification);
+                return;
+            }
             if (i < row->source.sourceTrackCount())
                 editTracks(row->source.trackKinds[i], {}, {}, row->source.mixerGroups[i], row, tick);
             return;
@@ -1603,9 +1617,12 @@ void MainComponent::placeResult(ImportResultRow& row, std::optional<std::size_t>
     juce::MemoryBlock before;
     auto result = ostfstudio::placeImportTrack(row.source, row.index, *project_, track, tick, before, replace);
     if (result.wasOk()) {
-        if (before.getSize() > 0)
+        if (row.index >= 0 && row.source.trackKinds[row.index] == ostfstudio::TrackKind::audio)
+            markSessionEdited();
+        else if (!before.isEmpty())
             rememberScoreEdit(std::move(before));
-        if (before.isEmpty() && row.index >= 0 && row.source.trackKinds[row.index] == ostfstudio::TrackKind::audio) markSessionEdited();
+        else
+            markSessionEdited();
         waveforms_.load(project_->audio);
         theory_.reset();
         refreshTheory();
@@ -1640,6 +1657,187 @@ void MainComponent::updateTransportMix() {
     transport_.setOutputMix(mixer_.routing());
 }
 
+void MainComponent::openController(bool show) {
+    if (!surfaceWindow_) {
+        surfaceWindow_ = std::make_unique<PluginWindow>("M-VAVE");
+        surfacePanel_ = new ControllerSurface();
+        surfaceWindow_->setContentOwned(surfacePanel_, true);
+        surfaceWindow_->centreWithSize(700, 306);
+        surfacePanel_->selected = [this](auto port) { connectController(port); };
+        surfacePanel_->learn = [this](int index) {
+            if (recordTrack_) return;
+            {
+                const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+                surfaceLearn_ = index;
+            }
+            surfacePanel_->status.setText(
+                index < 0 ? TRANS("Select a pad or knob to learn its input.")
+                          : (index < 16 ? TRANS("Strike the MIDI pad to assign") : TRANS("Turn the hardware knob.")),
+                juce::dontSendNotification);
+        };
+        surfacePanel_->panMode = [this](bool pan) {
+            surfacePan_ = pan;
+            refreshController();
+        };
+        surfacePanel_->audition = [this](int index) {
+            if (recordTrack_ || surfaceMap_.pitches[index] < 0) return;
+            flashPad(surfaceMap_.pitches[index]);
+            surfacePanel_->flashes[index] = juce::Time::getMillisecondCounter();
+            surfacePanel_->repaint();
+            startTimer(210);
+        };
+        auto restore = [this] {
+            auto saved = viewPreferences_.getUserSettings()->getValue("surfacePort");
+            juce::MidiDeviceInfo match;
+            for (auto p : juce::MidiInput::getAvailableDevices())
+                if (p.identifier == saved && ostfstudio::surfaceModel(p.name) != ostfstudio::SurfaceModel::none)
+                    match = p;
+            if (match.identifier != surfaceMap_.port) {
+                connectController(match);
+                if (match.identifier.isEmpty()) viewPreferences_.getUserSettings()->setValue("surfacePort", saved);
+            }
+            surfacePanel_->refreshPorts(surfaceMap_.port);
+        };
+        restore();
+        // The first explicit opening can claim a single, unambiguous supported input.
+        if (show && !viewPreferences_.getUserSettings()->containsKey("surfacePort")) {
+            juce::Array<juce::MidiDeviceInfo> supported;
+            for (auto p : juce::MidiInput::getAvailableDevices())
+                if (ostfstudio::surfaceModel(p.name) != ostfstudio::SurfaceModel::none) supported.add(p);
+            if (supported.size() == 1) connectController(supported[0]);
+        }
+        surfaceDevices_ = juce::MidiDeviceListConnection::make(restore);
+    }
+    if (show) {
+        surfaceWindow_->setVisible(true);
+        surfaceWindow_->toFront(true);
+    }
+    refreshController();
+}
+
+void MainComponent::connectController(juce::MidiDeviceInfo port) {
+    if (recordTrack_) {
+        surfacePanel_->refreshPorts(surfaceMap_.port);
+        return;
+    }
+    ostfstudio::ControllerMap next;
+    next.model = ostfstudio::surfaceModel(port.name);
+    bool opened = false;
+    if (next.model != ostfstudio::SurfaceModel::none) {
+        if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
+        auto& devices = deviceSettings_->midiDevices();
+        opened = port.identifier == surfaceMap_.port ? openedSurfacePort_
+                                                     : !devices.isMidiInputDeviceEnabled(port.identifier);
+        devices.setMidiInputDeviceEnabled(port.identifier, true);
+        if (!devices.isMidiInputDeviceEnabled(port.identifier)) {
+            surfacePanel_->status.setText(TRANS("Could not open MIDI input."), juce::dontSendNotification);
+            surfacePanel_->refreshPorts(surfaceMap_.port);
+            return;
+        }
+        next.port = port.identifier;
+        auto* prefs = viewPreferences_.getUserSettings();
+        const auto prefix = "surface" + juce::String::toHexString(next.port.hashCode64()) + ".";
+        for (int i = 0; i < 24; ++i) {
+            auto& key = i < 16 ? next.notes[i] : next.cc[i - 16];
+            key = std::clamp(prefs->getIntValue(prefix + juce::String(i), key), -1, 2047);
+        }
+    }
+    if (openedSurfacePort_ && deviceSettings_ && next.port != surfaceMap_.port)
+        deviceSettings_->midiDevices().setMidiInputDeviceEnabled(surfaceMap_.port, false);
+    openedSurfacePort_ = opened;
+    {
+        const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+        surfaceMap_ = next;
+        surfaceCount_ = 0;
+        surfaceLearn_ = -1;
+    }
+    viewPreferences_.getUserSettings()->setValue("surfacePort", next.port);
+    surfacePanel_->model = next.model;
+    surfacePanel_->refreshPorts(next.port);
+    surfacePanel_->status.setText(
+        next.model == ostfstudio::SurfaceModel::smk25ii
+            ? TRANS("Pads: channel 10, notes 36–51. Knobs: channel 1, CC16–23. Use Learn for other presets.")
+        : next.model == ostfstudio::SurfaceModel::mixer
+            ? TRANS("Mackie Control input: faders control volume and encoders control pan.")
+            : juce::String{},
+        juce::dontSendNotification);
+    refreshController();
+    attachPadInput(drumPads_.isVisible() || next.port.isNotEmpty());
+}
+
+void MainComponent::refreshController() {
+    if (!surfacePanel_) return;
+    auto& p = *surfacePanel_;
+    p.slots.clear();
+    p.tracks.clear();
+    p.levels.fill(0);
+    p.pans.fill(0.5);
+    std::array<int, 16> pitches;
+    pitches.fill(-1);
+    if (project_ && selectedTrack_ && *selectedTrack_ < project_->slotsByTrack.size() &&
+        project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::drum) {
+        const auto& slots = project_->slotsByTrack[*selectedTrack_];
+        for (size_t i = 0; i < std::min(slots.size(), pitches.size()); ++i) {
+            p.slots.add(slots[i].name);
+            pitches[i] = slots[i].pitch;
+        }
+    }
+    {
+        const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+        surfaceMap_.pitches = pitches;
+    }
+    const size_t bank = selectedTrack_.value_or(0) / 8 * 8;
+    if (project_)
+        for (size_t i = 0; i < 8 && bank + i < trackControls_.size(); ++i) {
+            p.tracks.add(juce::String::fromUTF8(project_->trackLanes[bank + i].label));
+            auto& strip = *trackControls_[bank + i];
+            p.levels[i] = strip.volume.valueToProportionOfLength(strip.volume.getValue());
+            p.pans[i] = strip.pan.valueToProportionOfLength(strip.pan.getValue());
+        }
+    p.layer.setVisible(p.model == ostfstudio::SurfaceModel::smk25ii);
+    p.learning.setVisible(p.layer.isVisible());
+    p.learning.setEnabled(!recordTrack_);
+    p.devices.setEnabled(!recordTrack_);
+    p.repaint();
+}
+
+void MainComponent::applySurfaceAction(ostfstudio::SurfaceAction a) {
+    using A = ostfstudio::SurfaceAction;
+    if (!surfacePanel_) return;
+    if (a.kind == A::learned) {
+        auto* prefs = viewPreferences_.getUserSettings();
+        const auto prefix = "surface" + juce::String::toHexString(surfaceMap_.port.hashCode64()) + ".";
+        {
+            const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+            surfaceMap_.bind(a.index, a.value);
+        }
+        for (int i = 0; i < 24; ++i)
+            prefs->setValue(prefix + juce::String(i), i < 16 ? surfaceMap_.notes[i] : surfaceMap_.cc[i - 16]);
+        cancelPadLearn();
+        surfacePanel_->learning.setToggleState(false, juce::dontSendNotification);
+        surfacePanel_->status.setText(TRANS("MIDI assignment saved."), juce::dontSendNotification);
+        return;
+    }
+    if (a.kind == A::pad) {
+        if (a.value >= 0) flashPad(a.value);
+        surfacePanel_->flashes[a.index] = juce::Time::getMillisecondCounter();
+        surfacePanel_->repaint();
+        if (!transportActive_) startTimer(210);
+        return;
+    }
+    const auto track = selectedTrack_.value_or(0) / 8 * 8 + size_t(a.index);
+    if (!project_ || track >= trackControls_.size()) return;
+    auto& strip = *trackControls_[track];
+    const bool pan = a.kind == A::relativePan || (a.kind == A::knob && surfacePan_);
+    auto& slider = pan ? strip.pan : strip.volume;
+    if (a.kind == A::relativePan)
+        slider.setValue(slider.getValue() + a.value, juce::sendNotificationSync);
+    else
+        slider.setValue(slider.proportionOfLengthToValue(a.value / (a.kind == A::fader ? 16383.0 : 127.0)),
+                        juce::sendNotificationSync);
+    refreshController();
+}
+
 void MainComponent::cancelPadLearn() {
     learnTarget_ = -1;
     learnedPair_ = -1;
@@ -1660,7 +1858,34 @@ void MainComponent::attachPadInput(bool enable) {
     padListening_ = enable;
 }
 
-void MainComponent::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message) {
+void MainComponent::handleIncomingMidiMessage(juce::MidiInput* port, const juce::MidiMessage& message) {
+    if (port) {
+        const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+        if (surfaceMap_.port.isNotEmpty() && port->getIdentifier() == surfaceMap_.port) {
+            auto action = surfaceMap_.action(message);
+            if (surfaceMap_.model == ostfstudio::SurfaceModel::smk25ii && message.isNoteOn() && surfaceLearn_ < 0) {
+                const int target = learnTarget_.load();
+                if (target >= 0) {
+                    auto it = std::find(surfaceMap_.pitches.begin(), surfaceMap_.pitches.end(), target);
+                    if (it != surfaceMap_.pitches.end()) {
+                        surfaceLearn_ = int(it - surfaceMap_.pitches.begin());
+                        learnTarget_ = -1;
+                    }
+                }
+            }
+            if (surfaceLearn_ >= 0 && (surfaceLearn_ < 16 ? message.isNoteOn() : message.isController())) {
+                const auto value = surfaceLearn_ < 16 ? message.getNoteNumber() : message.getControllerNumber();
+                action = {ostfstudio::SurfaceAction::learned, surfaceLearn_, (message.getChannel() - 1) * 128 + value};
+                if (surfaceCount_ < surfaceEvents_.size()) surfaceLearn_ = -1;
+            }
+            if (action.kind != ostfstudio::SurfaceAction::none) {
+                if (surfaceCount_ < surfaceEvents_.size()) surfaceEvents_[surfaceCount_++] = action;
+                padUpdate_.triggerAsyncUpdate();
+                return;
+            }
+            if (surfaceMap_.model == ostfstudio::SurfaceModel::mixer) return;
+        }
+    }
     if (!message.isNoteOn()) return;
     const int input = message.getNoteNumber();
     const int target = learnTarget_.exchange(-1);
@@ -1671,6 +1896,15 @@ void MainComponent::handleIncomingMidiMessage(juce::MidiInput*, const juce::Midi
 
 void MainComponent::showPadInput() {
     if (!padListening_) return;
+    std::array<ostfstudio::SurfaceAction, 128> events;
+    size_t count;
+    {
+        const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+        count = std::exchange(surfaceCount_, 0);
+        std::copy_n(surfaceEvents_.begin(), count, events.begin());
+    }
+    for (size_t i = 0; i < count; ++i)
+        applySurfaceAction(events[i]);
     const int pair = learnedPair_.exchange(-1);
     if (pair >= 0) {
         const int input = pair / 128, target = pair % 128;
@@ -1691,6 +1925,7 @@ void MainComponent::flashPad(int pitch) {
 }
 
 MainComponent::~MainComponent() {
+    surfaceDevices_ = {};
     aiConnectionWorker_.removeAllJobs(true, -1);
     if (spliceInstance_ && deviceSettings_) deviceSettings_->devices().removeAudioCallback(&splicePlayer_);
     splicePlayer_.setProcessor(nullptr);
@@ -1770,6 +2005,7 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed) {
     PreviewTransport::TakeOptions take;
     take.cycle = drumSteps_.looping() ? drumSteps_.range() : (cycleButton_.getToggleState() && !drumSteps_.isVisible()
         ? editorCycle_ : juce::Range<juce::int64>{});
+    take.surface = surfaceMap_;
     take.countIn = recording && deck_.countIn.getToggleState();
     if (audioTake) {
         const auto it = captureChannels_.find(project_->trackIds[int(*selectedTrack_)]);
@@ -1781,7 +2017,11 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed) {
         statusLabel_.setText(TRANS("Place the cursor before the end of the recording loop."), juce::dontSendNotification);
         return;
     }
-    if (recording) cancelPadLearn();
+    if (recording) {
+        cancelPadLearn();
+        const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+        surfaceLearn_ = -1;
+    }
     const auto result = transport_.start(deviceSettings_->devices(), *project_, recording, tracks, inserts, start,
                                          auditionShift_, auditionRate_, recording ? selectedTrack_ : std::nullopt, &take);
     if (result.failed()) {
@@ -2030,6 +2270,7 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, c
 }
 
 void MainComponent::timerCallback() {
+    if (surfacePanel_) surfacePanel_->repaint();
     if (drumPads_.isVisible()) { drumPads_.repaint(); drumSteps_.repaint(); }
     if (!transportActive_) { stopTimer(); return; }
     if (!transport_.isRunning()) { stopTransport(); return; }
@@ -2143,7 +2384,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     trackRows_.clear();
     verticalScroll_.setCurrentRangeStart(0, juce::dontSendNotification);
     groupDefaults_.fill(TrackRowSize::minimum);
-    for (auto group : {HeightGroup::pitched, HeightGroup::drums, HeightGroup::audio})
+    for (auto group : {HeightGroup::melody, HeightGroup::pitched, HeightGroup::drums, HeightGroup::audio})
         groupDefaults_[static_cast<size_t>(group)] = 100;
     groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)] = defaultTimelineHeight;
     for (auto& output : outputControls_) {
@@ -3194,45 +3435,69 @@ void MainComponent::applyMelodyneCopy() {
     statusLabel_.setText(TRANS("Edited WAV applied") + "   " + clip->path, juce::dontSendNotification);
 }
 
-void MainComponent::updateAiConnection(bool login) {
-    if (!aiButton_.isEnabled()) return;
+void MainComponent::updateAiConnection(AccountAction action) {
+    if (!aiButton_.isEnabled() || signInPending_) return;
     aiButton_.setEnabled(false);
-    aiButton_.setButtonText(TRANS("Connecting..."));
+    signInPending_ = action == AccountAction::login;
+    aiButton_.setButtonText(signInPending_ ? TRANS("Browser sign-in...") : TRANS("Connecting..."));
     const auto provider = ostfstudio::chatGptProvider();
-    aiConnectionWorker_.addJob([safe = juce::Component::SafePointer<MainComponent>(this), provider, login] {
-        const auto result = login ? provider->connect() : (provider->connected() ? juce::Result::ok()
-            : juce::Result::fail(TRANS("Reconnect ChatGPT before starting AI analysis.")));
-        juce::MessageManager::callAsync([safe, provider, result] {
+    const auto safe = juce::Component::SafePointer<MainComponent>(this);
+    activeAi_.reset();
+    if (importWindow_) setImportConnections(*importWindow_, {});
+    aiConnectionWorker_.addJob([safe, provider, action] {
+        const auto showLink = [safe](const juce::URL& url) {
+            juce::MessageManager::callAsync([safe, url] {
+                if (!safe || !safe->signInPending_) return;
+                safe->signInUrl_ = url;
+                safe->aiButton_.setEnabled(true);
+                safe->aiButton_.setButtonText(TRANS("Open sign-in page"));
+            });
+        };
+        const auto result = action == AccountAction::login    ? provider->connect(showLink)
+                            : action == AccountAction::logout ? provider->disconnect()
+                            : provider->connected()
+                                ? juce::Result::ok()
+                                : juce::Result::fail(TRANS("Reconnect ChatGPT before starting AI analysis."));
+        juce::MessageManager::callAsync([safe, provider, result, action] {
             if (!safe) return;
-            safe->activeAi_ = result.wasOk() ? provider : nullptr;
+            safe->signInUrl_ = {};
+            safe->signInPending_ = false;
+            safe->activeAi_ = result.wasOk() && action != AccountAction::logout ? provider : nullptr;
             safe->aiButton_.setEnabled(true);
-            safe->aiButton_.setButtonText(safe->activeAi_ ? provider->name() : TRANS("Connect AI..."));
-            safe->viewPreferences_.getUserSettings()->setValue("chatGptAnalysis", result.wasOk());
+            safe->aiButton_.setButtonText(safe->activeAi_ ? TRANS("ChatGPT connected") : TRANS("Connect ChatGPT..."));
+            safe->viewPreferences_.getUserSettings()->setValue("studioChatGptBrowserLogin", safe->activeAi_ != nullptr);
             if (safe->importWindow_)
-                setImportConnections(*safe->importWindow_, safe->activeAi_ ? std::vector{provider} : std::vector<ostfstudio::AnalysisConnection>{});
-            safe->statusLabel_.setText(result.wasOk() ? TRANS("AI analysis is available in Import and transcription.") : result.getErrorMessage(),
+                setImportConnections(*safe->importWindow_, safe->activeAi_
+                                                               ? std::vector{provider}
+                                                               : std::vector<ostfstudio::AnalysisConnection>{});
+            safe->statusLabel_.setText(result.failed() ? result.getErrorMessage() : safe->aiButton_.getButtonText(),
                                        juce::dontSendNotification);
+            if (result.failed() && action != AccountAction::restore)
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "ChatGPT",
+                                                       result.getErrorMessage());
         });
     });
 }
 
 void MainComponent::aiConnectionMenu() {
     if (!aiButton_.isEnabled()) return;
-    if (!activeAi_) { updateAiConnection(true); return; }
+    if (signInPending_) {
+        signInUrl_.launchInDefaultBrowser();
+        return;
+    }
+    if (!activeAi_) {
+        updateAiConnection(AccountAction::login);
+        return;
+    }
     juce::PopupMenu menu;
-    menu.addItem(1, TRANS("Import and transcription"));
+    menu.addItem(1, TRANS("Sign in again..."));
     menu.addItem(2, TRANS("Disconnect from Studio"));
     menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&aiButton_),
-        [safe = juce::Component::SafePointer<MainComponent>(this)](int action) {
-            if (!safe) return;
-            if (action == 1) safe->menuItemSelected(importMedia, 0);
-            if (action == 2) {
-                safe->activeAi_.reset();
-                safe->viewPreferences_.getUserSettings()->setValue("chatGptAnalysis", false);
-                safe->aiButton_.setButtonText(TRANS("Connect AI..."));
-                if (safe->importWindow_) setImportConnections(*safe->importWindow_, {});
-            }
-        });
+                       [safe = juce::Component::SafePointer<MainComponent>(this)](int action) {
+                           if (!safe) return;
+                           if (action == 1) safe->updateAiConnection(AccountAction::login);
+                           if (action == 2) safe->updateAiConnection(AccountAction::logout);
+                       });
 }
 
 void MainComponent::openSplice() {
@@ -4115,7 +4380,8 @@ void MainComponent::refreshEditor() {
         drumPads_.bind(project_->slotsByTrack[*selectedTrack_], steps, padTrack_ != kitId, !recordTrack_);
     if (kitId != padTrack_) cancelPadLearn();
     padTrack_ = kitId;
-    attachPadInput(drum);
+    refreshController();
+    attachPadInput(drum || surfaceMap_.port.isNotEmpty());
     updateDrumLoop();
     pianoGrid_.setVisible(piano && selectedTrack_.has_value() && !steps);
     pianoRuler_.setVisible(pianoGrid_.isVisible());
@@ -4288,8 +4554,11 @@ void MainComponent::resized() {
         ruler_.toFront(false);
         const int aiY = timelineRowHeight() - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
         aiButton_.setVisible(aiY >= 0 && aiY + 24 <= std::min(globalHeight, rowOverlay_.getHeight()));
-        aiButton_.setBounds(trackHeaderWidth - 148, aiY, 140, 24);
+        aiButton_.setBounds(8, aiY, std::min(148, trackHeaderWidth / 2), 25);
         aiButton_.toFront(false);
+        surfaceButton_.setVisible(aiButton_.isVisible());
+        surfaceButton_.setBounds(aiButton_.getRight()+5,aiY,82,25);
+        surfaceButton_.toFront(false);
         const bool besideTransport = topBasicsHeight() == 0;
         basics_.setBounds(besideTransport
             ? juce::Rectangle<int>(deck_.getRight() + 8, deck_.getBounds().getCentreY() - SongBasicsPanel::stripHeight / 2,
@@ -4492,7 +4761,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         const int inset = icon ? 26 : 5;
         g.drawText(label,
                          juce::Rectangle<int>(labels.getX() + inset, y, (global ? labels.getWidth() : std::min(trackNameWidth, labels.getWidth())) - inset - 5, labelHeight),
-                         juce::Justification::centredLeft, true);
+                         global ? juce::Justification::centredRight : juce::Justification::centredLeft, true);
         const auto row = juce::Rectangle<int>(area.getX(), y, area.getWidth(), rowHeight);
         g.setColour(juce::Colour(0xff233443));
         g.fillRoundedRectangle(row.toFloat(), 4.0f);
@@ -4767,9 +5036,10 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
         g.setColour(juce::Colour(0xffe1e9ef));
         g.setFont(juce::FontOptions(15.f, juce::Font::bold));
         auto header = labels.withY(y).withHeight(height);
-        g.drawText(name, header.removeFromLeft(trackNameWidth).reduced(4, 0), juce::Justification::centredLeft);
+        auto title = track ? header.removeFromLeft(trackNameWidth) : header.removeFromRight(trackNameWidth);
+        g.drawText(name, title.reduced(5, 0), track ? juce::Justification::centredLeft : juce::Justification::centredRight);
         g.setColour(juce::Colour(hardwareAmber));
-        g.drawText(current, header.reduced(4, 0), juce::Justification::centredLeft);
+        g.drawText(current, header.reduced(4, 0), track ? juce::Justification::centredLeft : juce::Justification::centredRight);
         return row;
     };
     auto cell = [&](juce::Rectangle<int> row, auto a, auto b, juce::Colour colour, const juce::String& name, const juce::String& shortName) {

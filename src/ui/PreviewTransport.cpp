@@ -138,6 +138,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     loopSamples_ = {}; loopRestart_ = false;
     captured_.setSize(0, 0);
     mapInput_ = false;
+    surface_ = {};
     elapsed_ = countRemaining_ = 0;
     beatSamples_.clear();
     for (juce::int64 bar = 0; bar < scoreTicks_; bar += project.ticksPerBar) {
@@ -620,7 +621,19 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
 
 }
 
-void PreviewTransport::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message) {
+void PreviewTransport::handleIncomingMidiMessage(juce::MidiInput* input, const juce::MidiMessage& message) {
+    if (input && surface_.port.isNotEmpty() && input->getIdentifier() == surface_.port) {
+        if (surface_.model == ostfstudio::SurfaceModel::mixer) return;
+        const int index = mapInput_ ? surface_.padIndex(message) : -1;
+        if (index >= 0) {
+            if (surface_.pitches[index] >= 0) {
+                auto note = message;
+                note.setNoteNumber(surface_.pitches[index]);
+                inputNote(note);
+            }
+            return;
+        }
+    }
     inputFromDevice(message);
 }
 
@@ -684,6 +697,7 @@ void PreviewTransport::closeRecordedNote(size_t key, juce::int64 elapsed) {
 juce::Result PreviewTransport::prepareTake(const TakeOptions& options) {
     jassert(!devices_);
     takeStart_ = sample_.load();
+    surface_ = options.surface;
     if (options.drumMapping) { inputMap_ = *options.drumMapping; mapInput_ = true; }
     if (options.inputChannels) {
         if (options.inputChannels < 1 || options.inputChannels > 2) return juce::Result::fail("Choose mono or stereo.");

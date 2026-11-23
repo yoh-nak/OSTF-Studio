@@ -25,7 +25,16 @@ public:
 
     void prepareAudio() {
         if (selector_) return;
+        // A control surface can already be open while the transport is stopped.
+        // Restoring the saved audio setup must preserve those current MIDI inputs.
+        const auto ports = juce::MidiInput::getAvailableDevices();
+        juce::StringArray enabled;
+        for (const auto& port : ports)
+            if (devices_.isMidiInputDeviceEnabled(port.identifier)) enabled.add(port.identifier);
         const auto error = devices_.initialise(2, 2, saved_.get(), true);
+        for (const auto& port : ports)
+            if (devices_.isMidiInputDeviceEnabled(port.identifier) != enabled.contains(port.identifier))
+                devices_.setMidiInputDeviceEnabled(port.identifier, enabled.contains(port.identifier));
         selector_ = std::make_unique<juce::AudioDeviceSelectorComponent>(devices_, 0, 64, 0, 64, true, true, true, false);
         status_.setText(error.isNotEmpty() ? error :
 #if JUCE_WINDOWS && JUCE_ASIO

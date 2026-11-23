@@ -192,6 +192,13 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
+#if JUCE_WINDOWS && defined(_MSC_VER)
+        if (args.size() == 4 && args[0] == "--render-score-page") {
+            ostfstudio::runWindowsScorePageRenderer(juce::File(args[1]), juce::File(args[2]), args[3].getIntValue());
+            quit();
+            return;
+        }
+#endif
         if (args.size() == 3 && args[0] == "--transport-smoke") {
             juce::MessageManager::callAsync([this, args] {
                 setApplicationReturnValue(checkTransport(juce::File(args[1]), juce::File(args[2])));

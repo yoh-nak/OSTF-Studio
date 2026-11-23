@@ -157,6 +157,12 @@ if (OSTF_STUDIO_BUILD_GUI)
     add_subdirectory(src/plugins/effects)
     configure_file(src/plugins/effects/StockEffects.h.in generated/StockEffects.h @ONLY)
 
+    add_executable(ostf_studio_chatgpt_tests tests/chatgpt_connection_tests.cpp src/ui/AnalysisService.cpp)
+    target_include_directories(ostf_studio_chatgpt_tests PRIVATE src)
+    target_compile_definitions(ostf_studio_chatgpt_tests PRIVATE JUCE_USE_CURL=0)
+    target_link_libraries(ostf_studio_chatgpt_tests PRIVATE juce::juce_core)
+    add_test(NAME ostf_studio_chatgpt_connection COMMAND ostf_studio_chatgpt_tests)
+
     add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
     target_include_directories(ostf_studio_ostfp_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(ostf_studio_ostfp_tests PRIVATE JUCE_USE_CURL=0)

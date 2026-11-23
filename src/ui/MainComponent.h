@@ -15,6 +15,7 @@
 #include "ui/PerformanceEditor.h"
 #include "ui/DrumSteps.h"
 #include "ui/DrumPads.h"
+#include "ui/ControllerSurface.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
@@ -57,6 +58,20 @@ private:
     } padUpdate_{*this};
     void showPadInput();
     void attachPadInput(bool);
+    void openController(bool show);
+    void connectController(juce::MidiDeviceInfo);
+    void refreshController();
+    void applySurfaceAction(ostfstudio::SurfaceAction);
+    juce::TextButton surfaceButton_{"M-VAVE"};
+    std::unique_ptr<juce::DocumentWindow> surfaceWindow_;
+    ControllerSurface* surfacePanel_ = nullptr;
+    juce::MidiDeviceListConnection surfaceDevices_;
+    juce::SpinLock surfaceLock_;
+    ostfstudio::ControllerMap surfaceMap_;
+    std::array<ostfstudio::SurfaceAction, 128> surfaceEvents_{};
+    size_t surfaceCount_ = 0;
+    int surfaceLearn_ = -1;
+    bool surfacePan_ = false, openedSurfacePort_ = false;
     void flashPad(int pitch);
     void cancelPadLearn();
     std::array<int, 128> padMapping_{};
@@ -298,9 +313,12 @@ private:
     void placeWav(const juce::File&, std::size_t track, juce::int64 tick, bool replace);
     void openSplice();
     void aiConnectionMenu();
-    void updateAiConnection(bool login);
+    enum class AccountAction { restore, login, logout };
+    void updateAiConnection(AccountAction);
+    juce::URL signInUrl_;
+    bool signInPending_ = false;
     ostfstudio::AnalysisConnection activeAi_;
-    juce::TextButton aiButton_{TRANS("Connect AI...")};
+    juce::TextButton aiButton_{TRANS("Connect ChatGPT...")};
     juce::ThreadPool aiConnectionWorker_{1};
     bool spliceLoading_ = false;
     std::unique_ptr<juce::AudioPluginInstance> spliceInstance_;

@@ -883,11 +883,38 @@ juce::Result combineImportParts(const OstfpPreview& waves, const OstfpPreview& n
 juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPreview& dest,
                               std::optional<std::size_t> track, juce::int64 tick, juce::MemoryBlock& before,
                               bool replace) {
-    if (tick < 0 || tick >= dest.durationTicks)
+    if (tick < 0 || tick > dest.playbackEndTick())
         return fail("Choose a position inside the song.");
     auto convert = [&](juce::int64 at) -> juce::int64 {
         return std::llround(dest.clock.tickAt(dest.clock.secondsAt(tick) + source.clock.secondsAt(at)));
     };
+    // Only grow to the end of the part being placed. Keep the live score intact
+    // until overlap checks, conversion and the actual placement have succeeded.
+    Tick sourceEnd = 0;
+    if (index == -1 && !track) {
+        const auto parsed = juce::JSON::parse(source.sourceScore.toString());
+        if (auto* chords = parsed["harmony"]["chords"].getArray())
+            for (const auto& chord : *chords)
+                sourceEnd = std::max(sourceEnd, Tick(chord["start"]) + Tick(chord["duration"]));
+    } else if (index >= 0 && index < int(source.sourceTrackCount()) && track && *track < dest.sourceTrackCount()
+               && dest.trackKinds[*track] == source.trackKinds[index]) {
+        if (source.trackKinds[index] == TrackKind::audio) {
+            for (const auto& clip : source.audio)
+                if (clip.track == size_t(index)) sourceEnd = std::max(sourceEnd, clip.startTick + clip.durationTicks);
+        } else {
+            const auto& notes = source.trackKinds[index] == TrackKind::drum ? source.drumNotes[index] : source.pitchedNotes[index];
+            for (const auto& note : notes) sourceEnd = std::max(sourceEnd, note.endTick);
+        }
+    }
+    if (sourceEnd > 0 && convert(sourceEnd) > dest.durationTicks) {
+        std::unique_ptr<OstfpPreview> draft;
+        juce::MemoryBlock original, ignored;
+        if (auto result = dest.extendedForImport(convert(sourceEnd), draft, original); result.failed()) return result;
+        if (auto result = placeImportTrack(source, index, *draft, track, tick, ignored, replace); result.failed()) return result;
+        dest = std::move(*draft);
+        before = std::move(original);
+        return juce::Result::ok();
+    }
     if (index == -1 && !track) {
         const auto score = juce::JSON::parse(source.sourceScore.toString());
         List chords;
@@ -954,31 +981,19 @@ juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPrevie
         dest.audio = std::move(regions);
         return juce::Result::ok();
     }
-    if (source.trackKinds[index] == TrackKind::drum) {
-        std::vector<NoteEdit> hits;
-        for (auto n : source.drumNotes[index]) {
-            n.startTick = convert(n.startTick);
-            n.endTick = convert(n.endTick);
-            if (n.endTick > dest.durationTicks)
-                return fail("The result does not fit inside the song.");
-            n.slotId.clear(); // Resolve the MIDI note in the destination kit.
-            hits.push_back({NoteEdit::insert, n});
-        }
-        juce::StringArray ids;
-        return dest.editNotes(*track, hits, before, ids);
-    }
-    if (source.trackKinds[index] != TrackKind::pitched)
-        return fail("Choose a pitched or audio result.");
-    auto notes = source.pitchedNotes[index];
+    if (source.trackKinds[index] != TrackKind::drum && source.trackKinds[index] != TrackKind::pitched)
+        return fail("Choose a matching destination track.");
+    auto notes = source.trackKinds[index] == TrackKind::drum ? source.drumNotes[index] : source.pitchedNotes[index];
+    if (notes.empty()) return fail("No MIDI notes to place.");
+    auto start = dest.durationTicks;
+    auto end = tick;
     for (auto& note : notes) {
         note.startTick = convert(note.startTick);
-        note.endTick = convert(note.endTick);
-        if (note.endTick > dest.durationTicks)
-            return fail("The result does not fit inside the song.");
+        note.endTick = std::max(note.startTick + 1, convert(note.endTick));
+        start = std::min(start, note.startTick);
+        end = std::max(end, note.endTick);
     }
-    if (!dest.addSessionClip(*track, source.trackLanes[index].label, std::move(notes)))
-        return fail("The phrase does not fit here.");
-    return juce::Result::ok();
+    return dest.addRecordedClip(*track, {start, end}, notes, before, juce::String::fromUTF8(source.trackLanes[index].label));
 }
 
 juce::Result saveMediaImport(const OstfpPreview& p, const juce::File& file) {

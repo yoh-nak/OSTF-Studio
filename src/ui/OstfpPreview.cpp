@@ -1708,6 +1708,24 @@ juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Arr
     return juce::Result::fail(e.what());
 }
 
+juce::Result OstfpPreview::extendedForImport(juce::int64 end, std::unique_ptr<OstfpPreview>& draft,
+                                            juce::MemoryBlock& original) const try {
+    original = savedScore(*this);
+    auto score = parseObject(original);
+    score["timeline"].getDynamicObject()->setProperty("duration", end);
+    reviseDocument(score, original, "import-" + juce::Uuid().toString());
+    auto bytes = editedScoreBytes(original, score, {"timeline", "document"});
+    auto next = projectScore(score, chordVoicingTrack.has_value());
+    next->sourceScore = std::move(bytes);
+    next->sourceManifest = sourceManifest;
+    next->trackKinds = trackKinds;
+    next->panAutomation = panAutomation;
+    next->savedMix = savedMix;
+    next->audio = audio;
+    draft = std::move(next);
+    return juce::Result::ok();
+} catch (const std::exception& error) { return juce::Result::fail(error.what()); }
+
 juce::Result OstfpPreview::restoreNoteScore(const juce::MemoryBlock& bytes) try {
     require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
     auto next = projectScore(parseObject(bytes), chordVoicingTrack.has_value());
@@ -1871,7 +1889,7 @@ bool OstfpPreview::insertGeneratorPattern(std::size_t track, int bar) {
 }
 
 juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64> range,
-                                         const std::vector<PitchedNote>& notes, juce::MemoryBlock& before) try {
+                                         const std::vector<PitchedNote>& notes, juce::MemoryBlock& before, const juce::String& name) try {
     require(index < sourceTrackCount() && trackKinds[index] != TrackKind::audio && !notes.empty(), "No MIDI notes captured");
     before = savedScore(*this);
     auto score = parseObject(before);
@@ -1894,7 +1912,7 @@ juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64
     }
     std::stable_sort(events.begin(), events.end(), [](const auto& a, const auto& b) { return integer(a["start"]) < integer(b["start"]); });
     arrayProperty(track, "clips").getArray()->add(object({{"id", "take-" + juce::Uuid().toString()},
-        {"name", "Recorded MIDI"}, {"start", range.getStart()}, {"duration", range.getLength()}, {"notes", events}}));
+        {"name", name}, {"start", range.getStart()}, {"duration", range.getLength()}, {"notes", events}}));
     reviseDocument(score, before, "studio-" + juce::Uuid().toString());
     return restoreNoteScore(editedScoreBytes(before, score, {"tracks", "drumKits", "soundSlots", "document"}));
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }

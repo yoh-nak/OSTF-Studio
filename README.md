@@ -2,6 +2,8 @@
 
 **English** · [日本語](README.ja.md)
 
+The Windows development build adds a dedicated ChatGPT browser login and an M-VAVE controller panel in the global timeline header. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
+
 **Download 1.0.0 alpha 3** · [Windows x64 installer](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Setup.exe) · [Windows portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon Mac DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_macOS_arm64.dmg)
 
 **1.0.0 alpha** is the first public testing series for Windows x64 and Apple silicon Macs. Try a bundled demo to explore the Global Timeline, piano roll, VST3 instruments and session mixer. [Alpha downloads and release notes](https://github.com/yoh-nak/OSTF-Studio/releases)
@@ -18,7 +20,7 @@ In slot steps the first pad appears at the bottom. Select a pad, assign its outp
 
 Use **File → Import and transcription** to analyse audio, MIDI or a PDF score. Review the musical parts in the result window, drag an individual part into the arrangement, or open the complete score in the current window. Long recordings can extend past bar 256. Audio analysis uses a provisional 120 BPM, 4/4 grid. The import limits of 60,000 notes and 15 source tracks still apply.
 
-**Local analysis** runs offline. Local PDF recognition calls installed copies of Audiveris and MuseScore 4. For **AI analysis**, use **Connect AI** in the global track header or **Settings → AI connections**. Studio uses the official Codex CLI and its ChatGPT browser sign-in. An existing ChatGPT CLI session can be reused. The analysis selector lists connected providers. Choose the AI mode before selecting a file. Audio sends pitch, timing and timbre measurements, MIDI sends musical summaries, and PDF sends rendered score pages. Model estimates can be corrected after import. Disconnecting affects Studio's connection only. [ChatGPT sign-in](https://developers.openai.com/codex/auth) · [Audiveris CLI](https://audiveris.github.io/audiveris/_pages/guides/advanced/cli/)
+**Local analysis** runs offline. Local PDF recognition calls installed copies of Audiveris and MuseScore 4. For **AI analysis**, use **Connect ChatGPT** in the global track header or **Settings → AI connections**. Studio uses the official Codex CLI and its ChatGPT browser sign-in. The first connection opens a dedicated Studio sign-in. If the browser does not appear, click **Open sign-in page**. The analysis selector lists connected providers. Choose the AI mode before selecting a file. Audio sends pitch, timing and timbre measurements, MIDI sends musical summaries, and PDF sends rendered score pages. Model estimates can be corrected after import. Disconnecting affects Studio's connection only. [ChatGPT sign-in](https://developers.openai.com/codex/auth) · [Audiveris CLI](https://audiveris.github.io/audiveris/_pages/guides/advanced/cli/)
 
 ## Audio clip editing (development build)
 

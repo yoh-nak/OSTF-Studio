@@ -2,6 +2,10 @@
 
 [English](README.md) · **日本語**
 
+開発版では、グローバルタイムライン左側からChatGPTのブラウザー認証とM-VAVEの機材画面を開けます。解析したパートは同種のトラックへ追加でき、ほかの位置に置くと新規トラックになります。必要に応じて曲が延長されます。メロディートラック本体の初期高さは100 pxです。
+
+「M-VAVE」を開くと、対応する入力ポートが1つなら自動で選ばれます。SMK-25 IIでは、ドラムトラックを選ぶと機材図の16パッドにキットの各音が並びます。Studioの初期割り当ては、パッドがチャンネル10のノート36〜51、ノブがチャンネル1のCC16〜23です。機材側のプリセットが異なるときは、「MIDIラーン」で機材図のパッドやノブを選び、実機を操作すると割り当てを保存できます。SMC-Mixerは実機をMackie Controlモードにして使います。8本のフェーダーで音量、エンコーダーでパンを操作できます。
+
 **1.0.0 alpha 3 をダウンロード** · [Windows x64 インストーラー](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Setup.exe) · [Windows Portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon Mac 用 DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_macOS_arm64.dmg)
 
 OSTF Studio は、楽曲の構造と演奏情報を OSTF 5.0 で扱う Windows・macOS 用の DAW です。現在は 1.0.0 のアルファ版を公開しています。同梱のデモ曲で、グローバルタイムライン、ピアノロール、VST3 音源とミキサーを試せます。
@@ -26,7 +30,7 @@ MIDIのループ録音は各周のノートを重ねます。オーディオは�
 
 「ファイル → 取り込み・採譜」でオーディオ、MIDI、PDF楽譜を選ぶと、解析結果がパート別に表示されます。必要なパートだけを本画面へドラッグするか、一式を同じ本画面で未保存の新規曲として開けます。256小節を越える録音にも対応します。オーディオ解析の仮グリッドは120 BPM・4/4、取り込みの上限は6万ノート・15パートです。
 
-「ロジック解析」はローカルで動作します。PDFのロジック解析にはAudiverisとMuseScore 4を使用します。「AI解析」を使うには、公式Codex CLIを用意し、グローバルトラック左の「AIを接続…」または「設定 → AI接続…」からブラウザーでChatGPTにログインします。CLIでログイン済みなら、そのセッションを使えます。ファイルを選ぶ前に解析方式を指定してください。AIに送るデータは、オーディオでは音高・時刻・音色の測定値、MIDIでは音域や拍ごとの音の分布、PDFでは譜面のページ画像です。結果は取り込み後に編集できます。[ChatGPTの認証](https://developers.openai.com/codex/auth) · [Audiverisの使い方](https://audiveris.github.io/audiveris/_pages/guides/advanced/cli/)
+「ロジック解析」はローカルで動作します。PDFのロジック解析にはAudiverisとMuseScore 4を使用します。「AI解析」を使うには、公式Codex CLIを用意し、グローバルトラック左の「ChatGPT に接続…」または「設定 → AI接続…」からブラウザーでChatGPTにログインします。初回はStudio用に認証します。ブラウザーが自動で開かない場合は「認証ページを開く」を押してください。ファイルを選ぶ前に解析方式を指定してください。AIに送るデータは、オーディオでは音高・時刻・音色の測定値、MIDIでは音域や拍ごとの音の分布、PDFでは譜面のページ画像です。結果は取り込み後に編集できます。[ChatGPTの認証](https://developers.openai.com/codex/auth) · [Audiverisの使い方](https://audiveris.github.io/audiveris/_pages/guides/advanced/cli/)
 
 ## alpha 3 で旧版の曲を開く
 
