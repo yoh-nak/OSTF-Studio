@@ -18,6 +18,8 @@ struct PitchedNote {
     std::optional<int> velocity;
     bool enabled = true;
     juce::String id;
+    bool fixedTrigger = false;
+    juce::String clipId;
 };
 
 struct NoteEdit {

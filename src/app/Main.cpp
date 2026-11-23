@@ -180,6 +180,7 @@ private:
 int checkStockEffects(const juce::StringArray&);
 int checkTrackView(const juce::File&);
 int checkPianoEdits(const juce::File&);
+int checkTheoryGuide(const juce::File&);
 int checkNotation(const juce::File&, const juce::File&);
 int checkTransport(const juce::File&, const juce::File&);
 
@@ -205,10 +206,11 @@ public:
             });
             return;
         }
-        if (args.size() == 2 && (args[0] == "--track-view-smoke" || args[0] == "--piano-edit-smoke")) {
+        if (args.size() == 2 && (args[0] == "--track-view-smoke" || args[0] == "--piano-edit-smoke" || args[0] == "--theory-guide-smoke")) {
             juce::MessageManager::callAsync([this, args] {
                 const juce::File fixture(args[1]);
-                setApplicationReturnValue(args[0] == "--track-view-smoke" ? checkTrackView(fixture) : checkPianoEdits(fixture));
+                if (args[0] == "--theory-guide-smoke") setApplicationReturnValue(checkTheoryGuide(fixture));
+                else setApplicationReturnValue(args[0] == "--track-view-smoke" ? checkTrackView(fixture) : checkPianoEdits(fixture));
                 quit();
             });
             return;

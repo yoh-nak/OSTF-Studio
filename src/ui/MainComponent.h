@@ -13,8 +13,9 @@
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
+#include "ui/TheoryGuide.h"
 
-class MainComponent final : public juce::Component, public juce::DragAndDropContainer,
+class MainComponent final : public juce::Component, public juce::TooltipClient, public juce::DragAndDropContainer,
                             public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
 public:
     MainComponent();
@@ -23,6 +24,7 @@ public:
     void displayTransportPosition(juce::int64 tick, double seconds = -1, const juce::ScrollBar* anchoredView = nullptr);
     void paint(juce::Graphics& g) override;
     void resized() override;
+    juce::String getTooltip() override;
     bool keyPressed(const juce::KeyPress&) override;
     bool keyStateChanged(bool) override;
     void focusOfChildComponentChanged(FocusChangeType) override;
@@ -122,6 +124,18 @@ private:
     void drawArrangement(juce::Graphics& g, juce::Rectangle<int> area, const ostfstudio::ArrangementView& view);
     void drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) const;
     void refreshPianoNotes();
+    juce::PopupMenu theoryMenu() const;
+    void refreshTheory();
+    void refreshTrackTheory(std::size_t track);
+    int theoryTrackHeight(std::size_t track) const;
+    bool pitchedSelection() const;
+    void drawTheoryRows(juce::Graphics&, juce::Rectangle<int>, int labelWidth, bool piano,
+                        std::optional<std::size_t> track) const;
+    bool theoryVisible_ = false, chordFitVisible_ = true, scaleFitVisible_ = true;
+    int scaleReference_ = -1;
+    std::unique_ptr<ostfstudio::TheoryGuide> theory_;
+    std::vector<std::vector<ostfstudio::TheoryGuide::TrackCell>> theoryTracks_;
+    std::vector<juce::int64> pianoMaxEnds_;
     void applyNoteGesture(const std::vector<ostfstudio::NoteEdit>&);
     void undoPianoEdit(bool redo);
     void finishNoteEdit(bool playing);

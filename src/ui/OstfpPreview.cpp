@@ -312,7 +312,8 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
                 }
                 auto& target = pitched ? notes : drums;
                 target.push_back({clipStart + local, clipStart + local + length, static_cast<int>(pitch), velocity,
-                                  event["enabled"].isVoid() || static_cast<bool>(event["enabled"]), event["id"].toString()});
+                                  event["enabled"].isVoid() || static_cast<bool>(event["enabled"]), event["id"].toString(),
+                                  event["pitchRole"].toString() == "fixedTrigger", clip["id"].toString()});
             }
             const auto midi = clip["midiEvents"];
             if (midi.isArray()) for (const auto& event : array(midi)) {
@@ -1341,8 +1342,10 @@ bool OstfpPreview::addSessionClip(std::size_t track, juce::String name, std::vec
     trackLanes[track].regions = trackRegions;
     auto& trackNotes = pitchedNotes[track];
     const auto clipId = "studio-" + juce::Uuid().toString();
-    for (std::size_t i = 0; i < notes.size(); ++i)
+    for (std::size_t i = 0; i < notes.size(); ++i) {
         notes[i].id = clipId + "-note-" + juce::String(static_cast<int>(i + 1));
+        notes[i].clipId = clipId;
+    }
     trackNotes.insert(trackNotes.end(), notes.begin(), notes.end());
     std::stable_sort(trackNotes.begin(), trackNotes.end(), [](const auto& a, const auto& b) { return a.startTick < b.startTick; });
     addedClips.push_back({track, clipId, std::move(name), first * ticksPerBar,

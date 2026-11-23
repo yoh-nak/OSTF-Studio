@@ -13,6 +13,7 @@ public:
     std::function<juce::Range<double>()> tickRange;
     std::function<void(const std::vector<Edit>&)> commit;
     std::function<void(bool)> undoRedo;
+    std::function<juce::String(juce::int64, const Note&)> theoryHint;
     std::vector<Note> notes;
     juce::StringArray selection;
     juce::int64 grid = 1, endTick = 1, quarter = 1;
@@ -20,6 +21,18 @@ public:
     bool editable = false;
 
     PianoNoteGrid() { setWantsKeyboardFocus(true); setComponentID("piano-note-grid"); }
+
+    juce::String getTooltip() override {
+        if (theoryHint && tickRange && getWidth() > 0) {
+            const auto point = getMouseXYRelative().toFloat();
+            if (const auto* note = hitNote(point)) {
+                const auto range = tickRange();
+                const auto tick = static_cast<juce::int64>(std::floor(range.getStart() + point.x * range.getLength() / getWidth()));
+                if (auto hint = theoryHint(tick, *note); hint.isNotEmpty()) return hint;
+            }
+        }
+        return juce::SettableTooltipClient::getTooltip();
+    }
 
     void resetRange(bool drum) {
         low = drum ? 33 : 52;

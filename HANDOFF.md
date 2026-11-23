@@ -10,13 +10,15 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 - For the proposed Studio chord comparison, test a single-bar substitution with a dependent bass clip and unrelated performances. Verify cancel, chords-only acceptance, selective part adoption, concurrent edits, undo and reopening. Keep the optional score-level dependency status distinct from any clip-level review label.
 
-- The proposed chord-fit overlay compares sounding pitches by chord span. Check passing tones, mid-bar changes, held notes, sparse melodies and percussion. On First Light Vector, compare a local edit with a full recomputation and measure playback and scrolling before claiming performance.
+- The Theory Guide implementation on `feature/theory-guide-lanes` adds optional analysis lanes to the arrangement and piano roll. Open **View → Theory Guide**. Select a pitched track or expand its row, including the global chord voicing or a melody. Test the independent layer switches and hover a note crossing a chord boundary. The analysis uses structured pitch classes and source gate durations. It does not judge passing tones or measure acoustic output.
 
-- For the proposed scale readout, use bar 14 of Neon Platforms as a reference: Electric Piano Comp contains 13,176 note-ticks over A7, all chord tones, with 9,904 note-ticks in C Ionian. Test held-note overlap and separately targeted scales as well.
+- Run `ostf_studio_theory_guide` in CTest. It checks bar 14 of Neon Platforms: Electric Piano Comp contains 13,176 note-ticks over A7, all chord tones, with 9,904 note-ticks in C Ionian. Other tests cover held notes, missing or overlapping context, key changes, track/section/chord/clip/note scopes, fixed triggers, modal uncertainty, minor cadences and piano-roll layer switching.
 
 - Toggle the proposed guitar scale row for a solo with an A-minor pentatonic improvisation direction. Verify that its range and strict/preferred labels stay local to the part, that drum rows remain neutral and that identical chord results are shown with the scale row open or closed.
 
-- The Theory Guide proposal supersedes chord-first layout. Check global harmonic functions and ii–V–I / V–I spans separately from the selected track’s chord and scale readouts. Test a note-only change and a reharmonisation, including preview dismissal and undo after acceptance.
+- The guide caches the analysis outside the audio callback. Benchmark GUI scrolling and physical playback under plug-in load separately. Previewing arranger proposals and applying a reharmonisation with undo remain design work.
+
+- Windows x64 Release passed all 21 CTests in `build-win-plugins`, including the Theory Guide UI snapshot checks, transport and plug-in playback tests. The standalone core build also passed. macOS compilation and physical-device playback under load are unverified for this change.
 
 - Both bar rulers seek the shared transport using their own zoom and scroll. Audio regions draw stereo peaks from linked or embedded WAVs with source trims and tempo changes. Relay Circuit has four audio tracks; First Light Vector has five. Sample-by-sample rendering is reproducible with the demo generator. The transport smoke test checks the seek coordinates and waveform against a known pulse; the stock FX test checks both overlapping stems during playback.
 
