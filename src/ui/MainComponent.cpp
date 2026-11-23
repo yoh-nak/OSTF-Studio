@@ -1218,7 +1218,7 @@ void MainComponent::saveDocument(SaveFormat format) {
                 result = juce::Result::fail(TRANS("Could not replace the destination file"));
             if (result.wasOk() && !midi) {
                 safe->currentFilename_ = file.getFileName();
-                safe->legacySourceFile_ = {};
+                safe->legacySourceFile_ = juce::File{};
                 safe->updateDocumentLabel();
             }
             safe->statusLabel_.setText(result.wasOk() ? TRANS("Saved ") + file.getFileName() : juce::translate(result.getErrorMessage()),
