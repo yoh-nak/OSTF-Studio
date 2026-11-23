@@ -159,8 +159,7 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
         juce::JSON::parse(separated->sourceScore.toString())["harmony"]["chords"].size() != 2)
         return false;
     main.openImportedSong(std::move(analysed));
-    auto* label = dynamic_cast<juce::Label*>(main.findChildWithID("current-document"));
-    if (!label || !label->getText().contains(TRANS("Unsaved project")) || !label->getText().contains("triads") ||
+    if (!main.getName().contains(TRANS("Unsaved project")) || !main.getName().contains("triads") ||
         dir.getChildFile("triads.ostf").exists() || dir.getChildFile("triads.media").exists())
         return false;
     SessionMix stemMix;

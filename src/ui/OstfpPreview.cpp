@@ -1081,6 +1081,20 @@ SongInformation OstfpPreview::songInformation() const {
     return info;
 }
 
+juce::Result OstfpPreview::applySongDetails(const SongInformation& info, const SongMusicEdit& music, juce::MemoryBlock& previous) try {
+    const auto original = savedScore(*this);
+    auto draft = projectScore(parseObject(original), chordVoicingTrack.has_value());
+    draft->sourceScore = original;
+    draft->sourceVersion = sourceVersion;
+    auto result = draft->applySongInformation(info);
+    juce::MemoryBlock beforeMusic;
+    if (result.wasOk()) result = draft->applySongMusic(music, beforeMusic);
+    if (result.failed() || original == draft->sourceScore) return result;
+    result = restoreNoteScore(draft->sourceScore);
+    if (result.wasOk()) previous = original;
+    return result;
+} catch (const std::exception& e) { return juce::Result::fail(e.what()); }
+
 juce::Result OstfpPreview::applySongInformation(const SongInformation& info, juce::MemoryBlock* previous) try {
     if (info.title.trim().isEmpty()) return juce::Result::fail("Enter a song title.");
     const auto beforeEdit = savedScore(*this);
@@ -1586,6 +1600,42 @@ juce::Result OstfpPreview::applySongMusic(const SongMusicEdit& edit, juce::Memor
     validateVersion("5.0.0", bytes);
     return restoreNoteScore(bytes);
 } catch (const std::exception& e) { return juce::Result::fail(e.what()); }
+
+juce::Result OstfpPreview::drawTempo(juce::int64 start, double from, juce::int64 end, double to, juce::MemoryBlock& previous) try {
+    if (end < start) { std::swap(start, end); std::swap(from, to); }
+    require(start >= 0 && end < durationTicks && std::isfinite(from) && std::isfinite(to)
+            && std::min(from, to) > 0 && std::max(from, to) <= 1000, "Invalid tempo range.");
+    const auto original = savedScore(*this);
+    const auto base = savedScore(*this, true);
+    auto score = parseObject(base);
+    auto timeline = score["timeline"];
+    const auto existing = timeline["tempoChanges"];
+    juce::Array<juce::var> events;
+    const auto& old = array(existing);
+    auto it = old.begin();
+    while (it != old.end() && integer((*it)["at"]) < start) events.add(*it++);
+    while (it != old.end() && integer((*it)["at"]) <= end) ++it;
+    events.add(object({{"at", start}, {"bpm", start == end ? to : from}}));
+    if (start < end && from != to) {
+        // OSTF 5 stores step changes. Bound the number of samples for a song-length gesture.
+        const auto span = end - start;
+        const auto segments = std::min<juce::int64>({span, 4096, std::max<juce::int64>(
+            std::llround(std::ceil(double(span) * 32 / ppq)), std::llround(std::ceil(std::abs(to - from) * 2)))});
+        for (juce::int64 i = 1; i <= segments; ++i) {
+            const auto at = start + std::llround(double(span) * i / segments);
+            events.add(object({{"at", juce::int64(at)}, {"bpm", i == segments ? to : from + (to - from) * (at - start) / span}}));
+        }
+    }
+    for (; it != old.end(); ++it) events.add(*it);
+    if (juce::JSON::toString(events, true, 17) == juce::JSON::toString(existing, true, 17)) return juce::Result::ok();
+    timeline.getDynamicObject()->setProperty("tempoChanges", events);
+    reviseDocument(score, original, "tempo-" + juce::Uuid().toString());
+    const auto bytes = editedScoreBytes(base, score, {"timeline", "document"});
+    validateVersion("5.0.0", bytes);
+    const auto result = restoreNoteScore(bytes);
+    if (result.wasOk()) previous = original;
+    return result;
+} catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
 juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Array<juce::var>& remove,
                                               const juce::Array<juce::var>& insert, juce::MemoryBlock& before) try {

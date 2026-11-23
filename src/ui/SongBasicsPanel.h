@@ -6,17 +6,13 @@ class SongBasicsPanel final : public juce::Component {
 public:
     enum Field { title, genre, mood, key, scale, tempo, meter, count };
     std::function<void(Field, juce::String, int)> commit;
-    std::function<void()> moveDock, advanced;
+    std::function<void()> advanced;
     static constexpr const char* scaleNames[]{"Ionian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Aeolian", "Locrian"};
     static constexpr int scaleSteps[][7]{{0,2,4,5,7,9,11}, {0,2,3,5,7,9,10}, {0,1,3,5,7,8,10},
         {0,2,4,6,7,9,11}, {0,2,4,5,7,9,10}, {0,2,3,5,7,8,10}, {0,1,3,5,6,8,10}};
     SongBasicsPanel() {
-        addAndMakeVisible(heading);
-        heading.setText(TRANS("Song defaults"), juce::dontSendNotification);
-        heading.setFont(juce::FontOptions(15.f, juce::Font::bold));
-        addAndMakeVisible(move);
         addAndMakeVisible(more);
-        move.onClick = [this] { moveDock(); };
+        more.setComponentID("song-details");
         more.onClick = [this] { advanced(); };
         for (int i = 0; i < count; ++i) {
             labels[i].setText(juce::translate(names[i]), juce::dontSendNotification);
@@ -72,21 +68,24 @@ public:
         }
         scales.setText(scaleName.isEmpty() ? TRANS("Unspecified") : scaleName, juce::dontSendNotification);
     }
-    static int naturalHeight(int width) { return width >= 690 ? 72 : width >= 570 ? 118 : 206; }
+    static constexpr int stripHeight = 52;
     void resized() override {
-        auto bounds = getLocalBounds().reduced(5, 2);
-        auto top = bounds.removeFromTop(24);
-        move.setBounds(top.removeFromRight(64).reduced(1));
-        more.setBounds(top.removeFromRight(60).reduced(1));
-        heading.setBounds(top);
-        const int cols = getWidth() >= 690 ? count : getWidth() >= 570 ? 4 : 2;
-        const int w = bounds.getWidth() / cols;
+        auto row = getLocalBounds().reduced(5, 2);
+        more.setBounds(row.removeFromRight(76).reduced(2, 6));
+        // Keep editing targets wide enough and expose remaining fields in Details.
+        const int priority[]{title, tempo, meter, key, scale, genre, mood};
+        const int visibleCount = std::clamp(row.getWidth() / 108, 1, int(count));
+        const int cellWidth = row.getWidth() / visibleCount;
         for (int i = 0; i < count; ++i) {
-            auto cell = juce::Rectangle<int>(bounds.getX() + i % cols * w, bounds.getY() + i / cols * 44, w, 44).reduced(2, 1);
-            labels[i].setBounds(cell.removeFromTop(16));
-            if (i == key) keys.setBounds(cell);
-            else if (i == scale) scales.setBounds(cell);
-            else values[i].setBounds(cell);
+            auto& control = i == key ? static_cast<juce::Component&>(keys) :
+                            i == scale ? static_cast<juce::Component&>(scales) : static_cast<juce::Component&>(values[i]);
+            const bool show = std::find(priority, priority + visibleCount, i) != priority + visibleCount;
+            labels[i].setVisible(show);
+            control.setVisible(show);
+            if (!show) continue;
+            auto cell = row.removeFromLeft(cellWidth).reduced(2, 0);
+            labels[i].setBounds(cell.removeFromTop(17));
+            control.setBounds(cell.reduced(0, 1));
         }
     }
     void paint(juce::Graphics& g) override {
@@ -94,9 +93,8 @@ public:
         g.fillRoundedRectangle(getLocalBounds().toFloat(), 5);
     }
 private:
-    static constexpr const char* names[]{"Title", "Genres", "Moods", "Key", "Scale", "Tempo (BPM)", "Time signature"};
-    juce::Label heading;
-    juce::TextButton move{TRANS("Move panel")}, more{TRANS("Details")};
+    static constexpr const char* names[]{"Song title", "Genres", "Moods", "Key", "Scale", "Tempo (BPM)", "Time signature"};
+    juce::TextButton more{TRANS("Details")};
     std::array<juce::Label, count> labels, values;
     juce::ComboBox keys, scales;
 };

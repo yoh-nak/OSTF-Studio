@@ -142,7 +142,9 @@ struct OstfpPreview {
     juce::String contextAt(TimelineLane kind, juce::int64 tick) const;
     SongInformation songInformation() const;
     juce::Result renameTrack(std::size_t index, const juce::String& name);
+    juce::Result applySongDetails(const SongInformation&, const SongMusicEdit&, juce::MemoryBlock& previous);
     juce::Result applySongInformation(const SongInformation&, juce::MemoryBlock* previous = nullptr);
+    juce::Result drawTempo(juce::int64 start, double from, juce::int64 end, double to, juce::MemoryBlock& previous);
     juce::Result changeGlobalEvents(TimelineLane lane, const juce::Array<juce::var>& remove,
                                     const juce::Array<juce::var>& insert, juce::MemoryBlock& before);
     juce::Result applySongMusic(const SongMusicEdit&, juce::MemoryBlock& before);

@@ -32,12 +32,11 @@ int checkTrackView(const juce::File& fixture) {
     MainComponent main;
     main.setVisible(true);
     main.setSize(1450, 1200);
-    auto* document = dynamic_cast<juce::Label*>(main.findChildWithID("current-document"));
     auto* tracks = findControl<juce::ComboBox>(main, TRANS("Arrangement track"));
     juce::MenuBarComponent* menus = nullptr;
     for (auto* child : main.getChildren())
         if (auto* bar = dynamic_cast<juce::MenuBarComponent*>(child)) menus = bar;
-    if (!document || !document->getText().contains(TRANS("Unsaved project"))
+    if (!main.getName().contains(TRANS("Unsaved project"))
         || !tracks || tracks->getNumItems() != 0 || !menus || !menus->getModel()) return 13;
     auto& model = *menus->getModel();
     const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Settings"), TRANS("Help")};
@@ -184,13 +183,30 @@ int checkTrackView(const juce::File& fixture) {
         return main.getComponentAt(main.getLocalPoint(&row, juce::Point<int>{10, 2})) == &row;
     };
     if (master->height() != TrackRowSize::minimum || bass->height() != 100) return 70;
+    auto* tempo = dynamic_cast<TempoEditor*>(main.findChildWithID("tempo-editor"));
+    auto* barRuler = guitar->getParentComponent()->findChildWithID("arrangement-ruler");
+    if (!tempo || !barRuler || main.getName().contains(TRANS("Unsaved changes"))) return 75;
+    const auto rulerArea = main.getLocalArea(barRuler, barRuler->getLocalBounds());
+    for (int y = rulerArea.getBottom() + 2; y < main.getLocalPoint(guitar, juce::Point<int>{0, 0}).y && !tempo->isVisible(); y += 10) {
+        const juce::Point<float> header{float(rulerArea.getX() + 12), float(y)};
+        main.mouseDown(gesture(&main, header, header));
+    }
+    if (!tempo->isVisible() || tracks->isVisible() || audioEditor->isVisible()) return 76;
+    const juce::Point<float> rampStart{90.f, 100.f}, rampEnd{320.f, 75.f};
+    tempo->mouseDown(gesture(tempo, rampStart, rampStart));
+    tempo->mouseDrag(gesture(tempo, rampStart, rampEnd));
+    tempo->mouseUp(gesture(tempo, rampStart, rampEnd));
+    if (!main.getName().contains(TRANS("Unsaved changes"))) return 77;
+    if (!main.keyPressed(juce::KeyPress('Z', juce::ModifierKeys::commandModifier, 0))
+        || main.getName().contains(TRANS("Unsaved changes"))) return 78;
+    const auto trackPoint = main.getLocalPoint(guitar, juce::Point<int>{12, -8}).toFloat();
+    main.mouseDown(gesture(&main, trackPoint, trackPoint));
+    if (tempo->isVisible() || !tracks->isVisible()) return 79;
     if (!reachable(*guitar)) return 3;
     const int bassY = bass->getY();
     const int fitHeight = bassY - guitar->getY() - bass->height();
-    const int fitLanes = fitHeight / juce::roundToInt(24.0 * 100 / TrackRowSize::normal);
-    const auto bassPosition = [&](int h) {
-        return bassY + h - 100 - fitHeight + fitLanes * std::max(16, juce::roundToInt(24.0 * h / TrackRowSize::normal));
-    };
+    if (fitHeight != 0 && fitHeight != 16 && fitHeight != 32) return 72;
+    const auto bassPosition = [&](int h) { return bassY + h - 100; };
     guitar->mouseDown(pointer(*guitar, 2));
     guitar->mouseDrag(pointer(*guitar, 82));
     if (!guitar->expanded() || guitar->height() != 100 + 80
@@ -243,21 +259,35 @@ int checkTrackView(const juce::File& fixture) {
     height->setValue(62, juce::sendNotificationSync);
     if (bass->getY() <= beforeLanes || bass->height() != 100) return 27;
     if (ruler->getHeight() != 62 || group->getLookAndFeel().getPopupMenuFont().getHeight() < 15.f) return 62;
-    auto* dock = dynamic_cast<juce::Viewport*>(main.findChildWithID("song-basics-dock"));
-    auto* basics = dock ? dynamic_cast<SongBasicsPanel*>(dock->getViewedComponent()) : nullptr;
-    if (!basics || !dock->isVisible() || !basics->moveDock || !basics->commit) return 63;
-    const auto oldBounds = dock->getBounds();
-    basics->moveDock();
-    if (dock->getBounds() == oldBounds || !dock->isVisible()) return 64;
-    basics->moveDock();
+    auto* basics = dynamic_cast<SongBasicsPanel*>(main.findChildWithID("song-basics-strip"));
+    if (!basics || !basics->isVisible() || !basics->advanced || !basics->commit ||
+        basics->getHeight() != SongBasicsPanel::stripHeight || basics->getBottom() > scroll->getY()) return 63;
     basics->commit(SongBasicsPanel::title, "Edited title", 0);
-    if (!document->getText().contains("Edited title")) return 65;
+    if (!main.getName().contains("Edited title") || !main.getName().contains(TRANS("Unsaved changes"))) return 65;
     basics->commit(SongBasicsPanel::key, {}, 10 + 8 * 3 + 1);
     auto* keys = dynamic_cast<juce::ComboBox*>(basics->findChildWithID("song-base-key"));
     if (!keys || keys->getText() != "Eb minor") return 66;
     if (!choose(TRANS("All tracks"))) return 28;
     height->setValue(35, juce::sendNotificationSync);
     if (!guitar->compact() || !drums->compact() || !master->compact() || !bass->compact()) return 29;
+
+    // Measure the space between two neighbouring pitched tracks with both fit rows visible.
+    juce::Array<int> toggled;
+    for (const auto* caption : {"Show Theory Guide", "Chord tone fit", "Scale fit"}) {
+        auto viewMenu = model.getMenuForIndex(1, {});
+        for (juce::PopupMenu::MenuItemIterator it(viewMenu, true); it.next();)
+            if (it.getItem().text == juce::translate(caption) && !it.getItem().isTicked) {
+                toggled.add(it.getItem().itemID);
+                model.menuItemSelected(it.getItem().itemID, 1);
+                break;
+            }
+    }
+    if (!choose(TRANS("Arrangement tracks"))) return 73;
+    for (int h : {100, 155, 42}) {
+        height->setValue(h, juce::sendNotificationSync);
+        if (guitar->height() != h || bass->height() != h || bass->getY() - guitar->getY() - h != 32) return 74;
+    }
+    for (int i = toggled.size(); --i >= 0;) model.menuItemSelected(toggled[i], 1);
 
     // Paint independent L/R peaks and confirm silence and overload colours in both orientations.
     for (bool vertical : {false, true}) {

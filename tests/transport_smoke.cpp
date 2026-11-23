@@ -1,6 +1,7 @@
 #include "ui/ExternalAudioEdit.h"
 #include "ui/MainComponent.h"
 #include "ui/SongInformationPanel.h"
+#include "ui/SongMidi.h"
 #include <iostream>
 
 using namespace ostfstudio;
@@ -310,6 +311,45 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
         || song->contextAt(TimelineLane::key, 960) != "G major"
         || song->contextAt(TimelineLane::chord, 959).isEmpty() || song->contextAt(TimelineLane::chord, 960).isNotEmpty()
         || song->contextAt(TimelineLane::scale, 960) != "G Lydian" || song->contextAt(TimelineLane::scale, 1440) != "A natural minor") return 3;
+    const auto preRamp = song->sourceScore;
+    juce::MemoryBlock previous;
+    if (song->drawTempo(-1, 90, 700, 160, previous).wasOk() || preRamp != song->sourceScore) return 51;
+    if (song->drawTempo(720, 150, 240, 90, previous).failed() || previous != preRamp
+        || song->clock.bpmAt(239) != 120 || song->clock.bpmAt(240) != 90 || song->clock.bpmAt(480) != 120
+        || song->clock.bpmAt(720) != 150 || song->clock.bpmAt(960) != 60) return 52;
+    if (std::abs(song->clock.tickAt(song->clock.secondsAt(540)) - 540) > .0001) return 53;
+    juce::MemoryOutputStream rampScore, rampPackage;
+    SessionMix rampMix;
+    rampMix.tracks.resize(song->trackLanes.size());
+    if (writeOstfPreview(*song, rampScore).failed() || writeOstfpPreview(*song, rampMix, rampPackage).failed()) return 54;
+    for (bool package : {false, true}) {
+        const auto& out = package ? rampPackage : rampScore;
+        juce::MemoryInputStream in(out.getData(), out.getDataSize(), false);
+        std::unique_ptr<OstfpPreview> roundTrip;
+        if ((package ? readOstfpPreview(in, roundTrip) : readOstfPreview(in, roundTrip)).failed()
+            || roundTrip->clock.bpmAt(480) != 120 || roundTrip->clock.secondsAt(960) != song->clock.secondsAt(960)) return 55;
+    }
+    juce::MemoryOutputStream midiOut;
+    if (writeSongMidi(*song, SmfFormat::multitrack, {}, midiOut).failed()) return 59;
+    juce::MemoryInputStream midiIn(midiOut.getData(), midiOut.getDataSize(), false);
+    juce::MidiFile midi;
+    if (!midi.readFrom(midiIn) || midi.getNumTracks() == 0) return 60;
+    juce::MidiMessageSequence tempos;
+    midi.findAllTempoEvents(tempos);
+    bool midpoint = false;
+    for (auto* event : tempos)
+        if (event->message.getTimeStamp() == 480 && std::abs(event->message.getTempoSecondsPerQuarterNote() - .5) < .000001) midpoint = true;
+    if (!midpoint || tempos.getNumEvents() < 4) return 61;
+    auto infoDraft = song->songInformation();
+    infoDraft.title = "Combined edit";
+    SongMusicEdit music;
+    music.bpm = 1200;
+    const auto rampBytes = song->sourceScore;
+    if (song->applySongDetails(infoDraft, music, previous).wasOk() || song->sourceScore != rampBytes) return 56;
+    music.bpm = 105;
+    if (song->applySongDetails(infoDraft, music, previous).failed() || previous != rampBytes
+        || song->clock.bpmAt(0) != 105 || song->title != infoDraft.title) return 57;
+    if (song->restoreNoteScore(preRamp).failed()) return 58;
     PreviewTransport engine;
     juce::AudioBuffer<float> buffer(2, 400);
     if (engine.preparePlayback(*song, {}, {}, 8000, 400, 2, .5).failed()) return 43;
@@ -362,8 +402,7 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     main.setSize(1280, 800);
     main.setVisible(true);
     if (!main.openDocument(file)) return 12;
-    auto* document = dynamic_cast<juce::Label*>(main.findChildWithID("current-document"));
-    if (!document || !document->getText().contains(file.getFileName()) || !document->getText().contains(info.title)) return 13;
+    if (!main.getName().contains(file.getFileName()) || !main.getName().contains(info.title)) return 13;
     main.displayTransportPosition(960);
     auto* deck = main.findChildWithID("transport");
     const auto reads = [&](const char* id, const juce::String& expected) {
@@ -468,14 +507,17 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     main.displayTransportPosition(960);
     if (!savePng(dir.getChildFile("transport-compact.png"), main) || pianoCursorX(main) < 0) return 16;
     bool applied = false;
-    SongInformationPanel editor(info, [&](const SongInformation& edited) {
+    SongInformationPanel editor(*song, [&](const SongInformation& edited, const SongMusicEdit&) {
         applied = edited.title == info.title && edited.credits.size() == 3 && edited.credits.back().role == "composer";
         return juce::Result::ok();
     });
     if (!savePng(dir.getChildFile("song-information.png"), editor)) return 17;
+    const auto press = [&](auto&& visit, juce::Component& item, const char* caption) -> bool {
+        if (auto* b = dynamic_cast<juce::TextButton*>(&item); b && b->getButtonText() == juce::translate(caption)) { b->onClick(); return true; }
+        for (auto* c : item.getChildren()) if (visit(visit, *c, caption)) return true;
+        return false;
+    };
     for (const auto* caption : {"Add credit", "Apply"})
-        for (auto* child : editor.getChildren())
-            if (auto* button = dynamic_cast<juce::TextButton*>(child); button && button->getButtonText() == juce::translate(caption))
-                button->onClick();
+        if (!press(press, editor, caption)) return 19;
     return applied ? 0 : 19;
 }

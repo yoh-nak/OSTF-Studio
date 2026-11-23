@@ -9,6 +9,7 @@
 #include "ui/ViewButton.h"
 #include "ui/ArrangementRuler.h"
 #include "ui/AudioClipEditor.h"
+#include "ui/TempoEditor.h"
 #include "ui/PianoInspector.h"
 #include "ui/PerformanceEditor.h"
 #include "ui/DrumSteps.h"
@@ -248,13 +249,30 @@ private:
     bool editorVisible_ = true, mixerSelected_ = false;
     TransportPanel deck_;
     SongBasicsPanel basics_;
-    juce::Viewport basicsView_;
-    bool basicsAtTop_ = false;
     int topBasicsHeight() const;
-    int globalLabelInset() const;
     int timelineRowHeight() const;
     void editSongField(SongBasicsPanel::Field, const juce::String&, int);
-    juce::Label documentLabel_;
+    void markSessionEdited();
+    void refreshWindowTitle();
+    void parentHierarchyChanged() override;
+    // Plug-ins may notify on the audio thread. Update the document caption on the message thread.
+    struct StockEffectChanges final : private juce::AudioProcessorListener, private juce::Timer {
+        void observe(juce::AudioProcessor& processor) {
+            processor.addListener(this);
+            if (!isTimerRunning()) startTimerHz(5);
+        }
+        void reset() { pending.store(false); }
+        std::function<void()> changed;
+    private:
+        void audioProcessorParameterChanged(juce::AudioProcessor*, int, float) override { pending.store(true); }
+        void audioProcessorChanged(juce::AudioProcessor*, const ChangeDetails& details) override {
+            if (details.nonParameterStateChanged) pending.store(true);
+        }
+        void timerCallback() override { if (pending.exchange(false) && changed) changed(); }
+        std::atomic<bool> pending{false};
+    } stockEffectChanges_;
+    juce::MemoryBlock savedScore_;
+    bool sessionEdited_ = false;
     juce::String currentFilename_;
     juce::File legacySourceFile_;
     juce::int64 cursorTick_ = -1;
@@ -289,6 +307,7 @@ private:
     void openEffectEditor(bool output, std::size_t index, std::size_t slot);
     AudioClipWaveforms waveforms_;
     AudioClipEditor audioEditor_{waveforms_};
+    TempoEditor tempoEditor_;
     std::optional<std::size_t> resizingAudio_;
     juce::int64 previewAudioLength_ = 0;
     bool spaceHeld_ = false;
