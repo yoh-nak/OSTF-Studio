@@ -1376,7 +1376,9 @@ void MainComponent::renameTrack(std::size_t index, bool output) {
                 safe->statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
                 return;
             }
-            safe->trackPicker_.changeItemText(static_cast<int>(index + 1), name);
+            const auto itemId = static_cast<int>(index + 1);
+            safe->trackPicker_.changeItemText(itemId, name);
+            if (safe->selectedTrack_ == index) safe->trackPicker_.setSelectedId(itemId, juce::dontSendNotification);
             safe->mixer_.renameTrack(index, name);
             auto& controls = *safe->trackControls_[index];
             controls.size.setTitle(name + " " + TRANS("track height"));

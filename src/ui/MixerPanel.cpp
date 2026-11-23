@@ -221,8 +221,12 @@ void MixerPanel::renameOutput(std::size_t slot, const juce::String& name) {
                                                   : buses_[ostfstudio::outputBusIndex(slot)].get();
     strip->name.setText(label, juce::dontSendNotification);
     for (auto& track : strips_) {
-        if (send) track->returnTarget.changeItemText(static_cast<int>(ostfstudio::outputReturnIndex(slot) + 1), TRANS("Send: ") + label);
-        else track->output.changeItemText(slot == 0 ? 1 : static_cast<int>(ostfstudio::outputBusIndex(slot) + 2), TRANS("Out: ") + label);
+        auto& selector = send ? track->returnTarget : track->output;
+        const auto id = send ? static_cast<int>(ostfstudio::outputReturnIndex(slot) + 1)
+                             : slot == 0 ? 1 : static_cast<int>(ostfstudio::outputBusIndex(slot) + 2);
+        const bool selected = selector.getSelectedId() == id;
+        selector.changeItemText(id, (send ? TRANS("Send: ") : TRANS("Out: ")) + label);
+        if (selected) selector.setSelectedId(id, juce::dontSendNotification);
     }
 }
 
