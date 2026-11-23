@@ -85,7 +85,7 @@ juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds, int extra) {
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections };
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings };
 constexpr int themeBlue = 89, themeHarmonic = 90, themeGraphite = 91, themeAubergine = 92;
 constexpr const char* workspaceThemes[]{"blue", "harmonic", "graphite", "aubergine"};
 constexpr int timelineMenuBase = 100;
@@ -455,6 +455,7 @@ MainComponent::MainComponent() {
     deck_.play.onClick = [this] { startTransport(false); };
     deck_.stop.onClick = [this] { stopTransport(); };
     deck_.record.onClick = [this] { startTransport(true); };
+    deck_.record.setTooltip(TRANS("Arm a track with R, then record from the cursor."));
     deck_.home.onClick = [this] { navigateTransport(TransportKey::home); };
     deck_.rewind.onClick = [this] { navigateTransport(TransportKey::rewind); };
     deck_.forward.onClick = [this] { navigateTransport(TransportKey::forward); };
@@ -769,7 +770,11 @@ MainComponent::MainComponent() {
     }
     addChildComponent(cycleButton_);
     addChildComponent(editorRecord_);
-    editorRecord_.onClick = [this] { if (recordTrack_) stopTransport(); else startTransport(true); };
+    editorRecord_.onClick = [this] {
+        if (recordTrack_) { stopTransport(); return; }
+        if (selectedTrack_) setRecordArm(*selectedTrack_, true);
+        startTransport(true);
+    };
     cycleButton_.setClickingTogglesState(true);
     cycleButton_.setTooltip(TRANS("Drag across the editor ruler to select the loop range"));
     cycleButton_.onClick = [this] {
@@ -801,11 +806,12 @@ MainComponent::MainComponent() {
     addChildComponent(pianoRuler_);
     rowOverlay_.addAndMakeVisible(ruler_);
     rowOverlay_.addAndMakeVisible(aiButton_);
-    rowOverlay_.addAndMakeVisible(surfaceButton_);
-    surfaceButton_.onClick = [this] { openController(true); };
+    aiModel_ = viewPreferences_.getUserSettings()->getValue("studioChatGptModel");
+    displayAiState(TRANS("ChatGPT disconnected"), 0xff773d36);
     if (viewPreferences_.getUserSettings()->getValue("surfacePort").isNotEmpty())
         juce::MessageManager::callAsync([safe = juce::Component::SafePointer<MainComponent>(this)] { if (safe) safe->openController(false); });
     aiButton_.onClick = [this] { aiConnectionMenu(); };
+    aiButton_.setTooltip(TRANS("Connect ChatGPT or choose the analysis model."));
     if (viewPreferences_.getUserSettings()->getBoolValue("studioChatGptBrowserLogin", false)) updateAiConnection(AccountAction::restore);
     addChildComponent(audioEditor_);
     addChildComponent(tempoEditor_);
@@ -1098,6 +1104,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         case 3: {
             menu.addItem(showDevices, TRANS("Audio / MIDI Devices..."));
             menu.addItem(aiConnections, TRANS("AI connections..."));
+            menu.addItem(controllerSettings, TRANS("M-VAVE controllers..."));
             juce::PopupMenu themes;
             themes.addItem(themeBlue, TRANS("Studio Blue"), true, blueTheme());
             themes.addItem(themeHarmonic, TRANS("Harmonic colours"), true,
@@ -1218,6 +1225,7 @@ void MainComponent::menuItemSelected(int item, int) {
         case showArrangement: setWorkspaceMode(WorkspaceMode::arrangement); break;
         case showLeadSheet: setWorkspaceMode(WorkspaceMode::leadSheet); break;
         case showPartScore: setWorkspaceMode(WorkspaceMode::score); break;
+        case controllerSettings: openController(true); break;
         case aiConnections: aiConnectionMenu(); break;
         case importMedia:
             if (!importWindow_)
@@ -1657,12 +1665,42 @@ void MainComponent::updateTransportMix() {
     transport_.setOutputMix(mixer_.routing());
 }
 
+void MainComponent::openHardwareEditor() {
+    auto* prefs = viewPreferences_.getUserSettings();
+    auto launch = [prefs](const juce::File& app) {
+        if (!app.exists() || !app.startAsProcess()) return false;
+        prefs->setValue("mvaveEditor", app.getFullPathName());
+        return true;
+    };
+    const auto path = prefs->getValue("mvaveEditor");
+    if (juce::File::isAbsolutePath(path) && launch(juce::File(path))) return;
+#if JUCE_WINDOWS
+    auto supplied = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
+                        .getChildFile("MidiSuite_new/Midi Suite/Midi Suite.exe");
+    if (launch(supplied)) return;
+    const auto filter = "*.exe";
+#else
+    if (launch(juce::File("/Applications/Midi Suite.app"))) return;
+    const auto filter = "*.app";
+#endif
+    hardwareChooser_ = std::make_unique<juce::FileChooser>(TRANS("Choose the M-VAVE Midi Suite application"), juce::File{}, filter);
+    hardwareChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [safe = juce::Component::SafePointer<MainComponent>(this)](const auto& fc) {
+            if (!safe || fc.getResult() == juce::File{}) return;
+            const auto app = fc.getResult();
+            if (app.startAsProcess()) safe->viewPreferences_.getUserSettings()->setValue("mvaveEditor", app.getFullPathName());
+            else safe->surfacePanel_->status.setText(TRANS("Could not open Midi Suite."), juce::dontSendNotification);
+        });
+}
+
 void MainComponent::openController(bool show) {
     if (!surfaceWindow_) {
         surfaceWindow_ = std::make_unique<PluginWindow>("M-VAVE");
         surfacePanel_ = new ControllerSurface();
         surfaceWindow_->setContentOwned(surfacePanel_, true);
         surfaceWindow_->centreWithSize(700, 306);
+        surfacePanel_->status.setText(TRANS("Open Midi Suite to edit device presets."), juce::dontSendNotification);
+        surfacePanel_->hardware.onClick = [this] { openHardwareEditor(); };
         surfacePanel_->selected = [this](auto port) { connectController(port); };
         surfacePanel_->learn = [this](int index) {
             if (recordTrack_) return;
@@ -1670,8 +1708,10 @@ void MainComponent::openController(bool show) {
                 const juce::SpinLock::ScopedLockType lock(surfaceLock_);
                 surfaceLearn_ = index;
             }
+            surfacePanel_->learningControl = index;
+            surfacePanel_->repaint();
             surfacePanel_->status.setText(
-                index < 0 ? TRANS("Select a pad or knob to learn its input.")
+                index < 0 ? (surfacePanel_->learning.getToggleState() ? TRANS("Select a pad or knob to learn its input.") : TRANS("Press MIDI Learn, then select a control."))
                           : (index < 16 ? TRANS("Strike the MIDI pad to assign") : TRANS("Turn the hardware knob.")),
                 juce::dontSendNotification);
         };
@@ -1690,7 +1730,7 @@ void MainComponent::openController(bool show) {
             auto saved = viewPreferences_.getUserSettings()->getValue("surfacePort");
             juce::MidiDeviceInfo match;
             for (auto p : juce::MidiInput::getAvailableDevices())
-                if (p.identifier == saved && ostfstudio::surfaceModel(p.name) != ostfstudio::SurfaceModel::none)
+                if (p.identifier == saved)
                     match = p;
             if (match.identifier != surfaceMap_.port) {
                 connectController(match);
@@ -1722,6 +1762,11 @@ void MainComponent::connectController(juce::MidiDeviceInfo port) {
     }
     ostfstudio::ControllerMap next;
     next.model = ostfstudio::surfaceModel(port.name);
+    if (next.model == ostfstudio::SurfaceModel::none && port.identifier.isNotEmpty()) {
+        next.model = ostfstudio::SurfaceModel::generic;
+        next.notes.fill(-1);
+        next.cc.fill(-1);
+    }
     bool opened = false;
     if (next.model != ostfstudio::SurfaceModel::none) {
         if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
@@ -1742,27 +1787,34 @@ void MainComponent::connectController(juce::MidiDeviceInfo port) {
             key = std::clamp(prefs->getIntValue(prefix + juce::String(i), key), -1, 2047);
         }
     }
-    if (openedSurfacePort_ && deviceSettings_ && next.port != surfaceMap_.port)
+    if (openedSurfacePort_ && deviceSettings_ && next.port != surfaceMap_.port
+        && std::none_of(midiRoutes_.begin(), midiRoutes_.end(), [this](const auto& entry) {
+            return entry.second.enabled && entry.second.port == surfaceMap_.port;
+        }))
         deviceSettings_->midiDevices().setMidiInputDeviceEnabled(surfaceMap_.port, false);
     openedSurfacePort_ = opened;
     {
         const juce::SpinLock::ScopedLockType lock(surfaceLock_);
         surfaceMap_ = next;
+        surfaceInputStatus_ = -1;
         surfaceCount_ = 0;
         surfaceLearn_ = -1;
     }
     viewPreferences_.getUserSettings()->setValue("surfacePort", next.port);
     surfacePanel_->model = next.model;
+    surfacePanel_->learningControl = -1;
+    surfacePanel_->learning.setToggleState(false, juce::dontSendNotification);
+    surfacePanel_->inputLabel.setText("MIDI IN", juce::dontSendNotification);
     surfacePanel_->refreshPorts(next.port);
     surfacePanel_->status.setText(
         next.model == ostfstudio::SurfaceModel::smk25ii
-            ? TRANS("Pads: channel 10, notes 36–51. Knobs: channel 1, CC16–23. Use Learn for other presets.")
+            ? TRANS("Select a drum track for the pads. Use MIDI Learn, select a control, then move it on the device.")
         : next.model == ostfstudio::SurfaceModel::mixer
             ? TRANS("Mackie Control input: faders control volume and encoders control pan.")
-            : juce::String{},
+            : next.model == ostfstudio::SurfaceModel::generic ? TRANS("Use MIDI Learn, select a pad or knob, then play or move the hardware control.") : TRANS("Open Midi Suite to edit device presets."),
         juce::dontSendNotification);
     refreshController();
-    attachPadInput(drumPads_.isVisible() || next.port.isNotEmpty());
+    attachPadInput(project_ != nullptr || next.port.isNotEmpty());
 }
 
 void MainComponent::refreshController() {
@@ -1794,7 +1846,9 @@ void MainComponent::refreshController() {
             p.levels[i] = strip.volume.valueToProportionOfLength(strip.volume.getValue());
             p.pans[i] = strip.pan.valueToProportionOfLength(strip.pan.getValue());
         }
-    p.layer.setVisible(p.model == ostfstudio::SurfaceModel::smk25ii);
+    p.padInputs = surfaceMap_.notes;
+    p.knobInputs = surfaceMap_.cc;
+    p.layer.setVisible(surfaceMap_.learnable());
     p.learning.setVisible(p.layer.isVisible());
     p.learning.setEnabled(!recordTrack_);
     p.devices.setEnabled(!recordTrack_);
@@ -1814,7 +1868,9 @@ void MainComponent::applySurfaceAction(ostfstudio::SurfaceAction a) {
         for (int i = 0; i < 24; ++i)
             prefs->setValue(prefix + juce::String(i), i < 16 ? surfaceMap_.notes[i] : surfaceMap_.cc[i - 16]);
         cancelPadLearn();
+        surfacePanel_->learningControl = -1;
         surfacePanel_->learning.setToggleState(false, juce::dontSendNotification);
+        refreshController();
         surfacePanel_->status.setText(TRANS("MIDI assignment saved."), juce::dontSendNotification);
         return;
     }
@@ -1861,9 +1917,22 @@ void MainComponent::attachPadInput(bool enable) {
 void MainComponent::handleIncomingMidiMessage(juce::MidiInput* port, const juce::MidiMessage& message) {
     if (port) {
         const juce::SpinLock::ScopedLockType lock(surfaceLock_);
-        if (surfaceMap_.port.isNotEmpty() && port->getIdentifier() == surfaceMap_.port) {
+        const auto& portId = port->getIdentifier();
+        bool matched = false;
+        for (auto& monitor : inputMonitors_)
+            if (monitor.route.accepts(portId, message.getChannel())) { monitor.received = true; matched = true; }
+        if (matched) padUpdate_.triggerAsyncUpdate();
+        const bool kitAccepts = drumInputMonitor_ && *drumInputMonitor_ < inputMonitors_.size()
+            && inputMonitors_[*drumInputMonitor_].route.accepts(portId, message.getChannel());
+        if (surfaceMap_.port.isNotEmpty() && portId == surfaceMap_.port) {
+            if (message.getRawDataSize()) {
+                surfaceInputStatus_ = message.getRawData()[0];
+                surfaceInputData_ = message.getRawDataSize() > 1 ? message.getRawData()[1] : 0;
+                padUpdate_.triggerAsyncUpdate();
+            }
             auto action = surfaceMap_.action(message);
-            if (surfaceMap_.model == ostfstudio::SurfaceModel::smk25ii && message.isNoteOn() && surfaceLearn_ < 0) {
+            if (!kitAccepts && action.kind == ostfstudio::SurfaceAction::pad) action.value = -1;
+            if (kitAccepts && surfaceMap_.learnable() && message.isNoteOn() && surfaceLearn_ < 0) {
                 const int target = learnTarget_.load();
                 if (target >= 0) {
                     auto it = std::find(surfaceMap_.pitches.begin(), surfaceMap_.pitches.end(), target);
@@ -1885,6 +1954,7 @@ void MainComponent::handleIncomingMidiMessage(juce::MidiInput* port, const juce:
             }
             if (surfaceMap_.model == ostfstudio::SurfaceModel::mixer) return;
         }
+        if (!kitAccepts) return;
     }
     if (!message.isNoteOn()) return;
     const int input = message.getNoteNumber();
@@ -1898,10 +1968,24 @@ void MainComponent::showPadInput() {
     if (!padListening_) return;
     std::array<ostfstudio::SurfaceAction, 128> events;
     size_t count;
+    std::vector<bool> received(trackControls_.size());
+    int surfaceStatus, surfaceData;
     {
         const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+        for (size_t i = 0; i < std::min(inputMonitors_.size(), received.size()); ++i)
+            received[i] = std::exchange(inputMonitors_[i].received, false);
+        surfaceStatus = std::exchange(surfaceInputStatus_, -1);
+        surfaceData = surfaceInputData_;
         count = std::exchange(surfaceCount_, 0);
         std::copy_n(surfaceEvents_.begin(), count, events.begin());
+    }
+    for (size_t i = 0; i < received.size(); ++i)
+        if (received[i]) trackControls_[i]->inputLamp.pulse();
+    if (surfaceStatus >= 0 && surfacePanel_) {
+        const int type = surfaceStatus >> 4;
+        const auto name = type == 9 || type == 8 ? "Note " : type == 11 ? "CC " : "MIDI ";
+        surfacePanel_->received(surfaceStatus >= 0xf0 ? "0x" + juce::String::toHexString(surfaceStatus)
+            : juce::String(name) + juce::String(surfaceData) + "  Ch " + juce::String(1 + (surfaceStatus & 15)));
     }
     for (size_t i = 0; i < count; ++i)
         applySurfaceAction(events[i]);
@@ -1952,6 +2036,14 @@ void MainComponent::restoreInstrumentAssignments(const ostfstudio::SessionMix& m
 }
 
 void MainComponent::startTransport(bool recording, bool replaceConfirmed) {
+    if (recording && project_ && !recordTrack_) {
+        auto armed = project_->trackIds.indexOf(armedId_);
+        if (armed < 0) {
+            statusLabel_.setText(TRANS("Press R on the track you want to record."), juce::dontSendNotification);
+            return;
+        }
+        selectTrack(static_cast<std::size_t>(armed));
+    }
     if (!project_ || (recording && (!selectedTrack_ || selectedGlobal_ == TimelineLane::tempo))) return;
     if (recording && *selectedTrack_ >= project_->sourceTrackCount()) {
         statusLabel_.setText(TRANS("Select a pitched or drum track for MIDI recording."), juce::dontSendNotification);
@@ -1971,7 +2063,8 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed) {
             TRANS("Replace this clip with the new recording when you stop?"), TRANS("Record"), TRANS("Cancel"), this,
             juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<MainComponent>(this),
                 generation = projectGeneration_, track = selectedTrack_](int answer) {
-                if (safe && answer && generation == safe->projectGeneration_ && safe->selectedTrack_ == track && !safe->transportActive_)
+                if (safe && answer && generation == safe->projectGeneration_ && safe->selectedTrack_ == track && !safe->transportActive_
+                    && track && safe->armedId_ == safe->project_->trackIds[int(*track)])
                     safe->startTransport(true, true);
             }));
         return;
@@ -2006,6 +2099,10 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed) {
     take.cycle = drumSteps_.looping() ? drumSteps_.range() : (cycleButton_.getToggleState() && !drumSteps_.isVisible()
         ? editorCycle_ : juce::Range<juce::int64>{});
     take.surface = surfaceMap_;
+    if (recording && !audioTake) {
+        const auto input = midiRoutes_.find(project_->trackIds[int(*selectedTrack_)]);
+        if (input != midiRoutes_.end()) take.midiInput = input->second;
+    }
     take.countIn = recording && deck_.countIn.getToggleState();
     if (audioTake) {
         const auto it = captureChannels_.find(project_->trackIds[int(*selectedTrack_)]);
@@ -2345,6 +2442,15 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
                                  bool plainScore, const juce::File& sourceFolder) {
     stopTransport();
     attachPadInput(false);
+    armedId_.clear();
+    midiRoutes_.clear();
+    midiDocument_ = filename.isNotEmpty() && sourceFolder != juce::File{} ? sourceFolder.getChildFile(filename).getFullPathName() : juce::String{};
+    if (midiDocument_.isNotEmpty()) {
+        auto stored = viewPreferences_.getUserSettings()->getXmlValue("midiRoutes" + juce::String::toHexString(midiDocument_.hashCode64()));
+        if (stored) for (auto* row : stored->getChildWithTagNameIterator("INPUT"))
+            midiRoutes_[row->getStringAttribute("track")] = {row->getStringAttribute("port"), row->getStringAttribute("name"),
+                std::clamp(row->getIntAttribute("channel"), 0, 16), row->getBoolAttribute("enabled", true)};
+    }
     captureChannels_.clear();
     editorCycle_ = {};
     cycleButton_.setToggleState(false, juce::dontSendNotification);
@@ -2515,6 +2621,8 @@ void MainComponent::saveDocument(SaveFormat format) {
                 safe->stockEffectChanges_.reset();
                 safe->sessionEdited_ = false;
                 safe->currentFilename_ = file.getFileName();
+                safe->midiDocument_ = file.getFullPathName();
+                safe->saveMidiRoutes();
                 safe->legacySourceFile_ = juce::File{};
                 safe->updateDocumentLabel();
             }
@@ -2870,6 +2978,87 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
                          juce::dontSendNotification);
 }
 
+void MainComponent::saveMidiRoutes() {
+    if (midiDocument_.isEmpty() || !project_) return;
+    juce::XmlElement routes("ROUTES");
+    for (const auto& [id, route] : midiRoutes_) {
+        if (!project_->trackIds.contains(id)) continue;
+        auto* item = routes.createNewChildElement("INPUT");
+        item->setAttribute("track", id);
+        item->setAttribute("port", route.port);
+        item->setAttribute("name", route.name);
+        item->setAttribute("channel", route.channel);
+        item->setAttribute("enabled", route.enabled);
+    }
+    viewPreferences_.getUserSettings()->setValue("midiRoutes" + juce::String::toHexString(midiDocument_.hashCode64()), &routes);
+}
+
+void MainComponent::setRecordArm(std::size_t i, bool arm) {
+    if (recordTrack_ || !project_ || i >= project_->sourceTrackCount()) return;
+    armedId_ = arm ? project_->trackIds[int(i)] : juce::String{};
+    if (arm) selectTrack(i);
+    refreshMidiRoutes();
+}
+
+void MainComponent::refreshMidiRoutes() {
+    if (!project_) return;
+    if (!project_->trackIds.contains(armedId_)) armedId_.clear();
+    std::vector<InputMonitor> monitors;
+    for (std::size_t i = 0; i < trackControls_.size(); ++i) {
+        auto& strip = *trackControls_[i];
+        const auto id = project_->trackIds[int(i)];
+        auto route = midiRoutes_.contains(id) ? midiRoutes_.at(id) : ostfstudio::MidiInputRoute{};
+        if (i >= project_->sourceTrackCount() || project_->trackKinds[i] == ostfstudio::TrackKind::audio) route.enabled = false;
+        monitors.push_back({route});
+        const auto description = !route.enabled ? TRANS("No input") :
+            (route.port.isEmpty() ? TRANS("All enabled inputs") : route.name)
+            + " / " + (route.channel == 0 ? TRANS("All channels") : "Ch " + juce::String(route.channel));
+        strip.input.setTooltip(TRANS("MIDI input") + "  " + description);
+        strip.input.getProperties().set("routeLabel", "IN  " + description);
+        strip.input.setButtonText(strip.size.expanded() ? "IN  " + description : "IN");
+        const bool armed = armedId_.isNotEmpty() && armedId_ == id;
+        strip.arm.setToggleState(armed, juce::dontSendNotification);
+        strip.arm.setTooltip(armed ? TRANS("Record armed. Press Record to start.") : TRANS("Arm this track for recording"));
+    }
+    const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+    inputMonitors_ = std::move(monitors);
+}
+
+void MainComponent::showTrackInput(std::size_t i) {
+    if (!project_ || recordTrack_ || i >= project_->sourceTrackCount()) return;
+    const auto id = project_->trackIds[int(i)];
+    const auto route = midiRoutes_[id];
+    const auto ports = juce::MidiInput::getAvailableDevices();
+    juce::PopupMenu menu, channels;
+    menu.addSectionHeader(TRANS("MIDI input"));
+    menu.addItem(1, TRANS("All enabled inputs"), true, route.enabled && route.port.isEmpty());
+    menu.addItem(2, TRANS("No input"), true, !route.enabled);
+    for (int p = 0; p < ports.size(); ++p)
+        menu.addItem(100 + p, ports[p].name, true, route.enabled && ports[p].identifier == route.port);
+    channels.addItem(10, TRANS("All channels"), true, route.channel == 0);
+    for (int ch = 1; ch <= 16; ++ch) channels.addItem(10 + ch, "Ch " + juce::String(ch), true, route.channel == ch);
+    menu.addSubMenu(TRANS("MIDI channel"), channels);
+    menu.addItem(3, TRANS("Audio / MIDI Devices..."));
+    menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&trackControls_[i]->input),
+        [safe = juce::Component::SafePointer<MainComponent>(this), ports, id, generation = projectGeneration_](int item) {
+            if (!safe || item == 0 || safe->recordTrack_ || safe->projectGeneration_ != generation) return;
+            if (item == 3) { safe->menuItemSelected(showDevices, 3); return; }
+            auto& target = safe->midiRoutes_[id];
+            if (item == 1 || item == 2) { target.enabled = item == 1; target.port.clear(); target.name.clear(); }
+            else if (item >= 10 && item <= 26) target.channel = item - 10;
+            else if (juce::isPositiveAndBelow(item - 100, ports.size())) {
+                const auto port = ports[item - 100];
+                if (!safe->deviceSettings_->enableTrackInput(port)) {
+                    safe->statusLabel_.setText(TRANS("Could not open MIDI input."), juce::dontSendNotification);
+                    return;
+                }
+                target.port = port.identifier; target.name = port.name; target.enabled = true;
+            }
+            safe->saveMidiRoutes();
+            safe->refreshMidiRoutes();
+        });
+}
+
 void MainComponent::rebuildTrackControls() {
     trackControls_.clear();
     for (std::size_t i = 0; i < project_->trackLanes.size(); ++i) {
@@ -2877,6 +3066,12 @@ void MainComponent::rebuildTrackControls() {
         controls->size.assignHeight(groupDefaults_[static_cast<std::size_t>(trackHeightGroup(i))]);
         const auto name = juce::String::fromUTF8(project_->trackLanes[i].label);
         controls->size.setTitle(name + " " + TRANS("track height"));
+        controls->arm.setTitle(name + " record arm");
+        controls->arm.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffae403e));
+        controls->arm.onClick = [this, i] { setRecordArm(i, armedId_ != project_->trackIds[int(i)]); };
+        controls->input.setTitle(name + " MIDI input");
+        controls->input.onClick = [this, i] { showTrackInput(i); };
+        for (juce::Component* c : std::array<juce::Component*,3>{&controls->arm, &controls->inputLamp, &controls->input}) rowOverlay_.addChildComponent(c);
         controls->mute.setTitle(name + " mute");
         controls->mute.setTooltip(TRANS("Mute ") + name);
         controls->mute.setClickingTogglesState(true);
@@ -2912,7 +3107,7 @@ void MainComponent::rebuildTrackControls() {
         controls->preset.setFont(juce::FontOptions(10.0f));
         controls->preset.setColour(juce::Label::textColourId, juce::Colour(muted));
         controls->preset.setInterceptsMouseClicks(false, false);
-        controls->size.changed = [this] { refreshGroupHeight(); resized(); repaint(); };
+        controls->size.changed = [this] { refreshMidiRoutes(); refreshGroupHeight(); resized(); repaint(); };
         for (auto* part : std::array<juce::Component*, 9>{&controls->mute, &controls->solo, &controls->volume,
                  &controls->pan, &controls->plugin, &controls->mix, &controls->preset, &controls->meter, &controls->size})
             rowOverlay_.addAndMakeVisible(part);
@@ -2927,6 +3122,7 @@ void MainComponent::rebuildTrackControls() {
         }
         trackControls_.push_back(std::move(controls));
     }
+    refreshMidiRoutes();
     resized();
 }
 
@@ -3435,12 +3631,19 @@ void MainComponent::applyMelodyneCopy() {
     statusLabel_.setText(TRANS("Edited WAV applied") + "   " + clip->path, juce::dontSendNotification);
 }
 
+void MainComponent::displayAiState(const juce::String& state, juce::uint32 colour) {
+    aiButton_.setButtonText(state);
+    aiButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(colour));
+    aiButton_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    aiButton_.setTitle(state);
+}
+
 void MainComponent::updateAiConnection(AccountAction action) {
     if (!aiButton_.isEnabled() || signInPending_) return;
     aiButton_.setEnabled(false);
     signInPending_ = action == AccountAction::login;
-    aiButton_.setButtonText(signInPending_ ? TRANS("Browser sign-in...") : TRANS("Connecting..."));
-    const auto provider = ostfstudio::chatGptProvider();
+    displayAiState(TRANS("ChatGPT connecting"), 0xff805510);
+    const auto provider = ostfstudio::chatGptProvider({}, {}, aiModel_);
     const auto safe = juce::Component::SafePointer<MainComponent>(this);
     activeAi_.reset();
     if (importWindow_) setImportConnections(*importWindow_, {});
@@ -3450,7 +3653,7 @@ void MainComponent::updateAiConnection(AccountAction action) {
                 if (!safe || !safe->signInPending_) return;
                 safe->signInUrl_ = url;
                 safe->aiButton_.setEnabled(true);
-                safe->aiButton_.setButtonText(TRANS("Open sign-in page"));
+                safe->displayAiState(TRANS("ChatGPT sign-in pending"), 0xff805510);
             });
         };
         const auto result = action == AccountAction::login    ? provider->connect(showLink)
@@ -3458,13 +3661,16 @@ void MainComponent::updateAiConnection(AccountAction action) {
                             : provider->connected()
                                 ? juce::Result::ok()
                                 : juce::Result::fail(TRANS("Reconnect ChatGPT before starting AI analysis."));
-        juce::MessageManager::callAsync([safe, provider, result, action] {
+        const auto models = result.wasOk() && action != AccountAction::logout ? provider->availableModels() : juce::StringArray{};
+        juce::MessageManager::callAsync([safe, provider, result, action, models] {
             if (!safe) return;
             safe->signInUrl_ = {};
             safe->signInPending_ = false;
             safe->activeAi_ = result.wasOk() && action != AccountAction::logout ? provider : nullptr;
             safe->aiButton_.setEnabled(true);
-            safe->aiButton_.setButtonText(safe->activeAi_ ? TRANS("ChatGPT connected") : TRANS("Connect ChatGPT..."));
+            safe->aiModels_ = models;
+            safe->displayAiState(safe->activeAi_ ? TRANS("ChatGPT connected") : TRANS("ChatGPT disconnected"),
+                                 safe->activeAi_ ? 0xff17634f : 0xff773d36);
             safe->viewPreferences_.getUserSettings()->setValue("studioChatGptBrowserLogin", safe->activeAi_ != nullptr);
             if (safe->importWindow_)
                 setImportConnections(*safe->importWindow_, safe->activeAi_
@@ -3490,11 +3696,24 @@ void MainComponent::aiConnectionMenu() {
         return;
     }
     juce::PopupMenu menu;
+    juce::PopupMenu models;
+    models.addItem(10, TRANS("Automatic model"), true, aiModel_.isEmpty());
+    auto choices = aiModels_;
+    if (aiModel_.isNotEmpty()) choices.addIfNotAlreadyThere(aiModel_);
+    for (int i = 0; i < choices.size(); ++i)
+        models.addItem(11 + i, choices[i], true, choices[i] == aiModel_);
+    menu.addSubMenu(TRANS("Analysis model"), models);
     menu.addItem(1, TRANS("Sign in again..."));
     menu.addItem(2, TRANS("Disconnect from Studio"));
     menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&aiButton_),
-                       [safe = juce::Component::SafePointer<MainComponent>(this)](int action) {
+                       [safe = juce::Component::SafePointer<MainComponent>(this), choices](int action) {
                            if (!safe) return;
+                           if (action >= 10 && action < 11 + choices.size()) {
+                               safe->aiModel_ = action == 10 ? juce::String{} : choices[action - 11];
+                               safe->viewPreferences_.getUserSettings()->setValue("studioChatGptModel", safe->aiModel_);
+                               safe->activeAi_ = ostfstudio::chatGptProvider({}, {}, safe->aiModel_);
+                               if (safe->importWindow_) setImportConnections(*safe->importWindow_, {safe->activeAi_});
+                           }
                            if (action == 1) safe->updateAiConnection(AccountAction::login);
                            if (action == 2) safe->updateAiConnection(AccountAction::logout);
                        });
@@ -4016,7 +4235,7 @@ void MainComponent::refreshTrackTheory(std::size_t track) {
 
 int MainComponent::theoryTrackHeight(std::size_t track) const {
     if (!theoryVisible_ || track >= theoryTracks_.size() || (!chordFitVisible_ && !scaleFitVisible_)) return 0;
-    if (track >= trackControls_.size()) return 0;
+    if (track >= trackControls_.size() || !project_ || project_->trackKinds[track] == ostfstudio::TrackKind::audio) return 0;
     constexpr int fitLaneHeight = 16;
     if (theoryTracks_[track].empty()) return fitLaneHeight;
     return fitLaneHeight * (int(chordFitVisible_) + int(scaleFitVisible_));
@@ -4353,7 +4572,7 @@ void MainComponent::refreshEditor() {
     const bool tempo = editing && selectedGlobal_ == TimelineLane::tempo;
     tempoEditor_.setVisible(tempo);
     if (tempo) tempoEditor_.bind(project_.get());
-    deck_.record.setEnabled(project_ && selectedTrack_ && selectedGlobal_ != TimelineLane::tempo);
+    deck_.record.setEnabled(project_ && (armedId_.isNotEmpty() || (selectedTrack_ && selectedGlobal_ != TimelineLane::tempo)));
     const bool audio = editing && !tempo && selectedTrack_ && project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::audio;
     audioEditor_.setVisible(audio);
     if (audio) {
@@ -4365,6 +4584,10 @@ void MainComponent::refreshEditor() {
     refreshPianoNotes();
     pianoGrid_.setDescription(noteFitReading());
     const bool drum = piano && selectedTrack_ && pianoGrid_.percussion;
+    {
+        const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+        drumInputMonitor_ = drum ? selectedTrack_ : std::nullopt;
+    }
     drumMode_.setVisible(drum);
     const bool steps = drum && drumMode_.getSelectedId()==2;
     drumSteps_.bind(drum ? project_.get() : nullptr,selectedTrack_.value_or(0),std::max<juce::int64>(0,cursorTick_),pianoGrid_.grid);
@@ -4381,7 +4604,7 @@ void MainComponent::refreshEditor() {
     if (kitId != padTrack_) cancelPadLearn();
     padTrack_ = kitId;
     refreshController();
-    attachPadInput(drum || surfaceMap_.port.isNotEmpty());
+    attachPadInput(project_ != nullptr || surfaceMap_.port.isNotEmpty());
     updateDrumLoop();
     pianoGrid_.setVisible(piano && selectedTrack_.has_value() && !steps);
     pianoRuler_.setVisible(pianoGrid_.isVisible());
@@ -4552,13 +4775,11 @@ void MainComponent::resized() {
         importTrackDrop_.setBounds(arrangement.withTop(std::max(arrangement.getY(), arrangement.getBottom() - 36)).reduced(4, 2));
         ruler_.setBounds(rowOverlay_.getLocalBounds().removeFromTop(timelineRowHeight()));
         ruler_.toFront(false);
-        const int aiY = timelineRowHeight() - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
-        aiButton_.setVisible(aiY >= 0 && aiY + 24 <= std::min(globalHeight, rowOverlay_.getHeight()));
-        aiButton_.setBounds(8, aiY, std::min(148, trackHeaderWidth / 2), 25);
+        const int aiY = std::max(0, (globalHeight - 36) / 2) - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
+        aiButton_.setVisible(aiY >= 0 && aiY + 36 <= std::min(globalHeight, rowOverlay_.getHeight()));
+        aiButton_.setBounds(8, aiY, std::min(207, trackHeaderWidth / 2), 36);
         aiButton_.toFront(false);
-        surfaceButton_.setVisible(aiButton_.isVisible());
-        surfaceButton_.setBounds(aiButton_.getRight()+5,aiY,82,25);
-        surfaceButton_.toFront(false);
+
         const bool besideTransport = topBasicsHeight() == 0;
         basics_.setBounds(besideTransport
             ? juce::Rectangle<int>(deck_.getRight() + 8, deck_.getBounds().getCentreY() - SongBasicsPanel::stripHeight / 2,
@@ -4593,13 +4814,29 @@ void MainComponent::resized() {
                     &strip.size, &strip.meter}) control->setVisible(visible);
             for (auto* control : std::array<juce::Component*, 5>{&strip.volume, &strip.pan, &strip.mix,
                     &strip.preset, &strip.plugin}) control->setVisible(visible && !strip.size.compact());
+            const bool canArm = i < project_->sourceTrackCount();
+            const bool midi = canArm && project_->trackKinds[i] != ostfstudio::TrackKind::audio;
+            strip.arm.setVisible(visible && canArm);
+            strip.input.setVisible(visible && midi);
+            if (visible && midi) strip.input.setButtonText(strip.size.expanded() ? strip.input.getProperties()["routeLabel"].toString() : "IN");
+            strip.inputLamp.setVisible(visible && midi);
+            strip.arm.setEnabled(!recordTrack_);
+            strip.input.setEnabled(!recordTrack_);
             if (!visible) continue;
+            auto inputControls = [&](juce::Rectangle<int>& row) {
+                if (canArm) strip.arm.setBounds(row.removeFromLeft(26).reduced(1, 0));
+                if (midi) {
+                    strip.inputLamp.setBounds(row.removeFromLeft(14));
+                    if (!strip.size.expanded()) strip.input.setBounds(row.removeFromLeft(26).reduced(1, 0));
+                }
+            };
             placeGrip(strip.size, trackRows_[i]);
             auto header = rowOverlay_.getLocalArea(this, trackRows_[i]).withWidth(trackHeaderWidth - 3);
             if (strip.size.compact()) {
                 header.removeFromLeft(trackNameWidth);
                 strip.mute.setBounds(header.removeFromLeft(29).reduced(2, 0));
                 strip.solo.setBounds(header.removeFromLeft(29).reduced(2, 0));
+                inputControls(header);
                 strip.effects.button.setBounds(header.removeFromRight(48).reduced(2, 0));
                 strip.meter.setBounds(header.reduced(8, 0).withSizeKeepingCentre(header.getWidth() - 16, 9));
                 continue;
@@ -4609,6 +4846,7 @@ void MainComponent::resized() {
                 top.removeFromLeft(trackNameWidth);
                 strip.mute.setBounds(top.removeFromLeft(29).reduced(2, 1));
                 strip.solo.setBounds(top.removeFromLeft(29).reduced(2, 1));
+                inputControls(top);
                 strip.effects.button.setBounds(top.removeFromRight(50).reduced(2, 1));
                 strip.plugin.setBounds(top.reduced(2, 1));
                 auto middle = header.removeFromTop(24);
@@ -4618,20 +4856,25 @@ void MainComponent::resized() {
                 strip.mix.setBounds(middle.reduced(2, 1));
                 auto meter = header.removeFromLeft(171).reduced(6, 0);
                 strip.meter.setBounds(meter.withHeight(meter.getHeight() >= 26 ? 24 : 10));
-                strip.preset.setBounds(header.reduced(4, 0).withHeight(16));
+                if (midi) {
+                    auto inputArea = header.removeFromTop(std::min(21, header.getHeight()));
+                    strip.input.setBounds(inputArea.reduced(3,0));
+                }
+                strip.preset.setBounds(header.reduced(4, 0).withHeight(std::min(16,header.getHeight())));
                 continue;
             }
             strip.meter.setBounds(header.withWidth(trackNameWidth).removeFromBottom(10).reduced(5, 1));
             auto row = header.withTrimmedLeft(trackNameWidth);
-            strip.mute.setBounds(row.removeFromLeft(29).reduced(2));
-            strip.solo.setBounds(row.removeFromLeft(29).reduced(2));
-            strip.volume.setBounds(row.removeFromLeft(65).reduced(2, 0));
-            strip.pan.setBounds(row.removeFromLeft(50).reduced(2, 0));
-            strip.mix.setBounds(row.removeFromLeft(28).reduced(1));
-            strip.effects.button.setBounds(row.removeFromRight(44).reduced(2, 1));
-            auto instrument = row.reduced(1);
-            strip.preset.setBounds(instrument.removeFromBottom(std::min(13, instrument.getHeight() / 2)));
-            strip.plugin.setBounds(instrument);
+            auto top = row.removeFromTop((row.getHeight() + 1) / 2);
+            strip.mute.setBounds(top.removeFromLeft(27).reduced(1, 0));
+            strip.solo.setBounds(top.removeFromLeft(27).reduced(1, 0));
+            inputControls(top);
+            strip.effects.button.setBounds(top.removeFromRight(44).reduced(1, 0));
+            strip.plugin.setBounds(top.reduced(2, 0));
+            strip.volume.setBounds(row.removeFromLeft(85).reduced(2, 0));
+            strip.pan.setBounds(row.removeFromLeft(69).reduced(2, 0));
+            strip.mix.setBounds(row.removeFromRight(44).reduced(1, 0));
+            strip.preset.setBounds(row.reduced(2, 0));
         }
         y += arrangementHeadingHeight;
         for (std::size_t ordinal = 0; ordinal < outputs; ++ordinal) {
@@ -5039,7 +5282,7 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
         auto title = track ? header.removeFromLeft(trackNameWidth) : header.removeFromRight(trackNameWidth);
         g.drawText(name, title.reduced(5, 0), track ? juce::Justification::centredLeft : juce::Justification::centredRight);
         g.setColour(juce::Colour(hardwareAmber));
-        g.drawText(current, header.reduced(4, 0), track ? juce::Justification::centredLeft : juce::Justification::centredRight);
+        if (track) g.drawText(current, header.reduced(4, 0), juce::Justification::centredLeft);
         return row;
     };
     auto cell = [&](juce::Rectangle<int> row, auto a, auto b, juce::Colour colour, const juce::String& name, const juce::String& shortName) {
@@ -5056,19 +5299,9 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
         }
     };
     if (!track) {
-        auto atCursor = [this](const auto& spans) -> const typename std::decay_t<decltype(spans)>::value_type* {
-            auto it = std::partition_point(spans.begin(), spans.end(), [this](const auto& span) { return span.end <= cursorTick_; });
-            return it != spans.end() && it->start <= cursorTick_ ? &*it : nullptr;
-        };
-        const auto* function = atCursor(theory_->functions);
-        const auto* progression = atCursor(theory_->progressions);
-        juce::String reading;
-        if (function)
-            reading = ostfstudio::shiftedLabel(theory_->chords[function->chord].name, auditionShift_) + "   " + function->degree + "  " + juce::translate(function->function);
         const auto degreeBand = band(bounds.getY(), bounds.getHeight() - timelineRowHeight(),
-                                     TRANS("Degree") + " / " + TRANS("Progression"),
-                                     progression ? progression->label : function ? function->degree : juce::String());
-        const auto top = band(degreeBand.getBottom(), timelineRowHeight(), TRANS("Function"), reading);
+                                     TRANS("Degree") + " / " + TRANS("Progression"), {});
+        const auto top = band(degreeBand.getBottom(), timelineRowHeight(), TRANS("Function"), {});
         if (clip.isEmpty()) return;
         auto visibleSpans = [&](const auto& list, auto draw) {
             auto it = std::partition_point(list.begin(), list.end(), [first](const auto& f) { return f.end <= first; });

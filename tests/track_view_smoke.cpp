@@ -31,6 +31,15 @@ int checkTrackView(const juce::File& fixture) {
     if (profile.action(juce::MidiMessage::pitchWheel(8,16383)).index != 7
         || profile.action(juce::MidiMessage::controllerEvent(1,16,65)).value != -1
         || profile.action(juce::MidiMessage::pitchWheel(9,8192)).kind != SurfaceAction::none) return 95;
+    MidiInputRoute route{"selected-port", "Selected keyboard", 2};
+    if (!route.accepts("selected-port", 2) || route.accepts("selected-port", 1) || route.accepts("other-port", 2)) return 101;
+    route.enabled = false;
+    if (route.accepts("selected-port", 2)) return 102;
+    route = {};
+    if (!route.accepts("other-port", 16) || route.accepts("other-port", 0) || route.accepts("other-port", 17)) return 103;
+    profile.model = SurfaceModel::generic;
+    profile.bind(16, 3 * 128 + 70);
+    if (profile.action(juce::MidiMessage::controllerEvent(4,70,99)).kind != SurfaceAction::knob) return 104;
     PianoNoteGrid grid;
     PianoInspector colours(grid);
     colours.showLegend = true;
@@ -113,6 +122,13 @@ int checkTrackView(const juce::File& fixture) {
     if (!click("Add melody track")) return 91;
     auto* melody = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
     if (!melody || melody->height() != 100) return 92;
+    auto* arm = findControl<juce::TextButton>(main, tracks->getText() + " record arm");
+    auto* input = findControl<juce::TextButton>(main, tracks->getText() + " MIDI input");
+    if (!arm || !arm->isVisible() || !input || !input->isVisible()) return 105;
+    arm->onClick();
+    if (!arm->getToggleState()) return 106;
+    arm->onClick();
+    if (arm->getToggleState()) return 107;
     if (!click("Add chorus vocal track") || !click("Add drum / percussion track")
         || !click("Add audio track") || tracks->getNumItems() != 5) return 34;
     auto* audioEditor = dynamic_cast<AudioClipEditor*>(main.findChildWithID("audio-clip-editor"));
@@ -179,6 +195,24 @@ int checkTrackView(const juce::File& fixture) {
         if (it.getItem().text == TRANS("Duplicate track") && it.getItem().isEnabled)
             model.menuItemSelected(it.getItem().itemID, 2);
     if (tracks->getNumItems() != 6 || !tracks->getText().startsWith(selected)) return 35;
+    auto enableFitLanes = [&model] {
+        juce::Array<int> toggled;
+        for (const auto* caption : {"Show Theory Guide", "Chord tone fit", "Scale fit"}) {
+            auto viewMenu = model.getMenuForIndex(1, {});
+            for (juce::PopupMenu::MenuItemIterator it(viewMenu, true); it.next();)
+                if (it.getItem().text == juce::translate(caption) && !it.getItem().isTicked) {
+                    toggled.add(it.getItem().itemID);
+                    model.menuItemSelected(it.getItem().itemID, 1);
+                    break;
+                }
+        }
+        return toggled;
+    };
+    const auto audioToggles = enableFitLanes();
+    auto* firstAudio = findControl<TrackRowSize>(main, selected + " " + TRANS("track height"));
+    auto* copiedAudio = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
+    if (!firstAudio || !copiedAudio || copiedAudio->getY() - firstAudio->getY() != copiedAudio->height()) return 108;
+    for (int i = audioToggles.size(); --i >= 0;) model.menuItemSelected(audioToggles[i], 1);
     if (!click("Add bus track") || !click("Add return track")) return 36;
     const auto* busC = findControl<TrackRowSize>(main, "Bus C track height");
     const auto* return2 = findControl<TrackRowSize>(main, "Return 2 track height");
@@ -325,16 +359,7 @@ int checkTrackView(const juce::File& fixture) {
     if (!guitar->compact() || !drums->compact() || !master->compact() || !bass->compact()) return 29;
 
     // Measure the space between two neighbouring pitched tracks with both fit rows visible.
-    juce::Array<int> toggled;
-    for (const auto* caption : {"Show Theory Guide", "Chord tone fit", "Scale fit"}) {
-        auto viewMenu = model.getMenuForIndex(1, {});
-        for (juce::PopupMenu::MenuItemIterator it(viewMenu, true); it.next();)
-            if (it.getItem().text == juce::translate(caption) && !it.getItem().isTicked) {
-                toggled.add(it.getItem().itemID);
-                model.menuItemSelected(it.getItem().itemID, 1);
-                break;
-            }
-    }
+    const auto toggled = enableFitLanes();
     if (!choose(TRANS("Arrangement tracks"))) return 73;
     for (int h : {100, 155, 42}) {
         height->setValue(h, juce::sendNotificationSync);

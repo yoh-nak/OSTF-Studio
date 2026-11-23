@@ -52,9 +52,12 @@ namespace {
 juce::Result studioCodex(const juce::File& home, juce::StringArray args, int timeout, juce::String* status = nullptr,
                          const SignInLink& signIn = {}) {
     if (auto result = home.createDirectory(); result.failed()) return result;
+    juce::MemoryOutputStream output;
     juce::String console;
     bool linkSent = false;
     auto received = [&](const char* bytes, int count) {
+        if (status && output.getDataSize() + size_t(count) <= 16 * 1024 * 1024) output.write(bytes, size_t(count));
+        if (!signIn) return;
         if (console.length() > 16384) console = console.getLastCharacters(4096);
         console += juce::String::fromUTF8(bytes, count);
         if (!signIn || linkSent) return;
@@ -158,7 +161,7 @@ juce::Result studioCodex(const juce::File& home, juce::StringArray args, int tim
     GetExitCodeProcess(process.hProcess, &code);
     CloseHandle(process.hProcess);
     drain();
-    if (status) *status = console;
+    if (status) *status = output.toUTF8();
 #else
     if (::chmod(home.getFullPathName().toRawUTF8(), 0700) != 0)
         return juce::Result::fail(TRANS("Could not prepare the analysis."));
@@ -184,7 +187,7 @@ juce::Result studioCodex(const juce::File& home, juce::StringArray args, int tim
     }
     readOutput.join();
     if (cancelled) return juce::Result::fail(TRANS("Analysis cancelled or timed out."));
-    if (status) *status = console;
+    if (status) *status = output.toUTF8();
     const auto code = probe.getExitCode();
 #endif
     return code == 0 ? juce::Result::ok()
@@ -211,8 +214,28 @@ juce::File codexExecutable() {
 }
 class ChatGpt final : public AnalysisProvider {
     const juce::File executable, home;
+    const juce::String model;
 public:
-    ChatGpt(juce::File cli, juce::File profile) : executable(std::move(cli)), home(std::move(profile)) {}
+    ChatGpt(juce::File cli, juce::File profile, juce::String selected)
+        : executable(std::move(cli)), home(std::move(profile)), model(std::move(selected)) {}
+    juce::StringArray availableModels() const override {
+        auto visible = [](const juce::var& catalog) {
+            juce::StringArray result;
+            if (const auto* models = catalog["models"].getArray())
+                for (const auto& entry : *models)
+                    if (entry["visibility"].toString() == "list" && entry["slug"].toString().isNotEmpty())
+                        result.addIfNotAlreadyThere(entry["slug"].toString());
+            return result;
+        };
+        auto models = visible(juce::JSON::parse(home.getChildFile("models_cache.json")));
+        if (!models.isEmpty()) return models;
+        juce::String json;
+        if (executable.existsAsFile() && studioCodex(home, {executable.getFullPathName(), "debug", "models"}, 20000, &json).wasOk()) {
+            const int begin = json.indexOfChar('{'), end = json.lastIndexOfChar('}');
+            if (begin >= 0 && end > begin) models = visible(juce::JSON::parse(json.substring(begin, end + 1)));
+        }
+        return models;
+    }
     juce::String name() const override { return "ChatGPT"; }
     bool connected() const override {
         auto& cli = executable;
@@ -244,6 +267,7 @@ public:
             "--ephemeral", "--sandbox", "read-only", "--disable", "shell_tool", "-c", "web_search=disabled",
             "-c", "apps._default.enabled=false", "-c", "forced_login_method=chatgpt", "-c", "approval_policy=never", "-C", work.dir.getFullPathName(),
             "--output-schema", shape.getFullPathName(), "-o", reply.getFullPathName()};
+        if (model.isNotEmpty()) { args.add("--model"); args.add(model); }
         if (image.existsAsFile()) { args.add("--image"); args.add(image.getFullPathName()); }
         args.add("--");
         args.add(prompt);
@@ -254,10 +278,10 @@ public:
     }
 };
 } // namespace
-AnalysisConnection chatGptProvider(juce::File executable, juce::File profile) {
+AnalysisConnection chatGptProvider(juce::File executable, juce::File profile, juce::String model) {
     if (executable == juce::File{}) executable = codexExecutable();
     if (profile == juce::File{}) profile = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
         .getChildFile("OSTF Studio/ChatGPT");
-    return std::make_shared<ChatGpt>(std::move(executable), std::move(profile));
+    return std::make_shared<ChatGpt>(std::move(executable), std::move(profile), std::move(model));
 }
 }

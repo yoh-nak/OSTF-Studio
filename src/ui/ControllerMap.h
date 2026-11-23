@@ -2,7 +2,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 
 namespace ostfstudio {
-enum class SurfaceModel { none, smk25ii, mixer };
+enum class SurfaceModel { none, smk25ii, mixer, generic };
 inline SurfaceModel surfaceModel(juce::String name) {
     auto compact = name.toLowerCase().retainCharacters("abcdefghijklmnopqrstuvwxyz0123456789");
     if ((compact.contains("smk25ii") || compact.contains("smk252")) && !compact.contains("daw"))
@@ -27,8 +27,9 @@ struct ControllerMap {
             cc[i] = 16 + i; // Studio knob preset, channel 1
         pitches.fill(-1);
     }
+    bool learnable() const { return model == SurfaceModel::smk25ii || model == SurfaceModel::generic; }
     int padIndex(const juce::MidiMessage &m) const {
-        if (model != SurfaceModel::smk25ii || !(m.isNoteOn() || m.isNoteOff()))
+        if (!learnable() || !(m.isNoteOn() || m.isNoteOff()))
             return -1;
         auto it = std::find(notes.begin(), notes.end(), (m.getChannel() - 1) * 128 + m.getNoteNumber());
         return it == notes.end() ? -1 : int(it - notes.begin());
@@ -43,7 +44,7 @@ struct ControllerMap {
                 return {SurfaceAction::relativePan, m.getControllerNumber() - 16, (v & 64) ? -(v & 63) : v};
             }
         }
-        if (model == SurfaceModel::smk25ii) {
+        if (learnable()) {
             if (m.isNoteOn()) {
                 const auto index = padIndex(m);
                 if (index >= 0)

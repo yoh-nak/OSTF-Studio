@@ -7,6 +7,7 @@ class DeviceSettingsWindow final : public juce::DocumentWindow {
 public:
     DeviceSettingsWindow();
     void closeButtonPressed() override;
+    bool enableTrackInput(const juce::MidiDeviceInfo&);
     juce::AudioDeviceManager& devices();
     juce::AudioDeviceManager& midiDevices();
 };

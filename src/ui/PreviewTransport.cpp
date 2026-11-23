@@ -75,10 +75,11 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
     const int inputs = record && options ? options->inputChannels : 0;
     if (inputs > device->getActiveInputChannels().countNumberOfSetBits())
         return juce::Result::fail("Enable the required audio input channels in Settings.");
-    if (record && !drumInput && !inputs) {
+    if (record && !inputs && (!drumInput || (options && options->midiInput.port.isNotEmpty()))) {
         bool enabled = false;
         for (const auto& input : juce::MidiInput::getAvailableDevices())
-            enabled = enabled || devices.isMidiInputDeviceEnabled(input.identifier);
+            enabled = enabled || (devices.isMidiInputDeviceEnabled(input.identifier) && (!options ||
+                (options->midiInput.enabled && (options->midiInput.port.isEmpty() || options->midiInput.port == input.identifier))));
         if (!enabled) return juce::Result::fail("Enable a MIDI input in Settings before recording.");
     }
     const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples(), semitones, tempoRate);
@@ -139,6 +140,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     captured_.setSize(0, 0);
     mapInput_ = false;
     surface_ = {};
+    midiInput_ = {};
     elapsed_ = countRemaining_ = 0;
     beatSamples_.clear();
     for (juce::int64 bar = 0; bar < scoreTicks_; bar += project.ticksPerBar) {
@@ -622,7 +624,12 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
 }
 
 void PreviewTransport::handleIncomingMidiMessage(juce::MidiInput* input, const juce::MidiMessage& message) {
-    if (input && surface_.port.isNotEmpty() && input->getIdentifier() == surface_.port) {
+    inputFromDevice(message, input ? input->getIdentifier() : juce::String{});
+}
+
+void PreviewTransport::inputFromDevice(const juce::MidiMessage& message, const juce::String& port) {
+    if (!midiInput_.accepts(port, message.getChannel())) return;
+    if (surface_.port.isNotEmpty() && port == surface_.port) {
         if (surface_.model == ostfstudio::SurfaceModel::mixer) return;
         const int index = mapInput_ ? surface_.padIndex(message) : -1;
         if (index >= 0) {
@@ -634,10 +641,6 @@ void PreviewTransport::handleIncomingMidiMessage(juce::MidiInput* input, const j
             return;
         }
     }
-    inputFromDevice(message);
-}
-
-void PreviewTransport::inputFromDevice(const juce::MidiMessage& message) {
     auto mapped = message;
     if (mapInput_ && (message.isNoteOn() || message.isNoteOff())) mapped.setNoteNumber(inputMap_[message.getNoteNumber()]);
     inputNote(mapped);
@@ -698,6 +701,7 @@ juce::Result PreviewTransport::prepareTake(const TakeOptions& options) {
     jassert(!devices_);
     takeStart_ = sample_.load();
     surface_ = options.surface;
+    midiInput_ = options.midiInput;
     if (options.drumMapping) { inputMap_ = *options.drumMapping; mapInput_ = true; }
     if (options.inputChannels) {
         if (options.inputChannels < 1 || options.inputChannels > 2) return juce::Result::fail("Choose mono or stereo.");

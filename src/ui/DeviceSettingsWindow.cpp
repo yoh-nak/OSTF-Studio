@@ -1,8 +1,9 @@
 #include "ui/DeviceSettingsWindow.h"
+#include "ui/MidiActivityLamp.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 
 namespace {
-class DeviceSettingsContent final : public juce::Component, private juce::ChangeListener {
+class DeviceSettingsContent final : public juce::Component, private juce::ChangeListener, private juce::MidiInputCallback, private juce::AsyncUpdater {
 public:
     DeviceSettingsContent() {
         juce::PropertiesFile::Options options;
@@ -20,7 +21,11 @@ public:
                 if (id.isNotEmpty()) devices_.setMidiInputDeviceEnabled(id, true);
             }
         }
-        setSize(590, 580);
+        devices_.addMidiInputDeviceCallback({}, this);
+        activity_.setText(TRANS("MIDI input activity"), juce::dontSendNotification);
+        addAndMakeVisible(lamp_);
+        addAndMakeVisible(activity_);
+        setSize(590, 610);
     }
 
     void prepareAudio() {
@@ -53,6 +58,8 @@ public:
     }
 
     ~DeviceSettingsContent() override {
+        devices_.removeMidiInputDeviceCallback({}, this);
+        cancelPendingUpdate();
         devices_.removeChangeListener(this);
         if (selector_) save();
     }
@@ -60,6 +67,9 @@ public:
     void resized() override {
         auto bounds = getLocalBounds().reduced(12);
         status_.setBounds(bounds.removeFromTop(24));
+        auto signal = bounds.removeFromTop(23);
+        lamp_.setBounds(signal.removeFromLeft(20));
+        activity_.setBounds(signal);
         viewport_.setBounds(bounds);
         if (selector_) selector_->setSize(juce::jmax(320, bounds.getWidth() - viewport_.getScrollBarThickness()), bounds.getHeight());
     }
@@ -73,7 +83,47 @@ public:
 
     juce::AudioDeviceManager& devices() { return devices_; }
 
+    bool enableTrackInput(const juce::MidiDeviceInfo& port) {
+        devices_.setMidiInputDeviceEnabled(port.identifier, true);
+        if (!devices_.isMidiInputDeviceEnabled(port.identifier)) return false;
+        if (selector_) { save(); return true; }
+        // Opening a track input alone must preserve the saved audio driver and channels.
+        if (!saved_) saved_ = std::make_unique<juce::XmlElement>("DEVICESETUP");
+        for (auto* elm : saved_->getChildWithTagNameIterator("MIDIINPUT"))
+            if (elm->getStringAttribute("identifier") == port.identifier) return true;
+        auto* entry = saved_->createNewChildElement("MIDIINPUT");
+        entry->setAttribute("identifier", port.identifier);
+        entry->setAttribute("name", port.name);
+        properties_.getUserSettings()->setValue("deviceSetup", saved_.get());
+        properties_.saveIfNeeded();
+        return true;
+    }
+
 private:
+    MidiActivityLamp lamp_;
+    juce::Label activity_;
+    juce::SpinLock activityLock_;
+    juce::String lastPort_;
+    int lastChannel_ = 0;
+    void handleIncomingMidiMessage(juce::MidiInput* input, const juce::MidiMessage& message) override {
+        if (!input) return;
+        {
+            const juce::SpinLock::ScopedLockType lock(activityLock_);
+            lastPort_ = input->getName(); lastChannel_ = message.getChannel();
+        }
+        triggerAsyncUpdate();
+    }
+    void handleAsyncUpdate() override {
+        if (!isShowing()) return;
+        juce::String port;
+        int channel;
+        {
+            const juce::SpinLock::ScopedLockType lock(activityLock_);
+            port = lastPort_; channel = lastChannel_;
+        }
+        lamp_.pulse();
+        activity_.setText("MIDI IN  " + port + (channel > 0 ? "  Ch " + juce::String(channel) : juce::String{}), juce::dontSendNotification);
+    }
     void changeListenerCallback(juce::ChangeBroadcaster*) override { save(); }
 
     juce::ApplicationProperties properties_;
@@ -103,4 +153,8 @@ juce::AudioDeviceManager& DeviceSettingsWindow::devices() {
 
 juce::AudioDeviceManager& DeviceSettingsWindow::midiDevices() {
     return static_cast<DeviceSettingsContent*>(getContentComponent())->devices();
+}
+
+bool DeviceSettingsWindow::enableTrackInput(const juce::MidiDeviceInfo& port) {
+    return static_cast<DeviceSettingsContent*>(getContentComponent())->enableTrackInput(port);
 }

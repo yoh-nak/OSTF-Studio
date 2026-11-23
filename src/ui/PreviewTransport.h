@@ -1,5 +1,6 @@
 #pragma once
 #include "ui/ControllerMap.h"
+#include "ui/MidiInputRoute.h"
 
 #include "ui/OstfpPreview.h"
 #include "core/MixerState.h"
@@ -32,6 +33,7 @@ public:
         bool countIn = false;
         const std::array<int, 128>* drumMapping = nullptr;
         ostfstudio::ControllerMap surface;
+        ostfstudio::MidiInputRoute midiInput;
     };
     std::atomic<bool> metronome{false};
     juce::Range<juce::int64> recordedRange() const;
@@ -45,7 +47,7 @@ public:
     void prepareRecording(const ostfstudio::OstfpPreview &, std::span<const TrackSetup>,
                           std::optional<size_t> inputTrack);
     void inputNote(const juce::MidiMessage &message);
-    void inputFromDevice(const juce::MidiMessage&);
+    void inputFromDevice(const juce::MidiMessage&, const juce::String& port = {});
     struct Cursor { juce::int64 tick; double seconds; };
     std::vector<ostfstudio::PitchedNote> stop(Cursor* stoppedAt = nullptr);
     juce::Result updateLoopNotes(const ostfstudio::OstfpPreview&);
@@ -132,6 +134,7 @@ private:
     std::array<int, 128> inputMap_{};
     bool mapInput_ = false;
     ostfstudio::ControllerMap surface_;
+    ostfstudio::MidiInputRoute midiInput_;
     juce::AudioBuffer<float> captured_;
     int captureOrigin_ = 0, captureFirst_ = 0, captureEnd_ = 0;
     std::mutex recordingMutex_;

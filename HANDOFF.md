@@ -1,10 +1,16 @@
 # OSTF Studio development handoff
 
+## MIDI input routing
+
+On `feature/midi-input-routing`, open M-VAVE from Settings. The generic profile learns up to 16 notes and eight CC controls. The panel can launch the installed vendor editor. Per-track IN filters by port and channel, a lamp shows matching input, and R arms one destination. Audio rows omit all fit lanes. ChatGPT shows connection state in the global header and supports a locally saved choice of analysis model.
+
+On the local Windows machine, the OS enumerated SMK25II-bt, SMK25II-bt-DAW and MiniFuse 4 MIDI In. The routing regression injects matching and nonmatching MIDI messages and checks the recorded notes. The layout regression enables both fit lanes, measures the spacing between audio tracks, and checks fixed-height fit lanes on pitched tracks under vertical zoom. The Windows x64 Release passed all 24 CTest cases on a sequential run and both GUI-free core checks passed. During packaging two tests timed out and one portable GUI smoke run hung. The two tests then passed individually, and both track view and transport passed in the final extracted portable build. Local installer and ZIP are in `dist/windows-midi-input-routing`. Account consent, physical pad and knob input, vendor preset writes and macOS remain unverified.
+
 ## Controller workspace
 
 Branch `feature/controller-workspace` uses a dedicated Studio CLI profile for browser sign-in and puts the connection controls to the left of the global timeline labels. Import placement can extend a score transactionally and write pitched and drum notes into editable clips. The arrangement accepts new parts outside compatible tracks. Melody rows start at 100 px plus independent fit lanes.
 
-Open M-VAVE in the timeline header. The SMK-25 II profile follows the selected drum kit. Its initial input preset is notes 36–51 on channel 10 and CC16–23 on channel 1. MIDI Learn can adapt it to the physical preset. The SMC-Mixer input profile supports the first eight Mackie faders and pan encoders in each track bank. Account consent, physical control movement, hardware output and macOS require separate verification.
+On the earlier controller-workspace build, M-VAVE opened from the timeline header. The SMK-25 II profile follows the selected drum kit. Its initial input preset is notes 36–51 on channel 10 and CC16–23 on channel 1. MIDI Learn can adapt it to the physical preset. The SMC-Mixer input profile supports the first eight Mackie faders and pan encoders in each track bank. Account consent, physical control movement, hardware output and macOS require separate verification.
 
 Windows PDF analysis renders each page in a disposable worker. A debugger reproduced an intermittent shutdown exception (0x87a) inside Windows.Data.Pdf and DXGI after the analysis had already succeeded. The worker releases its page, files and COM objects before stopping. The main process consumes one rendered page at a time.
 

@@ -75,11 +75,14 @@ bool checkPerformanceAudio() {
         mapping[61] = 36;
         PreviewTransport::TakeOptions setup;
         setup.drumMapping = &mapping;
+        setup.midiInput = {"test-port", "Test keyboard", 1};
         if (capture.prepareTake(setup).failed()) return false;
-        capture.inputFromDevice(juce::MidiMessage::noteOn(1, 61, juce::uint8(87)));
+        capture.inputFromDevice(juce::MidiMessage::noteOn(1, 61, juce::uint8(127)), "other-port");
+        capture.inputFromDevice(juce::MidiMessage::noteOn(2, 61, juce::uint8(127)), "test-port");
+        capture.inputFromDevice(juce::MidiMessage::noteOn(1, 61, juce::uint8(87)), "test-port");
         capture.inputNote(juce::MidiMessage::noteOn(1, 37, juce::uint8(127)));
         capture.renderBlock(audio.getArrayOfWritePointers(), 2, 64);
-        capture.inputFromDevice(juce::MidiMessage::noteOff(1, 61));
+        capture.inputFromDevice(juce::MidiMessage::noteOff(1, 61), "test-port");
         capture.renderBlock(audio.getArrayOfWritePointers(), 2, 32);
         const auto hits = capture.stop();
         if (hits.size() != 1 || hits[0].pitch != 36 || hits[0].velocity != 87 || hits[0].startTick != 0 ||

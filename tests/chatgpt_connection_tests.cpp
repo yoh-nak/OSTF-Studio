@@ -12,6 +12,14 @@ int main(int argc, char **argv) {
             !args.contains("cli_auth_credentials_store=file") || !args.contains("forced_login_method=chatgpt"))
             return 11;
         auto state = juce::File(home).getChildFile("fixture-state");
+        if (args.contains("debug") && args.contains("models")) {
+            std::cout << R"({"models":[{"slug":"test-score","visibility":"list"},{"slug":"internal","visibility":"hide"}]})";
+            return 0;
+        }
+        if (args.contains("exec")) {
+            if (args[args.indexOf("--model") + 1] != "test-score") return 15;
+            return juce::File(args[args.indexOf("-o")+1]).replaceWithText("{}") ? 0 : 16;
+        }
         if (args.contains("logout"))
             return state.deleteFile() ? 0 : 12;
         if (!args.contains("login"))
@@ -28,7 +36,7 @@ int main(int argc, char **argv) {
     const auto profile = juce::File::getSpecialLocation(juce::File::tempDirectory)
                              .getChildFile("ostf-login-test-" + juce::Uuid().toString());
     juce::ScopeGuard cleanup{[&] { profile.deleteRecursively(); }};
-    const auto service = chatGptProvider(juce::File::getSpecialLocation(juce::File::currentExecutableFile), profile);
+    const auto service = chatGptProvider(juce::File::getSpecialLocation(juce::File::currentExecutableFile), profile, "test-score");
     int linkCount = 0;
     auto opened = [&](const juce::URL &url) {
         if (url.toString(true) == "https://auth.openai.com/oauth/authorize?state=test")
@@ -38,6 +46,9 @@ int main(int argc, char **argv) {
         return 1;
     if (service->connect(opened).failed() || linkCount != 2 || profile.getChildFile("fixture-state").getSize() != 2)
         return 2;
+    juce::var response;
+    if (service->availableModels() != juce::StringArray{"test-score"} ||
+        service->request("example", "{}", {}, response).failed()) return 5;
     if (service->disconnect().failed() || service->connected())
         return 3;
     return juce::SystemStats::getEnvironmentVariable("CODEX_HOME", {}) == home ? 0 : 4;

@@ -62,7 +62,8 @@ private:
     void connectController(juce::MidiDeviceInfo);
     void refreshController();
     void applySurfaceAction(ostfstudio::SurfaceAction);
-    juce::TextButton surfaceButton_{"M-VAVE"};
+    void openHardwareEditor();
+    std::unique_ptr<juce::FileChooser> hardwareChooser_;
     std::unique_ptr<juce::DocumentWindow> surfaceWindow_;
     ControllerSurface* surfacePanel_ = nullptr;
     juce::MidiDeviceListConnection surfaceDevices_;
@@ -128,6 +129,16 @@ private:
     juce::PopupMenu timelineMenu() const;
     void selectTrack(std::size_t index);
     void rebuildTrackControls();
+    void showTrackInput(std::size_t);
+    void setRecordArm(std::size_t, bool);
+    void refreshMidiRoutes();
+    void saveMidiRoutes();
+    juce::String armedId_, midiDocument_;
+    std::map<juce::String, ostfstudio::MidiInputRoute> midiRoutes_;
+    struct InputMonitor { ostfstudio::MidiInputRoute route; bool received = false; };
+    std::vector<InputMonitor> inputMonitors_;
+    std::optional<std::size_t> drumInputMonitor_;
+    int surfaceInputStatus_ = -1, surfaceInputData_ = 0;
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
                     std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched,
                     const ImportResultRow* import = nullptr, juce::int64 tick = 0);
@@ -232,6 +243,8 @@ private:
     std::size_t noteHistoryCursor_ = 0;
     struct TrackControls {
         LevelMeter meter;
+        MidiActivityLamp inputLamp;
+        juce::TextButton arm{"R"}, input{"IN"};
         TrackRowSize size;
         juce::TextButton mute {"M"};
         juce::TextButton solo {"S"};
@@ -313,12 +326,29 @@ private:
     void placeWav(const juce::File&, std::size_t track, juce::int64 tick, bool replace);
     void openSplice();
     void aiConnectionMenu();
+    void displayAiState(const juce::String&, juce::uint32);
+    juce::String aiModel_;
+    juce::StringArray aiModels_;
     enum class AccountAction { restore, login, logout };
     void updateAiConnection(AccountAction);
     juce::URL signInUrl_;
     bool signInPending_ = false;
     ostfstudio::AnalysisConnection activeAi_;
-    juce::TextButton aiButton_{TRANS("Connect ChatGPT...")};
+    struct ConnectionButton final : juce::TextButton {
+        void paintButton(juce::Graphics& g, bool hover, bool down) override {
+            auto b = getLocalBounds().toFloat().reduced(1);
+            auto colour = findColour(buttonColourId);
+            g.setColour(down ? colour.darker(.15f) : hover ? colour.brighter(.10f) : colour);
+            g.fillRoundedRectangle(b, 7);
+            g.setColour(colour.brighter(.48f));
+            g.drawRoundedRectangle(b, 7, 1.5f);
+            auto light = b.removeFromLeft(26).withSizeKeepingCentre(8, 8);
+            g.setColour(juce::Colours::white);
+            g.fillEllipse(light);
+            g.setFont(juce::FontOptions(15.f, juce::Font::bold));
+            g.drawFittedText(getButtonText(), b.toNearestInt().withTrimmedRight(6), juce::Justification::centredLeft, 2);
+        }
+    } aiButton_;
     juce::ThreadPool aiConnectionWorker_{1};
     bool spliceLoading_ = false;
     std::unique_ptr<juce::AudioPluginInstance> spliceInstance_;
