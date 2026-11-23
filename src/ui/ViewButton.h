@@ -4,7 +4,7 @@
 
 class ViewButton final : public juce::Button {
 public:
-    enum class Icon { piano, mixer, plugins, outputs, lanes };
+    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
 
     void paintButton(juce::Graphics& g, bool hover, bool down) override {
@@ -16,6 +16,22 @@ public:
         const float x = rect.getCentreX() - 10, y = rect.getCentreY() - 9;
         const auto line = [&](int x1, int y1, int x2, int y2) { g.drawLine(x+x1, y+y1, x+x2, y+y2, 1.6f); };
         switch (icon_) {
+            case Icon::arrangement:
+                line(1, 1, 1, 17);
+                g.fillRoundedRectangle(x+4, y+2, 10, 3, 1);
+                g.fillRoundedRectangle(x+9, y+8, 11, 3, 1);
+                g.fillRoundedRectangle(x+4, y+14, 13, 3, 1);
+                break;
+            case Icon::leadSheet:
+                g.drawRoundedRectangle(x+1, y+1, 18, 16, 2, 1.4f);
+                line(4, 5, 9, 5); line(12, 5, 16, 5);
+                line(4, 9, 7, 9); line(4, 13, 14, 13);
+                break;
+            case Icon::score:
+                for (int i : {5, 9, 13}) g.drawLine(x, y+i, x+20, y+i, .8f);
+                line(7, 13, 7, 3); line(7, 3, 15, 1); line(15, 1, 15, 11);
+                g.fillEllipse(x+2, y+12, 5, 4); g.fillEllipse(x+10, y+10, 5, 4);
+                break;
             case Icon::piano:
                 g.drawRect(x, y+2, 20.0f, 14.0f, 1.6f);
                 for (int i : {5, 10, 15}) line(i, 3, i, 15);

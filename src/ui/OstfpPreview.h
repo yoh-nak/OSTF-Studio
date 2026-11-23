@@ -2,8 +2,10 @@
 
 #include "ui/ArrangementView.h"
 #include "core/MixerState.h"
+#include "core/TempoMap.h"
 #include <juce_core/juce_core.h>
 #include <deque>
+#include <map>
 #include <vector>
 
 namespace ostfstudio {
@@ -36,6 +38,14 @@ struct SessionMix {
     std::array<juce::String, 3 + maxMixerReturns> insertIds;
     std::array<juce::StringArray, 3 + maxMixerReturns> outputEffects;
     std::vector<juce::StringArray> trackEffects;
+    // Normalized to the displayed channel and slot when reading a production document.
+    std::map<juce::String, juce::String> stockEffectStates;
+    static juce::String effectSlot(bool output, std::size_t channel, int slot) {
+        const auto n = static_cast<int>(channel);
+        const auto id = !output ? "track-" + juce::String(n + 1)
+            : n == 0 ? juce::String("master") : n < 3 ? "bus-" + juce::String(n) : "return-" + juce::String(n - 2);
+        return id + "-fx-" + juce::String(slot + 1);
+    }
     std::vector<bool> audioTracks;
 };
 
@@ -48,13 +58,30 @@ struct ProjectAudio {
 
 enum class TrackKind { pitched, drum, audio };
 
+struct SongCredit {
+    juce::String id, contributorId, role, name;
+};
+struct SongInformation {
+    juce::String title, subtitle, description;
+    std::vector<SongCredit> credits;
+};
+
 struct OstfpPreview {
+    juce::int64 playbackEndTick() const { return (bars.endBar - 1) * ticksPerBar; }
     static constexpr std::size_t maxTracks = 8;
     juce::String title;
+    juce::String sourceVersion;
+    juce::int64 durationTicks = 0;
     BarSpan bars {1, 1};
     juce::int64 ticksPerBar = 0;
     juce::int64 ppq = 0;
     double previewBpm = 0.0; // A non-zero value denotes one fixed source tempo.
+    TempoMap clock;
+    int meterBeats = 4, beatUnit = 4;
+    juce::String defaultScale;
+    juce::String contextAt(TimelineLane kind, juce::int64 tick) const;
+    SongInformation songInformation() const;
+    juce::Result applySongInformation(const SongInformation&);
     std::vector<ArrangementLane> globalLanes, trackLanes;
     std::vector<std::vector<PitchedNote>> pitchedNotes, drumNotes;
     struct ProgramChange { juce::int64 tick; int program; std::optional<int> channel; };

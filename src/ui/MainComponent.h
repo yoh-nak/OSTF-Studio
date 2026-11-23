@@ -7,6 +7,9 @@
 #include "ui/PluginBrowser.h"
 #include "ui/PreviewTransport.h"
 #include "ui/ViewButton.h"
+#include "ui/TrackRowSize.h"
+#include "ui/ScoreView.h"
+#include "ui/TransportPanel.h"
 
 class MainComponent final : public juce::Component, public juce::DragAndDropContainer,
                             public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
@@ -14,10 +17,12 @@ public:
     MainComponent();
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
+    void displayTransportPosition(juce::int64 tick, double seconds = -1);
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 private:
     bool isInterestedInDragSource(const SourceDetails& details) override;
     void itemDragMove(const SourceDetails& details) override;
@@ -25,12 +30,20 @@ private:
     void itemDropped(const SourceDetails& details) override;
     std::optional<std::size_t> pluginDropTrack(juce::Point<int> position) const;
     void timerCallback() override;
-    void scrollBarMoved(juce::ScrollBar*, double) override { repaint(); }
+    void scrollBarMoved(juce::ScrollBar*, double) override;
     void updateHorizontalRange(bool piano, bool reset = false);
+    enum class HeightGroup { all = 1, global, lanes, voicing, melody, vocal, arrangement, pitched, drums, audio,
+                             outputs, master, bus, returns, count };
+    HeightGroup trackHeightGroup(std::size_t index) const;
+    static HeightGroup outputHeightGroup(std::size_t index);
+    static bool includesHeightGroup(HeightGroup scope, HeightGroup group);
+    void applyGroupHeight();
+    void refreshGroupHeight();
     ostfstudio::TimelineExtent horizontalRange(bool piano) const;
     void startTransport(bool recording);
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
     void stopTransport();
+    void navigateTransport(TransportKey::Action);
     void updateTransportMix();
     void togglePluginBrowser();
     juce::Rectangle<int> getWorkspace() const;
@@ -42,8 +55,10 @@ private:
     juce::PopupMenu getMenuForIndex(int index, const juce::String&) override;
     void menuItemSelected(int item, int topLevelMenuIndex) override;
     void inspectOSTF();
-    void openDemo();
-    bool openPreview(juce::InputStream& input, bool plainScore = false, const juce::File& sourceFolder = {});
+    void newProject();
+    bool openPreview(juce::InputStream& input, const juce::String& filename, bool plainScore = false, const juce::File& sourceFolder = {});
+    void editSongInformation();
+    void updateDocumentLabel();
     enum class SaveFormat { score, package, midi0, midi1 };
     void saveDocument(SaveFormat);
     juce::PopupMenu timelineMenu() const;
@@ -61,6 +76,7 @@ private:
     void setupOutputTracks();
     struct EffectSlot {
         juce::String id;
+        juce::String savedState;
         std::unique_ptr<juce::AudioPluginInstance> effect;
         std::unique_ptr<juce::DocumentWindow> editor;
     };
@@ -79,11 +95,16 @@ private:
     void showTrackMix(std::size_t index);
     void updatePresetLabel(std::size_t index);
     void refreshEditor();
+    enum class WorkspaceMode { arrangement, leadSheet, score };
+    void setWorkspaceMode(WorkspaceMode);
+    WorkspaceMode workspaceMode_ = WorkspaceMode::arrangement;
     bool canExportTrack(std::size_t track) const;
     bool writeTrackMidi(std::size_t track, juce::OutputStream& stream) const;
     void drawArrangement(juce::Graphics& g, juce::Rectangle<int> area, const ostfstudio::ArrangementView& view);
     void drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) const;
     struct TrackControls {
+        LevelMeter meter;
+        TrackRowSize size;
         juce::TextButton mute {"M"};
         juce::TextButton solo {"S"};
         juce::Slider volume, pan;
@@ -103,21 +124,33 @@ private:
     juce::MenuBarComponent menuBar_;
     ViewButton pianoButton_ {ViewButton::Icon::piano}, mixerButton_ {ViewButton::Icon::mixer},
                pluginBrowserButton_ {ViewButton::Icon::plugins}, outputButton_ {ViewButton::Icon::outputs},
-               lanesButton_ {ViewButton::Icon::lanes};
+               lanesButton_ {ViewButton::Icon::lanes}, arrangementButton_ {ViewButton::Icon::arrangement},
+               leadButton_ {ViewButton::Icon::leadSheet}, scoreButton_ {ViewButton::Icon::score};
     juce::TooltipWindow tooltips_ {this};
-    bool editorVisible_ = true;
-    juce::TextButton playButton_ {TRANS("Play")}, stopButton_ {TRANS("Stop")}, recordButton_ {TRANS("Record MIDI")};
-    juce::Label transportPosition_;
+    bool editorVisible_ = true, mixerSelected_ = false;
+    TransportPanel deck_;
+    juce::Label documentLabel_;
+    juce::String currentFilename_;
+    juce::File legacySourceFile_;
+    juce::int64 cursorTick_ = -1;
     juce::ComboBox trackPicker_;
     juce::ComboBox performanceLane_;
-    juce::ComboBox arrangementZoom_, pianoZoom_;
+    juce::Slider arrangementZoom_, pianoZoom_, groupHeight_;
+    juce::ComboBox heightScope_;
+    juce::Label heightLabel_, arrangementZoomLabel_, pianoZoomLabel_;
+    std::array<int, static_cast<std::size_t>(HeightGroup::count)> groupDefaults_ {};
+    bool mixedHeights_ = false;
     juce::ScrollBar arrangementScroll_ {false}, pianoScroll_ {false};
+    juce::Component rowOverlay_;
+    juce::ScrollBar verticalScroll_ {true};
     juce::StringArray performanceLaneNames_;
     MidiDragButton midiDrag_;
     juce::TemporaryFile trackMidiFile_ {".mid"};
     std::optional<std::size_t> pendingMidiDrag_;
     MixerPanel mixer_;
     std::unique_ptr<DeviceSettingsWindow> deviceSettings_;
+    std::unique_ptr<ScoreView> scoreView_;
+    std::unique_ptr<juce::DocumentWindow> importWindow_;
     PreviewTransport transport_;
     bool transportActive_ = false;
     std::optional<std::size_t> recordTrack_;
@@ -133,6 +166,8 @@ private:
     std::unique_ptr<PluginBrowser> pluginBrowser_;
     std::vector<std::unique_ptr<TrackControls>> trackControls_;
     struct OutputControl {
+        LevelMeter meter;
+        TrackRowSize size;
         EffectChain effects;
         juce::Slider volume;
         juce::TextButton mute {"M"};

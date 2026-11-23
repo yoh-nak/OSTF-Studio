@@ -177,6 +177,11 @@ private:
 };
 }
 
+int checkStockEffects(const juce::StringArray&);
+int checkTrackView(const juce::File&);
+int checkNotation(const juce::File&, const juce::File&);
+int checkTransport(const juce::File&, const juce::File&);
+
 class OSTFStudioApplication final : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "OSTF Studio"; }
@@ -185,6 +190,34 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
+        if (args.size() == 3 && args[0] == "--transport-smoke") {
+            juce::MessageManager::callAsync([this, args] {
+                setApplicationReturnValue(checkTransport(juce::File(args[1]), juce::File(args[2])));
+                quit();
+            });
+            return;
+        }
+        if (args.size()==3 && args[0]=="--notation-smoke") {
+            juce::MessageManager::callAsync([this,args]{
+                setApplicationReturnValue(checkNotation(juce::File(args[1]),juce::File(args[2])));
+                quit();
+            });
+            return;
+        }
+        if (args.size() == 2 && args[0] == "--track-view-smoke") {
+            juce::MessageManager::callAsync([this, args] {
+                setApplicationReturnValue(checkTrackView(juce::File(args[1])));
+                quit();
+            });
+            return;
+        }
+        if (args.size() == 4 && args[0] == "--stock-effects-smoke") {
+            juce::MessageManager::callAsync([this, args] {
+                setApplicationReturnValue(checkStockEffects(args));
+                quit();
+            });
+            return;
+        }
         if (args.size() == 1 && args[0] == "--asio-backend-smoke") {
             std::unique_ptr<juce::AudioIODeviceType> backend(juce::AudioIODeviceType::createAudioIODeviceType_ASIO());
             setApplicationReturnValue(backend && backend->getTypeName() == "ASIO" ? 0 : 1);
@@ -212,7 +245,7 @@ public:
         startup_ = std::make_unique<StartupScreen>();
         juce::Timer::callAfterDelay(45, [this, startupSmoke] {
             if (!startup_) return;
-            startup_->setStage(TRANS("Preparing timeline and demo project..."), 0.65f);
+            startup_->setStage(TRANS("Preparing workspace..."), 0.65f);
             juce::Timer::callAfterDelay(45, [this, startupSmoke] {
                 if (!startup_) return;
                 mainWindow_ = std::make_unique<MainWindow>(getApplicationName());

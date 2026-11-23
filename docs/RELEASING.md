@@ -19,7 +19,9 @@ The CMake project version is the numeric product version. The Git tag identifies
 
 ## Windows install and upgrade
 
-Setup installs for the current user. It uses the same Inno Setup `AppId` for every version and looks up the previous installation directory to update in place. The installer tracks its own executable and Start menu shortcut. User settings, `.ostf` and `.ostfp` files, and third-party plugins are outside that inventory and survive setup and uninstall. The Portable ZIP contains the app executable and can be extracted to a user-selected directory. Windows may need the Microsoft Visual C++ x64 Redistributable for binaries built with MSVC.
+Setup updates the current user's application in its previous directory using the existing Inno Setup `AppId`. The shared VST3 task starts a second, administrator-approved installer for the two instruments and nine effects in `%CommonProgramFiles%\VST3\OSTF Studio`. Its separate Windows uninstall entry is **OSTF Studio VST3 Plug-ins**. Shared setup compares same-version plug-in binaries by content, installs missing files and leaves running DAWs open. Save and close a DAW before updating a changed binary it has loaded. Interactive setup offers to continue with the application alone if elevation or shared installation fails. In silent installs, use `/TASKS=sharedvst3` to require shared installation or `/MERGETASKS=!sharedvst3` for the application alone. Both installers write setup logs to the installing account's temporary directory.
+
+After a successful shared install, Setup checks the class IDs of previous per-user bundles and moves recognized copies to `%LOCALAPPDATA%\OSTF Studio\Previous VST3`. User settings, score files and third-party plug-ins remain outside the installers' inventories. The Portable ZIP keeps the plug-ins beside the application. Windows may need the Microsoft Visual C++ x64 Redistributable for binaries built with MSVC.
 
 To build the packages on Windows after the Release GUI build, install Inno Setup 6 and run this from the repository root. Use `-InnoCompiler` to give the script an alternate path to `ISCC.exe`.
 
@@ -34,6 +36,8 @@ The Windows alpha enables ASIO under the GPLv3 SDK option and also supports WASA
 Windows packages currently have no Authenticode signing configured or verified. Validate the installer and portable executable on Windows independently of compilation and archive verification.
 
 ## macOS signing and notarization
+
+Run **Install OSTF Studio and VST3.pkg** in the DMG to install the application in `/Applications` and all eleven bundles in `/Library/Audio/Plug-Ins/VST3`. The packaging job installs the PKG on its runner and verifies each arm64 binary at its destination.
 
 The current DMG contains a preview `.app` with no Developer ID signature or Apple notarization. For signed distribution:
 

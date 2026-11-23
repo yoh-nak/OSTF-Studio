@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 project(OSTFStudio VERSION 1.0.0 LANGUAGES C CXX)
-set(OSTF_STUDIO_ALPHA_NUMBER 2)
+set(OSTF_STUDIO_ALPHA_NUMBER 3)
 if(NOT DEFINED OSTF_STUDIO_DISPLAY_VERSION)
     set(OSTF_STUDIO_DISPLAY_VERSION "${PROJECT_VERSION}-alpha.${OSTF_STUDIO_ALPHA_NUMBER}")
 endif()
@@ -30,6 +30,37 @@ if (OSTF_STUDIO_BUILD_GUI)
         GIT_SHALLOW TRUE
     )
     FetchContent_MakeAvailable(JUCE)
+
+    set(JSONCONS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    if(POLICY CMP0135)
+        cmake_policy(SET CMP0135 NEW)
+    endif()
+    FetchContent_Declare(jsoncons
+        URL https://codeload.github.com/danielaparker/jsoncons/zip/refs/tags/v1.5.0
+        URL_HASH SHA256=6de746d3fd381937c9fc58ed47df7404792881b9ba924d43124dc6fb7c22f741)
+    FetchContent_MakeAvailable(jsoncons)
+    set(score_schemas)
+    foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0 5.0.0)
+        list(APPEND score_schemas "third_party/ostf-schemas/ostf-${version}.schema.json")
+    endforeach()
+    juce_add_binary_data(OSTFScoreSchemas HEADER_NAME ScoreSchemas.h NAMESPACE ScoreSchemas SOURCES ${score_schemas})
+    add_library(ostf_score_validation STATIC src/core/ScoreSchema.cpp)
+    target_link_libraries(ostf_score_validation PRIVATE jsoncons OSTFScoreSchemas)
+    if(MSVC)
+        target_compile_options(ostf_score_validation PRIVATE /bigobj)
+    endif()
+
+    set(effect_catalog "${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/effects/catalog.json")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${effect_catalog}")
+    file(READ "${effect_catalog}" effects)
+    string(JSON effect_count LENGTH "${effects}")
+    math(EXPR last_effect "${effect_count}-1")
+    # Share the JUCE modules and DSP across all nine wrappers.
+    add_library(ostf_effect_dsp STATIC src/plugins/effects/StudioEffect.cpp)
+    set_target_properties(ostf_effect_dsp PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+    target_compile_definitions(ostf_effect_dsp PUBLIC JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
+    target_link_libraries(ostf_effect_dsp PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_recommended_config_flags)
+    target_include_directories(ostf_effect_dsp INTERFACE "$<TARGET_PROPERTY:juce::juce_core,INTERFACE_JUCE_MODULE_PATH>")
 
     juce_add_plugin(OSTFArranger
         COMPANY_NAME "OSTF Studio"
@@ -87,14 +118,16 @@ if (OSTF_STUDIO_BUILD_GUI)
         set_source_files_properties(${ostf_document_icons} PROPERTIES MACOSX_PACKAGE_LOCATION Resources HEADER_FILE_ONLY TRUE)
     endif()
     juce_add_binary_data(OSTFStudioAssets SOURCES
-        assets/AppIcon.png assets/Japanese.txt tests/fixtures/10-comprehensive-core.ostfp
+        assets/AppIcon.png assets/Japanese.txt assets/NewProject.ostf
         examples/demo-songs/neon-platforms.ostfp examples/demo-songs/blue-hour-waltz.ostfp
-        examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp)
+        examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp
+        examples/demo-songs/copper-mile.ostfp examples/demo-songs/first-light-vector.ostfp)
     juce_generate_juce_header(OSTFStudio)
     target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/OstfpPreview.cpp
         src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
-        src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp)
-    target_include_directories(OSTFStudio PRIVATE src)
+        src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/MediaImport.cpp
+        tests/stock_effects_smoke.cpp tests/track_view_smoke.cpp tests/notation_smoke.cpp tests/transport_smoke.cpp)
+    target_include_directories(OSTFStudio PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(OSTFStudio PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
     target_compile_definitions(OSTFStudio PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
     if (WIN32)
@@ -102,6 +135,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     endif()
     target_link_libraries(OSTFStudio PRIVATE
         ostf_studio_core
+        ostf_score_validation
         OSTFStudioAssets
         juce::juce_gui_extra
         juce::juce_audio_utils
@@ -109,13 +143,19 @@ if (OSTF_STUDIO_BUILD_GUI)
         juce::juce_recommended_config_flags
     )
     include(packaging/collect-notices.cmake)
+    add_subdirectory(src/plugins/effects)
+    configure_file(src/plugins/effects/StockEffects.h.in generated/StockEffects.h @ONLY)
 
     add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
-    target_include_directories(ostf_studio_ostfp_tests PRIVATE src)
+    target_include_directories(ostf_studio_ostfp_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(ostf_studio_ostfp_tests PRIVATE JUCE_USE_CURL=0)
-    target_link_libraries(ostf_studio_ostfp_tests PRIVATE juce::juce_cryptography juce::juce_audio_basics)
+    target_link_libraries(ostf_studio_ostfp_tests PRIVATE ostf_score_validation juce::juce_cryptography juce::juce_audio_basics)
     add_test(NAME ostf_studio_ostfp_tests COMMAND ostf_studio_ostfp_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
+    foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0)
+        add_test(NAME ostf_studio_read_${version} COMMAND ostf_studio_ostfp_tests --legacy
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/legacy/${version}.ostf")
+    endforeach()
     add_test(NAME ostf_studio_demo_gallery COMMAND ostf_studio_ostfp_tests --gallery
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs")
     add_test(NAME ostf_studio_song_midi COMMAND ostf_studio_ostfp_tests --smf
@@ -128,6 +168,15 @@ if (OSTF_STUDIO_BUILD_GUI)
     endif()
     if (WIN32 OR APPLE)
         add_test(NAME ostf_studio_startup COMMAND OSTFStudio --startup-smoke)
+        add_test(NAME ostf_studio_transport COMMAND OSTFStudio --transport-smoke
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp" "${CMAKE_CURRENT_BINARY_DIR}/transport-check")
+        set_tests_properties(ostf_studio_transport PROPERTIES TIMEOUT 90)
+        add_test(NAME ostf_studio_notation COMMAND OSTFStudio --notation-smoke
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostfp" "${CMAKE_CURRENT_BINARY_DIR}/notation-check")
+        set_tests_properties(ostf_studio_notation PROPERTIES TIMEOUT 120)
+        add_test(NAME ostf_studio_track_view COMMAND OSTFStudio --track-view-smoke
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
+        set_tests_properties(ostf_studio_track_view PROPERTIES TIMEOUT 20)
         add_test(NAME ostf_studio_open_project
             COMMAND OSTFStudio --startup-smoke "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
         add_test(NAME ostf_studio_open_score
@@ -140,5 +189,9 @@ if (OSTF_STUDIO_BUILD_GUI)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tinysoundfont-saw.sf2"
             "$<TARGET_FILE_DIR:OSTFArranger_VST3>/../..")
         set_tests_properties(ostf_studio_gm_plugin PROPERTIES TIMEOUT 20)
+        add_test(NAME ostf_studio_stock_effects COMMAND OSTFStudio --stock-effects-smoke
+            "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../.."
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/blue-hour-waltz.ostfp")
+        set_tests_properties(ostf_studio_stock_effects PROPERTIES TIMEOUT 90)
     endif()
 endif()

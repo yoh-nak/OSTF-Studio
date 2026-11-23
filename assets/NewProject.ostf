@@ -1,0 +1,17 @@
+{
+  "format": "OSTF",
+  "version": "5.0.0",
+  "ppq": 960,
+  "song": { "title": "Untitled" },
+  "timeline": {
+    "duration": 122880,
+    "sections": [],
+    "meterChanges": [{ "at": 0, "numerator": 4, "denominator": 4 }],
+    "tempoChanges": [{ "at": 0, "bpm": 120 }]
+  },
+  "harmony": { "chords": [], "scales": [] },
+  "tracks": [],
+  "soundSlots": [],
+  "lyrics": { "documents": [], "phrases": [], "units": [], "alignments": [] },
+  "resources": []
+}

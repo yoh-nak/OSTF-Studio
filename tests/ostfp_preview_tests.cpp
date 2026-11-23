@@ -1,12 +1,37 @@
 #include "ui/OstfpPreview.h"
+#include "StockEffects.h"
 #include "ui/SongMidi.h"
 #include "ui/StudioLanguage.h"
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_cryptography/juce_cryptography.h>
 #include <algorithm>
 #include <iostream>
 #include <string_view>
 
 static int checkGallery(const juce::File& directory) {
+    const auto templateFile = directory.getParentDirectory().getParentDirectory().getChildFile("assets/NewProject.ostf");
+    juce::FileInputStream templateStream(templateFile);
+    std::unique_ptr<ostfstudio::OstfpPreview> fresh;
+    const auto opened = ostfstudio::readOstfPreview(templateStream, fresh);
+    if (opened.failed() || !fresh->trackLanes.empty() || fresh->previewBpm != 120 || fresh->bars.endBar != 33) {
+        std::cerr << "Unexpected blank template: " << templateFile.getFullPathName() << " " << opened.getErrorMessage() << '\n';
+        return 2;
+    }
+    for (bool package : {false, true}) {
+        juce::MemoryOutputStream written;
+        const ostfstudio::SessionMix defaultMix;
+        const auto save = package ? ostfstudio::writeOstfpPreview(*fresh, defaultMix, written)
+                                  : ostfstudio::writeOstfPreview(*fresh, defaultMix, written);
+        juce::MemoryInputStream input(written.getData(), written.getDataSize(), false);
+        std::unique_ptr<ostfstudio::OstfpPreview> reopened;
+        const auto read = package ? ostfstudio::readOstfpPreview(input, reopened)
+                                  : ostfstudio::readOstfPreview(input, reopened);
+        if (save.failed() || read.failed() || !reopened->trackLanes.empty() || reopened->title != fresh->title) {
+            std::cerr << (package ? "OSTFP" : "OSTF") << " blank round trip: "
+                      << save.getErrorMessage() << " / " << read.getErrorMessage() << '\n';
+            return 2;
+        }
+    }
     struct Expectation { const char* file; int bars; int tracks; double bpm; };
     constexpr Expectation cases[] {
         {"neon-platforms.ostfp", 76, 8, 106.0},
@@ -14,6 +39,8 @@ static int checkGallery(const juce::File& directory) {
         {"relay-circuit.ostfp", 96, 8, 128.0},
         {"paper-lantern-replies.ostfp", 56, 8, 78.0},
         {"offset-bridges.ostfp", 0, 0, 0.0},
+        {"copper-mile.ostfp", 64, 6, 116.0},
+        {"first-light-vector.ostfp", 96, 6, 138.0},
     };
     for (const auto& expected : cases) {
         juce::FileInputStream input(directory.getChildFile(expected.file));
@@ -57,6 +84,24 @@ static int checkGallery(const juce::File& directory) {
                 || !juce::String(project->trackLanes[index].regions.front().label).containsAnyOf("ABCDEFG")
                 || project->addSessionClip(index, "Should not become a Core track", {{0, 120, 60, 80}})) return 1;
             if (!project->savedMix || project->savedMix->instruments.size() != project->sourceTrackCount()) return 1;
+            const auto& authored = *project->savedMix;
+            juce::FileInputStream standalone(directory.getChildFile(expected.file).withFileExtension("ostf"));
+            std::unique_ptr<ostfstudio::OstfpPreview> fromScore;
+            if (ostfstudio::readOstfPreview(standalone, fromScore).failed() || !fromScore->savedMix
+                || fromScore->savedMix->trackEffects != authored.trackEffects
+                || fromScore->savedMix->outputEffects != authored.outputEffects) return 1;
+            if (authored.outputEffects[0] != juce::StringArray{ostfstudio::stockEffects[4].chainId()}
+                || authored.outputEffects[1] != juce::StringArray{ostfstudio::stockEffects[3].chainId()}
+                || authored.outputEffects[3] != juce::StringArray{ostfstudio::stockEffects[0].chainId()}) return 1;
+            std::array<int, 2> members{};
+            int roomSends = 0;
+            for (const auto& strip : authored.tracks) {
+                if (strip.outputBus >= 0) ++members.at(static_cast<std::size_t>(strip.outputBus));
+                if (strip.returnSends[0] > 0 && strip.returnSends[0] < 1) ++roomSends;
+            }
+            if (members[0] < 2 || members[1] < 2 || roomSends < 2
+                || std::none_of(authored.trackEffects.begin(), authored.trackEffects.end(),
+                                [](const auto& chain) { return chain.size() >= 2; })) return 1;
             for (std::size_t track = 0; track < project->sourceTrackCount(); ++track) {
                 const auto& plugin = project->savedMix->instruments[track];
                 const auto& events = project->programChanges[track];
@@ -70,12 +115,22 @@ static int checkGallery(const juce::File& directory) {
                 }) || std::none_of(regions.begin(), regions.end(), [](const auto& region) {
                     return region.exactBars && region.exactBars->end - region.exactBars->start > 1.0;
                 })) return 1;
-            ostfstudio::SessionMix mix;
+            auto mix = authored;
             mix.tracks.resize(index + 1);
             mix.midiRoutes.resize(index + 1);
             mix.instruments = project->savedMix->instruments;
             mix.tracks[index].pan = 0.35f;
             mix.tracks[index].muted = true;
+            mix.stockEffectStates[ostfstudio::SessionMix::effectSlot(true, 3, 0)] = "test-state";
+            mix.trackEffects.resize(index + 1);
+            mix.trackEffects[index].add(ostfstudio::stockEffects[2].chainId());
+            mix.stockEffectStates[ostfstudio::SessionMix::effectSlot(false, index, 0)] = "voicing-state";
+            juce::MemoryOutputStream plain;
+            if (ostfstudio::writeOstfPreview(*project, mix, plain).failed()) return 1;
+            juce::MemoryInputStream plainInput(plain.getData(), plain.getDataSize(), false);
+            if (ostfstudio::readOstfPreview(plainInput, fromScore).failed() || !fromScore->savedMix
+                || fromScore->savedMix->stockEffectStates != mix.stockEffectStates
+                || fromScore->savedMix->trackEffects != mix.trackEffects) return 1;
             juce::MemoryOutputStream saved;
             if (ostfstudio::writeOstfpPreview(*project, mix, saved).failed()) return 1;
             juce::MemoryInputStream roundtrip(saved.getData(), saved.getDataSize(), false);
@@ -84,7 +139,14 @@ static int checkGallery(const juce::File& directory) {
                 || reopened->sourceTrackCount() != index || reopened->sourceScore != project->sourceScore
                 || reopened->savedMix->instruments.front()["pluginId"] != mix.instruments.front()["pluginId"]
                 || reopened->savedMix->tracks.size() != index + 1 || !reopened->savedMix->tracks[index].muted
-                || reopened->savedMix->tracks[index].pan != 0.35f) return 1;
+                || reopened->savedMix->tracks[index].pan != 0.35f
+                || reopened->savedMix->outputEffects != mix.outputEffects
+                || reopened->savedMix->stockEffectStates != mix.stockEffectStates) return 1;
+            for (std::size_t i = 0; i < index; ++i)
+                if (reopened->savedMix->trackEffects[i] != mix.trackEffects[i]
+                    || reopened->savedMix->tracks[i].outputBus != mix.tracks[i].outputBus
+                    || std::abs(reopened->savedMix->tracks[i].returnSends[0] - mix.tracks[i].returnSends[0]) > 0.00001f
+                    || reopened->savedMix->tracks[i].pan != mix.tracks[i].pan) return 1;
         }
         if (std::string_view(expected.file) == "paper-lantern-replies.ostfp") {
             const auto& notes = project->pitchedNotes.front();
@@ -167,7 +229,76 @@ static int checkSmf(const juce::File& demo) {
         && rejected.getDataSize() == 0 ? 0 : 7;
 }
 
+// Also accepts external official examples so the same checks can run without redistributing songs.
+static int legacyRoundTrip(const juce::File& file) {
+    using namespace ostfstudio;
+    juce::FileInputStream input(file);
+    std::unique_ptr<OstfpPreview> project;
+    const auto opened = readOstfPreview(input, project);
+    if (opened.failed()) { std::cerr << opened.getErrorMessage() << '\n'; return 1; }
+    juce::MemoryBlock original;
+    if (!file.loadFileAsData(original) || original != project->sourceScore) return 2;
+    auto expected = juce::JSON::parse(original.toString());
+    if (project->sourceVersion != expected["version"].toString() || project->sourceVersion == "5.0.0") return 3;
+
+    SessionMix mix;
+    mix.tracks.resize(project->sourceTrackCount());
+    for (int mode = 0; mode < 3; ++mode) {
+        juce::MemoryOutputStream output;
+        const auto saved = mode == 0 ? writeOstfPreview(*project, output)
+                         : mode == 1 ? writeOstfPreview(*project, mix, output) : writeOstfpPreview(*project, mix, output);
+        if (saved.failed()) { std::cerr << saved.getErrorMessage() << '\n'; return 4; }
+        juce::MemoryInputStream data(output.getData(), output.getDataSize(), false);
+        std::unique_ptr<OstfpPreview> next;
+        const auto read = mode == 2 ? readOstfpPreview(data, next) : readOstfPreview(data, next);
+        if (read.failed()) { std::cerr << read.getErrorMessage() << '\n'; return 5; }
+        auto actual = juce::JSON::parse(next->sourceScore.toString());
+        if (file.getFileName() == "4.0.0.ostf" && !next->sourceScore.toString().contains("0.1234567890123456789012345")) return 13;
+        if (actual["version"] != "5.0.0" || next->bars.endBar != project->bars.endBar
+            || next->sourceTrackCount() != project->sourceTrackCount()) return 6;
+        actual.getDynamicObject()->setProperty("version", expected["version"]);
+        if (expected.hasProperty("document")) {
+            const auto doc = actual["document"];
+            if (doc["id"] != expected["document"]["id"] || doc["revisionId"] == expected["document"]["revisionId"]
+                || doc["parents"][0]["revisionId"] != expected["document"]["revisionId"]
+                || doc["parents"][0]["sha256"] != juce::SHA256(original).toHexString()) return 7;
+            actual.getDynamicObject()->setProperty("document", expected["document"]);
+        }
+        if (mode == 1) {
+            auto ext = actual["extensions"];
+            ext.getDynamicObject()->removeProperty("org.ostf.studio");
+            if (!expected.hasProperty("extensions")) actual.getDynamicObject()->removeProperty("extensions");
+        }
+        if (juce::JSON::toString(actual, true, 17) != juce::JSON::toString(expected, true, 17)) return 8;
+        if (project->sourceScore != original) return 9;
+    }
+    if (file.getFileName() == "4.0.0.ostf") {
+        if (project->durationTicks != 3360 || project->bars.endBar != 3 || project->pitchedNotes[0].size() != 2
+            || project->pitchedNotes[0][0].startTick != 1800 || project->programChanges[0][0].tick != 1800) return 10;
+        juce::MemoryOutputStream midi;
+        if (writeSongMidi(*project, SmfFormat::multitrack, {}, midi).failed()) return 11;
+        // 3.5 cannot declare the 4.0 MIDI stream even though Studio understands it in 4.0.
+        for (const auto* unsupported : {"3.5.0", "3.4.0", "4.0.1", "5.1.0"}) {
+            expected.getDynamicObject()->setProperty("version", unsupported);
+            const auto text = juce::JSON::toString(expected);
+            juce::MemoryInputStream wrong(text.toRawUTF8(), text.getNumBytesAsUTF8(), false);
+            const auto* previous = project.get();
+            if (readOstfPreview(wrong, project).wasOk() || previous != project.get()) return 12;
+        }
+    }
+    if (file.getFileName() == "4.3.0.ostf") {
+        juce::FileInputStream packed(file.withFileExtension(".ostfp"));
+        std::unique_ptr<OstfpPreview> historical;
+        if (readOstfpPreview(packed, historical).failed() || historical->sourceVersion != "4.3.0") return 14;
+        juce::MemoryOutputStream upgraded;
+        if (writeOstfPreview(*historical, upgraded).failed() || juce::JSON::parse(upgraded.toUTF8())["version"] != "5.0.0") return 15;
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
+    if (argc == 3 && std::string_view(argv[1]) == "--legacy")
+        return legacyRoundTrip(juce::File::createFileWithoutCheckingPath(argv[2]));
     if (argc == 3 && std::string_view(argv[1]) == "--smf")
         return checkSmf(juce::File::createFileWithoutCheckingPath(argv[2]));
     if (argc == 3 && std::string_view(argv[1]) == "--languages") {
@@ -180,7 +311,7 @@ int main(int argc, char** argv) {
             && japanese.translate("Unknown string") == "Unknown string" ? 0 : 1;
     }
     if (argc == 3 && std::string_view(argv[1]) == "--gallery")
-        return checkGallery(juce::File::createFileWithoutCheckingPath(argv[2]));
+        return checkGallery(juce::File(juce::String::fromUTF8(argv[2])));
     if (argc != 2 && argc != 3) return 1;
     juce::FileInputStream input(juce::File::createFileWithoutCheckingPath(argv[1]));
     std::unique_ptr<ostfstudio::OstfpPreview> project;

@@ -686,6 +686,85 @@ def vary_harmonic_rhythm(song):
             clip["notes"] = sorted(events, key=lambda item: item["start"])
 
 
+def copper_mile():
+    # A palm-muted verse in E minor opens out into a G-major guitar refrain.
+    harmony = [("Em", 52, [0, 3, 7]), ("G", 55, [0, 4, 7]), ("D", 50, [0, 4, 7]), ("A", 57, [0, 4, 7]),
+               ("G", 55, [0, 4, 7]), ("D/F#", 50, [0, 4, 7]), ("Cadd9", 48, [0, 2, 4, 7]), ("Em", 52, [0, 3, 7])]
+    song, bars = score("Copper Mile", "Rock", [], [4 * PPQ] * 8, harmony, 52, "minor",
+                       [{"at": 0, "bpm": 116}], [{"at": 0, "numerator": 4, "denominator": 4}])
+    melody = [
+        [(0, 64, .65, 94), (.75, 67, .2, 80), (1, 69, .8, 100), (2.5, 67, .4, 87), (3, 64, .8, 91)],
+        [(.5, 67, .4, 86), (1, 71, 1.35, 96), (2.5, 69, .45, 84), (3, 67, .7, 93)],
+        [(0, 66, 1.4, 92), (1.5, 69, .4, 87), (2, 74, 1.4, 102)],
+        [(0, 73, 1.3, 96), (1.5, 69, .4, 85), (2, 64, .8, 88), (3.5, 66, .35, 83)],
+        [(0, 71, 1.45, 104), (1.5, 74, .4, 96), (2, 79, 1.8, 105)],
+        [(0, 78, 1.45, 99), (1.5, 74, .4, 88), (2, 69, .9, 95), (3, 71, .7, 89)],
+        [(0, 76, 1.8, 103), (2, 74, .6, 90), (2.75, 72, .2, 82), (3, 67, .85, 94)],
+        [(0, 71, .85, 96), (1, 67, .85, 89), (2, 64, 1.8, 99)]]
+    guitar, bass = [], []
+    for bar, (_, root, _) in enumerate(harmony):
+        low = 36 + root % 12
+        pattern = [(0, .7), (1, .22), (1.5, .22), (2.5, .4), (3, .65)] if bar < 4 else [(0, 1.4), (1.5, .4), (2, 1.75)]
+        for hit, (beat, held) in enumerate(pattern):
+            for voice, offset in enumerate((0, 7, 12)):
+                guitar.append(note(f"g{bar}-{hit}-{voice}", bars[bar] + int(beat * PPQ) + voice * 10,
+                                   int(held * PPQ) - voice * 10, low + 12 + offset, 88 if beat == 0 else 74))
+        bass_root = 42 if bar == 5 else low
+        bass.append([(0, bass_root, .85, 94), (1, bass_root, .4, 80), (1.5, bass_root + 7, .4, 86),
+                     (2, bass_root, .85, 91), (3, bass_root + 12, .45, 83), (3.5, bass_root + 7, .4, 76)])
+    song["tracks"] = [track("lead", "Overdrive Lead", "lead", bars[-1], phrase("hook", bars, melody)),
+                      track("rhythm", "Power Chords", "rhythm", bars[-1], guitar),
+                      track("bass", "Pick Bass", "bassline", bars[-1], phrase("pick", bars, bass)), drum_track(song, bars)]
+    verse, refrain = list(range(4)), list(range(4, 8))
+    full = "lead rhythm bass drums organ guitar"
+    return arrangement(song, [
+        ("Riff Intro", verse, "lead rhythm drums", -6), ("Verse", verse * 2, "rhythm bass drums guitar", -7),
+        ("Lift", [6, 6, 2, 3], "lead bass drums organ", -3), ("Refrain", refrain * 2, full, 3),
+        ("Verse 2", verse * 2, "lead rhythm bass drums", -5), ("Guitar Solo", verse + refrain, full, 5),
+        ("Half-time Break", [6, 6, 0, 3], "bass organ guitar", -9), ("Final Refrain", refrain * 4, full, 6),
+        ("Tag", [4, 5, 6, 7], "lead rhythm bass drums", -3)],
+        [("organ", "Hammond Bed", "texture", "pad"), ("guitar", "Clean Guitar Answer", "countermelody", "counter")])
+
+
+def first_light_vector():
+    harmony = [("F#m", 54, [0, 3, 7]), ("Dmaj7", 50, [0, 4, 7, 11]), ("A", 57, [0, 4, 7]), ("E", 52, [0, 4, 7]),
+               ("D", 50, [0, 4, 7]), ("A", 57, [0, 4, 7]), ("E", 52, [0, 4, 7]), ("F#m", 54, [0, 3, 7])]
+    song, bars = score("First Light Vector", "Trance", [], [4 * PPQ] * 8, harmony, 54, "minor",
+                       [{"at": 0, "bpm": 138}], [{"at": 0, "numerator": 4, "denominator": 4}])
+    lead, arp, sub = [], [], []
+    contours = [(73, 76, 78), (73, 69, 74), (76, 73, 81), (80, 76, 71),
+                (78, 81, 86), (85, 81, 76), (83, 80, 76), (81, 80, 78)]
+    for bar, (_, root, intervals) in enumerate(harmony):
+        a, b, c = contours[bar]
+        lead.append([(.5, a, .45, 89), (1, b, .95, 96), (2.5, c, 1.4, 102)] if bar % 2 == 0
+                    else [(0, a, 1.45, 100), (1.5, b, .4, 86), (2, c, 1.85, 96)])
+        for sixteenth in range(16):
+            step = (0, 1, 2, 1, 0, 2, 1, 2)[sixteenth % 8]
+            arp.append(note(f"arp-{bar}-{sixteenth}", bars[bar] + sixteenth * PPQ // 4, 165,
+                            root + 12 + intervals[step] + (12 if sixteenth % 8 == 7 else 0),
+                            (78, 56, 69, 60)[sixteenth % 4]))
+        for beat in range(4):
+            sub.append(note(f"sub-{bar}-{beat}", bars[bar] + beat * PPQ + PPQ // 2, 380,
+                            36 + root % 12, 87 if beat % 2 == 0 else 80))
+    kit = drum_track(song, bars, techno=True)
+    # A steady four-on-the-floor kick wherever the kit is active; leave the breakdown to the pad.
+    hits = kit["clips"][0]["notes"]
+    hits[:] = [e for e in hits if e["soundSlotId"] != "kick"]
+    for beat in range(32):
+        hits.append({"id": f"floor-{beat}", "start": beat * PPQ, "duration": 144, "soundSlotId": "kick", "velocity": 104})
+    song["tracks"] = [track("pulse", "Horizon Saw Lead", "lead", bars[-1], phrase("sky", bars, lead)),
+                      track("arp", "Prism Arpeggio", "accompaniment", bars[-1], arp),
+                      track("sub", "Offbeat Sub", "bassline", bars[-1], sub), kit]
+    intro, lift = list(range(4)), list(range(4, 8))
+    full = "pulse arp sub drums pad chord"
+    return arrangement(song, [
+        ("Night Run", intro * 2, "drums sub arp", -9), ("Open Filter", intro * 4, "drums sub arp chord", -4),
+        ("Suspension", (intro + lift) * 2, "pulse pad", -12), ("Signal Build", lift * 2, "arp drums chord pad", -3),
+        ("Daybreak", (lift + intro) * 2, full, 4), ("Afterglow", lift * 2, "pulse arp pad", -8),
+        ("Final Lift", (intro + lift) * 2, full, 6), ("Runout", intro + lift, "drums sub chord", -8)],
+        [("pad", "Wide Halo Pad", "texture", "pad"), ("chord", "Gated Chord Stabs", "rhythm", "stabs")])
+
+
 def production_session(song):
     programs = {
         "hook": 27, "horn": 65, "arp": 81, "voice-track": 53, "backing": 52, "keys": 4, "bass": 33,
@@ -699,8 +778,57 @@ def production_session(song):
         return {"id": identifier, "kind": kind, "audioChannels": 2, "gainDb": 0, "pan": 0,
                 "mute": False, "solo": False, "soloSafe": False, "deviceIds": [], **fields}
 
-    channels = [channel("master", "master", gainDb=-3)]
+    catalog = json.loads((DESTINATION.parents[1] / "src/plugins/effects/catalog.json").read_text(encoding="utf-8"))
+    effects = {item["type"]: item for item in catalog}
     devices = []
+    def insert(strip, *types):
+        for kind in types:
+            item = effects[kind]
+            identifier = f"{strip['id']}-{kind.lower()}"
+            strip["deviceIds"].append(identifier)
+            devices.append({"id": identifier, "role": "effect", "enabled": True, "bypass": False,
+                            "onUnavailable": "reportAndPreserve", "plugin": {
+                                "format": "vst3", "pluginId": "ABCDEF019182FAEB4F737466" + item["code"].encode("ascii").hex().upper(),
+                                "vendor": "OSTF Studio", "name": item["name"]}})
+
+    # Post-fader sends in dB. Keep bass and kick near centre; give harmony and replies their own space.
+    # Values are (fader dB, stereo pan, output channel, room send dB or None, inserts in signal order).
+    parts = {
+        "hook": (-5, -.08, "master", -16, ["Amp", "EQ"]),
+        "horn": (-6, -.12, "master", -14, ["EQ", "Compressor"]),
+        "arp": (-8, -.30, "bus-2", -19, ["Phaser"]),
+        "voice-track": (-4, 0, "master", -13, ["EQ", "Compressor"]),
+        "backing": (-12, .24, "bus-2", -11, ["Chorus"]),
+        "keys": (-9, -.26, "bus-2", -16, ["Chorus"]),
+        "bass": (-6, 0, "bus-1", None, ["Compressor"]),
+        "answer": (-11, .32, "bus-2", -15, ["Phaser"]),
+        "nylon": (-12, -.38, "bus-2", -16, ["EQ"]),
+        "strings": (-13, .24, "bus-2", -12, []),
+        "comp": (-11, -.38, "bus-2", -17, ["Chorus"]),
+        "brass": (-10, .22, "bus-2", -15, ["EQ"]),
+        "pad": (-14, .32, "bus-2", -12, ["Chorus"]),
+        "vibes": (-9, .34, "bus-2", -12, []),
+        "organ": (-12, -.32, "bus-2", -17, ["Phaser"]),
+        "guitar": (-11, .29, "bus-2", -17, ["Amp"]),
+        "rhythm": (-10, -.38, "bus-2", -20, ["Amp"]),
+        "lead": (-6, .08, "master", -16, ["Distortion", "Amp"]),
+        "pulse": (-9, -.22, "bus-2", -19, ["Flanger"]),
+        "sub": (-7, 0, "bus-1", None, ["Distortion", "EQ"]),
+        "chord": (-11, .25, "bus-2", -18, ["Chorus"]),
+        "atmos": (-14, .36, "bus-2", -11, ["Phaser"]),
+        "perc": (-12, .30, "bus-1", -19, ["EQ"]),
+        "noise": (-15, -.32, "bus-2", -14, ["Flanger"]),
+        "drums": (-7, 0, "bus-1", -22, []),
+        "kit": (-7, 0, "bus-1", -23, []),
+        "ride-kit": (-9, .06, "bus-1", -17, []),
+    }
+    if song["song"]["title"] == "Blue Hour Waltz":
+        parts["keys"] = (-6, -.18, "bus-2", -14, ["EQ"])
+    channels = [channel("master", "master", gainDb=-1), channel("bus-1", "bus", name="Rhythm", gainDb=-2, outputChannelId="master"),
+                channel("bus-2", "bus", name="Harmony", gainDb=-1.5, outputChannelId="master"),
+                channel("return-1", "bus", name="Room", gainDb=-3, outputChannelId="master")]
+    for strip, kind in zip(channels, ("Limiter", "Compressor", "EQ", "Reverb")):
+        insert(strip, kind)
     for index, lane in enumerate(song["tracks"], start=1):
         midi_channel = 10 if lane["trackType"] == "drum" else index
         lane["midi"] = {"mode": "singleChannel", "channel": midi_channel}
@@ -713,8 +841,14 @@ def production_session(song):
                 "format": "vst3", "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
                 "name": "OSTF GM Sound Module", "vendor": "OSTF Studio",
             }})
-        channels.append(channel(f"track-{index}", "track", trackId=lane["id"], outputChannelId="master",
-                                deviceIds=[device], gainDb=-5 if lane["role"] in ("texture", "rhythm") else -2))
+        level, pan, output, send, inserts = parts[lane["id"]]
+        strip = channel(f"track-{index}", "track", trackId=lane["id"], outputChannelId=output,
+                        deviceIds=[device], gainDb=level, pan=pan)
+        if send is not None:
+            strip["sends"] = [{"id": f"send-{index}-room", "targetChannelId": "return-1", "gainDb": send,
+                               "preFader": False, "enabled": True}]
+        insert(strip, *inserts)
+        channels.append(strip)
     return {"channels": channels, "devices": devices}
 
 
@@ -750,5 +884,6 @@ def write_song(stem, document):
 if __name__ == "__main__":
     for name, author in (("neon-platforms", full_city_pop), ("blue-hour-waltz", full_waltz),
                          ("relay-circuit", full_techno), ("paper-lantern-replies", full_lantern),
-                         ("offset-bridges", full_progressive)):
+                         ("offset-bridges", full_progressive), ("copper-mile", copper_mile),
+                         ("first-light-vector", first_light_vector)):
         write_song(name, author())

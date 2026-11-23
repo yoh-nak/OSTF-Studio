@@ -1,0 +1,24 @@
+{
+  "format": "OSTF",
+  "version": "4.0.0",
+  "ppq": 480,
+  "song": {"title": "Pickup into the chorus", "primaryMelodyTrackId": "horn"},
+  "timeline": {
+    "sections": [{"id": "intro", "name": "Intro", "start": 0, "duration": 1920}],
+    "tempoChanges": [{"at": 0, "bpm": 94}],
+    "meterChanges": [{"at": 0, "numerator": 4, "denominator": 4}]
+  },
+  "harmony": {"chords": [], "scales": []},
+  "tracks": [{
+    "id": "horn", "name": "Horn", "midi": {"mode": "singleChannel", "channel": 2},
+    "clips": [{"id": "entry", "start": 1920, "duration": 960,
+      "notes": [{"id": "pickup", "start": -120, "duration": 360, "pitch": 67},
+                {"id": "tail", "start": 720, "duration": 720, "pitch": 72}],
+      "midiEvents": [{"id": "patch", "type": "programChange", "start": -120, "program": 60}]}]
+  }],
+  "soundSlots": [], "lyrics": {"documents": [], "phrases": [], "units": [], "alignments": []}, "resources": [],
+  "extensions": {"com.example.archive": {
+    "version": "1", "status": "unverified", "dependencies": {"scope": "none"},
+    "data": {"precise": 0.1234567890123456789012345}
+  }}
+}
