@@ -476,6 +476,9 @@ int main(int argc, char** argv) {
     project->audio.push_back({0, "test.wav", {}, wav.getMemoryBlock()});
     project->audio.front().timing = {true, 240, {{0.3, 0.6}}};
     project->audio.front().durationTicks = 960;
+    mix.audioTracks.resize(project->sourceTrackCount(), false);
+    mix.audioTracks[0] = true;
+    mix.captureChannels[project->trackIds[0]] = 2;
     juce::MemoryOutputStream withMedia, bundledMedia;
     const auto scoreFile = destination.getFile();
     if (ostfstudio::writeOstfPreview(*project, mix, scoreFile, withMedia).failed()
@@ -493,6 +496,7 @@ int main(int argc, char** argv) {
         || external->audio.size() != 1 || bundled->audio.size() != 1
         || bundled->audio.front().embedded != wav.getMemoryBlock()) return 1;
     for (auto* reopened : {external.get(), bundled.get()}) {
+        if (reopened->savedMix->captureChannels != mix.captureChannels) return 1;
         const auto& clip = reopened->audio.front();
         if (clip.durationTicks != 960 || !clip.timing.loop || clip.timing.cycleTicks != 240
             || clip.timing.markers.size() != 1 || clip.timing.markers[0].source != 0.6

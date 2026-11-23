@@ -1,8 +1,14 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## Editor recording
+
+The device sample clock drives the editor cycle and one-bar count-in. The count-in holds the score cursor and excludes input from the take. MIDI note-offs are paired on an elapsed sample counter and split into score-time intervals across wraps. Audio copies the first enabled inputs into a bounded buffer allocated before the device callback starts. A new pass replaces covered samples in that buffer. Stop encodes 16-bit PCM on the message thread and applies the resulting region. Clip warp and source timing belong to the region. There is one audio region per track in this preview.
+
+Notes, velocities and ordered kit membership use Core 5.0. WAV assets and regions use the Production profile. The existing Studio host extension stores the editor recording cycle and per-track capture width. The local device preferences hold the MIDI input-to-output note map. The user can share a project with different hardware.
+
 ## Import results and editing
 
-The import panel holds a draft in memory. Opening the draft transfers ownership to a new Studio window. Dragging a result converts its source ticks through seconds into destination ticks at the drop position. Chord changes use the same schema-validated edit transaction as the global timeline editor. The backing audio files remain available for later playback and explicit project saves.
+The import panel holds a draft in memory. Opening the draft loads it in the original Studio window. Dragging a result converts its source ticks through seconds into destination ticks at the drop position. Chord changes use the same schema-validated edit transaction as the global timeline editor. The backing audio files remain available for later playback and explicit project saves.
 
 ## Overall product distinction
 

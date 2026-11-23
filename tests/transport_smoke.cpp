@@ -69,10 +69,16 @@ bool checkPerformanceAudio() {
         if (capture.preparePlayback(song, drumRoutes, {}, 960, 96).failed())
             return false;
         capture.prepareRecording(song, drumRoutes, 0);
-        capture.inputNote(juce::MidiMessage::noteOn(1, 36, juce::uint8(87)));
+        std::array<int, 128> mapping;
+        for (int i = 0; i < 128; ++i) mapping[i] = i;
+        mapping[61] = 36;
+        PreviewTransport::TakeOptions setup;
+        setup.drumMapping = &mapping;
+        if (capture.prepareTake(setup).failed()) return false;
+        capture.inputFromDevice(juce::MidiMessage::noteOn(1, 61, juce::uint8(87)));
         capture.inputNote(juce::MidiMessage::noteOn(1, 37, juce::uint8(127)));
         capture.renderBlock(audio.getArrayOfWritePointers(), 2, 64);
-        capture.inputNote(juce::MidiMessage::noteOff(1, 36));
+        capture.inputFromDevice(juce::MidiMessage::noteOff(1, 61));
         capture.renderBlock(audio.getArrayOfWritePointers(), 2, 32);
         const auto hits = capture.stop();
         if (hits.size() != 1 || hits[0].pitch != 36 || hits[0].velocity != 87 || hits[0].startTick != 0 ||
@@ -82,6 +88,47 @@ bool checkPerformanceAudio() {
                 return m.isNoteOn() && m.getChannel() == 10 && m.getNoteNumber() == 36;
             }))
             return false;
+    }
+    for (int channels : {0, 1, 2}) {
+        PreviewTransport capture;
+        if (capture.preparePlayback(song, {}, {}, 960, 96).failed()) return false;
+        capture.seekToTick(52);
+        capture.setLoop({32, 96});
+        if (!channels) capture.prepareRecording(song, {}, {});
+        PreviewTransport::TakeOptions setup;
+        setup.inputChannels = channels;
+        setup.countIn = true;
+        if (capture.prepareTake(setup).failed()) return false;
+        capture.inputNote(juce::MidiMessage::noteOn(1, 62, juce::uint8(77)));
+        capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
+        if (!capture.countingIn() || capture.positionTick() != 52 || audio.getMagnitude(0, 0, 96) < .01f) return false;
+        for (int n = 1; n < 20; ++n) capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
+        if (capture.countingIn() || capture.positionTick() != 52) return false;
+        juce::AudioBuffer<float> input(2, 96);
+        for (int i = 0; i < 96; ++i) {
+            input.setSample(0, i, .001f * i);
+            input.setSample(1, i, -.001f * i);
+        }
+        capture.inputNote(juce::MidiMessage::noteOn(1, 60, juce::uint8(88)));
+        capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96, input.getArrayOfReadPointers(), channels);
+        if (capture.positionTick() != 84) return false;
+        const auto notes = capture.stop();
+        if (capture.recordedRange() != juce::Range<juce::int64>(32, 96)) return false;
+        if (!channels) {
+            if (notes.size() != 2 || notes[0].pitch != 60 || notes[0].startTick != 52 || notes[0].endTick != 96
+                || notes[1].startTick != 32 || notes[1].endTick != 84) return false;
+        } else {
+            const auto take = capture.finishAudioTake(0);
+            if (!take || take->startTick != 32 || take->durationTicks != 64 || !notes.empty()) return false;
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(new juce::MemoryInputStream(take->embedded, false), true));
+            if (!reader || reader->lengthInSamples != 64 || int(reader->numChannels) != channels) return false;
+            juce::AudioBuffer<float> check(channels, 64);
+            if (!reader->read(&check, 0, 64, 0, true, true)) return false;
+            for (int c = 0; c < channels; ++c)
+                for (int i = 0; i < 64; ++i)
+                    if (std::abs(check.getSample(c, i) - input.getSample(c, i < 52 ? i + 44 : i - 20)) > .00005f) return false;
+        }
     }
     const auto heard = [&](int sample) {
         bool cc = false, bend = false, at = false;
@@ -339,7 +386,8 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     auto* arrangementScroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-horizontal-scroll"));
     auto* pianoRuler = dynamic_cast<ArrangementRuler*>(main.findChildWithID("piano-ruler"));
     if (!arrangementZoom || !arrangementScroll || !pianoRuler) return 19;
-    const auto full = arrangementScroll->getCurrentRangeSize();
+    const auto full = arrangementScroll->getMaximumRangeLimit() - arrangementScroll->getMinimumRangeLimit();
+    if (std::abs(arrangementScroll->getCurrentRangeSize() - std::min(10.0, full)) > .01) return 90;
     arrangementZoom->setValue(0.63, juce::sendNotificationSync);
     if (std::abs(pianoRuler->visibleBars().getLength() - std::pow(full, 0.37)) > 0.001) return 20;
     arrangementZoom->setValue(1, juce::sendNotificationSync);

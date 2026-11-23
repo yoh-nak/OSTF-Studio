@@ -604,7 +604,11 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
         if (midi.destination && *midi.destination < sourceCount)
             local.getDynamicObject()->setProperty("destinationTrackId", tracks[static_cast<int>(*midi.destination)]["id"]);
         if (index < mix.audioTracks.size() && mix.audioTracks[index])
+        {
             local.getDynamicObject()->setProperty("audioTrack", true);
+            if (const auto found = mix.captureChannels.find(id); found != mix.captureChannels.end())
+                local.getDynamicObject()->setProperty("captureChannels", found->second);
+        }
         if (index < mix.trackEffects.size()) {
             juce::Array<juce::var> fx;
             for (const auto& id : mix.trackEffects[index]) fx.add(id);
@@ -623,6 +627,9 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
     }
     hostData.add(object({{"namespace", mixNamespace}, {"version", "1.0"},
                         {"data", object({{"tracks", routes}, {"cueDb", mix.routing.cueDb}, {"inserts", inserts}, {"outputEffects", outputEffects}, {"stockEffectStates", states}, {"chordVoicingMix", voicingMix}, {"chordVoicingRoute", voicingRoute}})}}));
+    if (!mix.recordCycle.isEmpty())
+        hostData[0]["data"].getDynamicObject()->setProperty("recordCycle", object({
+            {"start", mix.recordCycle.getStart()}, {"end", mix.recordCycle.getEnd()}, {"enabled", mix.cycleEnabled}}));
     auto document = object({{"channels", channels}, {"devices", devices}, {"hostExtensions", hostData}});
     juce::Array<juce::var> automation;
     for (const auto& c : channels) {
@@ -662,6 +669,12 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
         return std::clamp(v, -60.0, 6.0);
     };
     SessionMix mix;
+    if (const auto cycle = local["recordCycle"]; cycle.isObject()) {
+        const auto first = integer(cycle["start"]), last = integer(cycle["end"]);
+        require(first >= 0 && last > first, "Invalid Studio recording range.");
+        mix.recordCycle = {first, last};
+        mix.cycleEnabled = bool(cycle["enabled"]);
+    }
     mix.routing.busCount = mix.routing.returnCount = 0;
     mix.tracks.resize(voicingIndex + static_cast<std::size_t>(voicingMix.isObject()));
     mix.midiRoutes.resize(mix.tracks.size());
@@ -788,6 +801,11 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
         const auto index = static_cast<std::size_t>(i);
         readEffects(route["effects"], mix.trackEffects[index]);
         mix.audioTracks[index] = static_cast<bool>(route["audioTrack"]);
+        if (mix.audioTracks[index] && route.hasProperty("captureChannels")) {
+            const auto channels = integer(route["captureChannels"]);
+            require(channels == 1 || channels == 2, "Invalid capture channel count.");
+            mix.captureChannels[route["trackId"].toString()] = int(channels);
+        }
         mix.tracks[index].cue = static_cast<bool>(route["cue"]);
         mix.midiRoutes[index].channel = static_cast<int>(midiChannel);
         if (!route["destinationTrackId"].isVoid()) {
@@ -1397,11 +1415,14 @@ juce::String drumSlot(juce::var score, juce::var track, int pitch) {
 }
 }
 
-juce::Result OstfpPreview::editDrumPad(size_t index, int row, std::optional<int> pitch, juce::MemoryBlock &before) try {
+juce::Result OstfpPreview::editDrumPad(size_t index, int row, std::optional<int> pitch, juce::MemoryBlock &before,
+                                      std::optional<int> moveTo) try {
     require(index < sourceTrackCount() && trackKinds[index] == TrackKind::drum, "Select a drum track.");
     const auto &pads = slotsByTrack.at(index);
     require(row >= -1 && row < int(pads.size()) && (row >= 0 || pitch), "Choose a pad.");
-    if (pitch) {
+    if (moveTo) {
+        require(row >= 0 && *moveTo >= 0 && *moveTo < int(pads.size()), "Choose a pad.");
+    } else if (pitch) {
         require(*pitch >= 0 && *pitch <= 127, "Choose MIDI note 0-127.");
         for (int i = 0; i < int(pads.size()); ++i)
             require(i == row || pads[i].pitch != *pitch, "That MIDI note is already assigned.");
@@ -1427,7 +1448,9 @@ juce::Result OstfpPreview::editDrumPad(size_t index, int row, std::optional<int>
         kits.getArray()->add(kit);
     }
     auto members = kit["soundSlotIds"];
-    if (row < 0) {
+    if (moveTo) {
+        members.getArray()->move(row, *moveTo);
+    } else if (row < 0) {
         drumSlot(score, track, *pitch);
     } else if (!pitch) {
         members.getArray()->remove(row);
@@ -1792,6 +1815,35 @@ bool OstfpPreview::insertGeneratorPattern(std::size_t track, int bar) {
     }
     return addSessionClip(track, "Generated", std::move(notes));
 }
+
+juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64> range,
+                                         const std::vector<PitchedNote>& notes, juce::MemoryBlock& before) try {
+    require(index < sourceTrackCount() && trackKinds[index] != TrackKind::audio && !notes.empty(), "No MIDI notes captured");
+    before = savedScore(*this);
+    auto score = parseObject(before);
+    const bool drum = trackKinds[index] == TrackKind::drum;
+    if (drum) materialiseKits(score, *this);
+    auto track = score["tracks"][int(index)];
+    juce::Array<juce::var> events;
+    for (const auto& note : notes) {
+        require(note.startTick >= 0 && note.startTick < note.endTick && note.endTick <= playbackEndTick(), "Note outside the editable range.");
+        range = range.getUnionWith({note.startTick, note.endTick});
+    }
+    for (const auto& note : notes) {
+        auto event = object({{"id", "note-" + juce::Uuid().toString()}, {"start", note.startTick - range.getStart()},
+                             {"duration", note.endTick - note.startTick}, {"velocity", note.velocity.value_or(96)}});
+        if (drum) event.getDynamicObject()->setProperty("soundSlotId", drumSlot(score, track, note.pitch));
+        else event.getDynamicObject()->setProperty("pitch", note.pitch);
+        if (track["midi"]["mode"].isString() && track["midi"]["mode"] != "singleChannel")
+            event.getDynamicObject()->setProperty("channel", sourceMidiChannels[index]);
+        events.add(event);
+    }
+    std::stable_sort(events.begin(), events.end(), [](const auto& a, const auto& b) { return integer(a["start"]) < integer(b["start"]); });
+    arrayProperty(track, "clips").getArray()->add(object({{"id", "take-" + juce::Uuid().toString()},
+        {"name", "Recorded MIDI"}, {"start", range.getStart()}, {"duration", range.getLength()}, {"notes", events}}));
+    reviseDocument(score, before, "studio-" + juce::Uuid().toString());
+    return restoreNoteScore(editedScoreBytes(before, score, {"tracks", "drumKits", "soundSlots", "document"}));
+} catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
 bool OstfpPreview::addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes) {
     if (track >= sourceTrackCount() || notes.empty() || ticksPerBar <= 0) return false;

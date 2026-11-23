@@ -1,13 +1,20 @@
 #pragma once
 #include "ui/AudioClipWaveforms.h"
+#include "ui/ArrangementRuler.h"
 
 // Clip view shows one complete source cycle so that markers remain reachable after trimming or looping.
 class AudioClipEditor final : public juce::Component, public juce::SettableTooltipClient {
 public:
     explicit AudioClipEditor(AudioClipWaveforms& source) : waves(source) {
         setComponentID("audio-clip-editor");
-        for (auto* button : {&loop, &warp, &melodyne}) addAndMakeVisible(button);
+        for (auto* button : {&loop, &warp, &melodyne, &splice}) addAndMakeVisible(button);
         addAndMakeVisible(beats);
+        addAndMakeVisible(recordRuler);
+        addAndMakeVisible(channels);
+        channels.addItem(TRANS("Mono input"), 1);
+        channels.addItem(TRANS("Stereo input"), 2);
+        channels.setSelectedId(1, juce::dontSendNotification);
+        splice.onClick = [this] { if (onSplice) onSplice(); };
         loop.setClickingTogglesState(true);
         warp.setClickingTogglesState(true);
         beats.setEditableText(true);
@@ -36,7 +43,9 @@ public:
     std::function<const ostfstudio::ProjectAudio*()> sourceClip;
     std::function<const ostfstudio::TempoMap&()> clock;
     std::function<void(const ostfstudio::ClipTiming&)> onEdit;
-    std::function<void()> onMelodyne;
+    std::function<void()> onMelodyne, onSplice;
+    ArrangementRuler recordRuler;
+    juce::ComboBox channels;
     void bind(juce::int64 resolution, bool editable) {
         ppq = std::max<juce::int64>(1, resolution);
         auto* clip = sourceClip();
@@ -45,15 +54,21 @@ public:
         nativeLength = clip ? waves.nativeTicks(*clip, clock()) : 0;
         const bool available = editable && clip && nativeLength > 0;
         loop.setEnabled(available); warp.setEnabled(available); melodyne.setEnabled(available);
+        channels.setEnabled(editable);
+        splice.setEnabled(editable);
         sync();
     }
     void resized() override {
-        auto row = getLocalBounds().reduced(8, 4).removeFromTop(26);
+        auto area = getLocalBounds().reduced(8, 4);
+        auto row = area.removeFromTop(26);
+        recordRuler.setBounds(area.removeFromTop(23));
+        channels.setBounds(row.removeFromLeft(110).reduced(2, 0));
         loop.setBounds(row.removeFromLeft(76).reduced(2, 0));
         warp.setBounds(row.removeFromLeft(123).reduced(2, 0));
         beats.setBounds(row.removeFromLeft(78).reduced(2, 0));
         row.removeFromLeft(70);
-        melodyne.setBounds(row.removeFromLeft(156).reduced(2, 0));
+        melodyne.setBounds(row.removeFromLeft(105).reduced(2, 0));
+        splice.setBounds(row.removeFromLeft(90).reduced(2, 0));
     }
     void paint(juce::Graphics& g) override {
         auto area = canvas();
@@ -110,7 +125,7 @@ public:
         drag = -1;
     }
 private:
-    juce::Rectangle<int> canvas() const { return getLocalBounds().reduced(8, 4).withTrimmedTop(32); }
+    juce::Rectangle<int> canvas() const { return getLocalBounds().reduced(8, 4).withTrimmedTop(56); }
     double phase(int x) const { const auto r = canvas(); return double(x - r.getX()) / std::max(1, r.getWidth()); }
     int hit(int x) const {
         for (size_t i = 0; i < timing.markers.size(); ++i)
@@ -130,6 +145,6 @@ private:
     double nativeLength = 0;
     juce::int64 ppq = 1;
     int drag = -1;
-    juce::TextButton loop{TRANS("Loop")}, warp{TRANS("Warp (re-pitch)")}, melodyne{"Melodyne..."};
+    juce::TextButton loop{TRANS("Loop")}, warp{TRANS("Warp (re-pitch)")}, melodyne{"Melodyne..."}, splice{"Splice..."};
     juce::ComboBox beats;
 };

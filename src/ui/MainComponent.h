@@ -20,7 +20,7 @@
 #include "ui/TheoryGuide.h"
 
 class MainComponent final : public juce::Component, public juce::TooltipClient, public juce::DragAndDropContainer,
-                            public juce::FileDragAndDropTarget, public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
+                            public juce::FileDragAndDropTarget, public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::MidiInputCallback, private juce::Timer, private juce::ScrollBar::Listener {
 public:
     MainComponent();
     ~MainComponent() override;
@@ -47,6 +47,20 @@ private:
     void itemDropped(const SourceDetails& details) override;
     std::optional<std::size_t> pluginDropTrack(juce::Point<int> position) const;
     void timerCallback() override;
+    void handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage&) override;
+    struct PadUpdate final : juce::AsyncUpdater {
+        explicit PadUpdate(MainComponent& owner) : editor(owner) {}
+        MainComponent& editor;
+        void handleAsyncUpdate() override { editor.showPadInput(); }
+    } padUpdate_{*this};
+    void showPadInput();
+    void attachPadInput(bool);
+    void flashPad(int pitch);
+    void cancelPadLearn();
+    std::array<int, 128> padMapping_{};
+    std::array<std::atomic<bool>, 128> padPressed_{};
+    std::atomic<int> learnTarget_{-1}, learnedPair_{-1};
+    bool padListening_ = false;
     void scrollBarMoved(juce::ScrollBar*, double) override;
     void updateHorizontalRange(bool reset = false);
     enum class HeightGroup { all = 1, global, lanes, voicing, melody, vocal, arrangement, pitched, drums, audio,
@@ -57,7 +71,10 @@ private:
     void applyGroupHeight();
     void refreshGroupHeight();
     ostfstudio::TimelineExtent horizontalRange() const;
-    void startTransport(bool recording);
+    void startTransport(bool recording, bool replaceConfirmed = false);
+    juce::Range<juce::int64> editorCycle_;
+    juce::TextButton editorRecord_{TRANS("Record")}, cycleButton_{TRANS("Loop range")};
+    std::map<juce::String, int> captureChannels_;
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
     void stopTransport();
     void navigateTransport(TransportKey::Action);

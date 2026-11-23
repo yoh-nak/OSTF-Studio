@@ -65,14 +65,17 @@ bool PreviewTransport::supportsInsert(const juce::AudioPluginInstance& effect) {
 juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const ostfstudio::OstfpPreview &project,
                                      bool record, std::span<const TrackSetup> tracks, const Inserts &inserts,
                                      juce::int64 startTick, int semitones, double tempoRate,
-                                     std::optional<size_t> inputTrack) {
+                                     std::optional<size_t> inputTrack, const TakeOptions* options) {
     stop();
     auto* device = devices.getCurrentAudioDevice();
     if (!device || !device->isOpen() || device->getActiveOutputChannels().isZero())
         return juce::Result::fail("Select an active audio output in Settings first.");
     const bool drumInput = record && inputTrack && *inputTrack < project.sourceTrackCount() &&
                            project.trackKinds[*inputTrack] == ostfstudio::TrackKind::drum;
-    if (record && !drumInput) {
+    const int inputs = record && options ? options->inputChannels : 0;
+    if (inputs > device->getActiveInputChannels().countNumberOfSetBits())
+        return juce::Result::fail("Enable the required audio input channels in Settings.");
+    if (record && !drumInput && !inputs) {
         bool enabled = false;
         for (const auto& input : juce::MidiInput::getAvailableDevices())
             enabled = enabled || devices.isMidiInputDeviceEnabled(input.identifier);
@@ -81,11 +84,14 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
     const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples(), semitones, tempoRate);
     if (result.failed()) return result;
     if (startTick > 0) seekToTick(startTick);
-    if (record)
-        prepareRecording(project, tracks, inputTrack);
+    if (options && !options->cycle.isEmpty()) setLoop(options->cycle);
+    if (record && !inputs) prepareRecording(project, tracks, inputTrack);
+    if (record && options) {
+        if (const auto armed = prepareTake(*options); armed.failed()) { stop(); return armed; }
+    }
     devices_ = &devices;
     devices.addAudioCallback(this);
-    if (record) devices.addMidiInputDeviceCallback({}, this);
+    if (record && !inputs) devices.addMidiInputDeviceCallback({}, this);
     return result;
 }
 
@@ -93,6 +99,7 @@ void PreviewTransport::prepareRecording(const ostfstudio::OstfpPreview &project,
                                         std::optional<size_t> inputTrack) {
     jassert(devices_ == nullptr);
     recording_ = true;
+    takeStart_ = sample_.load();
     const bool drumInput = inputTrack && *inputTrack < project.trackKinds.size() &&
                            project.trackKinds[*inputTrack] == ostfstudio::TrackKind::drum;
     inputPitches_.fill(!drumInput);
@@ -108,7 +115,6 @@ void PreviewTransport::prepareRecording(const ostfstudio::OstfpPreview &project,
     liveMessages_.clear();
     liveMessages_.ensureSize(32768);
     queuedLiveMessages_ = 0;
-    lastInputPitch = -1;
 }
 
 juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& project, std::span<const TrackSetup> tracks,
@@ -130,6 +136,17 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
         || total > std::numeric_limits<int>::max() - 1)
         return juce::Result::fail("Preview transport supports songs up to one hour.");
     loopSamples_ = {}; loopRestart_ = false;
+    captured_.setSize(0, 0);
+    mapInput_ = false;
+    elapsed_ = countRemaining_ = 0;
+    beatSamples_.clear();
+    for (juce::int64 bar = 0; bar < scoreTicks_; bar += project.ticksPerBar) {
+        const auto meter = ostfstudio::activeMeter(meters_, double(bar), {0, meterBeats_, beatUnit_});
+        for (int beat = 0; beat < meter.numerator; ++beat) {
+            const auto tick = bar + std::llround(beat * 4.0 * ppq_ / meter.denominator);
+            if (tick < scoreTicks_) beatSamples_.emplace_back(juce::roundToInt(clock_.secondsAt(tick) * sampleRate_), beat == 0);
+        }
+    }
     lastSample_ = static_cast<juce::int64>(std::ceil(total));
     pendingNotes_ = false;
     int outputChannels = 0;
@@ -347,7 +364,7 @@ void PreviewTransport::seekToTick(juce::int64 tick) {
 std::vector<ostfstudio::PitchedNote> PreviewTransport::stop(Cursor* stoppedAt) {
     running_ = false;
     if (devices_) {
-        if (recording_) devices_->removeMidiInputDeviceCallback({}, this);
+        if (recording_ && !captured_.getNumChannels()) devices_->removeMidiInputDeviceCallback({}, this);
         devices_->removeAudioCallback(this);
         devices_ = nullptr;
     }
@@ -365,12 +382,11 @@ std::vector<ostfstudio::PitchedNote> PreviewTransport::stop(Cursor* stoppedAt) {
     }
     const auto finalCursor = cursor();
     if (stoppedAt) *stoppedAt = finalCursor;
-    const auto tick = finalCursor.tick;
+    countRemaining_ = 0;
     const std::scoped_lock lock(recordingMutex_);
     if (recording_) {
         for (std::size_t key = 0; key < pressed_.size(); ++key)
-            if (pressed_[key] >= 0 && tick > pressed_[key])
-                recorded_.push_back({pressed_[key], tick, static_cast<int>(key % 128), pressedVelocity_[key]});
+            if (pressed_[key] >= 0) closeRecordedNote(key, elapsed_.load());
     }
     recording_ = false;
     monitorTrack_.reset();
@@ -540,30 +556,61 @@ ostfstudio::MeterFrame PreviewTransport::takeMeters() noexcept {
     return frame;
 }
 
-void PreviewTransport::audioDeviceIOCallbackWithContext(const float* const*, int, float* const* output, int channels,
+void PreviewTransport::audioDeviceIOCallbackWithContext(const float* const* input, int inputs, float* const* output, int channels,
                                                         int count, const juce::AudioIODeviceCallbackContext&) {
-    renderBlock(output, channels, count);
+    renderBlock(output, channels, count, input, inputs);
 }
 
-void PreviewTransport::renderBlock(float* const* output, int channels, int count) {
+void PreviewTransport::renderBlock(float* const* output, int channels, int count, const float* const* input, int inputs) {
     for (int c = 0; c < channels; ++c)
         if (output[c]) juce::FloatVectorOperations::clear(output[c], count);
     if (!running_) return;
     if (pluginAudio_.getNumChannels() && count > pluginAudio_.getNumSamples()) { running_ = false; return; }
     int done = 0;
     while (done < count && running_) {
+        if (const auto remaining = countRemaining_.load(); remaining > 0) {
+            const auto played = countLength_ - remaining;
+            const auto age = played % countBeat_;
+            const int n = int(std::min<juce::int64>({count - done, remaining, countBeat_ - age}));
+            mixClick(output, channels, done, n, int(age), played < countBeat_);
+            countRemaining_ -= n;
+            done += n;
+            continue;
+        }
         auto first = sample_.load();
         if (!loopSamples_.isEmpty() && first >= loopSamples_.getEnd()) {
             adoptPendingNotes();
             first = loopSamples_.getStart(); sample_ = first; loopRestart_ = true;
         }
-        const auto limit = loopSamples_.isEmpty() ? lastSample_ : juce::int64(loopSamples_.getEnd());
+        auto limit = loopSamples_.isEmpty() ? lastSample_ : juce::int64(loopSamples_.getEnd());
+        if (captured_.getNumChannels()) limit = std::min(limit, juce::int64(captureOrigin_ + captured_.getNumSamples()));
         const int part = int(std::min<juce::int64>(count - done, limit - first));
         if (part <= 0) { running_ = false; break; }
         std::array<float*, 4> dest {};
         const int outs = std::min(channels, int(dest.size()));
         for (int c=0; c<outs; ++c) dest[c] = output[c] ? output[c] + done : nullptr;
         if (pluginAudio_.getNumChannels()) renderInstruments(dest.data(), outs, part, int(first), int(first) + part);
+        if (captured_.getNumChannels()) {
+            const int pos = int(first) - captureOrigin_;
+            std::array<const float*, 2> sources{};
+            int available = 0;
+            for (int i = 0; input && i < inputs && available < captured_.getNumChannels(); ++i)
+                if (input[i]) sources[available++] = input[i];
+            if (available < captured_.getNumChannels()) { running_ = false; break; }
+            for (int c = 0; c < available; ++c) captured_.copyFrom(c, pos, sources[c] + done, part);
+            captureFirst_ = std::min(captureFirst_, pos);
+            captureEnd_ = std::max(captureEnd_, pos + part);
+        }
+        if (metronome) {
+            const int clickLength = std::max(1, int(sampleRate_ * .025));
+            auto beat = std::lower_bound(beatSamples_.begin(), beatSamples_.end(), int(first) - clickLength,
+                [](const auto& b, int x) { return b.first < x; });
+            for (; beat != beatSamples_.end() && beat->first < first + part; ++beat) {
+                const int offset = std::max(0, beat->first - int(first));
+                mixClick(dest.data(), outs, offset, part - offset, int(first) + offset - beat->first, beat->second);
+            }
+        }
+        elapsed_ += part;
         done += part; sample_ = first + part; loopRestart_ = false;
         if (loopSamples_.isEmpty() && sample_ >= lastSample_) running_ = false;
     }
@@ -574,15 +621,19 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
 }
 
 void PreviewTransport::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message) {
-    inputNote(message);
+    inputFromDevice(message);
+}
+
+void PreviewTransport::inputFromDevice(const juce::MidiMessage& message) {
+    auto mapped = message;
+    if (mapInput_ && (message.isNoteOn() || message.isNoteOff())) mapped.setNoteNumber(inputMap_[message.getNoteNumber()]);
+    inputNote(mapped);
 }
 
 void PreviewTransport::inputNote(const juce::MidiMessage &message) {
-    if (!running_ || !recording_ || (!message.isNoteOn() && !message.isNoteOff()) ||
+    if (!running_ || countingIn() || !recording_ || captured_.getNumChannels() || (!message.isNoteOn() && !message.isNoteOff()) ||
         !inputPitches_[message.getNoteNumber()])
         return;
-    if (message.isNoteOn())
-        lastInputPitch = message.getNoteNumber();
     if (monitorTrack_) {
         const juce::SpinLock::ScopedLockType lock(liveLock_);
         auto routed = message;
@@ -595,13 +646,91 @@ void PreviewTransport::inputNote(const juce::MidiMessage &message) {
         liveMessages_.addEvent(routed, 0);
         ++queuedLiveMessages_;
     }
-    const auto tick = positionTick();
+    const auto elapsed = elapsed_.load();
     const auto key = (message.getChannel() - 1) * 128 + message.getNoteNumber();
     const std::scoped_lock lock(recordingMutex_);
     auto& start = pressed_[static_cast<std::size_t>(key)];
-    if (start >= 0 && start < scoreTicks_ && recorded_.size() < 10000)
-        recorded_.push_back({start, std::max<juce::int64>(start + 1, tick), message.getNoteNumber(),
-                             pressedVelocity_[static_cast<std::size_t>(key)]});
-    start = message.isNoteOn() ? tick : -1;
+    if (start >= 0) closeRecordedNote(size_t(key), elapsed);
+    start = message.isNoteOn() ? elapsed : -1;
     if (message.isNoteOn()) pressedVelocity_[static_cast<std::size_t>(key)] = message.getVelocity();
+}
+
+juce::Range<juce::int64> PreviewTransport::recordedRange() const {
+    auto first = takeStart_, last = first + elapsed_.load();
+    if (!loopSamples_.isEmpty() && last > loopSamples_.getEnd()) {
+        first = std::min(first, juce::int64(loopSamples_.getStart()));
+        last = loopSamples_.getEnd();
+    }
+    return {std::llround(clock_.tickAt(first / sampleRate_)), std::llround(clock_.tickAt(last / sampleRate_))};
+}
+
+void PreviewTransport::closeRecordedNote(size_t key, juce::int64 elapsed) {
+    auto begin = takeStart_ + pressed_[key];
+    const auto end = takeStart_ + std::max(pressed_[key] + 1, elapsed);
+    const auto cycleEnd = loopSamples_.getEnd();
+    while (begin < end && recorded_.size() < 10000) {
+        const auto pos = !loopSamples_.isEmpty() && begin >= cycleEnd
+            ? loopSamples_.getStart() + (begin - cycleEnd) % loopSamples_.getLength() : begin;
+        const auto limit = loopSamples_.isEmpty() ? lastSample_ : juce::int64(cycleEnd);
+        const auto length = std::min(end - begin, limit - pos);
+        if (length <= 0) break;
+        const auto a = juce::int64(std::llround(clock_.tickAt(pos / sampleRate_)));
+        const auto b = juce::int64(std::llround(clock_.tickAt((pos + length) / sampleRate_)));
+        if (a < scoreTicks_) recorded_.push_back({a, std::min(scoreTicks_, std::max(a + 1, b)), int(key % 128), pressedVelocity_[key]});
+        begin += length;
+    }
+}
+
+juce::Result PreviewTransport::prepareTake(const TakeOptions& options) {
+    jassert(!devices_);
+    takeStart_ = sample_.load();
+    if (options.drumMapping) { inputMap_ = *options.drumMapping; mapInput_ = true; }
+    if (options.inputChannels) {
+        if (options.inputChannels < 1 || options.inputChannels > 2) return juce::Result::fail("Choose mono or stereo.");
+        recording_ = true;
+        const int maxFrames = (16 * 1024 * 1024 - 4096) / (2 * options.inputChannels);
+        captureOrigin_ = loopSamples_.isEmpty() ? int(takeStart_) : std::min(int(takeStart_), loopSamples_.getStart());
+        const int span = (loopSamples_.isEmpty() ? int(lastSample_) : loopSamples_.getEnd()) - captureOrigin_;
+        if (span <= 0 || (!loopSamples_.isEmpty() && span > maxFrames)) return juce::Result::fail("Choose a shorter audio recording range.");
+        captured_.setSize(options.inputChannels, std::min(maxFrames, span));
+        captureFirst_ = captured_.getNumSamples();
+        captureEnd_ = 0;
+    }
+    if (options.countIn) {
+        const auto tick = positionTick();
+        const auto meter = ostfstudio::activeMeter(meters_, double(tick), {0, meterBeats_, beatUnit_});
+        countBeat_ = std::max(1LL, std::llround(sampleRate_ * 60.0 / clock_.bpmAt(tick) * 4 / meter.denominator));
+        countLength_ = countBeat_ * meter.numerator;
+        countRemaining_ = countLength_;
+    }
+    return juce::Result::ok();
+}
+
+void PreviewTransport::mixClick(float* const* output, int channels, int offset, int count, int age, bool accent) const {
+    const int length = std::max(1, int(sampleRate_ * .025));
+    const double freq = std::min(sampleRate_ * .22, accent ? 1500.0 : 1000.0);
+    for (int i = 0; i < count && age + i < length; ++i) {
+        const float click = float(.20 * (1.0 - double(age + i) / length)
+            * std::sin(juce::MathConstants<double>::twoPi * freq * (age + i) / sampleRate_));
+        for (int c = 0; c < std::min(2, channels); ++c) if (output[c]) output[c][offset + i] += click;
+    }
+}
+
+std::optional<ostfstudio::ProjectAudio> PreviewTransport::finishAudioTake(size_t track) {
+    jassert(!devices_);
+    if (captureFirst_ >= captureEnd_ || !captured_.getNumChannels()) return {};
+    ostfstudio::ProjectAudio clip;
+    clip.track = track;
+    clip.path = "Recording-" + juce::Uuid().toString() + ".wav";
+    const int start = captureOrigin_ + captureFirst_, end = captureOrigin_ + captureEnd_;
+    clip.startTick = juce::int64(std::llround(clock_.tickAt(start / sampleRate_)));
+    clip.durationTicks = std::max<juce::int64>(1, std::llround(clock_.tickAt(end / sampleRate_)) - clip.startTick);
+    std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::MemoryOutputStream>(clip.embedded, false);
+    juce::WavAudioFormat wav;
+    auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions{}.withSampleRate(sampleRate_)
+        .withNumChannels(captured_.getNumChannels()).withBitsPerSample(16));
+    if (!writer || !writer->writeFromAudioSampleBuffer(captured_, captureFirst_, end - start)) return {};
+    writer.reset();
+    captured_.setSize(0, 0);
+    return clip;
 }

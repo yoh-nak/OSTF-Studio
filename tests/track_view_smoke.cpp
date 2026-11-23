@@ -102,10 +102,15 @@ int checkTrackView(const juce::File& fixture) {
         || !click("Add audio track") || tracks->getNumItems() != 5) return 34;
     auto* audioEditor = dynamic_cast<AudioClipEditor*>(main.findChildWithID("audio-clip-editor"));
     if (!audioEditor || !audioEditor->isVisible() || audioEditor->getWidth() < 200) return 51;
+    if (!audioEditor->recordRuler.chooseCycle || !audioEditor->recordRuler.cycleBars) return 67;
+    audioEditor->recordRuler.chooseCycle(.12, .39);
+    if (audioEditor->recordRuler.cycleBars().isEmpty()) return 68;
+    audioEditor->channels.setSelectedId(2, juce::sendNotificationSync);
     const auto audioTrack = tracks->getSelectedId();
     tracks->setSelectedId(1, juce::sendNotificationSync);
     if (audioEditor->isVisible()) return 52;
     tracks->setSelectedId(audioTrack, juce::sendNotificationSync);
+    if (audioEditor->channels.getSelectedId() != 2) return 69;
     if (!audioEditor->isVisible() || !main.isInterestedInFileDrag({"Splice sample.wav"})
         || main.isInterestedInFileDrag({"notes.mid"})) return 53;
     main.setSize(1450, 1200);
@@ -178,12 +183,22 @@ int checkTrackView(const juce::File& fixture) {
     auto reachable = [&](TrackRowSize& row) {
         return main.getComponentAt(main.getLocalPoint(&row, juce::Point<int>{10, 2})) == &row;
     };
+    if (master->height() != TrackRowSize::minimum || bass->height() != 100) return 70;
     if (!reachable(*guitar)) return 3;
     const int bassY = bass->getY();
+    const int fitHeight = bassY - guitar->getY() - bass->height();
+    const int fitLanes = fitHeight / juce::roundToInt(24.0 * 100 / TrackRowSize::normal);
+    const auto bassPosition = [&](int h) {
+        return bassY + h - 100 - fitHeight + fitLanes * std::max(16, juce::roundToInt(24.0 * h / TrackRowSize::normal));
+    };
     guitar->mouseDown(pointer(*guitar, 2));
     guitar->mouseDrag(pointer(*guitar, 82));
-    if (!guitar->expanded() || guitar->height() != TrackRowSize::normal + 80
-        || bass->getY() != bassY + 80 || bass->height() != TrackRowSize::normal) return 4;
+    if (!guitar->expanded() || guitar->height() != 100 + 80
+        || bass->getY() != bassPosition(180) || bass->height() != 100) return 4;
+    // The guitar enters at bar 11, just past the default ten-bar viewport.
+    auto* horizontal = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-horizontal-scroll"));
+    if (!horizontal || std::abs(horizontal->getCurrentRange().getLength() - 10.0) > 0.1) return 71;
+    horizontal->setCurrentRangeStart(11.0, juce::sendNotificationSync);
     const auto image = main.createComponentSnapshot(main.getLocalBounds());
     const juce::Image::BitmapData pixels(image, juce::Image::BitmapData::readOnly);
     bool hasNotePreview = false;
@@ -192,9 +207,9 @@ int checkTrackView(const juce::File& fixture) {
             if (pixels.getPixelColour(x, y) == juce::Colour(0xffb3ebdc)) { hasNotePreview = true; break; }
     if (!hasNotePreview) return 5;
     guitar->mouseDoubleClick(pointer(*guitar, 2));
-    if (!guitar->compact() || bass->getY() != bassY + TrackRowSize::minimum - TrackRowSize::normal) return 6;
+    if (!guitar->compact() || bass->getY() != bassPosition(TrackRowSize::minimum)) return 6;
     guitar->mouseDoubleClick(pointer(*guitar, 2));
-    if (guitar->height() != TrackRowSize::normal + 80) return 7;
+    if (guitar->height() != 100 + 80) return 7;
     main.setSize(790, 570);
     if (!scroll->isVisible()) return 8;
     scroll->setCurrentRangeStart(scroll->getMaximumRangeLimit(), juce::sendNotificationSync);
@@ -221,12 +236,12 @@ int checkTrackView(const juce::File& fixture) {
     if (master->height() != 94 || busA->height() != 38 || busB->height() != 38) return 23;
     if (!choose(TRANS("Drum tracks"))) return 24;
     height->setValue(79, juce::sendNotificationSync);
-    if (drums->height() != 79 || bass->height() != TrackRowSize::normal) return 25;
+    if (drums->height() != 79 || bass->height() != 100) return 25;
     if (!choose(TRANS("Timeline lanes"))) return 26;
     scroll->setCurrentRangeStart(0, juce::sendNotificationSync);
     const int beforeLanes = bass->getY();
     height->setValue(62, juce::sendNotificationSync);
-    if (bass->getY() <= beforeLanes || bass->height() != TrackRowSize::normal) return 27;
+    if (bass->getY() <= beforeLanes || bass->height() != 100) return 27;
     if (ruler->getHeight() != 62 || group->getLookAndFeel().getPopupMenuFont().getHeight() < 15.f) return 62;
     auto* dock = dynamic_cast<juce::Viewport*>(main.findChildWithID("song-basics-dock"));
     auto* basics = dock ? dynamic_cast<SongBasicsPanel*>(dock->getViewedComponent()) : nullptr;

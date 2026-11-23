@@ -373,6 +373,8 @@ private:
 MainComponent::MainComponent() {
     setWantsKeyboardFocus(true);
     viewPreferences_.setStorageParameters(ostfstudio::viewSettingsOptions());
+    for (int i = 0; i < 128; ++i)
+        padMapping_[i] = juce::jlimit(0, 127, viewPreferences_.getUserSettings()->getIntValue("padInput" + juce::String(i), i));
     if (const auto* config = viewPreferences_.getUserSettings()) {
         basicsAtTop_ = config->getBoolValue("songBasicsTop", false);
         interfaceScale_ = std::clamp(config->getIntValue("interfaceScale", 100), minInterfaceScale, maxInterfaceScale);
@@ -499,6 +501,36 @@ MainComponent::MainComponent() {
             statusLabel_.setText(juce::translate(r.getErrorMessage()), juce::dontSendNotification);
         }
     };
+    drumPads_.reorder = [this](int from, int to) {
+        if (!project_ || !selectedTrack_ || recordTrack_) return;
+        const bool playing = transportActive_;
+        if (playing) stopTransport();
+        juce::MemoryBlock before;
+        auto result = project_->editDrumPad(*selectedTrack_, from, {}, before, to);
+        if (result.wasOk()) {
+            rememberScoreEdit(std::move(before));
+            finishNoteEdit(playing);
+            drumPads_.select(to);
+        } else {
+            if (playing) startTransport(false);
+            statusLabel_.setText(result.getErrorMessage(), juce::dontSendNotification);
+        }
+    };
+    drumPads_.learnedInputs = [this](int target) {
+        juce::StringArray inputs;
+        for (int i = 0; i < 128; ++i)
+            if (i != target && padMapping_[i] == target) inputs.add(juce::String(i));
+        return inputs.joinIntoString(", ");
+    };
+    drumPads_.learnNote = [this](int pitch) {
+        const bool arm = pitch >= 0 && learnTarget_.load() != pitch;
+        cancelPadLearn();
+        if (arm) {
+            learnTarget_ = pitch;
+            drumPads_.setLearning(true);
+            statusLabel_.setText(TRANS("Strike the MIDI pad to assign"), juce::dontSendNotification);
+        }
+    };
     drumPads_.trigger = [this](int row, bool down) {
         if (!project_ || !selectedTrack_ || *selectedTrack_ >= project_->slotsByTrack.size())
             return;
@@ -510,22 +542,8 @@ MainComponent::MainComponent() {
             if (*recordTrack_ == *selectedTrack_ && pad.pitch >= 0)
                 transport_.inputNote(down ? juce::MidiMessage::noteOn(10, pad.pitch, juce::uint8(100))
                                           : juce::MidiMessage::noteOff(10, pad.pitch));
-        } else if (down) {
-            const auto end = project_->playbackEndTick();
-            const auto step = pianoGrid_.grid > 1 ? pianoGrid_.grid : project_->ppq / 4.;
-            const auto t = std::clamp<juce::int64>(
-                std::llround(std::round(std::max<juce::int64>(0, cursorTick_) / step) * step), 0, end - 1);
-            applyNoteGesture({{ostfstudio::NoteEdit::insert,
-                               {t,
-                                std::min<juce::int64>(end, t + std::max(1LL, std::llround(step))),
-                                pad.pitch,
-                                100,
-                                true,
-                                {},
-                                false,
-                                {},
-                                pad.id}}});
         }
+        if (down && pad.pitch >= 0) flashPad(pad.pitch);
     };
     drumSteps_.commit=[this](const auto& edits){applyNoteGesture(edits);};
     drumSteps_.loopChanged=[this]{updateDrumLoop();};
@@ -737,11 +755,77 @@ MainComponent::MainComponent() {
     };
     setupRuler(ruler_, arrangementScroll_);
     setupRuler(pianoRuler_, arrangementScroll_);
+    setupRuler(audioEditor_.recordRuler, arrangementScroll_);
+    for (auto* r : {&pianoRuler_, &audioEditor_.recordRuler}) {
+        r->setTooltip(TRANS("Shift-drag on the ruler to set the recording loop. Click to position the cursor."));
+        r->cycleBars = [this] {
+            if (!project_ || !cycleButton_.getToggleState() || editorCycle_.isEmpty()) return juce::Range<double>{};
+            const auto bar = [&](auto tick) { return project_->bars.firstBar + double(tick) / project_->ticksPerBar; };
+            return juce::Range<double>{bar(editorCycle_.getStart()), bar(editorCycle_.getEnd())};
+        };
+        r->chooseCycle = [this](double a, double b) {
+            if (!project_ || recordTrack_) return;
+            const auto visible = arrangementScroll_.getCurrentRange();
+            const auto tick = [&](double fraction) {
+                const auto bar = visible.getStart() + fraction * visible.getLength() - project_->bars.firstBar;
+                return std::clamp<juce::int64>(std::llround(bar * project_->ticksPerBar), 0, project_->playbackEndTick());
+            };
+            auto left = tick(std::min(a, b)), right = tick(std::max(a, b));
+            if (right <= left) return;
+            editorCycle_ = {left, right};
+            cycleButton_.setToggleState(true, juce::dontSendNotification);
+            pianoRuler_.cycleMode = audioEditor_.recordRuler.cycleMode = true;
+            pianoRuler_.repaint(); audioEditor_.recordRuler.repaint();
+            if (!transportActive_ && !editorCycle_.contains(cursorTick_)) locateTransport(left);
+            updateDrumLoop();
+        };
+    }
+    addChildComponent(cycleButton_);
+    addChildComponent(editorRecord_);
+    editorRecord_.onClick = [this] { if (recordTrack_) stopTransport(); else startTransport(true); };
+    cycleButton_.setClickingTogglesState(true);
+    cycleButton_.setTooltip(TRANS("Drag across the editor ruler to select the loop range"));
+    cycleButton_.onClick = [this] {
+        const bool on = cycleButton_.getToggleState();
+        pianoRuler_.cycleMode = audioEditor_.recordRuler.cycleMode = on;
+        if (on && editorCycle_.isEmpty() && project_) {
+            const auto start = std::clamp<juce::int64>(cursorTick_, 0, project_->playbackEndTick() - 1);
+            editorCycle_ = {start, std::min(project_->playbackEndTick(), start + project_->ticksPerBar)};
+        }
+        if (on && !transportActive_ && !editorCycle_.contains(cursorTick_)) locateTransport(editorCycle_.getStart());
+        pianoRuler_.repaint(); audioEditor_.recordRuler.repaint(); updateDrumLoop();
+    };
+    auto* preferences = viewPreferences_.getUserSettings();
+    deck_.click.setToggleState(preferences->getBoolValue("metronome"), juce::dontSendNotification);
+    deck_.countIn.setToggleState(preferences->getBoolValue("countIn"), juce::dontSendNotification);
+    transport_.metronome = deck_.click.getToggleState();
+    deck_.click.onClick = [this] {
+        transport_.metronome = deck_.click.getToggleState();
+        viewPreferences_.getUserSettings()->setValue("metronome", deck_.click.getToggleState());
+    };
+    deck_.countIn.onClick = [this] { viewPreferences_.getUserSettings()->setValue("countIn", deck_.countIn.getToggleState()); };
+    audioEditor_.channels.onChange = [this] {
+        if (selectedTrack_ && project_) captureChannels_[project_->trackIds[int(*selectedTrack_)]] = audioEditor_.channels.getSelectedId();
+    };
     addChildComponent(pianoRuler_);
     rowOverlay_.addAndMakeVisible(ruler_);
     addChildComponent(audioEditor_);
     audioEditor_.sourceClip = [this] { return selectedTrack_ ? clipOn(*selectedTrack_) : nullptr; };
     audioEditor_.clock = [this]() -> const ostfstudio::TempoMap& { return project_->clock; };
+    audioEditor_.onSplice = [this] {
+        if (!selectedTrack_ || !project_ || recordTrack_) return;
+        const auto music = juce::File::getSpecialLocation(juce::File::userHomeDirectory).getChildFile("Splice");
+        const auto folder = viewPreferences_.getUserSettings()->getValue("spliceSamples", music.getFullPathName());
+        chooser_ = std::make_unique<juce::FileChooser>(TRANS("Choose a downloaded Splice WAV"), juce::File(folder), "*.wav");
+        chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, track = *selectedTrack_,
+             tick = std::max<juce::int64>(0, cursorTick_)](const auto& picker) {
+                const auto file = picker.getResult();
+                if (!safe || safe->projectGeneration_ != generation || !file.existsAsFile()) return;
+                safe->viewPreferences_.getUserSettings()->setValue("spliceSamples", file.getParentDirectory().getFullPathName());
+                safe->placeWav(file, track, tick, false);
+            });
+    };
     audioEditor_.onMelodyne = [this] { showMelodyneActions(); };
     audioEditor_.onEdit = [this](const ostfstudio::ClipTiming& edit) {
         auto* clip = selectedTrack_ ? clipOn(*selectedTrack_) : nullptr;
@@ -823,7 +907,9 @@ int MainComponent::globalLabelInset() const {
 
 int MainComponent::topBasicsHeight() const {
     if (!project_ || !basicsAtTop_ || workspaceMode_ != WorkspaceMode::arrangement || getWidth() >= 2330) return 0;
-    return SongBasicsPanel::naturalHeight(getWidth() - 36) + 4;
+    const int natural = SongBasicsPanel::naturalHeight(getWidth() - 36) + 4;
+    // Keep the timeline and recording editor usable together on short displays.
+    return std::min(natural, std::max(38, getHeight() - 520));
 }
 
 void MainComponent::editSongField(SongBasicsPanel::Field field, const juce::String& value, int choice) {
@@ -1254,6 +1340,7 @@ void MainComponent::menuItemSelected(int item, int) {
             break;
         case showDevices:
             if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
+            deviceSettings_->devices();
             deviceSettings_->setVisible(true);
             deviceSettings_->toFront(true);
             break;
@@ -1315,7 +1402,11 @@ juce::Rectangle<int> MainComponent::getWorkspace() const {
 
 int MainComponent::getArrangementHeight(int workspaceHeight) const {
     if (!editorVisible_) return workspaceHeight;
-    return mixerButton_.getToggleState() ? workspaceHeight / 2 : std::clamp(juce::roundToInt(workspaceHeight * arrangementFraction_), std::min(90, workspaceHeight / 3), std::max(workspaceHeight / 3, workspaceHeight - 136));
+    const int navigationRows = getWorkspace().getWidth() - 26 < 765 ? 2 : 1;
+    const int minimum = std::min(workspaceHeight, 26 + navigationRows * timelineNavigationHeight
+                                              + timelineRowHeight() + TrackRowSize::minimum);
+    const double fraction = mixerButton_.getToggleState() ? 0.5 : arrangementFraction_;
+    return std::clamp(juce::roundToInt(workspaceHeight * fraction), minimum, std::max(minimum, workspaceHeight - 136));
 }
 
 void MainComponent::scrollBarMoved(juce::ScrollBar* bar, double) {
@@ -1357,9 +1448,9 @@ void MainComponent::updateHorizontalRange(bool reset) {
     auto& scroll = arrangementScroll_;
     const auto song = project_->bars;
     const auto length = song.endBar - song.firstBar;
-    if (reset && zoom.getValue() > 0.0 && scroll.getCurrentRangeSize() > 0.0) {
-        const double previous = juce::jlimit(1.0, double(length), scroll.getCurrentRangeSize());
-        zoom.setValue(length > 1 ? 1.0 - std::log(previous) / std::log(length) : 0.0, juce::dontSendNotification);
+    if (reset) {
+        const double initialBars = std::min(10.0, double(length));
+        zoom.setValue(length > 1 ? 1.0 - std::log(initialBars) / std::log(length) : 0.0, juce::dontSendNotification);
     }
     const double visible = std::pow(length, 1.0 - zoom.getValue());
     double start = reset ? double(song.firstBar) : scroll.getCurrentRangeStart();
@@ -1638,7 +1729,58 @@ void MainComponent::updateTransportMix() {
     transport_.setOutputMix(mixer_.routing());
 }
 
+void MainComponent::cancelPadLearn() {
+    learnTarget_ = -1;
+    learnedPair_ = -1;
+    drumPads_.setLearning(false);
+}
+
+void MainComponent::attachPadInput(bool enable) {
+    if (enable == padListening_) return;
+    if (enable) {
+        if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
+        deviceSettings_->midiDevices().addMidiInputDeviceCallback({}, this);
+    } else {
+        deviceSettings_->midiDevices().removeMidiInputDeviceCallback({}, this);
+        padUpdate_.cancelPendingUpdate();
+        cancelPadLearn();
+        for (auto& hit : padPressed_) hit = false;
+    }
+    padListening_ = enable;
+}
+
+void MainComponent::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message) {
+    if (!message.isNoteOn()) return;
+    const int input = message.getNoteNumber();
+    const int target = learnTarget_.exchange(-1);
+    if (target >= 0) learnedPair_ = 128 * input + target;
+    padPressed_[input] = true;
+    padUpdate_.triggerAsyncUpdate();
+}
+
+void MainComponent::showPadInput() {
+    if (!padListening_) return;
+    const int pair = learnedPair_.exchange(-1);
+    if (pair >= 0) {
+        const int input = pair / 128, target = pair % 128;
+        padMapping_[input] = target;
+        viewPreferences_.getUserSettings()->setValue("padInput" + juce::String(input), target);
+        drumPads_.setLearning(false);
+        drumPads_.refreshAssignment();
+        statusLabel_.setText("MIDI " + juce::String(input) + " -> " + juce::String(target), juce::dontSendNotification);
+    }
+    for (int i = 0; i < 128; ++i)
+        if (padPressed_[i].exchange(false)) flashPad(padMapping_[i]);
+}
+
+void MainComponent::flashPad(int pitch) {
+    drumPads_.flash(pitch);
+    drumSteps_.flash(pitch);
+    if (!transportActive_) startTimer(170);
+}
+
 MainComponent::~MainComponent() {
+    attachPadInput(false);
     stopTimer();
     transport_.stop();
 }
@@ -1659,16 +1801,30 @@ void MainComponent::restoreInstrumentAssignments(const ostfstudio::SessionMix& m
     }
 }
 
-void MainComponent::startTransport(bool recording) {
+void MainComponent::startTransport(bool recording, bool replaceConfirmed) {
     if (!project_ || (recording && !selectedTrack_)) return;
-    if (recording && (*selectedTrack_ >= project_->sourceTrackCount() ||
-                      project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::audio)) {
+    if (recording && *selectedTrack_ >= project_->sourceTrackCount()) {
         statusLabel_.setText(TRANS("Select a pitched or drum track for MIDI recording."), juce::dontSendNotification);
         return;
     }
     if (transportActive_) {
         if (transport_.isRunning() && recording == recordTrack_.has_value()) return;
         stopTransport();
+    }
+    if (recording && cursorTick_ >= project_->playbackEndTick()) {
+        statusLabel_.setText(TRANS("Place the recording cursor inside the song."), juce::dontSendNotification);
+        return;
+    }
+    const bool audioTake = recording && project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::audio;
+    if (audioTake && clipOn(*selectedTrack_) && !replaceConfirmed) {
+        juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, TRANS("Record"),
+            TRANS("Replace this clip with the new recording when you stop?"), TRANS("Record"), TRANS("Cancel"), this,
+            juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<MainComponent>(this),
+                generation = projectGeneration_, track = selectedTrack_](int answer) {
+                if (safe && answer && generation == safe->projectGeneration_ && safe->selectedTrack_ == track && !safe->transportActive_)
+                    safe->startTransport(true, true);
+            }));
+        return;
     }
     if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
     if (!canEditTracks()) {
@@ -1696,24 +1852,39 @@ void MainComponent::startTransport(bool recording) {
     for (std::size_t i = 0; i < std::min(trackControls_.size(), PreviewTransport::maxTracks); ++i)
         copyEffects(trackControls_[i]->effects, inserts[PreviewTransport::outputCount + i]);
     const auto start = cursorTick_ >= project_->playbackEndTick() ? 0 : std::max<juce::int64>(0, cursorTick_);
+    PreviewTransport::TakeOptions take;
+    take.cycle = drumSteps_.looping() ? drumSteps_.range() : (cycleButton_.getToggleState() && !drumSteps_.isVisible()
+        ? editorCycle_ : juce::Range<juce::int64>{});
+    take.countIn = recording && deck_.countIn.getToggleState();
+    if (audioTake) {
+        const auto it = captureChannels_.find(project_->trackIds[int(*selectedTrack_)]);
+        take.inputChannels = it == captureChannels_.end() ? 1 : it->second;
+    }
+    if (selectedTrack_ && project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::drum)
+        take.drumMapping = &padMapping_;
+    if (recording && !take.cycle.isEmpty() && start >= take.cycle.getEnd()) {
+        statusLabel_.setText(TRANS("Place the cursor before the end of the recording loop."), juce::dontSendNotification);
+        return;
+    }
+    if (recording) cancelPadLearn();
     const auto result = transport_.start(deviceSettings_->devices(), *project_, recording, tracks, inserts, start,
-                                         auditionShift_, auditionRate_, recording ? selectedTrack_ : std::nullopt);
+                                         auditionShift_, auditionRate_, recording ? selectedTrack_ : std::nullopt, &take);
     if (result.failed()) {
         statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
         return;
     }
     transportActive_ = true;
-    activeLoop_ = {};
+    activeLoop_ = recording ? take.cycle : juce::Range<juce::int64>{};
     recordTrack_ = recording ? selectedTrack_ : std::nullopt;
-    if (recording && drumPads_.isVisible())
+    if (recording)
         refreshEditor();
     updateDrumLoop();
     deck_.play.setToggleState(!recording, juce::dontSendNotification);
     deck_.stop.setToggleState(false, juce::dontSendNotification);
     deck_.record.setToggleState(recording, juce::dontSendNotification);
     for (auto* button : {&deck_.home, &deck_.rewind, &deck_.forward}) button->setEnabled(!recording);
-    displayTransportPosition(activeLoop_.isEmpty() || activeLoop_.contains(start) ? start : activeLoop_.getStart());
-    statusLabel_.setText(recording ? TRANS("Recording MIDI into the selected track") : TRANS("Playing arrangement"),
+    displayTransportPosition(recording || activeLoop_.isEmpty() || activeLoop_.contains(start) ? start : activeLoop_.getStart());
+    statusLabel_.setText(audioTake ? TRANS("Recording audio") : recording ? TRANS("Recording MIDI into the selected track") : TRANS("Playing arrangement"),
                          juce::dontSendNotification);
     if (!unavailable.empty())
         statusLabel_.setText(TRANS("No playable instrument on: ") + unavailable.front()
@@ -1732,25 +1903,29 @@ void MainComponent::stopTransport() {
         const auto count = static_cast<int>(recorded.size());
         bool added = false;
         juce::String failure;
-        if (project_->trackKinds[*recordTrack_] == ostfstudio::TrackKind::drum && !recorded.empty()) {
-            std::vector<ostfstudio::NoteEdit> hits;
-            for (const auto &n : recorded)
-                hits.push_back({ostfstudio::NoteEdit::insert, n});
+        const bool audio = project_->trackKinds[*recordTrack_] == ostfstudio::TrackKind::audio;
+        if (audio) {
+            if (auto clip = transport_.finishAudioTake(*recordTrack_)) {
+                if (auto* existing = clipOn(*recordTrack_)) *existing = std::move(*clip);
+                else project_->audio.push_back(std::move(*clip));
+                waveforms_.load(project_->audio);
+                melodyneCopies_.erase(project_->trackIds[int(*recordTrack_)]);
+                added = true;
+            } else failure = TRANS("No audio captured");
+        } else if (!recorded.empty()) {
             juce::MemoryBlock before;
-            juce::StringArray ids;
-            auto result = project_->editNotes(*recordTrack_, hits, before, ids);
+            auto result = project_->addRecordedClip(*recordTrack_, transport_.recordedRange(), recorded, before);
             added = result.wasOk();
             failure = result.getErrorMessage();
-            if (added)
-                rememberScoreEdit(std::move(before));
-        } else if (!recorded.empty())
-            added = project_->addSessionClip(*recordTrack_, "Recorded MIDI", std::move(recorded));
+            if (added) rememberScoreEdit(std::move(before));
+        }
         if (added) refreshTrackTheory(*recordTrack_);
         const auto finishedTrack = *recordTrack_;
         recordTrack_.reset();
         transportActive_ = false;
         selectTrack(finishedTrack);
-        statusLabel_.setText(added ? juce::String(count) + TRANS(" MIDI notes captured")
+        if (added) { editorVisible_ = false; refreshEditor(); }
+        statusLabel_.setText(added && audio ? TRANS("Audio clip recorded") : added ? juce::String(count) + TRANS(" MIDI notes captured")
                                    : (failure.isEmpty() ? TRANS("No MIDI notes captured") : juce::translate(failure)),
                              juce::dontSendNotification);
     } else {
@@ -1939,13 +2114,14 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, c
 }
 
 void MainComponent::timerCallback() {
-    if (recordTrack_ && drumPads_.isVisible()) {
-        if (const int p = transport_.lastInputPitch.exchange(-1); p >= 0)
-            drumPads_.flash(p);
-        else
-            drumPads_.repaint();
-    }
+    if (drumPads_.isVisible()) { drumPads_.repaint(); drumSteps_.repaint(); }
+    if (!transportActive_) { stopTimer(); return; }
     if (!transport_.isRunning()) { stopTransport(); return; }
+    if (recordTrack_ && transport_.countingIn())
+        statusLabel_.setText(TRANS("Count-in"), juce::dontSendNotification);
+    else if (recordTrack_ && statusLabel_.getText() == TRANS("Count-in"))
+        statusLabel_.setText(project_->trackKinds[*recordTrack_] == ostfstudio::TrackKind::audio ? TRANS("Recording audio")
+                             : TRANS("Recording MIDI into the selected track"), juce::dontSendNotification);
     const auto frame = transport_.takeMeters();
     const auto cursor = transport_.cursor();
     displayTransportPosition(cursor.tick, cursor.seconds);
@@ -2011,6 +2187,11 @@ void MainComponent::openImportedSong(std::unique_ptr<ostfstudio::OstfpPreview> d
 void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next, const juce::String& filename,
                                  bool plainScore, const juce::File& sourceFolder) {
     stopTransport();
+    attachPadInput(false);
+    captureChannels_.clear();
+    editorCycle_ = {};
+    cycleButton_.setToggleState(false, juce::dontSendNotification);
+    pianoRuler_.cycleMode = audioEditor_.recordRuler.cycleMode = false;
     scoreView_.reset();
     selectedGlobal_.reset();
     melodyneCopies_.clear();
@@ -2043,10 +2224,14 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     selectedTrack_.reset();
     trackRows_.clear();
     verticalScroll_.setCurrentRangeStart(0, juce::dontSendNotification);
-    groupDefaults_.fill(TrackRowSize::normal);
+    groupDefaults_.fill(TrackRowSize::minimum);
+    for (auto group : {HeightGroup::pitched, HeightGroup::drums, HeightGroup::audio})
+        groupDefaults_[static_cast<size_t>(group)] = 100;
     groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)] = defaultTimelineHeight;
-    for (auto& output : outputControls_)
+    for (auto& output : outputControls_) {
         output.size.resetSize();
+        output.size.assignHeight(TrackRowSize::minimum);
+    }
     trackPicker_.clear(juce::dontSendNotification);
     for (std::size_t i = 0; i < project_->trackLanes.size(); ++i)
         trackPicker_.addItem(juce::String::fromUTF8(project_->trackLanes[i].label), static_cast<int>(i + 1));
@@ -2054,6 +2239,11 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     mixer_.setTracks(*project_);
     rebuildTrackControls();
     if (const auto& saved = project_->savedMix) {
+        captureChannels_ = saved->captureChannels;
+        editorCycle_ = saved->recordCycle.getIntersectionWith({0, project_->playbackEndTick()});
+        const bool cycleOn = !editorCycle_.isEmpty() && saved->cycleEnabled;
+        cycleButton_.setToggleState(cycleOn, juce::dontSendNotification);
+        pianoRuler_.cycleMode = audioEditor_.recordRuler.cycleMode = cycleOn;
         mixer_.restore(*saved);
         restoreInstrumentAssignments(*saved);
         for (std::size_t i = 0; i < std::min(trackControls_.size(), saved->midiRoutes.size()); ++i) {
@@ -2143,6 +2333,9 @@ void MainComponent::saveDocument(SaveFormat format) {
                     };
                     for (std::size_t i = 0; i < safe->outputControls_.size(); ++i)
                         saveChain(safe->outputControls_[i].effects, mix.outputEffects[i], true, i);
+                    mix.recordCycle = safe->editorCycle_;
+                    mix.cycleEnabled = safe->cycleButton_.getToggleState();
+                    mix.captureChannels = safe->captureChannels_;
                     for (const auto kind : safe->project_->trackKinds) mix.audioTracks.push_back(kind == ostfstudio::TrackKind::audio);
                     mix.trackEffects.resize(safe->trackControls_.size());
                     for (std::size_t i = 0; i < safe->trackControls_.size(); ++i)
@@ -3467,6 +3660,7 @@ void MainComponent::mouseUp(const juce::MouseEvent& event) {
 }
 
 void MainComponent::selectTrack(std::size_t index) {
+    if (recordTrack_ && *recordTrack_ != index) return;
     if (!project_ || index >= project_->trackLanes.size()) return;
     editorVisible_ = true;
     selectedTrack_ = index;
@@ -3762,7 +3956,8 @@ void MainComponent::setWorkspaceMode(WorkspaceMode mode) {
 
 void MainComponent::updateDrumLoop() {
     if (!transportActive_ || recordTrack_ || !transport_.isRunning()) return;
-    const auto range = drumSteps_.looping() ? drumSteps_.range() : juce::Range<juce::int64>{};
+    const auto range = drumSteps_.looping() ? drumSteps_.range() : cycleButton_.getToggleState() && !drumSteps_.isVisible()
+        ? editorCycle_ : juce::Range<juce::int64>{};
     if (range == activeLoop_) return;
     activeLoop_ = range;
     transport_.setLoop(range);
@@ -3876,7 +4071,11 @@ void MainComponent::refreshEditor() {
     const bool editing = arranging && project_ && editorVisible_ && !showMixer;
     const bool audio = editing && selectedTrack_ && project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::audio;
     audioEditor_.setVisible(audio);
-    if (audio) audioEditor_.bind(project_->ppq, !recordTrack_.has_value());
+    if (audio) {
+        audioEditor_.bind(project_->ppq, !recordTrack_.has_value());
+        const auto it = captureChannels_.find(project_->trackIds[int(*selectedTrack_)]);
+        audioEditor_.channels.setSelectedId(it == captureChannels_.end() ? 1 : it->second, juce::dontSendNotification);
+    }
     const bool piano = editing && !audio;
     refreshPianoNotes();
     pianoGrid_.setDescription(noteFitReading());
@@ -3885,11 +4084,18 @@ void MainComponent::refreshEditor() {
     const bool steps = drum && drumMode_.getSelectedId()==2;
     drumSteps_.bind(drum ? project_.get() : nullptr,selectedTrack_.value_or(0),std::max<juce::int64>(0,cursorTick_),pianoGrid_.grid);
     drumSteps_.setVisible(steps);
+    cycleButton_.setVisible(editing && selectedTrack_ && !steps);
+    cycleButton_.setEnabled(!recordTrack_);
+    editorRecord_.setVisible(editing && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
+    editorRecord_.setButtonText(recordTrack_ ? TRANS("Stop recording") : TRANS("Record"));
+    editorRecord_.setToggleState(recordTrack_.has_value(), juce::dontSendNotification);
     drumPads_.setVisible(drum);
     const auto kitId = drum ? project_->trackIds[int(*selectedTrack_)] : juce::String{};
     if (drum)
         drumPads_.bind(project_->slotsByTrack[*selectedTrack_], steps, padTrack_ != kitId, !recordTrack_);
+    if (kitId != padTrack_) cancelPadLearn();
     padTrack_ = kitId;
+    attachPadInput(drum);
     updateDrumLoop();
     pianoGrid_.setVisible(piano && selectedTrack_.has_value() && !steps);
     pianoRuler_.setVisible(pianoGrid_.isVisible());
@@ -3907,6 +4113,7 @@ void MainComponent::refreshEditor() {
     theoryButton_.setToggleState(theoryVisible_ && arranging, juce::dontSendNotification);
     lanesButton_.setEnabled(arranging);
     trackPicker_.setVisible(arranging && project_ && editorVisible_);
+    trackPicker_.setEnabled(!recordTrack_ && project_ && !project_->trackLanes.empty());
     performanceLane_.setVisible(piano && selectedTrack_ && !steps);
     const auto previous = performanceLaneNames_[performanceLane_.getSelectedId() - 1];
     performanceLaneNames_ = juce::StringArray{"Velocity"};
@@ -4178,7 +4385,10 @@ void MainComponent::resized() {
                               && pianoLayout.lane.getHeight() >= 20);
     editor.reduce(6, 4);
     auto toolbar = editor.removeFromTop(26);
-    if (midiDrag_.isVisible()) midiDrag_.setBounds(toolbar.removeFromRight(192));
+    if (editorRecord_.isVisible()) editorRecord_.setBounds(toolbar.removeFromRight(88).reduced(1));
+    if (cycleButton_.isVisible()) cycleButton_.setBounds(toolbar.removeFromRight(90).reduced(1));
+    if (midiDrag_.isVisible() && toolbar.getWidth() < 720) midiDrag_.setBounds({});
+    else if (midiDrag_.isVisible()) midiDrag_.setBounds(toolbar.removeFromRight(192));
     const auto pickerWidth = performanceLane_.isVisible() ? juce::jmin(180, toolbar.getWidth() / 2) : 180;
     trackPicker_.setBounds(toolbar.removeFromLeft(pickerWidth));
     toolbar.removeFromLeft(6);
@@ -4193,7 +4403,7 @@ void MainComponent::resized() {
     if (pianoColours_.isVisible()) pianoColours_.setBounds(pianoNavigation.removeFromLeft(std::min(210, pianoNavigation.getWidth())).reduced(2, 0));
     if (drumPads_.isVisible())
         drumPads_.setBounds(inspector.removeFromTop(drumSteps_.isVisible() ? inspector.getHeight()
-                                                                           : std::min(56, inspector.getHeight())));
+                                                                           : std::min(80, inspector.getHeight())));
     pianoInspectorView_.setBounds(inspector);
     const bool showLegend = pianoColours_.isVisible() && pianoColours_.getSelectedId() != plainNotes;
     pianoInspector_.showLegend = showLegend;

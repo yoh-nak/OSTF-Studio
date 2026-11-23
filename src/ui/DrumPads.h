@@ -7,11 +7,15 @@ class DrumPads final : public juce::Component {
     std::function<void(int, std::optional<int>)> edit;
     std::function<void(int, bool)> trigger;
     std::function<void(int)> selectionChanged;
+    std::function<void(int, int)> reorder;
+    std::function<void(int)> learnNote;
+    std::function<juce::String(int)> learnedInputs;
+    void setLearning(bool active) { learn.setToggleState(active, juce::dontSendNotification); }
     DrumPads() {
         setComponentID("drum-pad-bank");
         for (auto *c : {&slot, &pitch, &size})
             addAndMakeVisible(c);
-        for (auto *b : {&add, &remove, &assign, &previous, &next})
+        for (auto *b : {&add, &remove, &assign, &previous, &next, &learn, &up, &down})
             addAndMakeVisible(b);
         for (int i = 0; i < 128; ++i)
             pitch.addItem(juce::String(i) + "  " + juce::MidiMessage::getMidiNoteName(i, true, true, 4), i + 1);
@@ -43,6 +47,9 @@ class DrumPads final : public juce::Component {
             if (edit && pitch.getSelectedId())
                 edit(selected, pitch.getSelectedId() - 1);
         };
+        learn.onClick = [this] { if (learnNote && !pads.empty()) learnNote(pads[selected].pitch); };
+        up.onClick = [this] { if (reorder && selected + 1 < int(pads.size())) reorder(selected, selected + 1); };
+        down.onClick = [this] { if (reorder && selected > 0) reorder(selected, selected - 1); };
         previous.onClick = [this] { select(std::max(0, (page - 1) * capacity())); };
         next.onClick = [this] { select(std::min(int(pads.size()) - 1, (page + 1) * capacity())); };
     }
@@ -53,6 +60,8 @@ class DrumPads final : public juce::Component {
         for (int i = 0; i < int(pads.size()); ++i)
             slot.addItem(juce::String(i + 1) + "   " + pads[i].name, i + 1);
         select(changeTrack ? 0 : selected);
+        learn.setEnabled(editing && !pads.empty());
+        up.setEnabled(editing); down.setEnabled(editing);
         assign.setEnabled(editing && !pads.empty());
         remove.setEnabled(editing && !pads.empty());
         add.setEnabled(editing && pads.size() < 128);
@@ -65,6 +74,9 @@ class DrumPads final : public juce::Component {
         selected = std::clamp(index, 0, std::max(0, int(pads.size()) - 1));
         slot.setSelectedId(pads.empty() ? 0 : selected + 1, juce::dontSendNotification);
         pitch.setSelectedId(pads.empty() ? 37 : pads[selected].pitch + 1, juce::dontSendNotification);
+        const auto inputs = !pads.empty() && learnedInputs ? learnedInputs(pads[selected].pitch) : juce::String{};
+        learn.setButtonText(inputs.isEmpty() ? TRANS("MIDI Learn") : TRANS("MIDI Learn") + " " + inputs);
+        learn.setTooltip(TRANS("Strike the MIDI pad to assign") + (inputs.isEmpty() ? juce::String{} : " (" + inputs + ")"));
         page = selected / capacity();
         previous.setEnabled(page > 0);
         next.setEnabled((page + 1) * capacity() < int(pads.size()));
@@ -72,9 +84,9 @@ class DrumPads final : public juce::Component {
             selectionChanged(selected);
         repaint();
     }
+    void refreshAssignment() { select(selected); }
     void flash(int midiPitch) {
-        flashPitch = midiPitch;
-        flashUntil = juce::Time::getMillisecondCounter() + 130;
+        flashes[midiPitch] = juce::Time::getMillisecondCounter() + 150;
         repaint();
     }
     void resized() override {
@@ -87,6 +99,10 @@ class DrumPads final : public juce::Component {
         assign.setBounds(second.removeFromLeft(w).reduced(1));
         add.setBounds(second.removeFromLeft(w).reduced(1));
         remove.setBounds(second.reduced(1));
+        auto mapping = r.removeFromTop(24);
+        up.setBounds(mapping.removeFromRight(mapping.getWidth() / 3).reduced(1));
+        down.setBounds(mapping.removeFromRight(mapping.getWidth() / 2).reduced(1));
+        learn.setBounds(mapping.reduced(1));
         auto bar = r.removeFromTop(24);
         next.setBounds(bar.removeFromRight(30).reduced(1));
         previous.setBounds(bar.removeFromRight(30).reduced(1));
@@ -108,8 +124,8 @@ class DrumPads final : public juce::Component {
                                                          surfaceArea.getY() + (y + 1) * surfaceArea.getHeight() / dim)
                     .reduced(1);
             bool active = n < int(pads.size());
-            bool lit = active &&
-                       ((pads[n].pitch == flashPitch && juce::Time::getMillisecondCounter() < flashUntil) || held == n);
+            const auto hit = active ? flashes.find(pads[n].pitch) : flashes.end();
+            bool lit = active && ((hit != flashes.end() && int(hit->second - juce::Time::getMillisecondCounter()) > 0) || held == n);
             g.setColour(juce::Colour(lit                       ? 0xffe5ae60
                                      : n == selected && active ? 0xff367999
                                      : active                  ? 0xff314f66
@@ -151,9 +167,9 @@ class DrumPads final : public juce::Component {
     std::vector<ostfstudio::DrumSlot> pads;
     juce::ComboBox slot, pitch, size;
     juce::TextButton add{TRANS("Add pad")}, remove{TRANS("Remove pad")}, assign{TRANS("Assign note")}, previous{"<"},
-        next{">"};
+        next{">"}, learn{TRANS("MIDI Learn")}, up{TRANS("Move up")}, down{TRANS("Move down")};
     juce::Rectangle<int> surfaceArea;
-    int selected = 0, page = 0, held = -1, flashPitch = -1;
-    juce::uint32 flashUntil = 0;
+    int selected = 0, page = 0, held = -1;
+    std::map<int, juce::uint32> flashes;
     bool showSurface = false;
 };

@@ -90,6 +90,9 @@ struct SessionMix {
             : "bus-" + juce::String(static_cast<int>(outputBusIndex(channel) + 1));
         return id + "-fx-" + juce::String(slot + 1);
     }
+    juce::Range<juce::int64> recordCycle;
+    bool cycleEnabled = false;
+    std::map<juce::String, int> captureChannels;
     std::vector<bool> audioTracks;
 };
 
@@ -179,7 +182,9 @@ struct OstfpPreview {
     juce::Result editTracks(TrackKind kind, std::optional<std::size_t> remove, std::unique_ptr<OstfpPreview>& result,
                             std::optional<std::size_t> duplicate = {}, MixerTrackGroup group = MixerTrackGroup::pitched) const;
     bool insertGeneratorPattern(std::size_t track, int bar);
-    juce::Result editDrumPad(size_t track, int row, std::optional<int> pitch, juce::MemoryBlock &before);
+    juce::Result editDrumPad(size_t track, int row, std::optional<int> pitch, juce::MemoryBlock &before,
+                             std::optional<int> moveTo = {});
+    juce::Result addRecordedClip(size_t track, juce::Range<juce::int64>, const std::vector<PitchedNote>&, juce::MemoryBlock& before);
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);
     juce::Result editNotes(std::size_t track, const std::vector<NoteEdit>& edits, juce::MemoryBlock& before,
                            juce::StringArray& resultingIds);

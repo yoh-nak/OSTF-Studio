@@ -25,14 +25,25 @@ public:
     static bool supportsInstrument(const juce::AudioPluginInstance& instrument);
     static bool supportsInsert(const juce::AudioPluginInstance& effect);
     ~PreviewTransport() override;
+    struct TakeOptions {
+        juce::Range<juce::int64> cycle;
+        int inputChannels = 0;
+        bool countIn = false;
+        const std::array<int, 128>* drumMapping = nullptr;
+    };
+    std::atomic<bool> metronome{false};
+    juce::Range<juce::int64> recordedRange() const;
+    bool countingIn() const { return countRemaining_.load() > 0; }
+    juce::Result prepareTake(const TakeOptions&);
+    std::optional<ostfstudio::ProjectAudio> finishAudioTake(size_t track);
     juce::Result start(juce::AudioDeviceManager &devices, const ostfstudio::OstfpPreview &project, bool record,
                        std::span<const TrackSetup> tracks, const Inserts &inserts = {}, juce::int64 startTick = 0,
-                       int semitones = 0, double tempoRate = 1, std::optional<size_t> inputTrack = {});
+                       int semitones = 0, double tempoRate = 1, std::optional<size_t> inputTrack = {}, const TakeOptions* options = nullptr);
     // Arm after preparePlayback and before attaching device callbacks or rendering audio.
     void prepareRecording(const ostfstudio::OstfpPreview &, std::span<const TrackSetup>,
                           std::optional<size_t> inputTrack);
     void inputNote(const juce::MidiMessage &message);
-    std::atomic<int> lastInputPitch{-1};
+    void inputFromDevice(const juce::MidiMessage&);
     struct Cursor { juce::int64 tick; double seconds; };
     std::vector<ostfstudio::PitchedNote> stop(Cursor* stoppedAt = nullptr);
     juce::Result updateLoopNotes(const ostfstudio::OstfpPreview&);
@@ -40,7 +51,7 @@ public:
     void seekToTick(juce::int64 tick);
     juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
                                  double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1);
-    void renderBlock(float* const* output, int channels, int samples);
+    void renderBlock(float* const* output, int channels, int samples, const float* const* input = nullptr, int inputs = 0);
     ostfstudio::MeterFrame takeMeters() noexcept;
     void setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb);
     void setOutputMix(const ostfstudio::MixerRouting& mix);
@@ -111,6 +122,15 @@ private:
     juce::SpinLock liveLock_;
     juce::MidiBuffer liveMessages_;
     int queuedLiveMessages_ = 0;
+    void closeRecordedNote(size_t key, juce::int64 elapsed);
+    void mixClick(float* const*, int channels, int offset, int samples, int age, bool accent) const;
+    std::vector<std::pair<int, bool>> beatSamples_;
+    std::atomic<juce::int64> elapsed_{0}, countRemaining_{0};
+    juce::int64 takeStart_ = 0, countLength_ = 0, countBeat_ = 1;
+    std::array<int, 128> inputMap_{};
+    bool mapInput_ = false;
+    juce::AudioBuffer<float> captured_;
+    int captureOrigin_ = 0, captureFirst_ = 0, captureEnd_ = 0;
     std::mutex recordingMutex_;
     std::array<juce::int64, 16 * 128> pressed_ {};
     std::array<int, 16 * 128> pressedVelocity_ {};

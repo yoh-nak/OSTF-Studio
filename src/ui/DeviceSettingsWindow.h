@@ -8,4 +8,5 @@ public:
     DeviceSettingsWindow();
     void closeButtonPressed() override;
     juce::AudioDeviceManager& devices();
+    juce::AudioDeviceManager& midiDevices();
 };

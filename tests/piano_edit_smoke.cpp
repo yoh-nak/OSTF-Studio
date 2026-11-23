@@ -40,6 +40,18 @@ int modelChecks(const juce::File& fixture) {
     // Outside General MIDI's 35..81 percussion range the event uses a custom MIDI mapping.
     hit.pitch = 87;
     if (song->editNotes(drumTrack, {{NoteEdit::change, hit}}, before, ids).failed()) return 16;
+    auto slotId = song->slotsByTrack[drumTrack][0].id;
+    if (song->editDrumPad(drumTrack, 0, {}, before, 2).failed() || song->slotsByTrack[drumTrack][2].id != slotId)
+        return 92;
+    for (auto index : {size_t(0), size_t(drumTrack)}) {
+        const int pitch = index == 0 ? 62 : 87;
+        if (song->addRecordedClip(index, {90, 230}, {{101, 211, pitch, 83}}, before).failed()) return 93;
+        const auto data = juce::JSON::parse(song->sourceScore.toString());
+        const auto clips = data["tracks"][int(index)]["clips"];
+        const auto take = clips[clips.size() - 1];
+        if (int(take["start"]) != 90 || int(take["duration"]) != 140 || int(take["notes"][0]["start"]) != 11
+            || !take["notes"][0].hasProperty(index == 0 ? "pitch" : "soundSlotId")) return 94;
+    }
     const MidiControl bend{"pitchBend"}, cc{"controlChange", 11}, pressure{"channelPressure"}, poly{"polyPressure", 60};
     for (auto key : {bend, cc, pressure, poly}) {
         if (song->editController(0, key, {}, 70, key.maximum(), before).failed()) return 61;
@@ -56,6 +68,8 @@ int modelChecks(const juce::File& fixture) {
     song->panAutomation[owner] = {"test-pan", true, {{30,-1},{90,1}}};
     SessionMix mix = song->savedMix.value_or(SessionMix{});
     mix.tracks.resize(song->trackLanes.size());
+    mix.recordCycle = {32, 295};
+    mix.cycleEnabled = true;
     juce::MemoryOutputStream plain, packed, midi;
     if (writeOstfPreview(*song, mix, plain).failed() || writeOstfpPreview(*song, mix, packed).failed()
         || writeSongMidi(*song, SmfFormat::multitrack, song->sourceMidiChannels, midi).failed()) return 10;
@@ -74,6 +88,7 @@ int modelChecks(const juce::File& fixture) {
         auto& stream = package ? packed : plain;
         juce::MemoryInputStream reopen(stream.getData(), stream.getDataSize(), false);
         if ((package ? readOstfpPreview(reopen, song) : readOstfPreview(reopen, song)).failed()) return 13;
+        if (!song->savedMix || !song->savedMix->cycleEnabled || song->savedMix->recordCycle != mix.recordCycle) return 95;
         if (!song->panAutomation.contains(owner) || std::abs(song->panAutomation.at(owner).valueAt(60,.5)) > .00001) return 66;
         for (auto key : {bend,cc,pressure,poly}) {
             const auto& curves = song->performanceCurves.at(0);
@@ -109,9 +124,9 @@ int checkPianoEdits(const juce::File& fixture) {
             juce::Point<float> xy{125,y};
             steps.mouseDown(pointer(steps,xy,xy,juce::ModifierKeys::shiftModifier));
         };
-        touch(48);
+        touch(72);
         if (edits.size()!=1 || edits[0].action!=NoteEdit::erase || edits[0].note.id!="a") return 68;
-        touch(76);
+        touch(48);
         if (edits.size()!=3 || edits[0].note.slotId!="snare" || edits[0].note.velocity!=120
             || edits[1].note.startTick!=80 || edits[2].note.endTick!=240) return 69;
     }
@@ -355,6 +370,21 @@ int checkPianoEdits(const juce::File& fixture) {
     auto *bank = main.findChildWithID("drum-pad-bank");
     if (!bank || !bank->isVisible() || bank->getWidth() < 100 || bank->getHeight() < 80)
         return 91;
+    auto* surface = dynamic_cast<DrumPads*>(bank);
+    if (!surface || !steps->song || !surface->trigger || !surface->reorder) return 96;
+    const auto hitCount = steps->song->slotHits.at(steps->track).size();
+    const auto& kit = steps->song->slotsByTrack.at(steps->track);
+    const auto firstId = kit.front().id;
+    surface->trigger(0, true);
+    surface->trigger(0, false);
+    if (steps->song->slotHits.at(steps->track).size() != hitCount) return 97;
+    const auto lit = steps->createComponentSnapshot(steps->getLocalBounds());
+    bool rowLit = false;
+    for (int y = 44; y < lit.getHeight(); ++y)
+        if (lit.getPixelAt(1, y) == juce::Colour(0xffd28434)) { rowLit = true; break; }
+    if (!rowLit) return 98;
+    surface->reorder(0, 1);
+    if (steps->song->slotsByTrack.at(steps->track)[1].id != firstId) return 99;
     if (!steps->isVisible() || steps->getWidth()<200 || grid->isVisible() || picker->isVisible()) return 75;
     const auto path=juce::SystemStats::getEnvironmentVariable("OSTF_DRUM_SMOKE_PNG",{});
     if (path.isNotEmpty()) {

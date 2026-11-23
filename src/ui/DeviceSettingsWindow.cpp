@@ -4,7 +4,7 @@
 namespace {
 class DeviceSettingsContent final : public juce::Component, private juce::ChangeListener {
 public:
-    DeviceSettingsContent() : selector_(devices_, 0, 64, 0, 64, true, true, true, false) {
+    DeviceSettingsContent() {
         juce::PropertiesFile::Options options;
         options.applicationName = "OSTF Studio";
         options.filenameSuffix = ".settings";
@@ -13,8 +13,20 @@ public:
         options.storageFormat = juce::PropertiesFile::storeAsXML;
         properties_.setStorageParameters(options);
 
-        const auto saved = properties_.getUserSettings()->getXmlValue("deviceSetup");
-        const auto error = devices_.initialise(2, 2, saved.get(), true);
+        saved_ = properties_.getUserSettings()->getXmlValue("deviceSetup");
+        if (saved_) {
+            for (const auto* input : saved_->getChildWithTagNameIterator("MIDIINPUT")) {
+                const auto id = input->getStringAttribute("identifier");
+                if (id.isNotEmpty()) devices_.setMidiInputDeviceEnabled(id, true);
+            }
+        }
+        setSize(590, 580);
+    }
+
+    void prepareAudio() {
+        if (selector_) return;
+        const auto error = devices_.initialise(2, 2, saved_.get(), true);
+        selector_ = std::make_unique<juce::AudioDeviceSelectorComponent>(devices_, 0, 64, 0, 64, true, true, true, false);
         status_.setText(error.isNotEmpty() ? error :
 #if JUCE_WINDOWS && JUCE_ASIO
                         TRANS("For ASIO, choose ASIO and your interface's installed driver."),
@@ -24,23 +36,23 @@ public:
                         juce::dontSendNotification);
         status_.setTooltip("Select the audio driver and devices, and enable the MIDI ports you want to use.");
         addAndMakeVisible(status_);
-        viewport_.setViewedComponent(&selector_, false);
+        viewport_.setViewedComponent(selector_.get(), false);
         viewport_.setScrollBarsShown(true, false);
         addAndMakeVisible(viewport_);
         devices_.addChangeListener(this);
-        setSize(590, 580);
+        resized();
     }
 
     ~DeviceSettingsContent() override {
         devices_.removeChangeListener(this);
-        save();
+        if (selector_) save();
     }
 
     void resized() override {
         auto bounds = getLocalBounds().reduced(12);
         status_.setBounds(bounds.removeFromTop(24));
         viewport_.setBounds(bounds);
-        selector_.setSize(juce::jmax(320, bounds.getWidth() - viewport_.getScrollBarThickness()), bounds.getHeight());
+        if (selector_) selector_->setSize(juce::jmax(320, bounds.getWidth() - viewport_.getScrollBarThickness()), bounds.getHeight());
     }
 
     void save() {
@@ -57,7 +69,8 @@ private:
 
     juce::ApplicationProperties properties_;
     juce::AudioDeviceManager devices_;
-    juce::AudioDeviceSelectorComponent selector_;
+    std::unique_ptr<juce::XmlElement> saved_;
+    std::unique_ptr<juce::AudioDeviceSelectorComponent> selector_;
     juce::Viewport viewport_;
     juce::Label status_;
 };
@@ -75,5 +88,10 @@ DeviceSettingsWindow::DeviceSettingsWindow()
 void DeviceSettingsWindow::closeButtonPressed() { setVisible(false); }
 
 juce::AudioDeviceManager& DeviceSettingsWindow::devices() {
+    static_cast<DeviceSettingsContent*>(getContentComponent())->prepareAudio();
+    return midiDevices();
+}
+
+juce::AudioDeviceManager& DeviceSettingsWindow::midiDevices() {
     return static_cast<DeviceSettingsContent*>(getContentComponent())->devices();
 }

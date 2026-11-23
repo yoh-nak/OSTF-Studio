@@ -8,9 +8,15 @@
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
 
+## Recording in the lower editor (development build)
+
+Open a pitched, drum or audio track. Click the editor ruler to park the cursor. Shift-drag on the piano or waveform ruler to select a cycle, or enable **Loop range** and drag. The step view uses its existing bar-range control. **Record** starts at the cursor. **Stop recording** finalizes the clip and closes the editor. The transport offers a metronome and a one-bar count-in. MIDI passes overdub into one clip. Audio uses the first one or two enabled input channels and records a single WAV. On each pass, newly captured audio replaces that part of the current take. Replacing an existing clip requires confirmation. The per-clip WAV size limit is 16 MiB.
+
+In slot steps the first pad appears at the bottom. Select a pad, assign its output note, and use **MIDI Learn** to bind the next incoming note to it. Enable the controller in Audio / MIDI Settings. A strike lights the pad and its row while stopped. **Move up/down** changes the kit order. The mapping stays on this computer. New views show up to ten bars, with 100-pixel arrangement lanes and compact global and output lanes.
+
 ## Audio clip editing (development build)
 
-Select an audio track to open its waveform below the arrangement. Enable **Loop** and drag the clip’s amber right edge to repeat it. **Warp (re-pitch)** fits one cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker and drag it to move that point in time. Pitch follows the change in speed. You can drop a downloaded WAV from Splice Desktop or the file manager onto an audio track.
+Select an audio track to open its waveform below the arrangement. Enable **Loop** and drag the clip’s amber right edge to repeat it. **Warp (re-pitch)** fits one cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker and drag it to move that point in time. Pitch follows the change in speed. Use **Splice…** to choose a downloaded WAV at the cursor, or drag a sample from Splice Desktop onto the track.
 
 The **Melodyne…** menu can open a separate working WAV in an installed copy of Melodyne. Use **Replace Audio** in Melodyne, then **Apply edited WAV** in Studio to keep the edited audio in your project. The menu also opens the installed Melodyne VST3 in Transfer mode. The Theory Guide groups cadences directly on the degree row. The function row stays available underneath.
 
@@ -48,7 +54,7 @@ In the lead sheet, switch chords, scales and lyrics on or off independently. Cho
 
 **File → Import and transcription → Analyse audio or MIDI** opens a separate score review. Audio analysis estimates pitched notes, percussion hits and major/minor triads locally on a provisional 120 BPM, 4/4 grid. Melody, accompaniment, bass and percussion are estimated roles. Where an isolated tone consistently matches a Studio GM family’s harmonic balance, the part name also includes an instrument-family candidate. MIDI retains its track and channel groupings. Drag an individual part or chord progression to a compatible arrangement lane. Dropping a part on **Drop to add a new track** creates its destination. Choose **Open score here as a new unsaved song** to edit all results in the original window. Audio decoding uses the registered JUCE formats, including WAV, AIFF and FLAC. PDF recognition is pending.
 
-New drum tracks have 16 GM assignments. In the drum editor, choose a pad and a MIDI note to remap it, or add and remove pads. The step editor shows kit order and a paged 4×4 or 8×8 surface. The piano roll shows mapped pitches in descending order. Record from an enabled MIDI keyboard or pad in either view. The on-screen pads insert at the cursor while stopped and capture the performance during MIDI recording.
+New drum tracks have 16 GM assignments. In the drum editor, choose a pad and a MIDI note to remap it, or add and remove pads. The step editor shows kit order and a paged 4×4 or 8×8 surface. The piano roll shows mapped pitches in descending order. Record from an enabled MIDI keyboard or pad in either view. The on-screen pads also work during MIDI recording. Click a step cell to enter a hit while stopped.
 
 ## Install OSTF Studio
 

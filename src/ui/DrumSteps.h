@@ -12,10 +12,12 @@ public:
     std::function<void(std::vector<Edit>)> commit;
     std::function<void()> loopChanged;
     std::function<void(int)> rowChanged;
+    void flash(int pitch) { flashes[pitch] = juce::Time::getMillisecondCounter() + 150; repaint(); }
     void selectRow(int row) {
         selected = row;
         const int visible = std::max(1, gridArea().getHeight() / rowHeight);
-        first = std::clamp(first, std::max(0, row - visible + 1), row);
+        const int visual = displayRow(row);
+        first = std::clamp(first, std::max(0, visual - visible + 1), visual);
         repaint();
     }
     DrumSteps() {
@@ -82,6 +84,11 @@ public:
         repaint();
     }
     void resized() override {
+        if (song && track < song->slotsByTrack.size()) {
+            const int visible = std::max(1, gridArea().getHeight() / rowHeight);
+            first = std::min(first, std::max(0, int(song->slotsByTrack[track].size()) - visible));
+            selectRow(selected);
+        }
         auto top = getLocalBounds().removeFromTop(25);
         for (auto* c : {static_cast<juce::Component*>(&back), static_cast<juce::Component*>(&forward)})
             c->setBounds(top.removeFromLeft(27).reduced(1));
@@ -108,10 +115,13 @@ public:
             if (w >= 24 || n % 4 == 0)
                 g.drawText(juce::String(n + 1), x, 25, std::max(16, int(w)), 19, juce::Justification::centredLeft);
         }
-        for (int row = first; row < int(slots.size()); ++row) {
-            const int y = body.getY() + (row - first) * rowHeight;
+        for (int visual = first; visual < int(slots.size()); ++visual) {
+            const int row = displayRow(visual);
+            const int y = body.getY() + (visual - first) * rowHeight;
             if (y >= getHeight()) break;
-            g.setColour(juce::Colour(row == selected ? 0xff356585 : 0xff293c4c));
+            const auto it = flashes.find(slots[row].pitch);
+            const bool active = it != flashes.end() && int(it->second - juce::Time::getMillisecondCounter()) > 0;
+            g.setColour(juce::Colour(active ? 0xffd28434 : row == selected ? 0xff356585 : 0xff293c4c));
             g.fillRect(0, y, labelWidth - 2, rowHeight - 1);
             g.setColour(juce::Colours::white);
             g.drawText(slots[row].name, 5, y, labelWidth - 9, rowHeight, juce::Justification::centredLeft);
@@ -125,7 +135,7 @@ public:
                 const auto slot =
                     std::find_if(slots.begin(), slots.end(), [&](const auto& s) { return s.id == hit.slotId; });
                 if (slot == slots.end()) continue;
-                int row = int(slot - slots.begin()) - first;
+                int row = displayRow(int(slot - slots.begin())) - first;
                 if (row < 0 || body.getY() + row * rowHeight >= getHeight()) continue;
                 const int n = stepAt(hit.startTick);
                 const auto a = boundary(n), b = boundary(n + 1);
@@ -149,8 +159,9 @@ public:
     }
     void mouseDown(const juce::MouseEvent& e) override {
         if (!song || !e.mods.isLeftButtonDown() || e.y < 44 || track >= song->slotsByTrack.size()) return;
-        const int row = first + (e.y - 44) / rowHeight;
-        if (row >= int(song->slotsByTrack[track].size())) return;
+        const int visual = first + (e.y - 44) / rowHeight;
+        if (visual >= int(song->slotsByTrack[track].size())) return;
+        const int row = displayRow(visual);
         selected = row;
         if (rowChanged)
             rowChanged(row);
@@ -167,6 +178,10 @@ public:
     }
 
 private:
+    int displayRow(int index) const {
+        return song && track < song->slotsByTrack.size() ? std::max(0, int(song->slotsByTrack[track].size()) - 1 - index) : 0;
+    }
+    std::map<int, juce::uint32> flashes;
     static constexpr int labelWidth = 120, rowHeight = 24;
     juce::TextButton back, forward, locate, fill;
     juce::ToggleButton loop;

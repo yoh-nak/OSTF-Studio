@@ -64,9 +64,12 @@ class TransportPanel final : public juce::Component {
 public:
     TransportKey home{TransportKey::home, TRANS("Home")}, rewind{TransportKey::rewind, TRANS("Rewind")},
                  forward{TransportKey::forward, TRANS("Forward")}, play{TransportKey::play, TRANS("Play")},
-                 stop{TransportKey::stop, TRANS("Stop")}, record{TransportKey::record, TRANS("Record MIDI")},
+                 stop{TransportKey::stop, TRANS("Stop")}, record{TransportKey::record, TRANS("Record")},
                  follow{TransportKey::follow, TRANS("Follow")};
+    juce::ToggleButton click{TRANS("Metronome")}, countIn{TRANS("Count-in")};
     TransportPanel() {
+        for (auto* button : {&click, &countIn}) addAndMakeVisible(button);
+        countIn.setTooltip(TRANS("Count one bar before recording"));
         for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow}) addAndMakeVisible(*b);
         home.setComponentID("return-to-start");
         rewind.setComponentID("rewind");
@@ -130,7 +133,11 @@ public:
         auto top = stacked ? r.removeFromTop(46) : r;
         for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow})
             b->setBounds(top.removeFromLeft(b == &record ? 74 : 48));
-        top.removeFromLeft(9);
+        const bool narrow = stacked && getWidth() < 800;
+        auto switches = narrow ? r.removeFromRight(105) : top.removeFromLeft(101);
+        click.setBounds(switches.removeFromTop(switches.getHeight() / 2));
+        countIn.setBounds(switches);
+        top.removeFromLeft(5);
         const int clockWidth = stacked ? top.getWidth() / 2 : juce::jlimit(122, 158, getWidth() / 8);
         for (int i = 0; i < 2; ++i) fields_[i] = top.removeFromLeft(clockWidth).reduced(1, 0);
         auto rest = stacked ? r.withTrimmedTop(4) : top.withTrimmedLeft(6);
