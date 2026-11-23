@@ -335,154 +335,100 @@ namespace {
 class ImportPanel final : public juce::Component, public juce::DragAndDropContainer {
   public:
     explicit ImportPanel(OpenImportedSong callback) : open(std::move(callback)) {
-        for (auto *b : {&chooseFile, &chooseFolder, &openSong})
-            addAndMakeVisible(b);
-        for (auto *l : {&summary, &heading, &pdf})
-            addAndMakeVisible(l);
-        addAndMakeVisible(engine);
-        engine.addItem(TRANS("Local separation"), 1);
-        engine.addItem("Demucs (htdemucs)", 2);
-        engine.setSelectedId(1, juce::dontSendNotification);
-        addChildComponent(format);
-        format.addItem(TRANS("Stems and MIDI"), 3);
-        format.addItem(TRANS("Audio stems"), 1);
-        format.addItem(TRANS("Draft MIDI parts"), 2);
-        format.setSelectedId(3, juce::dontSendNotification);
-        addAndMakeVisible(viewport);
+        for (juce::Component* c : std::array<juce::Component*, 5>{&chooseFile, &heading, &summary, &viewport, &openSong})
+            addAndMakeVisible(c);
         viewport.setViewedComponent(&rows, false);
-        heading.setFont(juce::FontOptions(16.f, juce::Font::bold));
-        pdf.setText(TRANS("PDF score recognition awaits an OMR connection."), juce::dontSendNotification);
-        reset();
-        chooseFile.onClick = [this] { choose(false); };
-        chooseFolder.onClick = [this] { choose(true); };
+        heading.setFont(juce::FontOptions(19.f, juce::Font::bold));
+        heading.setText(TRANS("Score analysis"), juce::dontSendNotification);
+        summary.setText(TRANS("Select an audio or MIDI file to analyse its musical parts."), juce::dontSendNotification);
+        openSong.setEnabled(false);
+        chooseFile.onClick = [this] { choose(); };
         openSong.onClick = [this] {
-            if (!project)
-                return;
-            std::unique_ptr<OstfpPreview> result;
-            if (notes && format.getSelectedId()==3) {
-                auto status=combineImportParts(*project,*notes,result);
-                if (status.failed()) {
-                    summary.setText(juce::translate(status.getErrorMessage()),juce::dontSendNotification);
-                    return;
-                }
-            } else result=notes && format.getSelectedId()==2 ? std::move(notes) : std::move(project);
-            reset();
-            open(std::move(result));
+            if (!project) return;
+            juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, TRANS("Open in this window"),
+                TRANS("Replace the current song with this score? Save any changes to the current song first."),
+                TRANS("Open score"), TRANS("Cancel"), this,
+                juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<ImportPanel>(this)](int answer) {
+                    if (answer && safe && safe->project) {
+                        safe->items.clear();
+                        safe->openSong.setEnabled(false);
+                        safe->open(std::move(safe->project));
+                        safe->heading.setText(TRANS("Score analysis"), juce::dontSendNotification);
+                        safe->summary.setText(TRANS("Select an audio or MIDI file to analyse its musical parts."), juce::dontSendNotification);
+                    }
+                }));
         };
-        waves.onChange = [this] { rows.repaint(); };
     }
     void resized() override {
-        auto area = getLocalBounds().reduced(12);
-        auto first = area.removeFromTop(35);
-        engine.setBounds(first.removeFromRight(155).reduced(2));
-        chooseFolder.setBounds(first.removeFromRight(155).reduced(2));
-        chooseFile.setBounds(first.reduced(2));
-        pdf.setBounds(area.removeFromTop(24));
-        heading.setBounds(area.removeFromTop(30));
-        summary.setBounds(area.removeFromTop(50));
-        auto bottom = area.removeFromBottom(40);
-        if (format.isVisible())
-            format.setBounds(bottom.removeFromLeft(172).reduced(2));
-        openSong.setBounds(bottom.reduced(2));
+        auto area = getLocalBounds().reduced(18);
+        auto top = area.removeFromTop(36);
+        chooseFile.setBounds(top.removeFromRight(std::min(218, top.getWidth() / 2)));
+        heading.setBounds(top);
+        summary.setBounds(area.removeFromTop(52));
+        openSong.setBounds(area.removeFromBottom(38));
+        area.reduce(0, 6);
         viewport.setBounds(area);
         const int width = std::max(1, area.getWidth() - 16);
         int y = 0;
         for (auto& item : items) {
-            const bool pair = notes && item->index >= 0;
-            const bool right = pair && &item->source == notes.get();
-            item->setBounds(right ? width / 2 : 0, y, pair ? width / 2 - 2 : width - 2, 48);
-            if (!pair || right)
-                y += 52;
+            item->setBounds(0, y, width, 52);
+            y += 55;
         }
         rows.setSize(width, y);
     }
   private:
-    void reset() {
-        items.clear();
-        waves.load({});
-        project.reset();
-        notes.reset();
-        format.setVisible(false);
-        openSong.setEnabled(false);
-        heading.setText(TRANS("Part analysis"), juce::dontSendNotification);
-        summary.setText(TRANS("Choose MIDI or WAV to see the individual parts."), juce::dontSendNotification);
-        resized();
-    }
-    void showResult(std::unique_ptr<OstfpPreview> parsed, std::unique_ptr<OstfpPreview> drafts,
-                    const juce::Result &result, const juce::String &info) {
-        for (auto *b : {&chooseFile, &chooseFolder})
-            b->setEnabled(true);
-        engine.setEnabled(true);
+    void showResult(std::unique_ptr<OstfpPreview> parsed, const juce::Result& result, const juce::String& info) {
+        chooseFile.setEnabled(true);
         if (result.failed() || !parsed) {
             summary.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
             return;
         }
         project = std::move(parsed);
-        notes = std::move(drafts);
-        waves.load(project->audio);
-        heading.setText(TRANS("Analysed parts") + "   /   " + project->title, juce::dontSendNotification);
-        summary.setText(info + "\n" + TRANS("Drag a part to a matching track, or open the full set below."),
+        heading.setText(project->title, juce::dontSendNotification);
+        summary.setText(info + "\n" + TRANS("Drag a musical part to its track, or open the whole score in this window."),
                         juce::dontSendNotification);
-        auto add = [this](OstfpPreview &source, int i, const juce::String &text) {
-            auto row = std::make_unique<ImportResultRow>(text, source, i);
-            if (i >= 0 && source.trackKinds[i] == TrackKind::audio)
-                row->waveforms = &waves;
+        auto add = [this](int index, const juce::String& name) {
+            auto row = std::make_unique<ImportResultRow>(name, *project, index);
             rows.addAndMakeVisible(*row);
             items.push_back(std::move(row));
         };
-        for (int i = 0; i < int(project->sourceTrackCount()); ++i) {
-            auto name = juce::String::fromUTF8(project->trackLanes[i].label);
-            if (notes)
-                name = juce::translate(name);
-            add(*project, i, (notes ? "WAV   " : "MIDI   ") + name);
-            if (notes)
-                add(*notes, i, "MIDI   " + name);
-        }
-        if (juce::JSON::parse(project->sourceScore.toString())["harmony"]["chords"].size())
-            add(*project, -1, TRANS("Drag estimated chords to the chord lane"));
-        format.setVisible(notes != nullptr);
-        format.setSelectedId(3, juce::dontSendNotification);
+        for (const auto& lane : project->globalLanes)
+            if (lane.kind == TimelineLane::chord && !lane.regions.empty())
+                add(-1, TRANS("Chord progression"));
+        for (int i = 0; i < int(project->sourceTrackCount()); ++i)
+            add(i, juce::String::fromUTF8(project->trackLanes[i].label));
         openSong.setEnabled(true);
         resized();
     }
-    void choose(bool folder) {
-        chooser = std::make_unique<juce::FileChooser>(folder ? TRANS("Choose four-stem folder")
-                                                             : TRANS("Analyse MIDI or WAV"),
-                                                      juce::File{}, folder ? "*" : "*.mid;*.midi;*.wav;*.wave");
-        chooser->launchAsync(juce::FileBrowserComponent::openMode |
-                                 (folder ? juce::FileBrowserComponent::canSelectDirectories
-                                         : juce::FileBrowserComponent::canSelectFiles),
-                             [safe = juce::Component::SafePointer<ImportPanel>(this)](const auto &fc) {
-                                 const auto source = fc.getResult();
-                                 if (!safe || source == juce::File{})
-                                     return;
-                                 safe->reset();
-                                 safe->chooseFile.setEnabled(false);
-                                 safe->chooseFolder.setEnabled(false);
-                                 safe->engine.setEnabled(false);
-                                 safe->summary.setText(TRANS("Analysing source...") + "  " + source.getFileName(),
-                                                       juce::dontSendNotification);
-                                 safe->worker.addJob([safe, source, useDemucs = safe->engine.getSelectedId() == 2] {
-                                     std::unique_ptr<OstfpPreview> parts, drafts;
-                                     juce::String info;
-                                     const auto result = analyseImportParts(source, useDemucs, parts, drafts, info);
-                                     juce::MessageManager::callAsync(
-                                         [safe, result, info, p = std::move(parts), d = std::move(drafts)]() mutable {
-                                             if (safe)
-                                                 safe->showResult(std::move(p), std::move(d), result, info);
-                                         });
-                                 });
-                             });
+    void choose() {
+        chooser = std::make_unique<juce::FileChooser>(TRANS("Analyse audio or MIDI"), juce::File{}, scoreImportFileFilter());
+        chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [safe = juce::Component::SafePointer<ImportPanel>(this)](const auto& fc) {
+                const auto source = fc.getResult();
+                if (!safe || source == juce::File{}) return;
+                safe->items.clear();
+                safe->project.reset();
+                safe->chooseFile.setEnabled(false);
+                safe->openSong.setEnabled(false);
+                safe->heading.setText(source.getFileName(), juce::dontSendNotification);
+                safe->summary.setText(TRANS("Analysing source..."), juce::dontSendNotification);
+                safe->resized();
+                safe->worker.addJob([safe, source] {
+                    std::unique_ptr<OstfpPreview> score;
+                    juce::String info;
+                    auto result = analyseScoreImport(source, score, info);
+                    juce::MessageManager::callAsync([safe, result, info, score = std::move(score)]() mutable {
+                        if (safe) safe->showResult(std::move(score), result, info);
+                    });
+                });
+            });
     }
     OpenImportedSong open;
-    juce::TextButton chooseFile{TRANS("Analyse MIDI or WAV")}, chooseFolder{TRANS("Load four-stem folder...")},
-        openSong{TRANS("Open as new unsaved song")};
-    juce::ComboBox engine, format;
-    juce::Label summary, heading, pdf;
+    juce::TextButton chooseFile{TRANS("Analyse audio or MIDI")}, openSong{TRANS("Open score here as a new unsaved song")};
+    juce::Label summary, heading;
     juce::Component rows;
     juce::Viewport viewport;
-    AudioClipWaveforms waves;
-    std::unique_ptr<OstfpPreview> project, notes;
+    std::unique_ptr<OstfpPreview> project;
     std::vector<std::unique_ptr<ImportResultRow>> items;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::ThreadPool worker{1};
@@ -493,7 +439,9 @@ class ImportWindow final : public juce::DocumentWindow {
         : DocumentWindow(TRANS("Import and transcription"), juce::Colour(dark), closeButton) {
         setUsingNativeTitleBar(true);
         setContentOwned(new ImportPanel(std::move(open)), false);
-        centreWithSize(750, 468);
+        setResizable(true, true);
+        setResizeLimits(520, 340, 2400, 1500);
+        centreWithSize(820, 494);
     }
     void closeButtonPressed() override { setVisible(false); }
 };

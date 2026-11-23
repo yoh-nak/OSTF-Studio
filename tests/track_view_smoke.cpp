@@ -18,6 +18,17 @@ T* findControl(juce::Component& root, const juce::String& title) {
 }
 
 int checkTrackView(const juce::File& fixture) {
+    PianoNoteGrid grid;
+    PianoInspector colours(grid);
+    colours.showLegend = true;
+    colours.setSize(492, 285);
+    for (auto theme : {pianoHarmony::Theme::harmonic, pianoHarmony::Theme::studioBlue, pianoHarmony::Theme::graphite, pianoHarmony::Theme::aubergine}) {
+        colours.theme = theme;
+        const auto legend = colours.createComponentSnapshot(colours.getLocalBounds());
+        for (int pc = 0; pc < 12; ++pc)
+            if (legend.getPixelAt(8 + 40 * pc, PianoInspector::controlsHeight + 20) != pianoHarmony::degreeColour(pc + 60, 0)) return 67;
+        if (legend.getPixelAt(7, PianoInspector::controlsHeight + 67) != pianoHarmony::toneColour(pianoHarmony::Tone::root)) return 68;
+    }
     MainComponent main;
     main.setVisible(true);
     main.setSize(1450, 1200);
@@ -216,6 +227,19 @@ int checkTrackView(const juce::File& fixture) {
     const int beforeLanes = bass->getY();
     height->setValue(62, juce::sendNotificationSync);
     if (bass->getY() <= beforeLanes || bass->height() != TrackRowSize::normal) return 27;
+    if (ruler->getHeight() != 62 || group->getLookAndFeel().getPopupMenuFont().getHeight() < 15.f) return 62;
+    auto* dock = dynamic_cast<juce::Viewport*>(main.findChildWithID("song-basics-dock"));
+    auto* basics = dock ? dynamic_cast<SongBasicsPanel*>(dock->getViewedComponent()) : nullptr;
+    if (!basics || !dock->isVisible() || !basics->moveDock || !basics->commit) return 63;
+    const auto oldBounds = dock->getBounds();
+    basics->moveDock();
+    if (dock->getBounds() == oldBounds || !dock->isVisible()) return 64;
+    basics->moveDock();
+    basics->commit(SongBasicsPanel::title, "Edited title", 0);
+    if (!document->getText().contains("Edited title")) return 65;
+    basics->commit(SongBasicsPanel::key, {}, 10 + 8 * 3 + 1);
+    auto* keys = dynamic_cast<juce::ComboBox*>(basics->findChildWithID("song-base-key"));
+    if (!keys || keys->getText() != "Eb minor") return 66;
     if (!choose(TRANS("All tracks"))) return 28;
     height->setValue(35, juce::sendNotificationSync);
     if (!guitar->compact() || !drums->compact() || !master->compact() || !bass->compact()) return 29;

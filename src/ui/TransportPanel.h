@@ -66,12 +66,7 @@ public:
                  forward{TransportKey::forward, TRANS("Forward")}, play{TransportKey::play, TRANS("Play")},
                  stop{TransportKey::stop, TRANS("Stop")}, record{TransportKey::record, TRANS("Record MIDI")},
                  follow{TransportKey::follow, TRANS("Follow")};
-    juce::TextButton settings{TRANS("Song settings")}, information{TRANS("Song information")};
     TransportPanel() {
-        addAndMakeVisible(settings);
-        addAndMakeVisible(information);
-        settings.setComponentID("transport-song-settings");
-        information.setTooltip(TRANS("Title, genres, moods and credits"));
         for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow}) addAndMakeVisible(*b);
         home.setComponentID("return-to-start");
         rewind.setComponentID("rewind");
@@ -132,9 +127,6 @@ public:
     void resized() override {
         auto r = getLocalBounds().reduced(9, 7);
         const bool stacked = getHeight() > 70;
-        auto actions = r.removeFromRight(108).reduced(2, 0);
-        settings.setBounds(actions.removeFromTop(actions.getHeight() / 2).reduced(0, 1));
-        information.setBounds(actions.reduced(0, 1));
         auto top = stacked ? r.removeFromTop(46) : r;
         for (auto* b : {&home, &rewind, &forward, &play, &stop, &record, &follow})
             b->setBounds(top.removeFromLeft(b == &record ? 74 : 48));

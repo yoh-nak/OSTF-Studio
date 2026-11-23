@@ -1,5 +1,6 @@
 #include "ui/MediaImport.h"
 #include "ui/LocalStemAnalysis.h"
+#include "ui/AudioScoreNotes.h"
 #include "ui/GlobalTimelineEdit.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <map>
@@ -20,6 +21,7 @@ struct Part {
     juce::String name;
     int channel = 1;
     List notes;
+    juce::String role;
 };
 struct ImportSong {
     int ppq = 480, beats = 4, beatType = 4, count = 0;
@@ -167,8 +169,8 @@ juce::Result transcribe(juce::AudioFormatReader &reader, ImportSong &song, bool 
         if (pitch == active)
             return;
         if (active >= 0 && at >= start + rate * .06) {
-            const Tick first = static_cast<Tick>(std::llround(start * 2.0 * song.ppq / 8000));
-            const Tick end = static_cast<Tick>(std::llround(at * 2.0 * song.ppq / 8000));
+            const Tick first = static_cast<Tick>(std::llround(start * 2.0 * song.ppq / rate));
+            const Tick end = static_cast<Tick>(std::llround(at * 2.0 * song.ppq / rate));
             melody.notes.add(obj({{"id", "draft-" + juce::String(++song.count)},
                                   {"start", first},
                                   {"duration", end - first},
@@ -253,6 +255,58 @@ juce::Result readMidi(const juce::File& source, ImportSong& song) {
         std::tie(song.beats, song.beatType) = meters.at(0);
     return juce::Result::ok();
 }
+juce::Result buildImportScore(const juce::File& source, ImportSong& song, const List& chordEvents,
+                              std::unique_ptr<OstfpPreview>& project) {
+    if (song.beats < 1 || song.beatType < 1 || (static_cast<Tick>(song.ppq) * 4 * song.beats) % song.beatType != 0)
+        return fail("This meter cannot be represented on the current grid.");
+    const Tick bar = static_cast<Tick>(song.ppq) * 4 * song.beats / song.beatType;
+    const Tick duration = ((song.length + bar - 1) / bar) * bar;
+    if (duration > 256 * bar)
+        return fail("Studio can open up to 256 bars.");
+    List tracks, slots, tempos, meters;
+    for (const auto &[at, m] : song.meters)
+        if (at < duration)
+            meters.add(obj({{"at", at}, {"numerator", m.first}, {"denominator", m.second}}));
+    for (auto& p : song.parts) {
+        auto id = "track-" + juce::String(tracks.size() + 1);
+        List clips;
+        if (!p.notes.isEmpty())
+            clips.add(obj({{"id", id + "-clip"}, {"start", 0}, {"duration", duration}, {"notes", p.notes}}));
+        tracks.add(obj({{"id", id},
+                        {"name", p.name},
+                        {"trackType", p.channel == 10 ? "drum" : "melodic"},
+                        {"midi", obj({{"mode", "singleChannel"}, {"channel", p.channel}})},
+                        {"clips", clips}}));
+        if (p.role.isNotEmpty()) tracks.getReference(tracks.size() - 1).getDynamicObject()->setProperty("role", p.role);
+    }
+    for (int pitch : song.drums)
+        slots.add(obj({{"id", "gm-" + juce::String(pitch)},
+                       {"name", "GM " + juce::String(pitch)},
+                       {"midiMapping", obj({{"standard", "gm1"}, {"note", pitch}})}}));
+    for (const auto& [at, bpm] : song.tempos)
+        if (at < duration)
+            tempos.add(obj({{"at", at}, {"bpm", bpm}}));
+    auto score =
+        obj({{"format", "OSTF"},
+             {"version", "5.0.0"},
+             {"ppq", song.ppq},
+             {"song", obj({{"title", source.getFileNameWithoutExtension()}})},
+             {"timeline", obj({{"duration", duration},
+                               {"sections", List{obj({{"id", "section-1"},
+                                                      {"name", source.getFileNameWithoutExtension()},
+                                                      {"start", 0},
+                                                      {"duration", duration}})}},
+                               {"meterChanges", meters},
+                               {"tempoChanges", tempos}})},
+             {"harmony", obj({{"chords", chordEvents}, {"scales", List{}}})},
+             {"tracks", tracks},
+             {"soundSlots", slots},
+             {"lyrics", obj({{"documents", List{}}, {"phrases", List{}}, {"units", List{}}, {"alignments", List{}}})},
+             {"resources", List{}}});
+    const auto json = juce::JSON::toString(score, true);
+    juce::MemoryInputStream input(json.toRawUTF8(), json.getNumBytesAsUTF8(), false);
+    return readOstfPreview(input, project);
+}
 } // namespace
 
 juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpPreview>& project, juce::String& summary,
@@ -304,65 +358,83 @@ juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpP
                  juce::String(song.count) + " " + TRANS("notes") + "\n" +
                  TRANS("Imports note timing, velocity, channels, tempo and meter. Controller data is omitted.");
     }
-    if (song.beats < 1 || song.beatType < 1 || (static_cast<Tick>(song.ppq) * 4 * song.beats) % song.beatType != 0)
-        return fail("This meter cannot be represented on the current grid.");
-    const Tick bar = static_cast<Tick>(song.ppq) * 4 * song.beats / song.beatType;
-    const Tick duration = ((song.length + bar - 1) / bar) * bar;
-    if (duration > 256 * bar)
-        return fail("Studio can open up to 256 bars.");
-    List tracks, slots, tempos, meters;
-    for (const auto &[at, m] : song.meters)
-        if (at < duration)
-            meters.add(obj({{"at", at}, {"numerator", m.first}, {"denominator", m.second}}));
-    for (auto& p : song.parts) {
-        auto id = "track-" + juce::String(tracks.size() + 1);
-        List clips;
-        if (!p.notes.isEmpty())
-            clips.add(obj({{"id", id + "-clip"}, {"start", 0}, {"duration", duration}, {"notes", p.notes}}));
-        tracks.add(obj({{"id", id},
-                        {"name", p.name},
-                        {"trackType", p.channel == 10 ? "drum" : "melodic"},
-                        {"midi", obj({{"mode", "singleChannel"}, {"channel", p.channel}})},
-                        {"clips", clips}}));
-    }
-    for (int pitch : song.drums)
-        slots.add(obj({{"id", "gm-" + juce::String(pitch)},
-                       {"name", "GM " + juce::String(pitch)},
-                       {"midiMapping", obj({{"standard", "gm1"}, {"note", pitch}})}}));
-    for (const auto& [at, bpm] : song.tempos)
-        if (at < duration)
-            tempos.add(obj({{"at", at}, {"bpm", bpm}}));
-    auto score =
-        obj({{"format", "OSTF"},
-             {"version", "5.0.0"},
-             {"ppq", song.ppq},
-             {"song", obj({{"title", source.getFileNameWithoutExtension()}})},
-             {"timeline", obj({{"duration", duration},
-                               {"sections", List{obj({{"id", "section-1"},
-                                                      {"name", source.getFileNameWithoutExtension()},
-                                                      {"start", 0},
-                                                      {"duration", duration}})}},
-                               {"meterChanges", meters},
-                               {"tempoChanges", tempos}})},
-             {"harmony", obj({{"chords", chordEvents}, {"scales", List{}}})},
-             {"tracks", tracks},
-             {"soundSlots", slots},
-             {"lyrics", obj({{"documents", List{}}, {"phrases", List{}}, {"units", List{}}, {"alignments", List{}}})},
-             {"resources", List{}}});
-    const auto json = juce::JSON::toString(score, true);
-    juce::MemoryInputStream input(json.toRawUTF8(), json.getNumBytesAsUTF8(), false);
-    std::unique_ptr<OstfpPreview> next;
-    auto r = readOstfPreview(input, next);
+    auto r = buildImportScore(source, song, chordEvents, project);
     if (r.failed())
         return r;
     if (audio) {
-        next->trackKinds[0] = TrackKind::audio;
-        next->audio.push_back({0, source.getFileName(), source, {}, 0, song.length});
+        project->trackKinds[0] = TrackKind::audio;
+        project->audio.push_back({0, source.getFileName(), source, {}, 0, song.length});
     }
-    project = std::move(next);
     summary = detail;
     return juce::Result::ok();
 }
+juce::String scoreImportFileFilter() {
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    return "*.mid;*.midi;" + formats.getWildcardForAllFormats();
+}
+
+juce::Result analyseScoreImport(const juce::File& file, std::unique_ptr<OstfpPreview>& output, juce::String& info) {
+    if (file.hasFileExtension("mid;midi"))
+        return prepareMediaImport(file, output, info);
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
+    if (!reader || !std::isfinite(reader->sampleRate) || reader->sampleRate < 8000 || reader->sampleRate > 384000 ||
+        reader->numChannels < 1 || reader->numChannels > 2 || reader->lengthInSamples <= 0)
+        return fail("Choose a supported mono or stereo audio file (8 to 384 kHz).");
+    const double seconds = reader->lengthInSamples / reader->sampleRate;
+    if (seconds > 512.) return fail("Studio can open up to 256 bars.");
+    ImportSong song;
+    song.length = std::max<Tick>(1, std::llround(seconds * 2 * song.ppq));
+    List chords;
+    if (auto r = detectTriads(*reader, song.ppq, chords); r.failed()) return r;
+    std::vector<DetectedNote> performed;
+    if (auto r = detectScoreNotes(*reader, performed); r.failed()) return r;
+    Part percussion{TRANS("Percussion"), 10}, bass{TRANS("Bass"), 2},
+         backing{TRANS("Accompaniment"), 3}, melody{TRANS("Melody"), 1};
+    struct TimbreEvidence {
+        double duration = 0;
+        std::array<double, 16> families{};
+    };
+    std::array<TimbreEvidence, 4> timbres{};
+    melody.role = "melody";
+    for (const auto& event : performed) {
+        const Tick start = std::clamp<Tick>(std::llround(event.start * 2 * song.ppq), 0, song.length - 1);
+        const Tick end = std::clamp<Tick>(std::llround(event.end * 2 * song.ppq), start + 1, song.length);
+        auto note = obj({{"id", "n-" + juce::String(++song.count)}, {"start", start}, {"duration", end - start},
+                         {"velocity", event.velocity}});
+        if (event.part == DetectedPart::drums) {
+            song.drums.insert(event.pitch);
+            note.getDynamicObject()->setProperty("soundSlotId", "gm-" + juce::String(event.pitch));
+            percussion.notes.add(note);
+        } else {
+            note.getDynamicObject()->setProperty("pitch", event.pitch);
+            auto& part = event.part == DetectedPart::bass ? bass : event.part == DetectedPart::melody ? melody : backing;
+            part.notes.add(note);
+            auto& evidence = timbres[size_t(event.part)];
+            const auto length = event.end - event.start;
+            evidence.duration += length;
+            if (event.gmFamily >= 0) evidence.families[size_t(event.gmFamily)] += length;
+        }
+    }
+    for (auto [part, role] : {std::pair{&melody, DetectedPart::melody}, {&backing, DetectedPart::accompaniment}, {&bass, DetectedPart::bass}}) {
+        const auto& evidence = timbres[size_t(role)];
+        const auto best = std::max_element(evidence.families.begin(), evidence.families.end());
+        if (*best > .6 * evidence.duration) {
+            const int family = int(best - evidence.families.begin());
+            part->name += " / " + juce::translate(juce::MidiMessage::getGMInstrumentBankName(family)) + " " + TRANS("(estimated)");
+        }
+    }
+    for (auto* part : {&melody, &backing, &bass, &percussion})
+        if (!part->notes.isEmpty()) song.parts.push_back(std::move(*part));
+    if (song.parts.empty() && chords.isEmpty()) return fail("No notes or chords detected in this recording.");
+    auto r = buildImportScore(file, song, chords, output);
+    if (r.wasOk()) info = TRANS("Estimated instrument roles and notes") + "  ·  " + juce::String(song.count) + " " +
+                          TRANS("notes") + "  ·  " + TRANS("Estimated chord regions") + " " + juce::String(chords.size()) + "   " + TRANS("Provisional grid: 120 BPM, 4/4.");
+    return r;
+}
+
 juce::Result prepareStemImport(const juce::File& folder, std::unique_ptr<OstfpPreview>& output, juce::String& summary) {
     std::unique_ptr<OstfpPreview> draft;
     List tracks;

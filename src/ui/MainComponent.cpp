@@ -25,10 +25,9 @@ constexpr int menuHeight = 28;
 int viewBarHeight(int width) { return width < 860 ? 64 : 32; }
 constexpr int minInterfaceScale = 75;
 constexpr int maxInterfaceScale = 150;
-constexpr int timelineNavigationHeight = 24;
+constexpr int timelineNavigationHeight = 32;
 constexpr int arrangementHeadingHeight = 24;
-constexpr int globalRowHeight = 28;
-constexpr int theoryGuideHeight = 54, fitLaneHeight = 24;
+constexpr int defaultTimelineHeight = 28;
 enum PianoColourMode { plainNotes = 1, chordNotes, scaleNotes, chordAndScaleNotes };
 using namespace pianoHarmony;
 
@@ -76,10 +75,10 @@ int arrangementLaneHeight(juce::Rectangle<int> inner, const ostfstudio::Arrangem
     return juce::jmin(42, (inner.getHeight() - arrangementHeadingHeight * (outputs ? 2 : 1)) / rows);
 }
 
-juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds) {
+juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds, int extra) {
     const int headerHeight = TransportPanel::panelHeight(bounds.getWidth()) + menuHeight + viewBarHeight(bounds.getWidth());
     bounds.reduce(18, 18);
-    bounds.removeFromTop(headerHeight);
+    bounds.removeFromTop(headerHeight + extra);
     bounds.removeFromBottom(26);
     return bounds;
 }
@@ -375,6 +374,7 @@ MainComponent::MainComponent() {
     setWantsKeyboardFocus(true);
     viewPreferences_.setStorageParameters(ostfstudio::viewSettingsOptions());
     if (const auto* config = viewPreferences_.getUserSettings()) {
+        basicsAtTop_ = config->getBoolValue("songBasicsTop", false);
         interfaceScale_ = std::clamp(config->getIntValue("interfaceScale", 100), minInterfaceScale, maxInterfaceScale);
         juce::Desktop::getInstance().setGlobalScaleFactor(interfaceScale_ / 100.f);
         timelineLaneMask_ = static_cast<unsigned>(config->getIntValue("timelineLanes", 0xff));
@@ -392,8 +392,14 @@ MainComponent::MainComponent() {
     addAndMakeVisible(menuBar_);
     addAndMakeVisible(statusLabel_);
     addAndMakeVisible(deck_);
-    deck_.settings.onClick = [this] { editSongMusic(ostfstudio::SongMusicEdit::defaults); };
-    deck_.information.onClick = [this] { menuItemSelected(showSongInformation, 0); };
+    basics_.commit = [this](auto field, auto value, int choice) { editSongField(field, value, choice); };
+    basics_.advanced = [this] { editSongMusic(ostfstudio::SongMusicEdit::defaults); };
+    basics_.moveDock = [this] {
+        basicsAtTop_ = !basicsAtTop_;
+        if (auto* prefs = viewPreferences_.getUserSettings()) prefs->setValue("songBasicsTop", basicsAtTop_);
+        resized();
+        repaint();
+    };
     addAndMakeVisible(documentLabel_);
     documentLabel_.setJustificationType(juce::Justification::centredRight);
     documentLabel_.setFont(juce::FontOptions(14.0f));
@@ -556,6 +562,7 @@ MainComponent::MainComponent() {
             heightScope_.addSeparator();
         heightScope_.addItem(juce::translate(name), static_cast<int>(group));
     }
+    heightScope_.setLookAndFeel(&heightMenuStyle_);
     heightScope_.setTitle(TRANS("Track height group"));
     heightScope_.setTooltip(TRANS("Choose which tracks to resize together."));
     heightScope_.setSelectedId(static_cast<int>(HeightGroup::all), juce::dontSendNotification);
@@ -697,7 +704,21 @@ MainComponent::MainComponent() {
     };
     rowOverlay_.setInterceptsMouseClicks(false, true);
     addAndMakeVisible(rowOverlay_);
+    basicsView_.setViewedComponent(&basics_, false);
+    basicsView_.setComponentID("song-basics-dock");
+    basicsView_.setScrollBarsShown(true, false);
+    basicsView_.setScrollBarThickness(8);
+    addChildComponent(basicsView_);
+    importTrackDrop_.setText(TRANS("Drop to add a new track"), juce::dontSendNotification);
+    importTrackDrop_.setComponentID("import-new-track");
+    importTrackDrop_.setJustificationType(juce::Justification::centred);
+    importTrackDrop_.setInterceptsMouseClicks(false, false);
+    importTrackDrop_.setColour(juce::Label::backgroundColourId, juce::Colour(0xff234c53));
+    importTrackDrop_.setColour(juce::Label::outlineColourId, juce::Colour(0xff73d8cc));
+    addChildComponent(importTrackDrop_);
     ruler_.headerWidth = trackHeaderWidth;
+    ruler_.labelInset = globalLabelInset();
+    basicsView_.setVisible(project_ && workspaceMode_ == WorkspaceMode::arrangement);
     ruler_.setComponentID("arrangement-ruler");
     pianoRuler_.setComponentID("piano-ruler");
     const auto setupRuler = [this](ArrangementRuler& ruler, juce::ScrollBar& scroll) {
@@ -789,6 +810,99 @@ juce::PopupMenu MainComponent::musicMenu() const {
     menu.addItem(undoScore, TRANS("Undo score edit"), available && noteHistoryCursor_ > 0);
     menu.addItem(redoScore, TRANS("Redo score edit"), available && noteHistoryCursor_ < noteHistory_.size());
     return menu;
+}
+
+int MainComponent::timelineRowHeight() const {
+    const int height = groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)];
+    return height > 0 ? height : defaultTimelineHeight;
+}
+
+int MainComponent::globalLabelInset() const {
+    return project_ && !basicsAtTop_ ? trackHeaderWidth - std::clamp(trackHeaderWidth / 3, 115, 165) : 0;
+}
+
+int MainComponent::topBasicsHeight() const {
+    if (!project_ || !basicsAtTop_ || workspaceMode_ != WorkspaceMode::arrangement || getWidth() >= 2330) return 0;
+    return SongBasicsPanel::naturalHeight(getWidth() - 36) + 4;
+}
+
+void MainComponent::editSongField(SongBasicsPanel::Field field, const juce::String& value, int choice) {
+    using namespace ostfstudio;
+    if (!project_ || recordTrack_) return;
+    auto reject = [&](const juce::String& message) {
+        statusLabel_.setText(message, juce::dontSendNotification);
+        basics_.sync(*project_);
+    };
+    juce::MemoryBlock before;
+    if (field <= SongBasicsPanel::mood) {
+        auto info = project_->songInformation();
+        if (field == SongBasicsPanel::title) info.title = value;
+        else {
+            auto tags = juce::StringArray::fromTokens(value, ("," + juce::String::charToString(0x3001)), "");
+            tags.trim();
+            tags.removeEmptyStrings();
+            (field == SongBasicsPanel::genre ? info.genres : info.moods) = tags;
+        }
+        auto result = project_->applySongInformation(info, &before);
+        if (result.failed()) { reject(juce::translate(result.getErrorMessage())); return; }
+        if (!before.isEmpty()) rememberScoreEdit(std::move(before));
+        updateDocumentLabel();
+        return;
+    }
+    SongMusicEdit edit;
+    const int root = (choice - 10) / 8;
+    const int mode = (choice - 10) % 8;
+    if (field == SongBasicsPanel::key) {
+        if (choice != 1 && choice != 2 && (choice < 10 || root >= 12 || mode > 1)) return;
+        auto* obj = new juce::DynamicObject();
+        edit.key = juce::var(obj);
+        obj->setProperty("state", choice == 1 ? "unspecified" : choice == 2 ? "atonal" : "tonal");
+        if (choice >= 10) {
+            obj->setProperty("tonic", spelledClass(root));
+            obj->setProperty("mode", mode == 0 ? "major" : "minor");
+        }
+    } else if (field == SongBasicsPanel::scale) {
+        if (choice == 1) edit.removeScale = true;
+        else {
+            if (choice < 10 || root >= 12 || mode >= 7) return;
+            const auto scale = juce::JSON::parse(project_->sourceScore.toString())["song"]["scale"];
+            auto* obj = new juce::DynamicObject();
+            edit.scale = juce::var(obj);
+            obj->setProperty("id", scale.hasProperty("id") ? scale["id"].toString() : "scale-" + juce::Uuid().toString());
+            obj->setProperty("tonic", spelledClass(root));
+            obj->setProperty("label", chromaticNames()[root] + " " + SongBasicsPanel::scaleNames[mode]);
+            juce::Array<juce::var> steps;
+            for (int step : SongBasicsPanel::scaleSteps[mode]) steps.add(step);
+            obj->setProperty("intervals", steps);
+        }
+    } else if (field == SongBasicsPanel::tempo) {
+        const auto utf8 = value.toStdString();
+        char* end = nullptr;
+        edit.bpm = std::strtod(utf8.c_str(), &end);
+        if (end == utf8.c_str() || *end || !std::isfinite(edit.bpm) || edit.bpm <= 0 || edit.bpm > 1000) {
+            reject(TRANS("Enter a tempo above zero and at most 1000 BPM.")); return;
+        }
+    } else if (field == SongBasicsPanel::meter) {
+        const auto parts = juce::StringArray::fromTokens(value, "/", "");
+        if (parts.size() != 2 || !parts[0].trim().containsOnly("0123456789") || !parts[1].trim().containsOnly("0123456789")
+            || (edit.numerator = parts[0].getIntValue()) <= 0 || (edit.denominator = parts[1].getIntValue()) <= 0) {
+            reject(TRANS("Enter a time signature such as 4/4 or 6/8.")); return;
+        }
+    }
+    const bool playing = transportActive_;
+    if (playing) stopTransport();
+    auto result = project_->applySongMusic(edit, before);
+    if (result.wasOk() && !before.isEmpty()) {
+        rememberScoreEdit(std::move(before));
+        inspectedNote_.reset();
+        scaleReference_ = -1;
+        theory_.reset();
+        refreshTheory();
+        finishNoteEdit(false);
+        updateDocumentLabel();
+    }
+    if (playing) startTransport(false);
+    if (result.failed()) reject(juce::translate(result.getErrorMessage()));
 }
 
 void MainComponent::editSongMusic(ostfstudio::SongMusicEdit::Mode mode) {
@@ -1110,10 +1224,7 @@ void MainComponent::menuItemSelected(int item, int) {
         case importMedia:
             if (!importWindow_)
                 importWindow_ = makeMediaImportWindow([this](std::unique_ptr<ostfstudio::OstfpPreview> draft) {
-                    if (onNewImportedSong)
-                        onNewImportedSong(std::move(draft));
-                    else
-                        openImportedSong(std::move(draft));
+                    openImportedSong(std::move(draft));
                     importWindow_->setVisible(false);
                 });
             importWindow_->setVisible(true);
@@ -1197,7 +1308,7 @@ void MainComponent::togglePluginBrowser() {
 }
 
 juce::Rectangle<int> MainComponent::getWorkspace() const {
-    auto bounds = workspaceBounds(getLocalBounds());
+    auto bounds = workspaceBounds(getLocalBounds(), topBasicsHeight());
     if (pluginBrowserButton_.getToggleState()) bounds.removeFromRight(juce::jmin(230, bounds.getWidth() / 3) + 8);
     return bounds;
 }
@@ -1370,7 +1481,7 @@ bool MainComponent::isInterestedInDragSource(const SourceDetails& details) {
 }
 
 std::optional<std::size_t> MainComponent::pluginDropTrack(juce::Point<int> position) const {
-    if (!rowOverlay_.getBounds().withTrimmedTop(globalRowHeight).contains(position)) return std::nullopt;
+    if (!rowOverlay_.getBounds().withTrimmedTop(timelineRowHeight()).contains(position)) return std::nullopt;
     for (std::size_t i = 0; i < std::min(trackRows_.size(), trackControls_.size()); ++i)
         if (trackRows_[i].contains(position) && !trackControls_[i]->loading) return i;
     return std::nullopt;
@@ -1381,7 +1492,7 @@ std::size_t MainComponent::visibleOutputCount() const {
 }
 
 std::optional<std::size_t> MainComponent::outputDropTrack(juce::Point<int> position) const {
-    if (!rowOverlay_.getBounds().withTrimmedTop(globalRowHeight).contains(position)) return std::nullopt;
+    if (!rowOverlay_.getBounds().withTrimmedTop(timelineRowHeight()).contains(position)) return std::nullopt;
     for (std::size_t row = 0; row < visibleOutputCount(); ++row) {
         const auto i = mixer_.routing().outputAt(row);
         if (outputRows_[i].contains(position) && outputControls_[i].effects.loading == 0) return i;
@@ -1394,7 +1505,13 @@ void MainComponent::itemDragMove(const SourceDetails& details) {
     const auto plugin = pluginBrowser_ && id.startsWith("ostf-vst3:") ? pluginBrowser_->find(id.substring(10)) : std::nullopt;
     const auto output = plugin && !plugin->isInstrument ? outputDropTrack(details.localPosition) : std::nullopt;
     auto track = pluginDropTrack(details.localPosition);
-    if (auto* row = dynamic_cast<ImportResultRow*>(details.sourceComponent.get()); row && track) {
+    const auto* part = dynamic_cast<ImportResultRow*>(details.sourceComponent.get());
+    importTrackDrop_.setVisible(part && part->index >= 0 && canEditTracks() && !recordTrack_);
+    if (importTrackDrop_.isVisible()) {
+        importTrackDrop_.toFront(false);
+        if (importTrackDrop_.getBounds().contains(details.localPosition)) track.reset();
+    }
+    if (auto* row = part; row && track) {
         if (*track >= project_->sourceTrackCount() || row->index < 0 ||
             project_->trackKinds[*track] != row->source.trackKinds[static_cast<std::size_t>(row->index)])
             track.reset();
@@ -1406,6 +1523,7 @@ void MainComponent::itemDragMove(const SourceDetails& details) {
 }
 
 void MainComponent::itemDragExit(const SourceDetails&) {
+    importTrackDrop_.setVisible(false);
     if (!pluginDropHighlight_ && !outputDropHighlight_) return;
     outputDropHighlight_.reset();
     pluginDropHighlight_.reset();
@@ -1419,7 +1537,8 @@ void MainComponent::itemDropped(const SourceDetails& details) {
     if (auto* row = dynamic_cast<ImportResultRow*>(details.sourceComponent.get())) {
         auto pos = details.localPosition;
         const auto track = pluginDropTrack(pos);
-        if (!track && globalLaneAt(pos) != TimelineLane::chord) {
+        const bool create = row->index >= 0 && importTrackDrop_.getBounds().contains(pos);
+        if (!create && !track && globalLaneAt(pos) != TimelineLane::chord) {
             statusLabel_.setText(TRANS("Choose a matching destination track."), juce::dontSendNotification);
             return;
         }
@@ -1429,6 +1548,12 @@ void MainComponent::itemDropped(const SourceDetails& details) {
         const auto hit = arrangementTickAt(pos.x);
         auto tick = static_cast<juce::int64>(std::llround(std::round(hit / grid) * grid));
         if (pos.x < rowOverlay_.getX() + trackHeaderWidth) tick = cursorTick_;
+        if (create) {
+            const auto i = static_cast<std::size_t>(row->index);
+            if (i < row->source.sourceTrackCount())
+                editTracks(row->source.trackKinds[i], {}, {}, row->source.mixerGroups[i], row, tick);
+            return;
+        }
         if (row->index == -1) {
             const auto score = juce::JSON::parse(project_->sourceScore.toString());
             const auto chord = ostfstudio::globalEventAt(score, TimelineLane::chord, hit);
@@ -1487,7 +1612,7 @@ void MainComponent::placeResult(ImportResultRow& row, std::optional<std::size_t>
         finishNoteEdit(playing);
     } else if (playing)
         startTransport(false);
-    if (result.getErrorMessage() == "Confirm replacement of existing material.") {
+    if (result.getErrorMessage() == TRANS("Confirm replacement of existing material.")) {
         auto safe = juce::Component::SafePointer<MainComponent>(this);
         auto source = juce::Component::SafePointer<ImportResultRow>(&row);
         auto generation = projectGeneration_;
@@ -1919,7 +2044,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     trackRows_.clear();
     verticalScroll_.setCurrentRangeStart(0, juce::dontSendNotification);
     groupDefaults_.fill(TrackRowSize::normal);
-    groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)] = globalRowHeight;
+    groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)] = defaultTimelineHeight;
     for (auto& output : outputControls_)
         output.size.resetSize();
     trackPicker_.clear(juce::dontSendNotification);
@@ -2041,6 +2166,7 @@ void MainComponent::saveDocument(SaveFormat format) {
 }
 
 void MainComponent::updateDocumentLabel() {
+    basics_.sync(*project_);
     juce::String name = project_->title + "   " + juce::String::charToString(0x00b7) + "   "
         + (currentFilename_.isEmpty() ? TRANS("Unsaved project") : currentFilename_);
     if (auditionShift_ || auditionRate_ != 1)
@@ -2104,7 +2230,7 @@ void MainComponent::changeInterfaceScale(int step) {
 
 void MainComponent::revealRow(juce::Rectangle<int> row) {
     if (!verticalScroll_.isVisible() || row.isEmpty()) return;
-    const auto visible = rowOverlay_.getBounds().withTrimmedTop(globalRowHeight);
+    const auto visible = rowOverlay_.getBounds().withTrimmedTop(timelineRowHeight());
     const auto delta = row.getY() < visible.getY() ? row.getY() - visible.getY()
                      : std::max(0, row.getBottom() - visible.getBottom());
     verticalScroll_.setCurrentRangeStart(verticalScroll_.getCurrentRangeStart() + delta, juce::sendNotificationSync);
@@ -2264,11 +2390,18 @@ void MainComponent::editOutput(bool send, std::optional<std::size_t> source, boo
 }
 
 void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove,
-                               std::optional<std::size_t> duplicate, ostfstudio::MixerTrackGroup group) {
+                               std::optional<std::size_t> duplicate, ostfstudio::MixerTrackGroup group,
+                               const ImportResultRow* import, juce::int64 tick) {
     if (!canEditTracks()) return;
     stopTransport();
     std::unique_ptr<ostfstudio::OstfpPreview> updated;
-    const auto result = project_->editTracks(kind, remove, updated, duplicate, group);
+    auto result = project_->editTracks(kind, remove, updated, duplicate, group);
+    if (result.wasOk() && import) {
+        const auto dest = updated->sourceTrackCount() - 1;
+        result = updated->renameTrack(dest, juce::String::fromUTF8(import->source.trackLanes[import->index].label));
+        juce::MemoryBlock previous;
+        if (result.wasOk()) result = ostfstudio::placeImportTrack(import->source, import->index, *updated, dest, tick, previous);
+    }
     if (result.failed()) {
         statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
         return;
@@ -3034,9 +3167,9 @@ void MainComponent::loadEffect(bool output, std::size_t index, std::size_t posit
 
 std::optional<TimelineLane> MainComponent::globalLaneAt(juce::Point<int> p) const {
     if (!project_ || !rowOverlay_.isVisible() ||
-        !rowOverlay_.getBounds().withTrimmedTop(globalRowHeight).withTrimmedLeft(trackHeaderWidth).contains(p))
+        !rowOverlay_.getBounds().withTrimmedTop(timelineRowHeight()).withTrimmedLeft(trackHeaderWidth).contains(p))
         return {};
-    int y = rowOverlay_.getY() + globalRowHeight - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
+    int y = rowOverlay_.getY() + timelineRowHeight() - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
     const int height = groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)];
     auto view = currentArrangement();
     for (const auto& lane : view.globalLanes) {
@@ -3044,7 +3177,7 @@ std::optional<TimelineLane> MainComponent::globalLaneAt(juce::Point<int> p) cons
             return lane.kind;
         y += height;
         if (theoryVisible_ && lane.kind == TimelineLane::chord)
-            y += theoryGuideHeight;
+            y += 2 * timelineRowHeight();
     }
     return {};
 }
@@ -3410,6 +3543,8 @@ void MainComponent::refreshTrackTheory(std::size_t track) {
 
 int MainComponent::theoryTrackHeight(std::size_t track) const {
     if (!theoryVisible_ || track >= theoryTracks_.size() || (!chordFitVisible_ && !scaleFitVisible_)) return 0;
+    if (track >= trackControls_.size()) return 0;
+    const int fitLaneHeight = std::max(16, juce::roundToInt(24.0 * trackControls_[track]->size.height() / TrackRowSize::normal));
     if (theoryTracks_[track].empty()) return fitLaneHeight;
     return fitLaneHeight * (int(chordFitVisible_) + int(scaleFitVisible_));
 }
@@ -3610,6 +3745,7 @@ void MainComponent::undoPianoEdit(bool redo) {
         pianoGrid_.selection.clear();
         theory_.reset();
         refreshTheory();
+        updateDocumentLabel();
         finishNoteEdit(playing);
     } else {
         if (playing) startTransport(false);
@@ -3766,8 +3902,7 @@ void MainComponent::refreshEditor() {
     outputButton_.setEnabled(arranging && project_ != nullptr);
     songInfoButton_.setEnabled(project_ != nullptr);
     musicButton_.setEnabled(project_ != nullptr);
-    deck_.settings.setEnabled(project_ && !recordTrack_);
-    deck_.information.setEnabled(project_ != nullptr);
+    basics_.setEnabled(project_ && !recordTrack_);
     theoryButton_.setEnabled(arranging && project_ != nullptr);
     theoryButton_.setToggleState(theoryVisible_ && arranging, juce::dontSendNotification);
     lanesButton_.setEnabled(arranging);
@@ -3871,8 +4006,10 @@ void MainComponent::resized() {
     trackHeaderWidth = std::min(preferredHeaderWidth_, std::max(320, editor.getWidth() - 145));
     trackNameWidth = std::clamp(trackHeaderWidth - 315, 70, 300);
     ruler_.headerWidth = trackHeaderWidth;
+    ruler_.labelInset = globalLabelInset();
+    basicsView_.setVisible(project_ && workspaceMode_ == WorkspaceMode::arrangement);
     if (pluginBrowser_) {
-        const auto full = workspaceBounds(getLocalBounds());
+        const auto full = workspaceBounds(getLocalBounds(), topBasicsHeight());
         pluginBrowser_->setBounds(full.withLeft(editor.getRight() + 8));
     }
     if (workspaceMode_ != WorkspaceMode::arrangement) {
@@ -3884,11 +4021,11 @@ void MainComponent::resized() {
     const auto arrangerHeight = getArrangementHeight(editor.getHeight());
     auto arrangement = editor.withHeight(arrangerHeight).reduced(13);
     if (project_) {
-        const bool stacked = arrangement.getWidth() < 720;
+        const bool stacked = arrangement.getWidth() < 765;
         auto navigation = arrangement.removeFromBottom(timelineNavigationHeight * (stacked ? 2 : 1));
-        auto heights = (stacked ? navigation.removeFromTop(timelineNavigationHeight) : navigation.removeFromLeft(325)).reduced(0, 2);
+        auto heights = (stacked ? navigation.removeFromTop(timelineNavigationHeight) : navigation.removeFromLeft(362)).reduced(0, 2);
         heightLabel_.setBounds(heights.removeFromLeft(48));
-        heightScope_.setBounds(heights.removeFromLeft(145));
+        heightScope_.setBounds(heights.removeFromLeft(182));
         groupHeight_.setBounds(heights.removeFromLeft(128));
         navigation.reduce(0, 2);
         arrangementZoomLabel_.setBounds(navigation.removeFromLeft(44));
@@ -3908,7 +4045,7 @@ void MainComponent::resized() {
     if (project_) {
         const auto view = currentArrangement();
         const auto order = displayedTrackOrder();
-        const int globalHeight = globalRowHeight + (theoryVisible_ ? theoryGuideHeight : 0) + static_cast<int>(view.globalLanes.size())
+        const int globalHeight = timelineRowHeight() + (theoryVisible_ ? (2 * timelineRowHeight()) : 0) + static_cast<int>(view.globalLanes.size())
             * groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)];
         int contentHeight = globalHeight + (outputs ? arrangementHeadingHeight : 0);
         if (std::any_of(order.begin(), order.end(), [this](auto i) { return !project_->isGlobalNoteTrack(i); }))
@@ -3921,15 +4058,29 @@ void MainComponent::resized() {
         verticalScroll_.setVisible(contentHeight > viewportHeight);
         if (verticalScroll_.isVisible()) verticalScroll_.setBounds(arrangement.removeFromRight(14).withTrimmedLeft(2));
         rowOverlay_.setBounds(arrangement);
-        ruler_.setBounds(rowOverlay_.getLocalBounds().removeFromTop(globalRowHeight));
+        importTrackDrop_.setBounds(arrangement.withTop(std::max(arrangement.getY(), arrangement.getBottom() - 36)).reduced(4, 2));
+        ruler_.setBounds(rowOverlay_.getLocalBounds().removeFromTop(timelineRowHeight()));
         ruler_.toFront(false);
+        juce::Rectangle<int> panelBounds;
+        if (basicsAtTop_) {
+            const auto height = topBasicsHeight();
+            panelBounds = height > 0 ? juce::Rectangle<int>(18, deck_.getBottom() + 3, getWidth() - 36, height - 4)
+                                     : juce::Rectangle<int>(deck_.getRight() + 8, deck_.getY() - 4, getWidth() - deck_.getRight() - 26, 72);
+        } else {
+            const int available = std::clamp(globalHeight - juce::roundToInt(verticalScroll_.getCurrentRangeStart()), 0, arrangement.getHeight());
+            panelBounds = arrangement.withWidth(globalLabelInset() - 4).withHeight(available);
+        }
+        basicsView_.setBounds(panelBounds);
+        const int panelWidth = panelBounds.getWidth();
+        const int natural = SongBasicsPanel::naturalHeight(panelWidth);
+        basics_.setSize(std::max(1, panelWidth - (natural > panelBounds.getHeight() ? basicsView_.getScrollBarThickness() : 0)), natural);
         int y = arrangement.getY() + globalHeight - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
         const auto firstChord = std::find_if(view.globalLanes.begin(), view.globalLanes.end(),
             [](const auto& lane) { return lane.kind == TimelineLane::chord; });
         const int after = int(firstChord - view.globalLanes.begin()) + int(firstChord != view.globalLanes.end());
         const int guideY = ruler_.getBounds().getBottom() + arrangement.getY()
             - juce::roundToInt(verticalScroll_.getCurrentRangeStart()) + after * groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)];
-        functionRow_ = arrangement.withTrimmedLeft(trackHeaderWidth).withY(guideY).withHeight(theoryGuideHeight);
+        functionRow_ = arrangement.withTrimmedLeft(trackHeaderWidth).withY(guideY).withHeight(2 * timelineRowHeight());
         bool arrangementHeading = false;
         trackRows_.assign(trackControls_.size(), {});
         for (const auto i : order) {
@@ -4091,7 +4242,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         area.translate(0, -juce::roundToInt(verticalScroll_.getCurrentRangeStart()));
     }
     const auto outputs = visibleOutputCount();
-    const int laneHeight = project_ ? globalRowHeight : arrangementLaneHeight(area, view, outputs);
+    const int laneHeight = project_ ? timelineRowHeight() : arrangementLaneHeight(area, view, outputs);
     auto labels = area.removeFromLeft(project_ ? trackHeaderWidth : 108);
     if (laneHeight < 12 || area.getWidth() < 40) return;
     int rowHeight = laneHeight - 4;
@@ -4103,7 +4254,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             return juce::Colour::fromHSV(0.79f + 0.07f * colour.getHue(), 0.38f, colour.getBrightness(), 1.f);
         return colour;
     };
-    auto drawRow = [&](const juce::String& label, int y, std::optional<ViewButton::Icon> icon = {}) {
+    auto drawRow = [&](const juce::String& label, int y, std::optional<ViewButton::Icon> icon = {}, bool global = false) {
         g.setColour(juce::Colour(0xffe1e9ef));
         g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
         const int labelHeight = project_ && rowHeight >= TrackRowSize::normal - TrackRowSize::grip
@@ -4113,9 +4264,9 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             ViewButton::drawIcon(g, *icon, labels.getX() + 5.f, y + (labelHeight - 18) * .5f);
             g.setColour(juce::Colour(0xffe1e9ef));
         }
-        const int inset = icon ? 26 : 5;
+        const int inset = global ? globalLabelInset() + 5 : icon ? 26 : 5;
         g.drawText(label,
-                         juce::Rectangle<int>(labels.getX() + inset, y, std::min(trackNameWidth, labels.getWidth()) - inset - 5, labelHeight),
+                         juce::Rectangle<int>(labels.getX() + inset, y, (global ? labels.getWidth() : std::min(trackNameWidth, labels.getWidth())) - inset - 5, labelHeight),
                          juce::Justification::centredLeft, true);
         const auto row = juce::Rectangle<int>(area.getX(), y, area.getWidth(), rowHeight);
         g.setColour(juce::Colour(0xff233443));
@@ -4152,7 +4303,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
     }
 
     auto drawLane = [&](const ostfstudio::ArrangementLane& lane, int y, juce::Colour colour, std::optional<ViewButton::Icon> icon = {}) {
-        const auto row = drawRow(lane.kind == TimelineLane::none ? juce::String::fromUTF8(lane.label) : juce::translate(lane.label), y, icon);
+        const auto row = drawRow(lane.kind == TimelineLane::none ? juce::String::fromUTF8(lane.label) : juce::translate(lane.label), y, icon, lane.kind != TimelineLane::none);
         g.setColour(juce::Colour(0xff3a4e5e));
         for (int bar = firstBar; bar < visible.end; bar += tickStep) {
             g.drawVerticalLine(positionX(bar, row), static_cast<float>(row.getY()), static_cast<float>(row.getBottom()));
@@ -4195,9 +4346,9 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
     const juce::uint32 globalColours[] {0xff314d72, 0xff493c64, 0xff31495a, 0xff31404e, 0xff31404e, 0xff2c6058};
     bool drewTheory = false;
     const auto globalTheory = [&] {
-        drawTheoryRows(g, juce::Rectangle<int>(labels.getX(), y, labels.getWidth() + area.getWidth(), theoryGuideHeight),
+        drawTheoryRows(g, juce::Rectangle<int>(labels.getX(), y, labels.getWidth() + area.getWidth(), (2 * timelineRowHeight())),
                        labels.getWidth(), std::nullopt);
-        y += theoryGuideHeight;
+        y += 2 * timelineRowHeight();
         drewTheory = true;
     };
     for (std::size_t i = 0; i < view.globalLanes.size(); ++i) {
@@ -4391,6 +4542,10 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
         g.setColour(juce::Colour(0xffe1e9ef));
         g.setFont(juce::FontOptions(15.f, juce::Font::bold));
         auto header = labels.withY(y).withHeight(height);
+        if (!track && globalLabelInset() > 0) {
+            g.drawText(name, header.withTrimmedLeft(globalLabelInset()).reduced(4, 0), juce::Justification::centredLeft);
+            return row;
+        }
         g.drawText(name, header.removeFromLeft(trackNameWidth).reduced(4, 0), juce::Justification::centredLeft);
         g.setColour(juce::Colour(hardwareAmber));
         g.drawText(current, header.reduced(4, 0), juce::Justification::centredLeft);
@@ -4419,10 +4574,10 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
         juce::String reading;
         if (function)
             reading = ostfstudio::shiftedLabel(theory_->chords[function->chord].name, auditionShift_) + "   " + function->degree + "  " + juce::translate(function->function);
-        const auto degreeBand = band(bounds.getY(), bounds.getHeight() - fitLaneHeight,
+        const auto degreeBand = band(bounds.getY(), bounds.getHeight() - timelineRowHeight(),
                                      TRANS("Degree") + " / " + TRANS("Progression"),
                                      progression ? progression->label : function ? function->degree : juce::String());
-        const auto top = band(degreeBand.getBottom(), fitLaneHeight, TRANS("Function"), reading);
+        const auto top = band(degreeBand.getBottom(), timelineRowHeight(), TRANS("Function"), reading);
         if (clip.isEmpty()) return;
         auto visibleSpans = [&](const auto& list, auto draw) {
             auto it = std::partition_point(list.begin(), list.end(), [first](const auto& f) { return f.end <= first; });
@@ -4644,7 +4799,7 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
                 const auto tone = theory_->tone(p, chord, scaleMask);
                 const int root = scaleMode ? (scale >= 0 ? theory_->scales[scale].tonic : -1) : (chord ? chord->root : -1);
                 if (root < 0 || (scaleMode ? !theory_->contains(scaleMask, p) : tone == Tone::outside || tone == Tone::unknown)) continue;
-                g.setColour((blueTheme() ? juce::Colour(0x1c81b5e6) : degreeColour(p, root, pianoInspector_.theme).withAlpha(0.22f)));
+                g.setColour(degreeColour(p, root).withAlpha(blueTheme() ? 0.10f : 0.18f));
                 g.fillRect(x, noteY(p), w, rowHeight);
             }
         }
@@ -4683,9 +4838,7 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
             auto rect = juce::Rectangle<float>(a, noteY(note.pitch), std::max(1.f, b-a), height);
             const auto role = theory_->tone(note.pitch, chord, scaleMask);
             const int root = scaleMode ? (index >= 0 ? theory_->scales[index].tonic : -1) : (chord ? chord->root : -1);
-            auto fill = degreeColour(note.pitch, root, pianoInspector_.theme);
-            if (scaleMode && scaleMask && !theory_->contains(scaleMask, note.pitch))
-                fill = fill.interpolatedWith(juce::Colour(0xff646671), 0.65f);
+            auto fill = degreeColour(note.pitch, root);
             g.setColour(fill);
             g.fillRect(rect);
             if (height >= 3.f) {

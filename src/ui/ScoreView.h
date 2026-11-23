@@ -1,6 +1,5 @@
 #pragma once
 #include "ui/Notation.h"
-#include "ui/AudioClipWaveforms.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class ScoreView final : public juce::Component {
@@ -21,7 +20,6 @@ class ImportResultRow final : public juce::TextButton {
   public:
     ImportResultRow(const juce::String& label, const ostfstudio::OstfpPreview& song, int sourceIndex)
         : TextButton(label), source(song), index(sourceIndex) {}
-    AudioClipWaveforms *waveforms = nullptr;
     void paintButton(juce::Graphics &g, bool over, bool down) override {
         g.setColour(juce::Colour(over || down ? 0xff35556a : 0xff283d4e));
         g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(1), 4.f);
@@ -35,11 +33,24 @@ class ImportResultRow final : public juce::TextButton {
         g.setFont(juce::FontOptions(14.f));
         g.drawText(getButtonText() + (events ? "   " + juce::String(int(events->size())) + " " + TRANS("notes") : ""),
                    area.removeFromTop(20), juce::Justification::centredLeft);
-        if (waveforms)
-            for (const auto &clip : source.audio) {
-                if (int(clip.track) == index)
-                    waveforms->draw(g, area, clip, source.clock, 0, source.playbackEndTick());
-            }
+        const int bars = std::max(1, source.bars.endBar - source.bars.firstBar);
+        const int step = std::max(1, (bars * 28 + area.getWidth() - 1) / std::max(1, area.getWidth()));
+        auto barX = [&](double bar) { return area.getX() + juce::roundToInt((bar - source.bars.firstBar) * area.getWidth() / bars); };
+        g.setColour(juce::Colour(0xff435360));
+        for (int b = source.bars.firstBar; b < source.bars.endBar; b += step)
+            g.drawVerticalLine(barX(b), float(area.getY()), float(area.getBottom()));
+        if (index == -1) {
+            for (const auto& lane : source.globalLanes) if (lane.kind == ostfstudio::TimelineLane::chord)
+                for (const auto& region : lane.regions) {
+                    const auto start = region.exactBars ? region.exactBars->start : double(region.bars.firstBar);
+                    const auto end = region.exactBars ? region.exactBars->end : double(region.bars.endBar);
+                    auto cell = area.withX(barX(start)).withWidth(std::max(1, barX(end) - barX(start) - 1));
+                    g.setColour(juce::Colour(0xff504766));
+                    g.fillRect(cell);
+                    g.setColour(juce::Colours::white);
+                    g.drawText(juce::String::fromUTF8(region.label), cell.reduced(3, 0), juce::Justification::centredLeft);
+                }
+        }
         if (events && !events->empty()) {
             auto [lo, hi] = std::minmax_element(events->begin(), events->end(),
                                                 [](const auto &a, const auto &b) { return a.pitch < b.pitch; });

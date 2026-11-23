@@ -1063,7 +1063,7 @@ SongInformation OstfpPreview::songInformation() const {
     return info;
 }
 
-juce::Result OstfpPreview::applySongInformation(const SongInformation& info) try {
+juce::Result OstfpPreview::applySongInformation(const SongInformation& info, juce::MemoryBlock* previous) try {
     if (info.title.trim().isEmpty()) return juce::Result::fail("Enter a song title.");
     const auto beforeEdit = savedScore(*this);
     auto score = parseObject(beforeEdit);
@@ -1148,6 +1148,7 @@ juce::Result OstfpPreview::applySongInformation(const SongInformation& info) try
     if (bytes.getSize() > maxBytes) return juce::Result::fail("OSTF score is too large.");
     sourceScore = std::move(bytes);
     addedClips.clear();
+    if (previous) *previous = beforeEdit;
     title = info.title;
     return juce::Result::ok();
 } catch (const std::exception& error) {

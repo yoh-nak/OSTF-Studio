@@ -314,8 +314,10 @@ int checkPianoEdits(const juce::File& fixture) {
     column->mouseDrag(pointer(*column, {float(columnX - column->getX() + 6), 10.f}, {0.f, 10.f}));
     juce::Button* shape = nullptr;
     for (auto* child : main.getChildren())
-        if (auto* view = dynamic_cast<juce::Viewport*>(child); view && view->getViewedComponent())
+        if (auto* view = dynamic_cast<juce::Viewport*>(child); view && view->getViewedComponent()) {
             shape = dynamic_cast<juce::Button*>(view->getViewedComponent()->findChildWithID("shape-velocity"));
+            if (shape) break;
+        }
     if (!shape || !shape->isEnabled()) return 54;
     shape->onClick();
     const auto firstOnset = grid->notes.front().startTick;

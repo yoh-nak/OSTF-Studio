@@ -184,6 +184,61 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
         project->pitchedNotes[1].size() != 2 || project->pitchedNotes[1][0].pitch != 69 ||
         project->pitchedNotes[1][1].pitch != 72 || std::abs(project->pitchedNotes[1][1].startTick - 768) > 60)
         return false;
+    std::unique_ptr<OstfpPreview> draft;
+    if (analyseScoreImport(melody, draft, info).failed() || !draft || !draft->audio.empty() ||
+        draft->sourceTrackCount() != 1 || juce::String::fromUTF8(draft->trackLanes[0].label).contains(TRANS("(estimated)")) ||
+        draft->pitchedNotes[0].size() != 2 ||
+        draft->pitchedNotes[0][0].pitch != 69 || draft->pitchedNotes[0][1].pitch != 72 ||
+        juce::JSON::parse(draft->sourceScore.toString())["harmony"]["chords"].size() != 0) {
+        std::cerr << "Audio melody projection: " << info << std::endl;
+        return false;
+    }
+    // A sustained harmonic reed and a pure sine exercise both the candidate and abstention paths.
+    juce::MemoryOutputStream reed;
+    reed.write(tones.getData(), 44);
+    constexpr std::array<double, 6> reedGains{1., .14, .52, .075, .22, .06};
+    for (int i = 0; i < frames; ++i) {
+        double sample = 0;
+        for (size_t h = 0; h < reedGains.size(); ++h)
+            sample += reedGains[h] * std::sin(juce::MathConstants<double>::twoPi * 220. * (h + 1) * i / 8000.);
+        reed.writeShort(short(10000. * sample));
+    }
+    const auto reedFile = dir.getChildFile("reed.wav");
+    if (!reedFile.replaceWithData(reed.getData(), reed.getDataSize()) || analyseScoreImport(reedFile, draft, info).failed() ||
+        draft->sourceTrackCount() != 1 || !juce::String::fromUTF8(draft->trackLanes[0].label).contains(TRANS("Reed"))) return false;
+    juce::AiffAudioFormat aiff;
+    const auto aiffFile = dir.getChildFile("phrase.aiff");
+    auto aiffOutput = aiffFile.createOutputStream();
+    if (!aiffOutput || !aiffOutput->setPosition(0) || aiffOutput->truncate().failed()) return false;
+    std::unique_ptr<juce::OutputStream> destination = std::move(aiffOutput);
+    auto writer = aiff.createWriterFor(destination, juce::AudioFormatWriterOptions{}.withSampleRate(8000)
+        .withNumChannels(1).withBitsPerSample(16));
+    std::unique_ptr<juce::AudioFormatReader> toneReader(format.createReaderFor(melody.createInputStream().release(), true));
+    if (!writer || !toneReader || !writer->writeFromAudioReader(*toneReader, 0, int(toneReader->lengthInSamples))) return false;
+    writer.reset();
+    if (analyseScoreImport(aiffFile, draft, info).failed() || draft->sourceTrackCount() != 1 ||
+        draft->pitchedNotes[0].size() != 2 || !scoreImportFileFilter().containsIgnoreCase("*.aif")) return false;
+    if (analyseScoreImport(mixed, draft, info).failed() || !draft->audio.empty() ||
+        draft->contextAt(TimelineLane::chord, 0) != "C" || draft->contextAt(TimelineLane::chord, 600) != "Dm" ||
+        draft->sourceTrackCount() < 2) return false;
+    // The new-track target uses the same drop callback as a drag from the detached result window.
+    ImportResultRow sourceRow("Melody", *draft, 0);
+    auto* zone = main.findChildWithID("import-new-track");
+    if (!zone || zone->getWidth() <= 0) return false;
+    auto& target = static_cast<juce::DragAndDropTarget&>(main);
+    juce::DragAndDropTarget::SourceDetails drop("ostf-import-result", &sourceRow,
+        zone->getBounds().getCentre().withX(zone->getX() + 8));
+    juce::ComboBox* picker = nullptr;
+    for (auto* child : main.getChildren())
+        if (auto* box = dynamic_cast<juce::ComboBox*>(child); box && box->getTitle() == TRANS("Arrangement track")) picker = box;
+    if (!picker) return false;
+    const auto oldCount = picker->getNumItems();
+    target.itemDragMove(drop);
+    if (!zone->isVisible()) return false;
+    target.itemDropped(drop);
+    if (zone->isVisible() || picker->getNumItems() != oldCount + 1) return false;
+    if (analyseScoreImport(file, draft, info).wasOk()) return false; // Silent WAV
+    if (analyseScoreImport(dir.getChildFile("phrase.mid"), draft, info).failed() || draft->sourceTrackCount() != 2 || draft->drumNotes[1].size() != 1) return false;
     if (analyseImportParts(melody, false, localWaves, localNotes, info).failed() ||
         std::none_of(localNotes->pitchedNotes[3].begin(), localNotes->pitchedNotes[3].end(),
                      [](const auto &n) { return n.pitch == 69; }))

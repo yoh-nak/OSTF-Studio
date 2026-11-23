@@ -87,7 +87,7 @@ public:
         auto swatches = area.removeFromTop(21);
         for (int pc = 0; pc < 12; ++pc) {
             auto item = swatches.removeFromLeft(swatches.getWidth() / (12 - pc)).reduced(1, 0);
-            g.setColour(degreeColour(pc, 0, theme)); g.fillRect(item);
+            g.setColour(degreeColour(pc, 0)); g.fillRect(item);
             g.setColour(juce::Colour(0xff182634));
             g.drawFittedText(ostfstudio::TheoryGuide::interval(pc, 0), item, juce::Justification::centred, 1);
         }

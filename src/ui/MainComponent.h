@@ -16,6 +16,7 @@
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
+#include "ui/SongBasicsPanel.h"
 #include "ui/TheoryGuide.h"
 
 class MainComponent final : public juce::Component, public juce::TooltipClient, public juce::DragAndDropContainer,
@@ -24,7 +25,6 @@ public:
     MainComponent();
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
-    OpenImportedSong onNewImportedSong;
     void openImportedSong(std::unique_ptr<ostfstudio::OstfpPreview>);
     void displayTransportPosition(juce::int64 tick, double seconds = -1, const juce::ScrollBar* anchoredView = nullptr);
     void paint(juce::Graphics& g) override;
@@ -95,7 +95,8 @@ private:
     void selectTrack(std::size_t index);
     void rebuildTrackControls();
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
-                    std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched);
+                    std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched,
+                    const ImportResultRow* import = nullptr, juce::int64 tick = 0);
     void renameTrack(std::size_t index, bool output = false);
     void showRowMenu(bool output, std::size_t index);
     void confirmRemoval(bool output, std::size_t index);
@@ -229,6 +230,13 @@ private:
     juce::TooltipWindow tooltips_ {nullptr, 350};
     bool editorVisible_ = true, mixerSelected_ = false;
     TransportPanel deck_;
+    SongBasicsPanel basics_;
+    juce::Viewport basicsView_;
+    bool basicsAtTop_ = false;
+    int topBasicsHeight() const;
+    int globalLabelInset() const;
+    int timelineRowHeight() const;
+    void editSongField(SongBasicsPanel::Field, const juce::String&, int);
     juce::Label documentLabel_;
     juce::String currentFilename_;
     juce::File legacySourceFile_;
@@ -236,6 +244,13 @@ private:
     juce::ComboBox trackPicker_;
     juce::ComboBox performanceLane_;
     juce::Slider arrangementZoom_, groupHeight_;
+    struct HeightMenuStyle : juce::LookAndFeel_V4 {
+        juce::Font getComboBoxFont(juce::ComboBox&) override { return juce::FontOptions(16.f); }
+        juce::Font getPopupMenuFont() override { return juce::FontOptions(16.f); }
+        juce::PopupMenu::Options getOptionsForComboBoxPopupMenu(juce::ComboBox& box, juce::Label& label) override {
+            return LookAndFeel_V4::getOptionsForComboBoxPopupMenu(box, label).withStandardItemHeight(30).withMinimumWidth(210);
+        }
+    } heightMenuStyle_;
     juce::ComboBox heightScope_;
     juce::Label heightLabel_, arrangementZoomLabel_;
     std::array<int, static_cast<std::size_t>(HeightGroup::count)> groupDefaults_ {};
@@ -298,6 +313,7 @@ private:
     bool showOutputTracks_ = true;
     std::size_t projectGeneration_ = 0;
     std::optional<std::size_t> selectedTrack_;
+    juce::Label importTrackDrop_;
     std::optional<std::size_t> pluginDropHighlight_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

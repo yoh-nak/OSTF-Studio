@@ -122,7 +122,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         set_source_files_properties(${ostf_document_icons} PROPERTIES MACOSX_PACKAGE_LOCATION Resources HEADER_FILE_ONLY TRUE)
     endif()
     juce_add_binary_data(OSTFStudioAssets SOURCES
-        assets/AppIcon.png assets/Japanese.txt assets/NewProject.ostf
+        assets/AppIcon.png assets/Japanese.txt assets/NewProject.ostf assets/GMFamilies.json
         examples/demo-songs/neon-platforms.ostfp examples/demo-songs/blue-hour-waltz.ostfp
         examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp
         examples/demo-songs/copper-mile.ostfp examples/demo-songs/first-light-vector.ostfp)
