@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class ArrangementRuler final : public juce::Component, public juce::SettableTooltipClient {

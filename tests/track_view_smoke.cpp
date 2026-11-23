@@ -133,7 +133,13 @@ int checkTrackView(const juce::File& fixture) {
     main.setSize(790, 570);
     if (!scroll->isVisible()) return 8;
     scroll->setCurrentRangeStart(scroll->getMaximumRangeLimit(), juce::sendNotificationSync);
-    if (!reachable(*master) || reachable(*guitar)) return 9;
+    auto* lastReturn = findControl<TrackRowSize>(main, "Return 1 track height");
+    auto* ruler = master->getParentComponent()->findChildWithID("arrangement-ruler");
+    if (!lastReturn || !reachable(*lastReturn) || reachable(*guitar) || !ruler || ruler->getY() != 0) return 9;
+    // A short viewport can fit fewer than four output strips beneath the pinned ruler.
+    if (master->getY() < ruler->getBottom())
+        scroll->setCurrentRangeStart(scroll->getCurrentRangeStart() + master->getY() - ruler->getBottom(), juce::sendNotificationSync);
+    if (!reachable(*master)) return 43;
     master->mouseDown(pointer(*master, 2));
     master->mouseDrag(pointer(*master, 55));
     if (!master->expanded() || !guitar->expanded()) return 10;
