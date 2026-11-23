@@ -1,5 +1,6 @@
 #pragma once
 #include "ui/Notation.h"
+#include "ui/AnalysisService.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class ScoreView final : public juce::Component {
@@ -34,10 +35,10 @@ class ImportResultRow final : public juce::TextButton {
         g.drawText(getButtonText() + (events ? "   " + juce::String(int(events->size())) + " " + TRANS("notes") : ""),
                    area.removeFromTop(20), juce::Justification::centredLeft);
         const int bars = std::max(1, source.bars.endBar - source.bars.firstBar);
-        const int step = std::max(1, (bars * 28 + area.getWidth() - 1) / std::max(1, area.getWidth()));
+        const int step = std::max(1, int((juce::int64(bars) * 28 + area.getWidth() - 1) / std::max(1, area.getWidth())));
         auto barX = [&](double bar) { return area.getX() + juce::roundToInt((bar - source.bars.firstBar) * area.getWidth() / bars); };
         g.setColour(juce::Colour(0xff435360));
-        for (int b = source.bars.firstBar; b < source.bars.endBar; b += step)
+        for (juce::int64 b = source.bars.firstBar; b < source.bars.endBar; b += step)
             g.drawVerticalLine(barX(b), float(area.getY()), float(area.getBottom()));
         if (index == -1) {
             for (const auto& lane : source.globalLanes) if (lane.kind == ostfstudio::TimelineLane::chord)
@@ -74,3 +75,4 @@ class ImportResultRow final : public juce::TextButton {
     const int index; // -1 is the inferred chord progression.
 };
 std::unique_ptr<juce::DocumentWindow> makeMediaImportWindow(OpenImportedSong open);
+void setImportConnections(juce::DocumentWindow&, std::vector<ostfstudio::AnalysisConnection>);

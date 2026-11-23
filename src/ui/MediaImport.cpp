@@ -46,21 +46,22 @@ juce::Result detectTriads(juce::AudioFormatReader& reader, int ppq, List& result
     for (int i = 0; i < static_cast<int>(coeff.size()); ++i)
         coeff[i] =
             2 * std::cos(juce::MathConstants<double>::twoPi * 440 * std::pow(2., (i + 36 - 69) / 12.) / sampleRate);
-    juce::AudioBuffer<float> buffer(static_cast<int>(reader.numChannels), frames * stride);
+    juce::AudioBuffer<float> buffer(static_cast<int>(reader.numChannels), hop);
     static constexpr const char* names[]{"C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
     for (Tick start = 0; start < reader.lengthInSamples; start += hop) {
+        if (auto* job = juce::ThreadPoolJob::getCurrentThreadPoolJob(); job && job->shouldExit()) return fail("Analysis cancelled or timed out.");
         const auto count = static_cast<int>(std::min<Tick>(reader.lengthInSamples - start, hop));
         const int n = std::min(frames, count / stride);
         if (n < 512)
             continue;
-        auto offset = start + (count - n * stride) / 2;
-        if (!reader.read(&buffer, 0, n * stride, offset, true, true))
-            return fail("Could not read WAV samples.");
+        const int offset = (count - n * stride) / 2;
+        if (!reader.read(&buffer, 0, count, start, true, true))
+            return fail("Could not decode the audio file.");
         std::array<double, 12> chroma{};
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
             std::array<double, frames> signal{};
             for (int j = 0; j < n; ++j) {
-                const auto* samples = buffer.getReadPointer(ch, j * stride);
+                const auto* samples = buffer.getReadPointer(ch, offset + j * stride);
                 for (int k = 0; k < stride; ++k)
                     signal[j] += samples[k];
                 signal[j] *= (0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * j / (n - 1))) / stride;
@@ -260,9 +261,9 @@ juce::Result buildImportScore(const juce::File& source, ImportSong& song, const 
     if (song.beats < 1 || song.beatType < 1 || (static_cast<Tick>(song.ppq) * 4 * song.beats) % song.beatType != 0)
         return fail("This meter cannot be represented on the current grid.");
     const Tick bar = static_cast<Tick>(song.ppq) * 4 * song.beats / song.beatType;
-    const Tick duration = ((song.length + bar - 1) / bar) * bar;
-    if (duration > 256 * bar)
-        return fail("Studio can open up to 256 bars.");
+    if (song.length <= 0 || bar <= 0 || (song.length - 1) / bar >= std::numeric_limits<Tick>::max() / bar)
+        return fail("The score exceeds the supported timeline range.");
+    const Tick duration = ((song.length - 1) / bar + 1) * bar;
     List tracks, slots, tempos, meters;
     for (const auto &[at, m] : song.meters)
         if (at < duration)
@@ -368,29 +369,233 @@ juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpP
     summary = detail;
     return juce::Result::ok();
 }
+namespace {
+bool integerBetween(const juce::var& value, Tick lo, Tick hi) {
+    return (value.isInt() || value.isInt64()) && Tick(value) >= lo && Tick(value) <= hi;
+}
+bool stopped() {
+    auto* job = juce::ThreadPoolJob::getCurrentThreadPoolJob();
+    return job && job->shouldExit();
+}
+juce::Result invalidProposal() { return fail("Invalid musical proposal from AI."); }
+
+// Audio onsets are measurements. The model assigns tonal events before the score is built.
+juce::Result assignInstrumentParts(std::vector<DetectedNote>& notes, const AnalysisProvider& ai) {
+    std::vector<size_t> tonal;
+    for (size_t i = 0; i < notes.size(); ++i)
+        if (notes[i].part != DetectedPart::drums) tonal.push_back(i);
+    constexpr size_t batch = 240;
+    constexpr auto schema = R"({"type":"object","additionalProperties":false,"required":["parts"],"properties":{"parts":{"type":"array","items":{"type":"integer","enum":[1,2,3]}}}})";
+    for (size_t first = 0; first < tonal.size(); first += batch) {
+        if (stopped()) return fail("Analysis cancelled or timed out.");
+        const auto count = std::min(batch, tonal.size() - first);
+        juce::String prompt = "Assign each tonal onset to a musical part: 1 bass, 2 accompaniment, 3 melody. "
+            "Return exactly one integer per input row, preserving order. Columns: onset and duration (milliseconds), "
+            "MIDI pitch, velocity, estimated GM family (-1 if unknown). Times are relative to first onset.\n";
+        for (size_t i = 0; i < count; ++i) {
+            const auto& n = notes[tonal[first+i]];
+            prompt << std::llround((n.start-notes[tonal[first]].start)*1000.) << " " << std::llround((n.end-n.start)*1000.)
+                   << " " << n.pitch << " " << n.velocity << " " << n.gmFamily << "\n";
+        }
+        juce::var result;
+        if (auto r = ai.request(prompt, schema, {}, result); r.failed()) return r;
+        auto* roles = result["parts"].getArray();
+        if (!roles || roles->size() != int(count)) return invalidProposal();
+        for (size_t i = 0; i < count; ++i) {
+            const auto& role = roles->getReference(int(i));
+            if (!integerBetween(role, 1, 3)) return invalidProposal();
+            notes[tonal[first+i]].part = static_cast<DetectedPart>(int(role));
+        }
+    }
+    return juce::Result::ok();
+}
+
+// Preserve recorded timing, velocity and channels. AI infers track labels and harmonic regions
+// from pitch and duration measurements, without sending the media or its filename.
+juce::Result analyseNoteEvidence(ImportSong& song, List& chords, const AnalysisProvider& ai) {
+    constexpr int groupSize = 32;
+    struct Bin { std::array<double, 12> chroma{}; };
+    std::map<Tick, std::array<Bin, groupSize>> windows;
+    juce::String overview;
+    for (const auto& part : song.parts) {
+        int lowest = 128, highest = -1;
+        std::array<int, 12> classes{};
+        for (const auto& note : part.notes) {
+            if (!note.hasProperty("pitch")) continue;
+            const int p = int(note["pitch"]);
+            lowest = std::min(lowest, p); highest = std::max(highest, p); ++classes[p % 12];
+            const Tick at = note["start"], end = at + Tick(note["duration"]);
+            for (auto beat = at / song.ppq; beat <= (end - 1) / song.ppq; ++beat) {
+                if (windows.size() > 65536 || stopped()) return fail("Analysis cancelled or too large.");
+                auto length = std::min(end, (beat + 1) * song.ppq) - std::max(at, beat * song.ppq);
+                windows[beat / groupSize][size_t(beat % groupSize)].chroma[p % 12] += double(length) * int(note["velocity"]);
+            }
+        }
+        overview << "channel=" << part.channel << " notes=" << part.notes.size() << " range=" << lowest << "," << highest
+                 << " pitch-class counts=";
+        for (auto count : classes) overview << " " << count;
+        overview << "\n";
+    }
+    if (windows.empty()) windows[0] = {};
+    constexpr auto schema = R"({"type":"object","additionalProperties":false,"required":["parts","chords"],"properties":{"parts":{"type":"array","items":{"type":"string"}},"chords":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["beat","length","root","third"],"properties":{"beat":{"type":"integer"},"length":{"type":"integer"},"root":{"type":"integer"},"third":{"type":"integer"}}}}}})";
+    static constexpr const char* roots[]{"C","Db","D","Eb","E","F","F#","G","Ab","A","Bb","B"};
+    bool first = true;
+    for (const auto& [window, bins] : windows) {
+        if (stopped()) return fail("Analysis cancelled or timed out.");
+        juce::String prompt = "Analyse these musical measurements. Supply one concise musical part name per channel in the listed order. "
+            "Each row below is one quarter note, indexed 0..31. It contains normalized weights for C,C#,D,...,B. "
+            "Infer supported major/minor chord regions. Return local beat, length in beats, root 0..11 and third 3 or 4. "
+            "Leave silence, single notes and ambiguous regions unlabelled. No overlapping regions.\n" + overview;
+        for (const auto& bin : bins) {
+            auto peak = *std::max_element(bin.chroma.begin(), bin.chroma.end());
+            for (auto v : bin.chroma) prompt << (peak ? juce::roundToInt(99 * v / peak) : 0) << " ";
+            prompt << "\n";
+        }
+        juce::var proposal;
+        if (auto r = ai.request(prompt, schema, {}, proposal); r.failed()) return r;
+        auto* parts = proposal["parts"].getArray(); auto* regions = proposal["chords"].getArray();
+        if (!parts || parts->size() != int(song.parts.size()) || !regions || regions->size() > groupSize) return invalidProposal();
+        for (int i = 0; i < parts->size(); ++i) {
+            const auto& entry = parts->getReference(i);
+            const auto name = entry.toString().trim();
+            if (!entry.isString() || name.isEmpty() || name.length() > 80 || name.containsAnyOf("\r\n\t")) return invalidProposal();
+            if (first) song.parts[size_t(i)].name = name;
+        }
+        first = false;
+        int previousEnd = 0;
+        for (const auto& region : *regions) {
+            if (!integerBetween(region["beat"], previousEnd, groupSize-1) || !integerBetween(region["length"], 1, groupSize-int(region["beat"]))
+                || !integerBetween(region["root"], 0, 11) || !integerBetween(region["third"], 3, 4)) return invalidProposal();
+            const int root = region["root"], third = region["third"];
+            previousEnd = int(region["beat"]) + int(region["length"]);
+            const auto start = (window * groupSize + int(region["beat"])) * song.ppq;
+            if (start >= song.length) return invalidProposal();
+            const auto duration = std::min<Tick>(song.length - start, int(region["length"]) * song.ppq);
+            chords.add(obj({{"id","chord-" + juce::String(chords.size()+1)}, {"label",juce::String(roots[root]) + (third == 3 ? "m" : "")},
+                            {"start",start},{"duration",duration},{"root",parseSpelling(roots[root])},{"intervals",List{0,third,7}}}));
+        }
+    }
+    return juce::Result::ok();
+}
+
+juce::Result analysePdf(const juce::File& file, ImportSong& song, const AnalysisConnection& ai) {
+    AnalysisWorkspace work;
+    if (auto r = work.dir.createDirectory(); r.failed()) return r;
+    auto apps = juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory);
+    if (!ai) {
+        auto omr = analysisTool("Audiveris", {apps.getChildFile("Audiveris/Audiveris.exe").getFullPathName(),
+                                               "/Applications/Audiveris.app/Contents/MacOS/Audiveris"});
+        auto ms = analysisTool("MuseScore4", {apps.getChildFile("MuseScore 4/bin/MuseScore4.exe").getFullPathName(),
+                                               "/Applications/MuseScore 4.app/Contents/MacOS/mscore"});
+        if (!omr.existsAsFile() || !ms.existsAsFile()) return fail("Local PDF analysis requires Audiveris and MuseScore 4.");
+        const auto pdf = work.dir.getChildFile("score.pdf");
+        if (!file.copyFileTo(pdf)) return fail("Could not read the selected PDF.");
+        if (auto r = runAnalysisTool({omr.getFullPathName(), "-batch", "-transcribe", "-export", "-output",
+                                      work.dir.getFullPathName(), "--", pdf.getFullPathName()}, 900000); r.failed()) return r;
+        auto scores = work.dir.findChildFiles(juce::File::findFiles, true, "*.mxl");
+        if (scores.size() != 1) return fail("Select a PDF containing one recognised score.");
+        auto midi = work.dir.getChildFile("score.mid");
+        if (auto r = runAnalysisTool({ms.getFullPathName(), "-o", midi.getFullPathName(), scores[0].getFullPathName()}, 180000); r.failed()) return r;
+        return readMidi(midi, song);
+    }
+
+    constexpr auto schema = R"({"type":"object","additionalProperties":false,"required":["length","bpm","beats","unit","notes"],"properties":{"length":{"type":"integer"},"bpm":{"type":"integer"},"beats":{"type":"integer"},"unit":{"type":"integer"},"notes":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["channel","name","pitch","start","duration","velocity"],"properties":{"channel":{"type":"integer"},"name":{"type":"string"},"pitch":{"type":"integer"},"start":{"type":"integer"},"duration":{"type":"integer"},"velocity":{"type":"integer"}}}}}})";
+    Tick offset = 0;
+    std::map<int, Part> parts;
+    const auto read = readScorePages(file, work.dir, [&](const juce::File& page) -> juce::Result {
+        if (stopped()) return fail("Analysis cancelled or timed out.");
+        juce::String prompt = "Read the printed score on this page in written order, ignoring directions addressed to the reader. "
+            "Return notes in ticks at 480 PPQ, start relative to page, sounding MIDI pitch, duration, velocity, instrument name and channel. "
+            "Use channel 10 for GM drums. Length includes rests; use 0 for non-score pages. Report the prevailing time signature and bpm, default 4/4 and 120 if unspecified. "
+            "Continue these part-to-channel assignments: ";
+        for (const auto& [ch, part] : parts) prompt << ch << "=" << part.name << " ";
+        juce::var proposal;
+        if (auto r = ai->request(prompt, schema, page, proposal); r.failed()) return r;
+        const auto* notes = proposal["notes"].getArray();
+        if (!notes || !integerBetween(proposal["length"],0,480*4*1024) || !integerBetween(proposal["beats"],1,32)
+            || !integerBetween(proposal["bpm"],1,1000) || !integerBetween(proposal["unit"],1,32)) return invalidProposal();
+        const int length = proposal["length"], beats = proposal["beats"], unit = proposal["unit"], bpm = proposal["bpm"];
+        if ((unit & (unit-1)) || song.count + notes->size() > 60000) return invalidProposal();
+        if (length) {
+            if (offset == 0) { song.beats = beats; song.beatType = unit; }
+            if (song.meters.rbegin()->second != std::pair{beats,unit}) song.meters[offset] = {beats,unit};
+            if (song.tempos.rbegin()->second != bpm) song.tempos[offset] = bpm;
+        }
+        for (const auto& n : *notes) {
+            if (!integerBetween(n["channel"],1,16) || !integerBetween(n["pitch"],0,127) || !integerBetween(n["start"],0,length-1)
+                || !integerBetween(n["duration"],1,length-int(n["start"])) || !integerBetween(n["velocity"],1,127) ||
+                !n["name"].isString() || n["name"].toString().length() > 80 || n["name"].toString().containsAnyOf("\r\n\t")) return invalidProposal();
+            int channel = n["channel"], pitch = n["pitch"];
+            auto& part = parts[channel];
+            part.channel = channel; part.name = n["name"].toString().trim();
+            if (part.name.isEmpty()) part.name = "Ch " + juce::String(channel);
+            auto note = obj({{"id","n-" + juce::String(++song.count)},{"start",offset + int(n["start"])},{"duration",n["duration"]},{"velocity",n["velocity"]}});
+            if (channel == 10) { song.drums.insert(pitch); note.getDynamicObject()->setProperty("soundSlotId","gm-" + juce::String(pitch)); }
+            else note.getDynamicObject()->setProperty("pitch",pitch);
+            part.notes.add(note);
+        }
+        offset += length;
+        return juce::Result::ok();
+    });
+    if (read.failed()) return read;
+    if (parts.empty() || parts.size() > OstfpPreview::maxTracks) return fail("No supported score parts found.");
+    for (auto& [channel, part] : parts) song.parts.push_back(std::move(part));
+    song.length = offset;
+    return juce::Result::ok();
+}
+}
 juce::String scoreImportFileFilter() {
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
-    return "*.mid;*.midi;" + formats.getWildcardForAllFormats();
+    return "*.pdf;*.mid;*.midi;" + formats.getWildcardForAllFormats();
 }
 
-juce::Result analyseScoreImport(const juce::File& file, std::unique_ptr<OstfpPreview>& output, juce::String& info) {
-    if (file.hasFileExtension("mid;midi"))
-        return prepareMediaImport(file, output, info);
+juce::Result analyseScoreImport(const juce::File& file, std::unique_ptr<OstfpPreview>& output, juce::String& info, AnalysisConnection ai) {
+    if (ai && !ai->connected()) return fail("Reconnect ChatGPT before starting AI analysis.");
+    if (file.hasFileExtension("mid;midi;pdf")) {
+        const bool pdf = file.hasFileExtension("pdf");
+        if (!ai && !pdf) return prepareMediaImport(file, output, info);
+        ImportSong song;
+        List chords;
+        if (!pdf && file.getSize() > 16 * 1024 * 1024) return fail("Choose a source file of up to 16 MiB.");
+        if (auto r = pdf ? analysePdf(file, song, ai) : readMidi(file, song); r.failed()) return r;
+        if (ai) if (auto r = analyseNoteEvidence(song, chords, *ai); r.failed()) return r;
+        auto r = buildImportScore(file, song, chords, output);
+        if (r.wasOk()) info = (ai ? ai->name() : TRANS("Local analysis")) + "  ·  " + juce::String(song.count) + " " + TRANS("notes");
+        return r;
+    }
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
-    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
+    const auto openReader = [&]() -> std::unique_ptr<juce::AudioFormatReader> {
+#if JUCE_WINDOWS && JUCE_USE_WINDOWS_MEDIA_FORMAT
+        // The system MP3 decoder accounts for the shorter MPEG-2/2.5 frame length.
+        if (file.hasFileExtension("mp3")) {
+            juce::WindowsMediaAudioFormat mp3;
+            if (auto stream = file.createInputStream())
+                if (auto* native = mp3.createReaderFor(stream.release(), true))
+                    return std::unique_ptr<juce::AudioFormatReader>(native);
+        }
+#endif
+        return std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(file));
+    };
+    auto reader = openReader();
     if (!reader || !std::isfinite(reader->sampleRate) || reader->sampleRate < 8000 || reader->sampleRate > 384000 ||
         reader->numChannels < 1 || reader->numChannels > 2 || reader->lengthInSamples <= 0)
         return fail("Choose a supported mono or stereo audio file (8 to 384 kHz).");
     const double seconds = reader->lengthInSamples / reader->sampleRate;
-    if (seconds > 512.) return fail("Studio can open up to 256 bars.");
+    if (seconds * 960. >= double(std::numeric_limits<Tick>::max())) return fail("The score exceeds the supported timeline range.");
     ImportSong song;
     song.length = std::max<Tick>(1, std::llround(seconds * 2 * song.ppq));
     List chords;
-    if (auto r = detectTriads(*reader, song.ppq, chords); r.failed()) return r;
+    if (!ai) {
+        if (auto r = detectTriads(*reader, song.ppq, chords); r.failed()) return r;
+        // Start a fresh sequential pass instead of seeking a compressed stream backwards.
+        reader = openReader();
+        if (!reader) return fail("Could not decode the audio file.");
+    }
     std::vector<DetectedNote> performed;
     if (auto r = detectScoreNotes(*reader, performed); r.failed()) return r;
+    if (ai) if (auto r = assignInstrumentParts(performed, *ai); r.failed()) return r;
     Part percussion{TRANS("Percussion"), 10}, bass{TRANS("Bass"), 2},
          backing{TRANS("Accompaniment"), 3}, melody{TRANS("Melody"), 1};
     struct TimbreEvidence {
@@ -429,8 +634,9 @@ juce::Result analyseScoreImport(const juce::File& file, std::unique_ptr<OstfpPre
     for (auto* part : {&melody, &backing, &bass, &percussion})
         if (!part->notes.isEmpty()) song.parts.push_back(std::move(*part));
     if (song.parts.empty() && chords.isEmpty()) return fail("No notes or chords detected in this recording.");
+    if (ai) if (auto check = analyseNoteEvidence(song, chords, *ai); check.failed()) return check;
     auto r = buildImportScore(file, song, chords, output);
-    if (r.wasOk()) info = TRANS("Estimated instrument roles and notes") + "  ·  " + juce::String(song.count) + " " +
+    if (r.wasOk()) info = (ai ? ai->name() + "  ·  " : juce::String{}) + TRANS("Estimated instrument roles and notes") + "  ·  " + juce::String(song.count) + " " +
                           TRANS("notes") + "  ·  " + TRANS("Estimated chord regions") + " " + juce::String(chords.size()) + "   " + TRANS("Provisional grid: 120 BPM, 4/4.");
     return r;
 }

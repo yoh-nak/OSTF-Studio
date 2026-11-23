@@ -1,4 +1,5 @@
 #pragma once
+#include <juce_audio_utils/juce_audio_utils.h>
 #include <JuceHeader.h>
 #include "ui/DeviceSettingsWindow.h"
 #include "ui/MixerPanel.h"
@@ -295,8 +296,16 @@ private:
     ArrangementRuler ruler_, pianoRuler_;
     ostfstudio::ProjectAudio* clipOn(std::size_t track) const;
     void placeWav(const juce::File&, std::size_t track, juce::int64 tick, bool replace);
-    void openMelodyne();
-    void showMelodyneActions();
+    void openSplice();
+    void aiConnectionMenu();
+    void updateAiConnection(bool login);
+    ostfstudio::AnalysisConnection activeAi_;
+    juce::TextButton aiButton_{TRANS("Connect AI...")};
+    juce::ThreadPool aiConnectionWorker_{1};
+    bool spliceLoading_ = false;
+    std::unique_ptr<juce::AudioPluginInstance> spliceInstance_;
+    juce::AudioProcessorPlayer splicePlayer_;
+    std::unique_ptr<juce::DocumentWindow> spliceWindow_;
     void editMelodyneCopy();
     void applyMelodyneCopy();
     struct MelodyneCopy {

@@ -1,9 +1,11 @@
 #pragma once
 #include "ui/OstfpPreview.h"
+#include "ui/AnalysisService.h"
 
 namespace ostfstudio {
 juce::String scoreImportFileFilter();
-juce::Result analyseScoreImport(const juce::File&, std::unique_ptr<OstfpPreview>&, juce::String& summary);
+juce::Result analyseScoreImport(const juce::File&, std::unique_ptr<OstfpPreview>&, juce::String& summary,
+                               AnalysisConnection provider = {});
 // Builds a new project in memory. Opening and saving the current song are independent.
 juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpPreview>& project, juce::String& summary,
                                 bool transcribeMelody = false, bool analyseHarmony = false);

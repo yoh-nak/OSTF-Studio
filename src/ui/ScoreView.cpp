@@ -337,10 +337,23 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
     explicit ImportPanel(OpenImportedSong callback) : open(std::move(callback)) {
         for (juce::Component* c : std::array<juce::Component*, 5>{&chooseFile, &heading, &summary, &viewport, &openSong})
             addAndMakeVisible(c);
+        addAndMakeVisible(mode);
+        addAndMakeVisible(disclosure);
+        addChildComponent(cancel);
+        cancel.onClick = [this] {
+            ++analysisId;
+            worker.removeAllJobs(true, 0);
+            showResult({}, juce::Result::fail(TRANS("Analysis cancelled.")), {});
+        };
+        mode.onChange = [this] {
+            disclosure.setText(mode.getSelectedId() > 1 ? TRANS("AI receives note measurements or rendered score pages.")
+                                                        : TRANS("Analysis runs on this computer."), juce::dontSendNotification);
+        };
+        connections({});
         viewport.setViewedComponent(&rows, false);
         heading.setFont(juce::FontOptions(19.f, juce::Font::bold));
         heading.setText(TRANS("Score analysis"), juce::dontSendNotification);
-        summary.setText(TRANS("Select an audio or MIDI file to analyse its musical parts."), juce::dontSendNotification);
+        summary.setText(TRANS("Select audio, MIDI or a PDF score to analyse its musical parts."), juce::dontSendNotification);
         openSong.setEnabled(false);
         chooseFile.onClick = [this] { choose(); };
         openSong.onClick = [this] {
@@ -354,16 +367,35 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
                         safe->openSong.setEnabled(false);
                         safe->open(std::move(safe->project));
                         safe->heading.setText(TRANS("Score analysis"), juce::dontSendNotification);
-                        safe->summary.setText(TRANS("Select an audio or MIDI file to analyse its musical parts."), juce::dontSendNotification);
+                        safe->summary.setText(TRANS("Select audio, MIDI or a PDF score to analyse its musical parts."), juce::dontSendNotification);
                     }
                 }));
         };
     }
+    void connections(std::vector<AnalysisConnection> active) {
+        const auto previous = mode.getText();
+        providers = std::move(active);
+        mode.clear(juce::dontSendNotification);
+        mode.addItem(TRANS("Local analysis"), 1);
+        int selected = 1;
+        for (size_t i = 0; i < providers.size(); ++i) {
+            const auto label = TRANS("AI analysis") + " / " + providers[i]->name();
+            mode.addItem(label, int(i) + 2);
+            if (previous == label) selected = int(i) + 2;
+        }
+        mode.setSelectedId(selected, juce::dontSendNotification);
+        mode.onChange();
+    }
+    ~ImportPanel() override { worker.removeAllJobs(true, -1); }
     void resized() override {
         auto area = getLocalBounds().reduced(18);
         auto top = area.removeFromTop(36);
         chooseFile.setBounds(top.removeFromRight(std::min(218, top.getWidth() / 2)));
         heading.setBounds(top);
+        auto controls = area.removeFromTop(34).reduced(0, 3);
+        mode.setBounds(controls.removeFromLeft(std::min(210, controls.getWidth() / 2)));
+        if (cancel.isVisible()) cancel.setBounds(controls.removeFromRight(92));
+        disclosure.setBounds(controls);
         summary.setBounds(area.removeFromTop(52));
         openSong.setBounds(area.removeFromBottom(38));
         area.reduce(0, 6);
@@ -379,6 +411,9 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
   private:
     void showResult(std::unique_ptr<OstfpPreview> parsed, const juce::Result& result, const juce::String& info) {
         chooseFile.setEnabled(true);
+        mode.setEnabled(true);
+        cancel.setVisible(false);
+        resized();
         if (result.failed() || !parsed) {
             summary.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
             return;
@@ -401,7 +436,7 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
         resized();
     }
     void choose() {
-        chooser = std::make_unique<juce::FileChooser>(TRANS("Analyse audio or MIDI"), juce::File{}, scoreImportFileFilter());
+        chooser = std::make_unique<juce::FileChooser>(TRANS("Analyse audio, MIDI or PDF"), juce::File{}, scoreImportFileFilter());
         chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
             [safe = juce::Component::SafePointer<ImportPanel>(this)](const auto& fc) {
                 const auto source = fc.getResult();
@@ -409,22 +444,32 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
                 safe->items.clear();
                 safe->project.reset();
                 safe->chooseFile.setEnabled(false);
+                safe->mode.setEnabled(false);
+                safe->cancel.setVisible(true);
                 safe->openSong.setEnabled(false);
                 safe->heading.setText(source.getFileName(), juce::dontSendNotification);
                 safe->summary.setText(TRANS("Analysing source..."), juce::dontSendNotification);
                 safe->resized();
-                safe->worker.addJob([safe, source] {
+                const int index = safe->mode.getSelectedId() - 2;
+                AnalysisConnection ai = index >= 0 && index < int(safe->providers.size()) ? safe->providers[size_t(index)] : nullptr;
+                const int id = ++safe->analysisId;
+                safe->worker.addJob([safe, source, ai, id] {
                     std::unique_ptr<OstfpPreview> score;
                     juce::String info;
-                    auto result = analyseScoreImport(source, score, info);
-                    juce::MessageManager::callAsync([safe, result, info, score = std::move(score)]() mutable {
-                        if (safe) safe->showResult(std::move(score), result, info);
+                    auto result = analyseScoreImport(source, score, info, ai);
+                    juce::MessageManager::callAsync([safe, result, info, id, score = std::move(score)]() mutable {
+                        if (safe && safe->analysisId == id) safe->showResult(std::move(score), result, info);
                     });
                 });
             });
     }
+    int analysisId = 0;
+    std::vector<AnalysisConnection> providers;
+    juce::ComboBox mode;
+    juce::TextButton cancel{TRANS("Cancel")};
+    juce::Label disclosure;
     OpenImportedSong open;
-    juce::TextButton chooseFile{TRANS("Analyse audio or MIDI")}, openSong{TRANS("Open score here as a new unsaved song")};
+    juce::TextButton chooseFile{TRANS("Analyse audio, MIDI or PDF")}, openSong{TRANS("Open score here as a new unsaved song")};
     juce::Label summary, heading;
     juce::Component rows;
     juce::Viewport viewport;
@@ -448,4 +493,8 @@ class ImportWindow final : public juce::DocumentWindow {
 } // namespace
 std::unique_ptr<juce::DocumentWindow> makeMediaImportWindow(OpenImportedSong open) {
     return std::make_unique<ImportWindow>(std::move(open));
+}
+
+void setImportConnections(juce::DocumentWindow& window, std::vector<AnalysisConnection> providers) {
+    if (auto* panel = dynamic_cast<ImportPanel*>(window.getContentComponent())) panel->connections(std::move(providers));
 }

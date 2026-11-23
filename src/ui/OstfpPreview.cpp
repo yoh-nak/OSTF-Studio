@@ -136,7 +136,11 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
     const auto ticksPerWholeBars = ppq * numerator * 4;
     require(ticksPerWholeBars % denominator == 0, "Preview requires an integral number of ticks per bar");
     const auto ticksPerBar = ticksPerWholeBars / denominator;
-    require(ticksPerBar > 0 && (duration - 1) / ticksPerBar < 256, "Preview supports at most 256 bars");
+    require(ticksPerBar > 0, "Invalid OSTF bar length");
+    const auto completeBars = (duration - 1) / ticksPerBar;
+    require(completeBars <= std::numeric_limits<int>::max() - 2
+            && completeBars < std::numeric_limits<juce::int64>::max() / ticksPerBar,
+            "The score exceeds the supported timeline range.");
 
     auto out = std::make_unique<OstfpPreview>();
     out->sourceVersion = score["version"].toString();
@@ -149,7 +153,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
     out->clock = TempoMap(ppq);
     out->title = score["song"]["title"].toString();
     if (out->title.isEmpty()) out->title = juce::translate("Untitled");
-    out->bars.endBar = static_cast<int>((duration - 1) / ticksPerBar) + 2;
+    out->bars.endBar = static_cast<int>(completeBars) + 2;
     auto addLane = [&](std::vector<ArrangementLane>& lanes, juce::String title, std::vector<ArrangementRegion> regions,
                        TimelineLane kind = TimelineLane::none) {
         out->regions.push_back(std::move(regions));

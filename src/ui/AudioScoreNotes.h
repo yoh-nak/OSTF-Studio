@@ -4,6 +4,7 @@
 #include <BinaryData.h>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <vector>
 #include <numeric>
 
@@ -67,41 +68,53 @@ inline juce::Result detectScoreNotes(juce::AudioFormatReader& reader, std::vecto
     constexpr int order = 11, size = 1 << order, hop = 128;
     const int stride = std::max(1, int(reader.sampleRate / 11025.0));
     const double rate = reader.sampleRate / stride;
-    const int frames = int((reader.lengthInSamples + stride - 1) / stride);
+    using Frame = juce::int64;
+    const Frame frames = (reader.lengthInSamples - 1) / stride + 1;
     const int channels = int(reader.numChannels);
-    juce::AudioBuffer<float> samples(channels, frames);
-    samples.clear();
-    juce::AudioBuffer<float> input(channels, 8192);
-    for (juce::int64 start = 0; start < reader.lengthInSamples; start += input.getNumSamples()) {
-        const int n = int(std::min<juce::int64>(input.getNumSamples(), reader.lengthInSamples - start));
-        if (!reader.read(&input, 0, n, start, true, true))
-            return juce::Result::fail(TRANS("Could not decode the audio file."));
-        for (int ch = 0; ch < channels; ++ch) {
-            auto* dest = samples.getWritePointer(ch);
-            const auto* src = input.getReadPointer(ch);
-            for (int i = 0; i < n; ++i)
-                dest[(start + i) / stride] += src[i] / stride;
-        }
-    }
+    constexpr int page = 8192;
+    juce::AudioBuffer<float> samples(channels, page + size);
+    juce::AudioBuffer<float> input(channels, (page + size) * stride);
+    Frame pageStart = -1, pageEnd = -1;
 
     juce::dsp::FFT fft(order);
     juce::dsp::WindowingFunction<float> window(size, juce::dsp::WindowingFunction<float>::hann, false);
     std::array<float, 2 * size> work{};
     std::array<float, size / 2> spectrum{};
     struct Active {
-        int start = -1, last = 0, leadFrames = 0, count = 0;
+        Frame start = -1, last = 0, leadFrames = 0, count = 0;
         float peak = 0;
-        std::array<int, 16> familyVotes{};
+        std::array<Frame, 16> familyVotes{};
     };
     std::array<Active, 128> active{};
     double previousLevel = 0;
-    int lastHit = -size;
-    for (int pos = 0; pos < frames + size / 2; pos += hop) {
+    Frame lastHit = -size;
+    for (Frame pos = 0; pos < frames + size / 2; pos += hop) {
         spectrum.fill(0.f);
-        const int first = std::max(0, pos - size / 2), end = std::min(frames, pos + size / 2);
+        const Frame first = std::max<Frame>(0, pos - size / 2), end = std::min(frames, pos + size / 2);
+        if (pageStart < 0 || end > pageEnd) {
+            if (auto* job = juce::ThreadPoolJob::getCurrentThreadPoolJob(); job && job->shouldExit())
+                return juce::Result::fail(TRANS("Analysis cancelled or timed out."));
+            // Keep the shared FFT window so compressed inputs are decoded forwards.
+            const int retained = int(std::max<Frame>(0, pageEnd - first));
+            const Frame readFrom = first + retained;
+            const Frame nextEnd = std::min(frames, first + samples.getNumSamples());
+            const int n = int(std::min<Frame>((nextEnd - readFrom) * stride, reader.lengthInSamples - readFrom * stride));
+            if (!reader.read(&input, 0, n, readFrom * stride, true, true))
+                return juce::Result::fail(TRANS("Could not decode the audio file."));
+            for (int ch = 0; ch < channels; ++ch) {
+                auto* buffer = samples.getWritePointer(ch);
+                if (retained > 0) std::memmove(buffer, buffer + (first - pageStart), retained * sizeof(float));
+                auto* dest = buffer + retained;
+                std::fill(dest, buffer + samples.getNumSamples(), 0.0f);
+                const auto* src = input.getReadPointer(ch);
+                for (int i = 0; i < n; ++i) dest[i / stride] += src[i] / stride;
+            }
+            pageStart = first;
+            pageEnd = nextEnd;
+        }
         for (int ch = 0; ch < channels; ++ch) {
             work.fill(0.f);
-            std::copy_n(samples.getReadPointer(ch) + first, end - first, work.begin() + (first - pos + size / 2));
+            std::copy_n(samples.getReadPointer(ch) + (first - pageStart), end - first, work.begin() + (first - pos + size / 2));
             window.multiplyWithWindowingTable(work.data(), size);
             fft.performFrequencyOnlyForwardTransform(work.data(), true);
             for (size_t k = 1; k < spectrum.size(); ++k)
@@ -134,10 +147,11 @@ inline juce::Result detectScoreNotes(juce::AudioFormatReader& reader, std::vecto
         const int family = fundamentals == 1 ? instrumentFamily(spectrum, topBin) : -1;
         // A short, sharp, noise-rich onset can be a drum even with pitched notes underneath.
         if (pos < frames) {
-            const int n = std::min(hop, frames - pos);
+            const int n = int(std::min<Frame>(hop, frames - pos));
+            const int local = int(pos - pageStart);
             int loudest = 0;
-            if (channels == 2 && samples.getRMSLevel(1, pos, n) > samples.getRMSLevel(0, pos, n)) loudest = 1;
-            const auto level = samples.getRMSLevel(loudest, pos, n);
+            if (channels == 2 && samples.getRMSLevel(1, local, n) > samples.getRMSLevel(0, local, n)) loudest = 1;
+            const auto level = samples.getRMSLevel(loudest, local, n);
             if (level > std::max(.015, previousLevel * 2.2) && pos - lastHit > rate * .045) {
                 const double sum = std::accumulate(spectrum.begin() + 1, spectrum.end(), 0.);
                 if (strongest > 0 && sum / strongest > 18.) {

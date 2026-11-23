@@ -85,7 +85,7 @@ juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds, int extra) {
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts };
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections };
 constexpr int themeBlue = 89, themeHarmonic = 90, themeGraphite = 91, themeAubergine = 92;
 constexpr const char* workspaceThemes[]{"blue", "harmonic", "graphite", "aubergine"};
 constexpr int timelineMenuBase = 100;
@@ -799,6 +799,9 @@ MainComponent::MainComponent() {
     };
     addChildComponent(pianoRuler_);
     rowOverlay_.addAndMakeVisible(ruler_);
+    rowOverlay_.addAndMakeVisible(aiButton_);
+    aiButton_.onClick = [this] { aiConnectionMenu(); };
+    if (viewPreferences_.getUserSettings()->getBoolValue("chatGptAnalysis", false)) updateAiConnection(false);
     addChildComponent(audioEditor_);
     addChildComponent(tempoEditor_);
     tempoEditor_.visibleBars = [this] { return arrangementScroll_.getCurrentRange(); };
@@ -819,21 +822,12 @@ MainComponent::MainComponent() {
     };
     audioEditor_.sourceClip = [this] { return selectedTrack_ ? clipOn(*selectedTrack_) : nullptr; };
     audioEditor_.clock = [this]() -> const ostfstudio::TempoMap& { return project_->clock; };
-    audioEditor_.onSplice = [this] {
-        if (!selectedTrack_ || !project_ || recordTrack_) return;
-        const auto music = juce::File::getSpecialLocation(juce::File::userHomeDirectory).getChildFile("Splice");
-        const auto folder = viewPreferences_.getUserSettings()->getValue("spliceSamples", music.getFullPathName());
-        chooser_ = std::make_unique<juce::FileChooser>(TRANS("Choose a downloaded Splice WAV"), juce::File(folder), "*.wav");
-        chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-            [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, track = *selectedTrack_,
-             tick = std::max<juce::int64>(0, cursorTick_)](const auto& picker) {
-                const auto file = picker.getResult();
-                if (!safe || safe->projectGeneration_ != generation || !file.existsAsFile()) return;
-                safe->viewPreferences_.getUserSettings()->setValue("spliceSamples", file.getParentDirectory().getFullPathName());
-                safe->placeWav(file, track, tick, false);
-            });
+    audioEditor_.onSplice = [this] { openSplice(); };
+    audioEditor_.onMelodyne = [this] { editMelodyneCopy(); };
+    audioEditor_.onApply = [this] { applyMelodyneCopy(); };
+    audioEditor_.hasWorkingCopy = [this] {
+        return project_ && selectedTrack_ && melodyneCopies_.contains(project_->trackIds[int(*selectedTrack_)]);
     };
-    audioEditor_.onMelodyne = [this] { showMelodyneActions(); };
     audioEditor_.onEdit = [this](const ostfstudio::ClipTiming& edit) {
         auto* clip = selectedTrack_ ? clipOn(*selectedTrack_) : nullptr;
         if (!clip || recordTrack_) return;
@@ -1097,6 +1091,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         }
         case 3: {
             menu.addItem(showDevices, TRANS("Audio / MIDI Devices..."));
+            menu.addItem(aiConnections, TRANS("AI connections..."));
             juce::PopupMenu themes;
             themes.addItem(themeBlue, TRANS("Studio Blue"), true, blueTheme());
             themes.addItem(themeHarmonic, TRANS("Harmonic colours"), true,
@@ -1217,12 +1212,14 @@ void MainComponent::menuItemSelected(int item, int) {
         case showArrangement: setWorkspaceMode(WorkspaceMode::arrangement); break;
         case showLeadSheet: setWorkspaceMode(WorkspaceMode::leadSheet); break;
         case showPartScore: setWorkspaceMode(WorkspaceMode::score); break;
+        case aiConnections: aiConnectionMenu(); break;
         case importMedia:
             if (!importWindow_)
                 importWindow_ = makeMediaImportWindow([this](std::unique_ptr<ostfstudio::OstfpPreview> draft) {
                     openImportedSong(std::move(draft));
                     importWindow_->setVisible(false);
                 });
+            setImportConnections(*importWindow_, activeAi_ ? std::vector{activeAi_} : std::vector<ostfstudio::AnalysisConnection>{});
             importWindow_->setVisible(true);
             importWindow_->toFront(true);
             break;
@@ -1694,6 +1691,10 @@ void MainComponent::flashPad(int pitch) {
 }
 
 MainComponent::~MainComponent() {
+    aiConnectionWorker_.removeAllJobs(true, -1);
+    if (spliceInstance_ && deviceSettings_) deviceSettings_->devices().removeAudioCallback(&splicePlayer_);
+    splicePlayer_.setProcessor(nullptr);
+    spliceWindow_.reset();
     attachPadInput(false);
     stopTimer();
     transport_.stop();
@@ -3135,64 +3136,41 @@ juce::File melodyneApplication() {
 }
 }
 
-void MainComponent::showMelodyneActions() {
-    if (!selectedTrack_ || !audioEditor_.sourceClip()) return;
-    juce::PopupMenu menu;
-    menu.addItem(1, TRANS("Edit a WAV copy in Melodyne..."));
-    menu.addItem(2, TRANS("Apply edited WAV"), melodyneCopies_.contains(project_->trackIds[int(*selectedTrack_)]));
-    menu.addSeparator();
-    menu.addItem(3, TRANS("Open Melodyne VST3 (Transfer)"));
-    menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&audioEditor_),
-        [safe = juce::Component::SafePointer<MainComponent>(this), track = selectedTrack_, generation = projectGeneration_](int choice) {
-            if (!safe || safe->projectGeneration_ != generation || safe->selectedTrack_ != track) return;
-            if (choice == 1) safe->editMelodyneCopy();
-            if (choice == 2) safe->applyMelodyneCopy();
-            if (choice == 3) safe->openMelodyne();
-        });
-}
-
 void MainComponent::editMelodyneCopy() {
     const auto* clip = audioEditor_.sourceClip();
-    if (!clip || recordTrack_) return;
-    const auto initial = juce::File::getSpecialLocation(juce::File::userMusicDirectory)
-        .getNonexistentChildFile(clip->path.fromLastOccurrenceOf("/", false, false).upToLastOccurrenceOf(".", false, false) + "-Melodyne", ".wav");
-    chooser_ = std::make_unique<juce::FileChooser>(TRANS("Save working WAV for Melodyne"), initial, "*.wav");
-    chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
-            | juce::FileBrowserComponent::warnAboutOverwriting,
-        [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, track = *selectedTrack_](const auto& picker) {
-            if (!safe || generation != safe->projectGeneration_ || safe->recordTrack_) return;
-            auto* current = safe->clipOn(track);
-            const auto copy = picker.getResult();
-            if (!current || copy == juce::File{}) return;
-            if (!copy.hasFileExtension("wav") || std::any_of(safe->project_->audio.begin(), safe->project_->audio.end(),
-                [&](const auto& audio) { return audio.localFile == copy; })) {
-                safe->statusLabel_.setText(TRANS("Choose a separate WAV working file"), juce::dontSendNotification);
-                return;
-            }
-            auto bytes = sourceWavBytes(*current);
-            const auto digest = juce::SHA256(bytes).toHexString();
-            if (current->sha256.isNotEmpty() && current->sha256 != digest) {
-                safe->statusLabel_.setText(TRANS("The source has changed. Create a new working copy."), juce::dontSendNotification);
-                return;
-            }
-            juce::TemporaryFile writing(copy);
-            if (bytes.isEmpty() || !writing.getFile().replaceWithData(bytes.getData(), bytes.getSize())
-                || !writing.overwriteTargetFileWithTemporary()) {
-                safe->statusLabel_.setText(TRANS("Could not save the working WAV"), juce::dontSendNotification);
-                return;
-            }
-            safe->melodyneCopies_[safe->project_->trackIds[int(track)]] = {copy, digest};
-            const auto app = melodyneApplication();
+    if (!clip || !selectedTrack_ || recordTrack_) return;
+    const auto bytes = sourceWavBytes(*clip);
+    const auto digest = juce::SHA256(bytes).toHexString();
+    if (bytes.isEmpty() || (clip->sha256.isNotEmpty() && digest != clip->sha256)) {
+        statusLabel_.setText(TRANS("The source has changed. Create a new working copy."), juce::dontSendNotification);
+        return;
+    }
+    const auto id = project_->trackIds[int(*selectedTrack_)];
+    auto it = melodyneCopies_.find(id);
+    if (it == melodyneCopies_.end() || it->second.originalHash != digest || !it->second.wav.existsAsFile()) {
+        auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
+            .getChildFile("OSTF Studio").getChildFile("Melodyne").getChildFile(juce::Uuid().toString());
+        auto name = juce::File::createLegalFileName(juce::File::isAbsolutePath(clip->path)
+            ? juce::File(clip->path).getFileName() : clip->path.fromLastOccurrenceOf("/", false, false));
+        const auto copy = folder.getChildFile(name.isEmpty() ? "Clip.wav" : name).withFileExtension(".wav");
+        if (folder.createDirectory().failed() || !copy.replaceWithData(bytes.getData(), bytes.getSize())) {
+            statusLabel_.setText(TRANS("Could not save the working WAV"), juce::dontSendNotification);
+            return;
+        }
+        it = melodyneCopies_.insert_or_assign(id, MelodyneCopy{copy, digest}).first;
+    }
+    const auto& copy = it->second.wav;
+    const auto app = melodyneApplication();
 #if JUCE_MAC
-            juce::ChildProcess opener;
-            const bool opened = app.isDirectory() && opener.start(juce::StringArray{"/usr/bin/open", "-a", app.getFullPathName(), copy.getFullPathName()});
+    juce::ChildProcess opener;
+    const bool opened = app.isDirectory() && opener.start(juce::StringArray{"/usr/bin/open", "-a", app.getFullPathName(), copy.getFullPathName()});
 #else
-            const bool opened = app.existsAsFile() && app.startAsProcess(copy.getFullPathName().quoted());
+    const bool opened = app.existsAsFile() && app.startAsProcess(copy.getFullPathName().quoted());
 #endif
-            safe->statusLabel_.setText((opened ? TRANS("Use Replace Audio in Melodyne, then Apply edited WAV")
-                                               : TRANS("Open this WAV in Melodyne, then use Apply edited WAV"))
-                                        + "   " + copy.getFullPathName(), juce::dontSendNotification);
-        });
+    refreshEditor();
+    statusLabel_.setText((opened ? TRANS("Use Replace Audio in Melodyne, then Apply edited WAV")
+                                 : TRANS("Open this WAV in Melodyne, then use Apply edited WAV")) + "   " + copy.getFullPathName(),
+                         juce::dontSendNotification);
 }
 
 void MainComponent::applyMelodyneCopy() {
@@ -3216,29 +3194,96 @@ void MainComponent::applyMelodyneCopy() {
     statusLabel_.setText(TRANS("Edited WAV applied") + "   " + clip->path, juce::dontSendNotification);
 }
 
-void MainComponent::openMelodyne() {
-    if (!selectedTrack_ || !audioEditor_.sourceClip() || recordTrack_) return;
-    const auto index = *selectedTrack_;
-    auto& chain = effectChain(false, index);
-    if (chain.loading) return;
-    for (size_t i = 0; i < chain.slots.size(); ++i)
-        if (chain.slots[i].effect && chain.slots[i].effect->getName().containsIgnoreCase("Melodyne")) {
-            openEffectEditor(false, index, i);
-            return;
-        }
-    if (chain.slots.size() >= ostfstudio::SessionMix::maxEffects) {
-        statusLabel_.setText(TRANS("The insert chain is full"), juce::dontSendNotification);
+void MainComponent::updateAiConnection(bool login) {
+    if (!aiButton_.isEnabled()) return;
+    aiButton_.setEnabled(false);
+    aiButton_.setButtonText(TRANS("Connecting..."));
+    const auto provider = ostfstudio::chatGptProvider();
+    aiConnectionWorker_.addJob([safe = juce::Component::SafePointer<MainComponent>(this), provider, login] {
+        const auto result = login ? provider->connect() : (provider->connected() ? juce::Result::ok()
+            : juce::Result::fail(TRANS("Reconnect ChatGPT before starting AI analysis.")));
+        juce::MessageManager::callAsync([safe, provider, result] {
+            if (!safe) return;
+            safe->activeAi_ = result.wasOk() ? provider : nullptr;
+            safe->aiButton_.setEnabled(true);
+            safe->aiButton_.setButtonText(safe->activeAi_ ? provider->name() : TRANS("Connect AI..."));
+            safe->viewPreferences_.getUserSettings()->setValue("chatGptAnalysis", result.wasOk());
+            if (safe->importWindow_)
+                setImportConnections(*safe->importWindow_, safe->activeAi_ ? std::vector{provider} : std::vector<ostfstudio::AnalysisConnection>{});
+            safe->statusLabel_.setText(result.wasOk() ? TRANS("AI analysis is available in Import and transcription.") : result.getErrorMessage(),
+                                       juce::dontSendNotification);
+        });
+    });
+}
+
+void MainComponent::aiConnectionMenu() {
+    if (!aiButton_.isEnabled()) return;
+    if (!activeAi_) { updateAiConnection(true); return; }
+    juce::PopupMenu menu;
+    menu.addItem(1, TRANS("Import and transcription"));
+    menu.addItem(2, TRANS("Disconnect from Studio"));
+    menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&aiButton_),
+        [safe = juce::Component::SafePointer<MainComponent>(this)](int action) {
+            if (!safe) return;
+            if (action == 1) safe->menuItemSelected(importMedia, 0);
+            if (action == 2) {
+                safe->activeAi_.reset();
+                safe->viewPreferences_.getUserSettings()->setValue("chatGptAnalysis", false);
+                safe->aiButton_.setButtonText(TRANS("Connect AI..."));
+                if (safe->importWindow_) setImportConnections(*safe->importWindow_, {});
+            }
+        });
+}
+
+void MainComponent::openSplice() {
+    if (spliceWindow_) {
+        if (!spliceWindow_->isVisible()) deviceSettings_->devices().addAudioCallback(&splicePlayer_);
+        spliceWindow_->setVisible(true);
+        spliceWindow_->toFront(true);
         return;
     }
-    for (const auto& type : ensurePluginBrowser().types())
-        if (!type.isInstrument && type.pluginFormatName == "VST3" && type.name.containsIgnoreCase("Melodyne")
-            && type.manufacturerName.containsIgnoreCase("Celemony")) {
-            chain.slots.emplace_back();
-            loadEffect(false, index, chain.slots.size() - 1, type, true);
-            return;
-        }
-    if (!pluginBrowserButton_.getToggleState()) togglePluginBrowser();
-    statusLabel_.setText(TRANS("Scan the installed Melodyne VST3, then press Melodyne again"), juce::dontSendNotification);
+    if (spliceLoading_) return;
+    auto& browser = ensurePluginBrowser();
+    for (const auto& type : browser.types()) {
+        if (type.pluginFormatName != "VST3" || !type.name.trim().equalsIgnoreCase("Splice Sounds")
+            || !type.isInstrument) continue;
+        if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
+        auto* device = deviceSettings_->devices().getCurrentAudioDevice();
+        spliceLoading_ = true;
+        pluginFormats_.createPluginInstanceAsync(type, device ? device->getCurrentSampleRate() : 44100.,
+            device ? device->getCurrentBufferSizeSamples() : 512,
+            [safe = juce::Component::SafePointer<MainComponent>(this)](std::unique_ptr<juce::AudioPluginInstance> instance, const juce::String& error) {
+                if (!safe) return;
+                safe->spliceLoading_ = false;
+                std::unique_ptr<juce::AudioProcessorEditor> editor(instance ? instance->createEditorAndMakeActive() : nullptr);
+                if (!editor) {
+                    safe->statusLabel_.setText(TRANS("Could not open Splice Sounds") + " " + error, juce::dontSendNotification);
+                    return;
+                }
+                safe->spliceInstance_ = std::move(instance);
+                safe->splicePlayer_.setProcessor(safe->spliceInstance_.get());
+                safe->deviceSettings_->devices().addAudioCallback(&safe->splicePlayer_);
+                auto window = std::make_unique<PluginWindow>("Splice Sounds");
+                window->setContentOwned(editor.release(), true);
+                window->centreWithSize(window->getWidth(), window->getHeight());
+                window->onClosed = [safe] { if (safe) safe->deviceSettings_->devices().removeAudioCallback(&safe->splicePlayer_); };
+                safe->spliceWindow_ = std::move(window);
+                safe->spliceWindow_->setVisible(true);
+                safe->spliceWindow_->toFront(true);
+            });
+        return;
+    }
+    juce::AlertWindow::showAsync(juce::MessageBoxOptions{}.withTitle("Splice Sounds")
+        .withMessage(TRANS("Install the Splice Sounds instrument from Splice, then scan your VST3 plugins."))
+        .withButton({TRANS("Scan VST3"), 1}).withButton({TRANS("Get Splice Sounds"), 2})
+        .withButton(juce::MessageBoxButtonOptions{TRANS("Cancel"), 0}.withRole(juce::MessageBoxButtonRole::cancel)),
+        [safe = juce::Component::SafePointer<MainComponent>(this)](int choice) {
+            if (!safe) return;
+            if (choice == 1) {
+                if (!safe->pluginBrowserButton_.getToggleState()) safe->togglePluginBrowser();
+                safe->ensurePluginBrowser().scan();
+            } else if (choice == 2) juce::URL("https://splice.com/tools/sounds-plugin").launchInDefaultBrowser();
+        });
 }
 
 void MainComponent::openEffectEditor(bool output, std::size_t index, std::size_t position) {
@@ -4241,6 +4286,10 @@ void MainComponent::resized() {
         importTrackDrop_.setBounds(arrangement.withTop(std::max(arrangement.getY(), arrangement.getBottom() - 36)).reduced(4, 2));
         ruler_.setBounds(rowOverlay_.getLocalBounds().removeFromTop(timelineRowHeight()));
         ruler_.toFront(false);
+        const int aiY = timelineRowHeight() - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
+        aiButton_.setVisible(aiY >= 0 && aiY + 24 <= std::min(globalHeight, rowOverlay_.getHeight()));
+        aiButton_.setBounds(trackHeaderWidth - 148, aiY, 140, 24);
+        aiButton_.toFront(false);
         const bool besideTransport = topBasicsHeight() == 0;
         basics_.setBounds(besideTransport
             ? juce::Rectangle<int>(deck_.getRight() + 8, deck_.getBounds().getCentreY() - SongBasicsPanel::stripHeight / 2,

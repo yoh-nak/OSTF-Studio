@@ -14,11 +14,17 @@ Open a pitched, drum or audio track. Click the editor ruler to park the cursor. 
 
 In slot steps the first pad appears at the bottom. Select a pad, assign its output note, and use **MIDI Learn** to bind the next incoming note to it. Enable the controller in Audio / MIDI Settings. A strike lights the pad and its row while stopped. **Move up/down** changes the kit order. The mapping stays on this computer. New views show up to ten bars, with 100-pixel arrangement lanes and compact global and output lanes.
 
+## Import analysis (development build)
+
+Use **File → Import and transcription** to analyse audio, MIDI or a PDF score. Review the musical parts in the result window, drag an individual part into the arrangement, or open the complete score in the current window. Long recordings can extend past bar 256. Audio analysis uses a provisional 120 BPM, 4/4 grid. The import limits of 60,000 notes and 15 source tracks still apply.
+
+**Local analysis** runs offline. Local PDF recognition calls installed copies of Audiveris and MuseScore 4. For **AI analysis**, use **Connect AI** in the global track header or **Settings → AI connections**. Studio uses the official Codex CLI and its ChatGPT browser sign-in. An existing ChatGPT CLI session can be reused. The analysis selector lists connected providers. Choose the AI mode before selecting a file. Audio sends pitch, timing and timbre measurements, MIDI sends musical summaries, and PDF sends rendered score pages. Model estimates can be corrected after import. Disconnecting affects Studio's connection only. [ChatGPT sign-in](https://developers.openai.com/codex/auth) · [Audiveris CLI](https://audiveris.github.io/audiveris/_pages/guides/advanced/cli/)
+
 ## Audio clip editing (development build)
 
-Select an audio track to open its waveform below the arrangement. Enable **Loop** and drag the clip’s amber right edge to repeat it. **Warp (re-pitch)** fits one cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker and drag it to move that point in time. Pitch follows the change in speed. Use **Splice…** to choose a downloaded WAV at the cursor, or drag a sample from Splice Desktop onto the track.
+Select an audio track to open its waveform below the arrangement. Enable **Loop** and drag the clip’s amber right edge to repeat it. **Warp (re-pitch)** fits one cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker and drag it to move that point in time. Pitch follows the change in speed. Use **Splice Sounds** to open the installed official VST3 instrument inside Studio, browse your library, audition sounds and drag a licensed WAV onto an audio track. The dialog includes installation and scanning if Studio has not found the instrument. [Splice plugin and plan details](https://support.splice.com/en/articles/12997860-splice-sounds-plugin-faq)
 
-The **Melodyne…** menu can open a separate working WAV in an installed copy of Melodyne. Use **Replace Audio** in Melodyne, then **Apply edited WAV** in Studio to keep the edited audio in your project. The menu also opens the installed Melodyne VST3 in Transfer mode. The Theory Guide groups cadences directly on the degree row. The function row stays available underneath.
+Press **Melodyne** in the waveform editor to open the selected source as a working WAV in Melodyne standalone. Use **Replace Audio** in Melodyne, then **Apply edited WAV** in Studio to keep the edited audio in your project. The Theory Guide groups cadences directly on the degree row. The function row stays available underneath.
 
 ## OSTF Wave Analyzer (development build)
 
@@ -32,7 +38,7 @@ OSTF Studio is in active development. If a demo makes you want to write a song w
 
 ## Opening older scores in alpha 3
 
-Use **File → Open** to open a standalone OSTF 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.0 or 5.0.0 score directly. Opening an older song leaves the source file intact. **Save as OSTF** and **Save as OSTFP** write a 5.0.0 score and initially suggest a new filename. The preview supports one meter, up to fifteen source tracks and up to 256 bars.
+Use **File → Open** to open a standalone OSTF 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.0 or 5.0.0 score directly. Opening an older song leaves the source file intact. **Save as OSTF** and **Save as OSTFP** write a 5.0.0 score and initially suggest a new filename. The preview supports up to fifteen source tracks.
 
 ## Transport and song information in alpha 3
 
@@ -52,7 +58,7 @@ The first three buttons on the view bar switch the main workspace between **Arra
 
 In the lead sheet, switch chords, scales and lyrics on or off independently. Choose 1, 2, 4, 8 or 16 bars per line. For songs with timed lyrics, select the voice and display text, pronunciation or both. Pronunciation comes from the OSTF lyric unit, with its text as a fallback. In Score, choose a track and its treble, alto, bass, grand staff, guitar TAB, bass TAB or percussion notation. **PDF / Print** lays out the chosen content on A4 pages for printing. **MusicXML** exports the selected score part for a notation editor.
 
-**File → Import and transcription → Analyse audio or MIDI** opens a separate score review. Audio analysis estimates pitched notes, percussion hits and major/minor triads locally on a provisional 120 BPM, 4/4 grid. Melody, accompaniment, bass and percussion are estimated roles. Where an isolated tone consistently matches a Studio GM family’s harmonic balance, the part name also includes an instrument-family candidate. MIDI retains its track and channel groupings. Drag an individual part or chord progression to a compatible arrangement lane. Dropping a part on **Drop to add a new track** creates its destination. Choose **Open score here as a new unsaved song** to edit all results in the original window. Audio decoding uses the registered JUCE formats, including WAV, AIFF and FLAC. PDF recognition is pending.
+**File → Import and transcription** opens a separate score review. Audio analysis estimates pitched notes, percussion hits and major/minor triads locally on a provisional 120 BPM, 4/4 grid. Melody, accompaniment, bass and percussion are estimated roles. Where an isolated tone consistently matches a Studio GM family’s harmonic balance, the part name also includes an instrument-family candidate. MIDI retains its track and channel groupings. Drag an individual part or chord progression to a compatible arrangement lane. Dropping a part on **Drop to add a new track** creates its destination. Choose **Open score here as a new unsaved song** to edit all results in the original window. Audio decoding uses the registered JUCE formats, including WAV, AIFF and FLAC. PDF import uses the local OMR tools or a connected analysis provider.
 
 New drum tracks have 16 GM assignments. In the drum editor, choose a pad and a MIDI note to remap it, or add and remove pads. The step editor shows kit order and a paged 4×4 or 8×8 surface. The piano roll shows mapped pitches in descending order. Record from an enabled MIDI keyboard or pad in either view. The on-screen pads also work during MIDI recording. Click a step cell to enter a hit while stopped.
 
@@ -130,7 +136,7 @@ Arrangement clips show the number of stored notes. In **Piano Roll**, the perfor
 
 ### OSTF and OSTFP files
 
-**File → Open OSTF / OSTFP** opens supported OSTF 5.0 scores and projects in the same arrangement and piano-roll views. A plain score restores Studio settings when its Studio extension is present. The preview currently requires one meter and at most 256 bars.
+**File → Open OSTF / OSTFP** opens supported OSTF 5.0 scores and projects in the same arrangement and piano-roll views. A plain score restores Studio settings when its Studio extension is present.
 
 **Save as OSTF** writes the score and Studio mixer settings. If tracks have linked WAVs, it creates a sibling `<song>.media` folder and copies the WAVs there. The score references those copies by relative path. Move the score and media folder together. **Save as OSTFP** bundles the score, the Production Session 0.3 mixer document and the linked WAVs. Use **Instrument → Link WAV on this track…** to link one WAV per track for playback from the song start. The preview supports WAVs of up to 16 MiB each and up to eight linked files. Under **Output Tracks**, each bus, return and Master has its own arrangement lane with a fader and mute synchronized with the Mixer. Open **FX** on a source or output track to see up to eight stereo VST3 effects in processing order. Drag a row handle or use **Up** and **Down** to reorder it. Use the same panel to add, open or remove effects. Dropping an effect onto a track appends it. Source effects process instrument and WAV audio in order before the fader and post-fader sends. Output effects process the summed signal before the output fader. Changing a chain stops preview playback. Both save formats preserve these effect assignments and supported mixer and MIDI settings. Supported VST3 instrument assignments are saved as Production Session devices in OSTFP and in the common Studio production settings for standalone OSTF. Core MIDI Program Change uses the authored channel or the track channel. Instrument preset blobs and hardware settings remain outside this save implementation.
 
@@ -145,7 +151,7 @@ On macOS arm64, run **Install OSTF Studio and VST3.pkg** inside the DMG to insta
 - `AGENTS.md` instructions for continuing in Codex
 - Architecture/roadmap/checklists
 
-Pending work includes full OSTFP conformance, SVP export, network sync, AI connection and signed binaries.
+Pending work includes full OSTFP conformance, SVP export, network sync, AI-assisted editing and signed binaries.
 
 ## Stock effects and mixed demos in alpha 3
 

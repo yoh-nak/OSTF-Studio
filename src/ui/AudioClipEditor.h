@@ -7,7 +7,7 @@ class AudioClipEditor final : public juce::Component, public juce::SettableToolt
 public:
     explicit AudioClipEditor(AudioClipWaveforms& source) : waves(source) {
         setComponentID("audio-clip-editor");
-        for (auto* button : {&loop, &warp, &melodyne, &splice}) addAndMakeVisible(button);
+        for (auto* button : {&loop, &warp, &melodyne, &apply, &splice}) addAndMakeVisible(button);
         addAndMakeVisible(beats);
         addAndMakeVisible(recordRuler);
         addAndMakeVisible(channels);
@@ -38,12 +38,14 @@ public:
                 commit(edit);
             } else sync();
         };
+        apply.onClick = [this] { if (onApply) onApply(); };
         melodyne.onClick = [this] { if (onMelodyne) onMelodyne(); };
     }
     std::function<const ostfstudio::ProjectAudio*()> sourceClip;
     std::function<const ostfstudio::TempoMap&()> clock;
     std::function<void(const ostfstudio::ClipTiming&)> onEdit;
-    std::function<void()> onMelodyne, onSplice;
+    std::function<void()> onMelodyne, onApply, onSplice;
+    std::function<bool()> hasWorkingCopy;
     ArrangementRuler recordRuler;
     juce::ComboBox channels;
     void bind(juce::int64 resolution, bool editable) {
@@ -54,6 +56,8 @@ public:
         nativeLength = clip ? waves.nativeTicks(*clip, clock()) : 0;
         const bool available = editable && clip && nativeLength > 0;
         loop.setEnabled(available); warp.setEnabled(available); melodyne.setEnabled(available);
+        apply.setVisible(available && hasWorkingCopy && hasWorkingCopy());
+        resized();
         channels.setEnabled(editable);
         splice.setEnabled(editable);
         sync();
@@ -68,6 +72,7 @@ public:
         beats.setBounds(row.removeFromLeft(78).reduced(2, 0));
         row.removeFromLeft(70);
         melodyne.setBounds(row.removeFromLeft(105).reduced(2, 0));
+        if (apply.isVisible()) apply.setBounds(row.removeFromLeft(134).reduced(2, 0));
         splice.setBounds(row.removeFromLeft(90).reduced(2, 0));
     }
     void paint(juce::Graphics& g) override {
@@ -145,6 +150,6 @@ private:
     double nativeLength = 0;
     juce::int64 ppq = 1;
     int drag = -1;
-    juce::TextButton loop{TRANS("Loop")}, warp{TRANS("Warp (re-pitch)")}, melodyne{"Melodyne..."}, splice{"Splice..."};
+    juce::TextButton loop{TRANS("Loop")}, warp{TRANS("Warp (re-pitch)")}, melodyne{"Melodyne"}, apply{TRANS("Apply edited WAV")}, splice{"Splice Sounds"};
     juce::ComboBox beats;
 };

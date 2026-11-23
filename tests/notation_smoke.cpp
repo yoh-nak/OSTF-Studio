@@ -1,4 +1,6 @@
 #include "ui/MainComponent.h"
+#include <future>
+#include <iostream>
 #include "ui/MediaImport.h"
 #include "ui/GlobalTimelineEdit.h"
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -8,6 +10,69 @@ namespace {
 bool save(const juce::File& dest, const std::function<juce::Result(juce::OutputStream&)>& write) {
     juce::MemoryOutputStream out;
     return write(out).wasOk() && dest.replaceWithData(out.getData(), out.getDataSize());
+}
+class ImportTestProvider final : public AnalysisProvider {
+public:
+    bool authenticated = true, invalid = false;
+    juce::String name() const override { return "Test"; }
+    bool connected() const override { return authenticated; }
+    juce::Result connect() const override { return juce::Result::ok(); }
+    juce::Result request(const juce::String& prompt, const juce::String&, const juce::File& image, juce::var& reply) const override {
+        if (prompt.startsWith("Read the printed score")) {
+            juce::FileInputStream page(image);
+            const auto signature = page.readIntBigEndian();
+            page.setPosition(16);
+            const auto width = page.readIntBigEndian(), height = page.readIntBigEndian();
+            if (signature != static_cast<int>(0x89504e47) || std::max(width,height) != 2000 || std::min(width,height) <= 0)
+                return juce::Result::fail("Score page was not rendered");
+            reply = juce::JSON::parse(R"({"length":1920,"bpm":90,"beats":4,"unit":4,"notes":[{"channel":1,"name":"Piano","pitch":60,"start":480,"duration":480,"velocity":90}]})");
+        } else if (prompt.startsWith("Assign each tonal onset")) {
+            reply = juce::JSON::parse(R"({"parts":[3,3]})");
+        } else {
+            const int count = juce::StringArray::fromLines(prompt).size();
+            if (count < 33) return juce::Result::fail("Incomplete evidence");
+            reply = juce::JSON::parse(prompt.contains("channel=10")
+                ? R"({"parts":["Keys","Kit"],"chords":[]})" : R"({"parts":["Lead"],"chords":[]})");
+        }
+        if (invalid) reply = juce::JSON::parse(R"({"parts":[],"chords":[]})");
+        return juce::Result::ok();
+    }
+};
+bool checkLongAudio(const juce::File& dir) {
+    constexpr int rate = 8000, silent = 513 * rate, frames = silent + rate / 2;
+    juce::MemoryOutputStream out;
+    out.write("RIFF", 4); out.writeInt(36 + frames*2); out.write("WAVEfmt ",8); out.writeInt(16);
+    out.writeShort(1); out.writeShort(1); out.writeInt(rate); out.writeInt(2*rate); out.writeShort(2); out.writeShort(16);
+    out.write("data",4); out.writeInt(frames*2); out.writeRepeatedByte(0, silent*2);
+    for (int i=0; i<rate/2; ++i) out.writeShort(short(14000 * std::sin(juce::MathConstants<double>::twoPi * 440 * i / rate)));
+    const auto audio = dir.getChildFile("long-tail.wav"), score = dir.getChildFile("long-tail.ostf");
+    std::unique_ptr<OstfpPreview> imported;
+    juce::String info;
+    if (!audio.replaceWithData(out.getData(),out.getDataSize()) || analyseScoreImport(audio, imported, info).failed()
+        || !imported || imported->bars.endBar <= 257 || saveMediaImport(*imported, score).failed()) return false;
+    juce::FileInputStream in(score);
+    const auto hasLastNote = [](const OstfpPreview& song) {
+        for (const auto& track : song.pitchedNotes)
+            for (const auto& note : track)
+                if (note.pitch == 69 && note.startTick > 256 * song.ticksPerBar) return true;
+        return false;
+    };
+    if (readOstfPreview(in, imported).failed() || !hasLastNote(*imported)) return false;
+    // Run the same check with a compressed fixture when the LAME encoder is available.
+    const auto encoder = analysisTool("lame");
+    if (!encoder.existsAsFile()) return true;
+    const auto mp3 = dir.getChildFile("long-tail.mp3");
+    if (auto result = runAnalysisTool({encoder.getFullPathName(), "--silent", "-b", "32", audio.getFullPathName(), mp3.getFullPathName()}, 30000); result.failed()) {
+        std::cerr << result.getErrorMessage() << std::endl;
+        return false;
+    }
+    if (auto result = analyseScoreImport(mp3, imported, info); result.failed()) {
+        std::cerr << "MP3 analysis: " << result.getErrorMessage() << std::endl;
+        return false;
+    }
+    if (imported && hasLastNote(*imported)) return true;
+    std::cerr << "MP3 last note missing. " << info << std::endl;
+    return false;
 }
 bool checkImport(const juce::File& dir, MainComponent& main) {
     auto file = dir.getChildFile("phrase.mid");
@@ -31,6 +96,16 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
         project->pitchedNotes[0][0].startTick != 480 || project->pitchedNotes[0][0].endTick != 1200 ||
         project->sourceMidiChannels[1] != 10 || project->meters.size()!=2 || project->meters.back().numerator!=2 || saveMediaImport(*project, dir.getChildFile("phrase.ostf")).failed())
         return false;
+    auto provider = std::make_shared<ImportTestProvider>();
+    std::unique_ptr<OstfpPreview> aiSong;
+    if (analyseScoreImport(file, aiSong, info, provider).failed() || aiSong->pitchedNotes[0][0].startTick != 480
+        || aiSong->drumNotes[1][0].pitch != 38 || aiSong->meters.size() != 2) return false;
+    provider->invalid = true;
+    if (analyseScoreImport(file, aiSong, info, provider).wasOk()) return false;
+    provider->invalid = false; provider->authenticated = false;
+    if (analyseScoreImport(file, aiSong, info, provider).wasOk()) return false;
+    provider->authenticated = true;
+    if (!checkLongAudio(dir) || !scoreImportFileFilter().contains("*.pdf")) return false;
     juce::MemoryOutputStream wav;
     wav.write("RIFF", 4);
     wav.writeInt(36 + 1600);
@@ -192,6 +267,8 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
         std::cerr << "Audio melody projection: " << info << std::endl;
         return false;
     }
+    if (analyseScoreImport(melody, aiSong, info, provider).failed() || aiSong->pitchedNotes[0].size() != 2
+        || juce::String::fromUTF8(aiSong->trackLanes[0].label) != "Lead") return false;
     // A sustained harmonic reed and a pure sine exercise both the candidate and abstention paths.
     juce::MemoryOutputStream reed;
     reed.write(tones.getData(), 44);
@@ -489,5 +566,14 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
         if (!xml || !xml->hasTagName("score-partwise"))
             return 10;
     }
+    const auto shortPdf = dir.getChildFile("ai-score.pdf");
+    auto shortBars = partMeasures(s, index, StaffStyle::treble);
+    if (!save(shortPdf, [&](auto& out) { return writeSheetPdf(out, s, index, StaffStyle::treble, shortBars, false); })) return 36;
+    if (!std::async(std::launch::async, [shortPdf] {
+        std::unique_ptr<OstfpPreview> parsed;
+        juce::String info;
+        return analyseScoreImport(shortPdf, parsed, info, std::make_shared<ImportTestProvider>()).wasOk()
+            && parsed && parsed->sourceTrackCount() == 1 && parsed->pitchedNotes[0][0].pitch == 60;
+    }).get()) return 37;
     return checkImport(dir, main) ? 0 : 11;
 }

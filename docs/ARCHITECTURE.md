@@ -1,5 +1,11 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## Media analysis and external editors
+
+The import window snapshots the selected provider for each worker job. Local code decodes source events. For cloud analysis an AnalysisProvider adapter performs account checks and schema-constrained musical requests. The ChatGPT adapter delegates sign-in to Codex CLI. The local preference stores Studio opt-in only. Audio note candidates are assigned to parts in batches, then MIDI or audio pitch profiles are analysed for harmony. Native Windows and macOS PDF rendering supplies page images for AI. Local PDF recognition passes a temporary copy through Audiveris and MuseScore. Both routes validate the resulting in-memory score before offering track placement or document replacement. Audio FFT windows are read in bounded overlapping pages.
+
+Splice Sounds uses the installed instrument's editor and a separate AudioProcessorPlayer for audition. Its sign-in, account library and licences belong to Splice. Melodyne standalone receives a private working WAV; Studio verifies the source hash, sample rate and frame count on return.
+
 ## Editor recording
 
 The device sample clock drives the editor cycle and one-bar count-in. The count-in holds the score cursor and excludes input from the take. MIDI note-offs are paired on an elapsed sample counter and split into score-time intervals across wraps. Audio copies the first enabled inputs into a bounded buffer allocated before the device callback starts. A new pass replaces covered samples in that buffer. Stop encodes 16-bit PCM on the message thread and applies the resulting region. Clip warp and source timing belong to the region. There is one audio region per track in this preview.
@@ -111,7 +117,7 @@ Next engraving milestones are rhythmic spelling and beams, enharmonic spelling i
 
 ### Official OSTF 5.0 release intake
 
-The desktop reader dispatches standalone scores by exact version. The 3.5.0 and 4.0.0–4.3.0 import paths validate the original bytes using the corresponding embedded structural schema. OSTFP 1.0.0 can also carry a standalone 4.3.0 score. Associated historical session profiles require separate migration. The working preview derives its span from the authored regions and event extents when the nominal duration is omitted. Saving writes Core 5.0.0, preserves authored score fields and records the previous revision and byte hash when the source declares document identity. The fixed-meter, eight-source-track and 256-bar projection limits also apply to historical songs. Full semantic conformance and variable-meter playback remain open.
+The desktop reader dispatches standalone scores by exact version. The 3.5.0 and 4.0.0–4.3.0 import paths validate the original bytes using the corresponding embedded structural schema. OSTFP 1.0.0 can also carry a standalone 4.3.0 score. Associated historical session profiles require separate migration. The working preview derives its span from the authored regions and event extents when the nominal duration is omitted. Saving writes Core 5.0.0, preserves authored score fields and records the previous revision and byte hash when the source declares document identity. Historical songs use the same bar projection and track capacity as current scores. Full semantic conformance and variable-meter playback remain open.
 
 1. Obtain the final specification and errata, root OSTF and referenced profile schemas (including vocal, production and distributed profiles where applicable), OSTFP package and manifest rules, hash and canonicalization rules, and official score/package examples plus any available conformance tests. Use the exact filenames and references from that release.
 2. Record release provenance, revision, checksum and redistribution terms. Check that the schemas and all references resolve and confirm the official samples against the matching validator before writing adapters.
@@ -122,10 +128,10 @@ The desktop reader dispatches standalone scores by exact version. The 3.5.0 and 
 
 An audio track has one WAV region. Its timeline duration controls how long it sounds. The clip editor displays one complete source cycle. Both the waveform thumbnail and the audio reader use the same ordered warp anchors. A native loop repeats in source seconds. A warped loop repeats in score ticks and follows tempo changes. Linear single-pass warps use Production 0.3 fit with followRate. The Studio host extension carries loop length and interior marker pairs for readers that implement them. Exported assets keep their source samples.
 
-External sample drops use the local WAV import path. The Melodyne external-editor workflow exports a separate working file and checks source identity, sample rate and frame count before applying edited samples. Transfer uses the installed VST3 and host transport. ARA document hosting and Splice catalogue access remain open.
+External sample drops use the local WAV import path. The Melodyne external-editor workflow exports a separate working file and checks source identity, sample rate and frame count before applying edited samples. ARA document hosting remains open.
 
 ## Import review and drum input
 
-Score analysis runs on a background worker. Its review window displays the candidate’s chord regions and note tracks, supports individual cross-window drops and can hand the complete in-memory score to the originating editor as an unsaved song. PDF recognition awaits an OMR provider.
+Score analysis runs on a background worker. Its review window displays the candidate’s chord regions and note tracks, supports individual cross-window drops and can hand the complete in-memory score to the originating editor as an unsaved song. Local PDF recognition uses Audiveris and MuseScore 4. A connected AI provider can read page images.
 
 The ordered sound-slot membership of an OSTF drum kit drives both editors. The piano roll indexes distinct mapped pitches. Kit edits materialise implicit memberships and isolate shared assignments before remapping events. MIDI recording routes mapped notes to the selected instrument and stores sound-slot references with recorded velocities and timing.
