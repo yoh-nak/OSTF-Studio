@@ -1,5 +1,6 @@
 #include "ui/MainComponent.h"
 #include "ui/MediaImport.h"
+#include "ui/GlobalTimelineEdit.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 
 using namespace ostfstudio;
@@ -8,7 +9,7 @@ bool save(const juce::File& dest, const std::function<juce::Result(juce::OutputS
     juce::MemoryOutputStream out;
     return write(out).wasOk() && dest.replaceWithData(out.getData(), out.getDataSize());
 }
-bool checkImport(const juce::File& dir) {
+bool checkImport(const juce::File& dir, MainComponent& main) {
     auto file = dir.getChildFile("phrase.mid");
     juce::MidiFile song;
     song.setTicksPerQuarterNote(480);
@@ -73,12 +74,104 @@ bool checkImport(const juce::File& dir) {
         const double hz = i < 4800 ? 440. : i >= 6400 ? 523.251 : 0.;
         tones.writeShort(static_cast<short>(16000 * std::sin(juce::MathConstants<double>::twoPi * hz * i / 8000)));
     }
+    // Two contrasting triads followed by silence exercise the analysis, import and edit paths.
+    juce::MemoryOutputStream harmony;
+    harmony.write(tones.getData(), 44);
+    for (int i = 0; i < frames; ++i) {
+        double sample = 0;
+        if (i < 8000)
+            for (int p : i < 4000 ? std::array<int, 3>{60, 64, 67} : std::array<int, 3>{62, 65, 69})
+                sample += 5200 *
+                          std::sin(juce::MathConstants<double>::twoPi * 440 * std::pow(2., (p - 69) / 12.) * i / 8000.);
+        harmony.writeShort(static_cast<short>(sample));
+    }
+    const auto mixed = dir.getChildFile("triads.wav");
+    std::unique_ptr<OstfpPreview> analysed;
+    if (!mixed.replaceWithData(harmony.getData(), harmony.getDataSize()) ||
+        prepareMediaImport(mixed, analysed, info, false, true).failed())
+        return false;
+    const auto scoreData = juce::JSON::parse(analysed->sourceScore.toString());
+    const auto resultChords = scoreData["harmony"]["chords"];
+    if (resultChords.size() != 2 || resultChords[0]["label"] != "C" || resultChords[1]["label"] != "Dm" ||
+        static_cast<juce::int64>(resultChords[1]["start"]) != 480 ||
+        static_cast<juce::int64>(resultChords[1]["duration"]) != 480)
+        return false;
+    juce::MemoryBlock before;
+    const auto unchanged = analysed->sourceScore;
+    auto edited = resultChords[1].clone();
+    if (editChordSymbol(edited, "G7").failed() ||
+        analysed->changeGlobalEvents(TimelineLane::chord, {resultChords[1]}, {edited}, before).failed() ||
+        before != unchanged || analysed->contextAt(TimelineLane::chord, 600) != "G7")
+        return false;
+    if (analysed->changeGlobalEvents(TimelineLane::chord, {edited}, {}, before).failed() ||
+        analysed->changeGlobalEvents(TimelineLane::chord, {}, {edited}, before).failed() ||
+        analysed->changeGlobalEvents(TimelineLane::chord, {}, {edited}, before).wasOk())
+        return false;
+    const auto tempo = scoreData["timeline"]["tempoChanges"][0];
+    if (analysed->changeGlobalEvents(TimelineLane::tempo, {tempo}, {}, before).wasOk())
+        return false;
+    auto tags = analysed->songInformation();
+    tags.genres = juce::StringArray{"House", "Jazz"};
+    tags.moods = juce::StringArray{"Bright"};
+    if (analysed->applySongInformation(tags).failed() || analysed->songInformation().genres != tags.genres)
+        return false;
+    auto stems = dir.getChildFile("stems");
+    if (stems.createDirectory().failed())
+        return false;
+    for (auto name : {"drums.wav", "bass.wav", "other.wav", "vocals.wav"})
+        if (!stems.getChildFile(name).replaceWithData(harmony.getData(), harmony.getDataSize()))
+            return false;
+    std::unique_ptr<OstfpPreview> separated;
+    if (prepareStemImport(stems, separated, info).failed() || separated->audio.size() != 4)
+        return false;
+    if (placeImportTrack(*separated, 0, *analysed, 0, 0, before).wasOk() ||
+        placeImportTrack(*separated, 0, *analysed, 0, 0, before, true).failed() || analysed->audio.size() != 1 ||
+        analysed->audio.front().localFile != stems.getChildFile("drums.wav"))
+        return false;
+    if (placeImportTrack(*analysed, -1, *separated, {}, 0, before).failed() ||
+        juce::JSON::parse(separated->sourceScore.toString())["harmony"]["chords"].size() != 2)
+        return false;
+    main.openImportedSong(std::move(analysed));
+    auto* label = dynamic_cast<juce::Label*>(main.findChildWithID("current-document"));
+    if (!label || !label->getText().contains(TRANS("Unsaved project")) || !label->getText().contains("triads") ||
+        dir.getChildFile("triads.ostf").exists() || dir.getChildFile("triads.media").exists())
+        return false;
+    SessionMix stemMix;
+    stemMix.tracks.resize(4);
+    stemMix.audioTracks.assign(4, true);
+    juce::MemoryOutputStream package;
+    if (writeOstfpPreview(*separated, stemMix, package).failed()) return false;
+    juce::MemoryInputStream packaged(package.getData(), package.getDataSize(), false);
+    std::unique_ptr<OstfpPreview> reopenedStems;
+    if (readOstfpPreview(packaged, reopenedStems).failed() || reopenedStems->audio.size() != 4 ||
+        reopenedStems->audio.back().embedded.isEmpty()) return false;
+    auto savedStems = dir.getChildFile("stems.ostf");
+    if (saveMediaImport(*separated, savedStems).failed())
+        return false;
+    juce::FileInputStream stemsInput(savedStems);
+    if (readOstfPreview(stemsInput, separated).failed() || separated->audio.size() != 4)
+        return false;
     auto melody = dir.getChildFile("melody.wav");
     if (!melody.replaceWithData(tones.getData(), tones.getDataSize()) ||
         prepareMediaImport(melody, project, info, true).failed() || project->pitchedNotes.size() != 2 ||
         project->pitchedNotes[1].size() != 2 || project->pitchedNotes[1][0].pitch != 69 ||
         project->pitchedNotes[1][1].pitch != 72 || std::abs(project->pitchedNotes[1][1].startTick - 768) > 60)
         return false;
+    std::unique_ptr<OstfpPreview> notesTarget;
+    if (prepareMediaImport(dir.getChildFile("phrase.mid"), notesTarget, info).failed()) return false;
+    const auto oldTempo = juce::JSON::parse(notesTarget->sourceScore.toString())["timeline"]["tempoChanges"][0].clone();
+    auto slower = oldTempo.clone();
+    slower.getDynamicObject()->setProperty("bpm", 60);
+    if (notesTarget->changeGlobalEvents(TimelineLane::tempo, {oldTempo}, {slower}, before).failed() ||
+        placeImportTrack(*project, 1, *notesTarget, 0, 120, before).failed()) return false;
+    const auto& imported = notesTarget->addedClips.back().notes;
+    if (imported.size() != 2) return false;
+    for (std::size_t i = 0; i < imported.size(); ++i) {
+        const double originalTime = project->clock.secondsAt(project->pitchedNotes[1][i].startTick);
+        const double placedTime = notesTarget->clock.secondsAt(imported[i].startTick) - notesTarget->clock.secondsAt(120);
+        // MIDI ticks are integral. Preserve the transcription's initial offset within half a destination tick.
+        if (std::abs(placedTime - originalTime) > 0.500001 / notesTarget->ppq) return false;
+    }
     PreviewTransport player;
     player.setOutputMix({});
     player.setChannelMix(0, {}, true, 0);
@@ -283,5 +376,5 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
         if (!xml || !xml->hasTagName("score-partwise"))
             return 10;
     }
-    return checkImport(dir) ? 0 : 11;
+    return checkImport(dir, main) ? 0 : 11;
 }

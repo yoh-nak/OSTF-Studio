@@ -1,6 +1,8 @@
 #include "ui/MediaImport.h"
+#include "ui/GlobalTimelineEdit.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <map>
+#include <numeric>
 #include <set>
 
 namespace ostfstudio {
@@ -26,6 +28,87 @@ struct ImportSong {
     std::vector<Part> parts;
 };
 juce::Result fail(const char* reason) { return juce::Result::fail(juce::translate(reason)); }
+
+// Compare pitch-class energy in short Hann-windowed blocks with major/minor triads.
+juce::Result detectTriads(juce::AudioFormatReader& reader, int ppq, List& results) {
+    const double rate = reader.sampleRate;
+    if (rate < 8000 || rate > 384000)
+        return fail("Chord analysis supports 8 to 384 kHz.");
+    const int hop = juce::roundToInt(rate * 0.5);
+    constexpr int frames = 2048;
+    const int stride = std::max(1, static_cast<int>(rate / 8000));
+    const double sampleRate = rate / stride;
+    std::array<double, 48> coeff{};
+    for (int i = 0; i < static_cast<int>(coeff.size()); ++i)
+        coeff[i] =
+            2 * std::cos(juce::MathConstants<double>::twoPi * 440 * std::pow(2., (i + 36 - 69) / 12.) / sampleRate);
+    juce::AudioBuffer<float> buffer(static_cast<int>(reader.numChannels), frames * stride);
+    static constexpr const char* names[]{"C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
+    for (Tick start = 0; start < reader.lengthInSamples; start += hop) {
+        const auto count = static_cast<int>(std::min<Tick>(reader.lengthInSamples - start, hop));
+        const int n = std::min(frames, count / stride);
+        if (n < 512)
+            continue;
+        auto offset = start + (count - n * stride) / 2;
+        if (!reader.read(&buffer, 0, n * stride, offset, true, true))
+            return fail("Could not read WAV samples.");
+        std::array<double, 12> chroma{};
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
+            std::array<double, frames> signal{};
+            for (int j = 0; j < n; ++j) {
+                const auto* samples = buffer.getReadPointer(ch, j * stride);
+                for (int k = 0; k < stride; ++k)
+                    signal[j] += samples[k];
+                signal[j] *= (0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * j / (n - 1))) / stride;
+            }
+            for (int p = 0; p < static_cast<int>(coeff.size()); ++p) {
+                double a = 0, b = 0;
+                for (int j = 0; j < n; ++j) {
+                    const double next = signal[j] + coeff[p] * a - b;
+                    b = a;
+                    a = next;
+                }
+                chroma[p % 12] += std::max(0., a * a + b * b - coeff[p] * a * b);
+            }
+        }
+        const double total = std::accumulate(chroma.begin(), chroma.end(), 0.);
+        int root = -1, third = 0;
+        double best = 0, runner = 0;
+        for (int pc = 0; pc < 12; ++pc)
+            for (int t : {3, 4}) {
+                double a = chroma[pc], b = chroma[(pc + t) % 12], c = chroma[(pc + 7) % 12];
+                if (std::min({a, b, c}) < total * 0.045)
+                    continue;
+                const double match = a + b + c;
+                if (match > best) {
+                    runner = best;
+                    best = match;
+                    root = pc;
+                    third = t;
+                } else
+                    runner = std::max(runner, match);
+            }
+        if (root < 0 || total < n * n * 0.000001 || best < total * 0.65 || best - runner < total * 0.045)
+            continue;
+        const Tick at = std::llround(start * 2. * ppq / rate), end = std::llround((start + count) * 2. * ppq / rate);
+        auto name = juce::String(names[root]) + (third == 3 ? "m" : "");
+        if (!results.isEmpty()) {
+            auto& last = results.getReference(results.size() - 1);
+            const Tick previous = last["start"];
+            if (last["label"].toString() == name && previous + static_cast<Tick>(last["duration"]) == at) {
+                last.getDynamicObject()->setProperty("duration", end - previous);
+                continue;
+            }
+        }
+        results.add(obj({{"id", "chord-" + juce::String(results.size() + 1)},
+                         {"label", name},
+                         {"start", at},
+                         {"duration", end - at},
+                         {"root", parseSpelling(names[root])},
+                         {"intervals", List{0, third, 7}}}));
+    }
+    return juce::Result::ok();
+}
 
 // YIN's first dip in the normalised difference function estimates one fundamental.
 // Limit the search to the tested melodic range and reject unvoiced/quiet frames.
@@ -174,13 +257,14 @@ juce::Result readMidi(const juce::File& source, ImportSong& song) {
 } // namespace
 
 juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpPreview>& project, juce::String& summary,
-                                bool transcribeMelody) {
+                                bool transcribeMelody, bool analyseHarmony) {
     const bool audio = source.hasFileExtension("wav;wave");
     if (!audio && !source.hasFileExtension("mid;midi"))
         return fail("Choose a WAV or MIDI file.");
     if (!source.existsAsFile() || source.getSize() > 16 * 1024 * 1024)
         return fail("Choose a source file of up to 16 MiB.");
     ImportSong song;
+    List chordEvents;
     juce::String detail;
     if (audio) {
         juce::WavAudioFormat wav;
@@ -198,6 +282,12 @@ juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpP
         detail = juce::String(seconds, 2) + " s / " + juce::String(reader->sampleRate, 0) + " Hz / " +
                  juce::String(reader->numChannels) + " ch\n" +
                  TRANS("WAV reference at bar 1. The guide grid is 120 BPM, 4/4.");
+        if (analyseHarmony) {
+            auto r = detectTriads(*reader, song.ppq, chordEvents);
+            if (r.failed())
+                return r;
+            detail += "\n" + TRANS("Estimated chord regions") + " " + juce::String(chordEvents.size());
+        }
         if (transcribeMelody) {
             if (reader->sampleRate < 8000)
                 return fail("Melody transcription requires at least 8 kHz.");
@@ -253,7 +343,7 @@ juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpP
                                           {"duration", duration}})}},
                    {"meterChanges", List{obj({{"at", 0}, {"numerator", song.beats}, {"denominator", song.beatType}})}},
                    {"tempoChanges", tempos}})},
-             {"harmony", obj({{"chords", List{}}, {"scales", List{}}})},
+             {"harmony", obj({{"chords", chordEvents}, {"scales", List{}}})},
              {"tracks", tracks},
              {"soundSlots", slots},
              {"lyrics", obj({{"documents", List{}}, {"phrases", List{}}, {"units", List{}}, {"alignments", List{}}})},
@@ -272,6 +362,159 @@ juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpP
     summary = detail;
     return juce::Result::ok();
 }
+juce::Result prepareStemImport(const juce::File& folder, std::unique_ptr<OstfpPreview>& output, juce::String& summary) {
+    std::unique_ptr<OstfpPreview> draft;
+    List tracks;
+    std::vector<ProjectAudio> regions;
+    double firstRate = 0;
+    juce::int64 firstLength = 0;
+    for (const char* stem : {"drums", "bass", "other", "vocals"}) {
+        auto file = folder.getChildFile(juce::String(stem) + ".wav");
+        std::unique_ptr<OstfpPreview> part;
+        juce::String info;
+        auto result = prepareMediaImport(file, part, info);
+        if (result.failed())
+            return juce::Result::fail(file.getFileName() + " / " + result.getErrorMessage());
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(file.createInputStream().release(), true));
+        if (!reader)
+            return fail("Could not read WAV samples.");
+        if (tracks.isEmpty()) {
+            firstRate = reader->sampleRate;
+            firstLength = reader->lengthInSamples;
+        }
+        if (reader->sampleRate != firstRate || reader->lengthInSamples != firstLength)
+            return fail("All four stems must share a sample rate and length.");
+        auto score = juce::JSON::parse(part->sourceScore.toString());
+        auto track = score["tracks"][0].clone();
+        track.getDynamicObject()->setProperty("id", "stem-" + juce::String(stem));
+        auto region = part->audio.front();
+        region.track = static_cast<std::size_t>(tracks.size());
+        regions.push_back(region);
+        tracks.add(track);
+        if (!draft)
+            draft = std::move(part);
+    }
+    auto score = juce::JSON::parse(draft->sourceScore.toString());
+    score.getDynamicObject()->setProperty("tracks", tracks);
+    score["song"].getDynamicObject()->setProperty("title", folder.getFileName());
+    score["timeline"]["sections"][0].getDynamicObject()->setProperty("name", folder.getFileName());
+    const auto json = juce::JSON::toString(score);
+    juce::MemoryInputStream input(json.toRawUTF8(), json.getNumBytesAsUTF8(), false);
+    auto result = readOstfPreview(input, draft);
+    if (result.failed())
+        return result;
+    std::fill(draft->trackKinds.begin(), draft->trackKinds.end(), TrackKind::audio);
+    draft->audio = std::move(regions);
+    output = std::move(draft);
+    summary = TRANS("Four aligned stems are ready.");
+    return juce::Result::ok();
+}
+
+juce::Result separateStemImport(const juce::File& wav, std::unique_ptr<OstfpPreview>& output, juce::String& summary) {
+    const auto folder = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                            .getChildFile("OSTF Studio/Analysed stems")
+                            .getChildFile(juce::Uuid().toString());
+    juce::ChildProcess process;
+    // Keep the separated media available to projects opened without saving.
+    if (!process.start(
+            juce::StringArray{"demucs", "-n", "htdemucs", "-o", folder.getFullPathName(), wav.getFullPathName()}))
+        return fail("Install Demucs with htdemucs and make demucs available on PATH, or load a four-stem folder.");
+    const auto log = process.readAllProcessOutput();
+    if (!process.waitForProcessToFinish(-1) || process.getExitCode() != 0)
+        return juce::Result::fail(TRANS("Stem separation failed.") + " " + log.getLastCharacters(350));
+    return prepareStemImport(folder.getChildFile("htdemucs").getChildFile(wav.getFileNameWithoutExtension()), output,
+                             summary);
+}
+
+juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPreview& dest,
+                              std::optional<std::size_t> track, juce::int64 tick, juce::MemoryBlock& before,
+                              bool replace) {
+    if (tick < 0 || tick >= dest.durationTicks)
+        return fail("Choose a position inside the song.");
+    auto convert = [&](juce::int64 at) -> juce::int64 {
+        return std::llround(dest.clock.tickAt(dest.clock.secondsAt(tick) + source.clock.secondsAt(at)));
+    };
+    if (index == -1 && !track) {
+        const auto score = juce::JSON::parse(source.sourceScore.toString());
+        List chords;
+        if (auto* list = score["harmony"]["chords"].getArray())
+            for (const auto& item : *list) {
+                auto copy = item.clone();
+                const Tick start = item["start"], end = start + Tick(item["duration"]);
+                copy.getDynamicObject()->setProperty("id", "import-" + juce::Uuid().toString());
+                copy.getDynamicObject()->setProperty("start", convert(start));
+                copy.getDynamicObject()->setProperty("duration", convert(end) - convert(start));
+                chords.add(copy);
+            }
+        if (chords.isEmpty())
+            return fail("No chord regions to place.");
+        List removed;
+        const auto target = juce::JSON::parse(dest.sourceScore.toString());
+        if (auto* old = target["harmony"]["chords"].getArray())
+            for (const auto& event : *old) {
+                const Tick a = event["start"], b = a + Tick(event["duration"]);
+                Tick covered = 0;
+                for (const auto& chord : chords) {
+                    const Tick s = chord["start"], e = s + Tick(chord["duration"]);
+                    covered += std::max<Tick>(0, std::min(e, b) - std::max(s, a));
+                }
+                if (covered == 0)
+                    continue;
+                if (covered != b - a)
+                    return fail("The drop would cut an existing chord. Edit its boundary first.");
+                if (!replace)
+                    return fail("Confirm replacement of existing material.");
+                removed.add(event);
+            }
+        return dest.changeGlobalEvents(TimelineLane::chord, removed, chords, before);
+    }
+    if (!track || *track >= dest.sourceTrackCount() || index < 0 ||
+        index >= static_cast<int>(source.sourceTrackCount()) || dest.trackKinds[*track] != source.trackKinds[index])
+        return fail("Choose a matching destination track.");
+    if (source.trackKinds[index] == TrackKind::audio) {
+        auto regions = dest.audio;
+        if (std::any_of(regions.begin(), regions.end(), [&](const auto& old) { return old.track == *track; })) {
+            if (!replace)
+                return fail("Confirm replacement of existing material.");
+            std::erase_if(regions, [&](const auto& old) { return old.track == *track; });
+        }
+        const auto kept = regions.size();
+        for (auto region : source.audio)
+            if (region.track == static_cast<std::size_t>(index)) {
+                auto end = convert(region.startTick + region.durationTicks);
+                region.startTick = convert(region.startTick);
+                region.durationTicks = end - region.startTick;
+                if (end > dest.durationTicks || region.durationTicks <= 0)
+                    return fail("The result does not fit inside the song.");
+                for (const auto& old : regions)
+                    if (old.track == *track && old.startTick < end &&
+                        old.startTick + old.durationTicks > region.startTick)
+                        return fail("The destination contains another audio clip.");
+                region.track = *track;
+                regions.push_back(std::move(region));
+            }
+        if (regions.size() == kept)
+            return fail("No audio regions to place.");
+        if (regions.size() > OstfpPreview::maxTracks)
+            return fail("Too many audio regions for this project.");
+        dest.audio = std::move(regions);
+        return juce::Result::ok();
+    }
+    if (source.trackKinds[index] != TrackKind::pitched)
+        return fail("Choose a pitched or audio result.");
+    auto notes = source.pitchedNotes[index];
+    for (auto& note : notes) {
+        note.startTick = convert(note.startTick);
+        note.endTick = convert(note.endTick);
+        if (note.endTick > dest.durationTicks)
+            return fail("The result does not fit inside the song.");
+    }
+    if (!dest.addSessionClip(*track, source.trackLanes[index].label, std::move(notes)))
+        return fail("The phrase does not fit here.");
+    return juce::Result::ok();
+}
+
 juce::Result saveMediaImport(const OstfpPreview& p, const juce::File& file) {
     juce::TemporaryFile temp(file);
     {

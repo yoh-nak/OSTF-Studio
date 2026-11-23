@@ -40,7 +40,7 @@ The first three buttons on the view bar switch the main workspace between **Arra
 
 In the lead sheet, switch chords, scales and lyrics on or off independently. Choose 1, 2, 4, 8 or 16 bars per line. For songs with timed lyrics, select the voice and display text, pronunciation or both. Pronunciation comes from the OSTF lyric unit, with its text as a fallback. In Score, choose a track and its treble, alto, bass, grand staff, guitar TAB, bass TAB or percussion notation. **PDF / Print** lays out the chosen content on A4 pages for printing. **MusicXML** exports the selected score part for a notation editor.
 
-**File → Import and transcription** creates a new project from a MIDI performance (SMF 0 or 1) or a WAV recording. WAV import keeps the recording alongside the score. The experimental melody mode adds draft notes from up to two minutes of isolated single-note audio. Review the result in the piano roll.
+**File → Import and transcription** prepares MIDI or WAV in memory. Choose **Open as new unsaved song** to edit it in a separate Studio window, or drag individual audio tracks, transcribed phrases and estimated chords into compatible lanes in the open song. WAV analysis offers major/minor triad estimation and isolated melody transcription. The four-stem action calls a local Demucs installation with htdemucs. Studio can also load a directory containing aligned drums.wav, bass.wav, other.wav and vocals.wav (up to 16 MiB per file).
 
 ## Install OSTF Studio
 

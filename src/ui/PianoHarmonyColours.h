@@ -3,7 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 namespace pianoHarmony {
-enum class Theme { studioBlue, harmonic };
+enum class Theme { studioBlue, harmonic, graphite, aubergine };
 using Tone = ostfstudio::TheoryGuide::Tone;
 inline juce::Colour toneColour(Tone tone) {
     switch (tone) {
@@ -43,6 +43,11 @@ inline juce::Colour degreeColour(int pitch, int root, Theme theme) {
     };
     if (root < 0) return toneColour(Tone::unknown);
     const int interval = (pitch + 12 - root) % 12;
-    return juce::Colour(theme == Theme::studioBlue ? blues[interval] : palette[interval]);
+    auto colour = juce::Colour(theme == Theme::harmonic ? palette[interval] : blues[interval]);
+    if (theme == Theme::graphite)
+        return colour.withMultipliedSaturation(0.12f);
+    if (theme == Theme::aubergine)
+        return colour.withRotatedHue(0.20f);
+    return colour;
 }
 }

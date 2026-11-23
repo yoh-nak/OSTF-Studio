@@ -1,4 +1,5 @@
 #include "ui/OstfpPreview.h"
+#include "ui/GlobalTimelineEdit.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include "StockEffects.h"
 #include "core/MidiGeneratorPattern.h"
@@ -16,7 +17,8 @@ namespace {
 constexpr char mediaType[] = "application/vnd.ostf-project+zip";
 constexpr int maxBytes = 4 * 1024 * 1024;
 constexpr int maxAudioBytes = 16 * 1024 * 1024;
-constexpr int maxPackageBytes = 48 * 1024 * 1024;
+// Allow four full-size WAV stems plus score, session and ZIP overhead.
+constexpr int maxPackageBytes = 4 * maxAudioBytes + 4 * maxBytes;
 constexpr char mixNamespace[] = "org.ostf.studio";
 constexpr char mixDocument[] = "session/studio.production.json";
 
@@ -102,7 +104,7 @@ juce::int64 scoreExtent(const juce::var& score) {
     return end;
 }
 
-std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
+std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVoicingRow = false) {
     require(score["format"] == "OSTF", "Expected an OSTF score");
     const auto timeline = score["timeline"];
     const auto ppq = integer(score["ppq"]);
@@ -402,7 +404,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
             std::stable_sort(curve.points.begin(), curve.points.end(), [](const auto& a, const auto& b) { return a.tick < b.tick; });
         if (group == MixerTrackGroup::other && !notes.empty()) group = MixerTrackGroup::pitched;
     }
-    if (!voicingNotes.empty()) {
+    if (!voicingNotes.empty() || retainVoicingRow) {
         out->chordVoicingTrack = out->trackLanes.size();
         addLane(out->trackLanes, "Chord Voicing", std::move(voicings), TimelineLane::voicing);
         out->pitchedNotes.push_back(std::move(voicingNotes));
@@ -980,6 +982,15 @@ SongInformation OstfpPreview::songInformation() const {
     const auto score = parseObject(sourceScore);
     const auto song = score["song"];
     SongInformation info{song["title"].toString(), song["subtitle"].toString(), song["description"].toString(), {}};
+    auto tagNames = [&](const char* key) {
+        juce::StringArray result;
+        if (const auto* tags = song[key].getArray())
+            for (const auto& tag : *tags)
+                result.add(tag["name"].toString());
+        return result;
+    };
+    info.genres = tagNames("genres");
+    info.moods = tagNames("moods");
     std::map<juce::String, juce::String> names;
     if (const auto* people = score["contributors"].getArray())
         for (const auto& p : *people) names[p["id"].toString()] = p["name"].toString();
@@ -1003,6 +1014,38 @@ juce::Result OstfpPreview::applySongInformation(const SongInformation& info) try
     };
     optionalText("subtitle", info.subtitle);
     optionalText("description", info.description);
+    auto updateTags = [&](const char* key, const std::optional<juce::StringArray>& names) {
+        if (!names)
+            return;
+        const auto original = song->getProperty(key);
+        juce::Array<juce::var> result;
+        std::vector<bool> used(original.size());
+        std::vector<int> matches(names->size(), -1);
+        for (int n = 0; n < names->size(); ++n)
+            for (int i = 0; i < original.size(); ++i)
+                if (!used[i] && original[i]["name"].toString() == (*names)[n]) {
+                    used[i] = true;
+                    matches[n] = i;
+                    break;
+                }
+        for (int n = 0; n < names->size(); ++n) {
+            const auto& name = (*names)[n];
+            require(name.trim().isNotEmpty(), "Enter a tag name.");
+            int i = matches[n];
+            if (i < 0 && n < original.size() && !used[n]) {
+                i = n;
+                used[n] = true;
+            }
+            auto tag =
+                i >= 0 ? original[i].clone() : object({{"id", juce::String(key) + "-" + juce::Uuid().toString()}});
+            tag.getDynamicObject()->setProperty("name", name);
+            result.add(tag);
+        }
+        if (original.isArray() || !result.isEmpty())
+            song->setProperty(key, result);
+    };
+    updateTags("genres", info.genres);
+    updateTags("moods", info.moods);
     auto people = score.getProperty("contributors", juce::Array<juce::var>{});
     if (!people.isArray()) return juce::Result::fail("Invalid contributor list.");
     auto originals = song->getProperty("credits");
@@ -1371,9 +1414,76 @@ juce::Result OstfpPreview::applySongMusic(const SongMusicEdit& edit, juce::Memor
     return restoreNoteScore(bytes);
 } catch (const std::exception& e) { return juce::Result::fail(e.what()); }
 
+juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Array<juce::var>& remove,
+                                              const juce::Array<juce::var>& insert, juce::MemoryBlock& before) try {
+    const auto source = globalSource(lane);
+    require(*source.events, "Choose an editable global lane.");
+    const auto old = savedScore(*this);
+    const auto base = savedScore(*this, true);
+    auto score = parseObject(base);
+    auto group = score[source.group];
+    if (!group.isObject()) {
+        group = object({});
+        score.getDynamicObject()->setProperty(source.group, group);
+    }
+    auto events = group.getProperty(source.events, juce::Array<juce::var>{});
+    auto* list = events.getArray();
+    require(list != nullptr, "Invalid global lane.");
+    auto same = [](const juce::var& a, const juce::var& b) {
+        return juce::JSON::toString(a, true, 17) == juce::JSON::toString(b, true, 17);
+    };
+    const auto key = source.span ? "start" : "at";
+    for (const auto& item : remove) {
+        int i = 0;
+        while (i < list->size() && !same((*list)[i], item))
+            ++i;
+        require(i < list->size(), "The source event changed. Select it again.");
+        list->remove(i);
+    }
+    for (const auto& item : insert) {
+        const auto at = integer(item[key]);
+        const auto len = source.span ? integer(item["duration"]) : 1;
+        require(at >= 0 && len > 0 && at < durationTicks && len <= durationTicks - at,
+                "The event does not fit inside the song.");
+        for (const auto& other : *list) {
+            const auto start = integer(other[key]), end = start + (source.span ? integer(other["duration"]) : 1);
+            if (lane == TimelineLane::scale && !same(other["targets"], item["targets"]))
+                continue;
+            require(at >= end || at + len <= start, "The destination contains another event.");
+        }
+        list->add(item.clone());
+    }
+    std::stable_sort(list->begin(), list->end(),
+                     [&](const auto& a, const auto& b) { return integer(a[key]) < integer(b[key]); });
+    group.getDynamicObject()->setProperty(source.events, events);
+    if (lane == TimelineLane::meter || lane == TimelineLane::tempo)
+        require(!list->isEmpty() && integer(list->getReference(0)[key]) == 0,
+                "The initial tempo or meter must stay at tick zero.");
+    // Keep any authored reference to a removed ID valid. A value edit retains the ID.
+    const auto json = juce::JSON::toString(score, true, 17);
+    for (const auto& item : remove) {
+        const auto id = item["id"].toString();
+        if (id.isEmpty())
+            continue;
+        const bool retained =
+            std::any_of(list->begin(), list->end(), [&](const auto& e) { return e["id"].toString() == id; });
+        require(retained || !json.contains(juce::JSON::toString(juce::var(id), true)),
+                "Another score object refers to this event.");
+    }
+    reviseDocument(score, old, "timeline-" + juce::Uuid().toString());
+    auto bytes = editedScoreBytes(base, score, {"timeline", "harmony", "document"});
+    validateVersion("5.0.0", bytes);
+    auto result = restoreNoteScore(bytes);
+    if (result.wasOk())
+        before = old;
+    return result;
+} catch (const std::exception& e) {
+    return juce::Result::fail(e.what());
+}
+
 juce::Result OstfpPreview::restoreNoteScore(const juce::MemoryBlock& bytes) try {
     require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
-    auto next = projectScore(parseObject(bytes));
+    auto next = projectScore(parseObject(bytes), chordVoicingTrack.has_value());
     require(next->sourceTrackCount() == sourceTrackCount() && next->chordVoicingTrack == chordVoicingTrack, "Track layout changed.");
     next->sourceScore = bytes;
     next->sourceManifest = sourceManifest;

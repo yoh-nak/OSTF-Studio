@@ -252,7 +252,7 @@ public:
             startup_->setStage(TRANS("Preparing workspace..."), 0.65f);
             juce::Timer::callAfterDelay(45, [this, startupSmoke] {
                 if (!startup_) return;
-                mainWindow_ = std::make_unique<MainWindow>(getApplicationName());
+                mainWindow_ = createStudioWindow();
                 startup_.reset();
                 const bool opened = openQueuedDocument();
                 if (startupSmoke) juce::Timer::callAfterDelay(500, [this, opened] {
@@ -269,7 +269,11 @@ public:
             if (mainWindow_) openQueuedDocument();
         }
     }
-    void shutdown() override { startup_.reset(); mainWindow_.reset(); }
+    void shutdown() override {
+        startup_.reset();
+        otherWindows_.clear();
+        mainWindow_.reset();
+    }
     void systemRequestedQuit() override { quit(); }
 
 private:
@@ -302,10 +306,41 @@ private:
             }
 #endif
         }
+        std::function<void()> close;
         void closeButtonPressed() override {
-            juce::JUCEApplication::getInstance()->systemRequestedQuit();
+            if (close)
+                close();
         }
     };
+
+    std::unique_ptr<MainWindow> createStudioWindow() {
+        auto window = std::make_unique<MainWindow>(getApplicationName());
+        auto* studio = static_cast<MainComponent*>(window->getContentComponent());
+        studio->onNewImportedSong = [this](std::unique_ptr<ostfstudio::OstfpPreview> draft) {
+            auto next = createStudioWindow();
+            static_cast<MainComponent*>(next->getContentComponent())->openImportedSong(std::move(draft));
+            next->toFront(true);
+            otherWindows_.push_back(std::move(next));
+        };
+        window->close = [this, safe = juce::Component::SafePointer<MainWindow>(window.get())] {
+            juce::MessageManager::callAsync([this, safe] {
+                if (!safe)
+                    return;
+                if (mainWindow_.get() == safe.getComponent()) {
+                    if (otherWindows_.empty()) {
+                        systemRequestedQuit();
+                        return;
+                    }
+                    mainWindow_ = std::move(otherWindows_.back());
+                    otherWindows_.pop_back();
+                } else {
+                    std::erase_if(otherWindows_, [&](const auto& w) { return w.get() == safe.getComponent(); });
+                }
+            });
+        };
+        return window;
+    }
+    std::vector<std::unique_ptr<MainWindow>> otherWindows_;
     std::unique_ptr<MainWindow> mainWindow_;
     std::unique_ptr<StartupScreen> startup_;
     juce::File queuedDocument_;

@@ -27,6 +27,19 @@ class SongInformationPanel final : public juce::Component {
 public:
     using Apply = std::function<juce::Result(const ostfstudio::SongInformation&)>;
     SongInformationPanel(const ostfstudio::SongInformation& info, Apply apply) {
+        for (auto* tag : {&genres_, &moods_}) {
+            addAndMakeVisible(*tag);
+            tag->setMultiLine(true, true);
+            tag->setTooltip(TRANS("One tag per line"));
+        }
+        if (info.genres)
+            genres_.setText(info.genres->joinIntoString("\n"));
+        if (info.moods)
+            moods_.setText(info.moods->joinIntoString("\n"));
+        addAndMakeVisible(genresLabel_);
+        addAndMakeVisible(moodsLabel_);
+        genresLabel_.attachToComponent(&genres_, true);
+        moodsLabel_.attachToComponent(&moods_, true);
         title_.setText(info.title);
         subtitle_.setText(info.subtitle);
         description_.setMultiLine(true, true);
@@ -52,6 +65,13 @@ public:
         cancel_.onClick = [this] { close(); };
         apply_.onClick = [this, apply = std::move(apply)] {
             ostfstudio::SongInformation info{title_.getText(), subtitle_.getText(), description_.getText(), {}};
+            auto tags = [](const juce::TextEditor& editor) {
+                auto names = juce::StringArray::fromLines(editor.getText());
+                names.removeEmptyStrings(true);
+                return names;
+            };
+            info.genres = tags(genres_);
+            info.moods = tags(moods_);
             for (const auto& row : rows_) {
                 auto credit = row->original;
                 credit.name = row->name.getText().trim();
@@ -62,13 +82,15 @@ public:
             if (result.wasOk()) close();
             else error_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
         };
-        setSize(580, 460);
+        setSize(600, 560);
     }
     void paint(juce::Graphics& g) override { g.fillAll(juce::Colour(0xff242a31)); }
     void resized() override {
         auto r = getLocalBounds().reduced(16);
         for (auto* e : {&title_, &subtitle_, &description_})
             e->setBounds(r.removeFromTop(e == &description_ ? 60 : 32).withTrimmedLeft(94).reduced(0, 2));
+        for (auto* tag : {&genres_, &moods_})
+            tag->setBounds(r.removeFromTop(45).withTrimmedLeft(94).reduced(0, 2));
         auto heading = r.removeFromTop(34);
         add_.setBounds(heading.removeFromRight(110).reduced(0, 3));
         creditsLabel_.setBounds(heading);
@@ -107,7 +129,8 @@ private:
     void close() {
         if (auto* dialog = findParentComponentOfClass<juce::DialogWindow>()) dialog->exitModalState(0);
     }
-    juce::TextEditor title_, subtitle_, description_;
+    juce::TextEditor title_, subtitle_, description_, genres_, moods_;
+    juce::Label genresLabel_{{}, TRANS("Genres")}, moodsLabel_{{}, TRANS("Moods")};
     juce::Label titleLabel_{{}, TRANS("Song title")}, subtitleLabel_{{}, TRANS("Subtitle")},
                 descriptionLabel_{{}, TRANS("Description")}, creditsLabel_{{}, TRANS("Credits")},
                 roleLabel_{{}, TRANS("Role")}, nameLabel_{{}, TRANS("Contributor")}, error_, hint_;

@@ -121,8 +121,13 @@ public:
         return juce::SettableTooltipClient::getTooltip();
     }
 
-    void resetRange(bool drum) {
-        percussion = drum;
+    void setPitchRows(int count) {
+        count = std::clamp(count, 1, 128);
+        low = std::clamp((low + high + 1 - count) / 2, 0, 128 - count);
+        high = low + count - 1;
+    }
+    void fitPitchRange() {
+        const auto drum = percussion;
         low = drum ? 33 : 52;
         high = drum ? 54 : 70;
         if (!notes.empty()) {
@@ -130,6 +135,10 @@ public:
             low = std::max(0, limits.first->pitch - 3);
             high = std::min(127, limits.second->pitch + 3);
         }
+    }
+    void resetRange(bool drum) {
+        percussion = drum;
+        fitPitchRange();
         selection.clear();
         cancel();
     }

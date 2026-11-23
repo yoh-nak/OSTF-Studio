@@ -15,4 +15,19 @@ class ScoreView final : public juce::Component {
     class Panel;
     std::unique_ptr<Panel> panel_;
 };
-std::unique_ptr<juce::DocumentWindow> makeMediaImportWindow(std::function<void(const juce::File&)> open);
+using OpenImportedSong = std::function<void(std::unique_ptr<ostfstudio::OstfpPreview>)>;
+class ImportResultRow final : public juce::TextButton {
+  public:
+    ImportResultRow(const juce::String& label, const ostfstudio::OstfpPreview& song, int sourceIndex)
+        : TextButton(label), source(song), index(sourceIndex) {}
+    void mouseDrag(const juce::MouseEvent& e) override {
+        if (e.getDistanceFromDragStart() < 4)
+            return;
+        if (auto* host = juce::DragAndDropContainer::findParentDragContainerFor(this);
+            host && !host->isDragAndDropActive())
+            host->startDragging("ostf-import-result", this, juce::ScaledImage{}, true);
+    }
+    const ostfstudio::OstfpPreview& source;
+    const int index; // -1 is the inferred chord progression.
+};
+std::unique_ptr<juce::DocumentWindow> makeMediaImportWindow(OpenImportedSong open);

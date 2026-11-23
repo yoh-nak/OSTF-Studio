@@ -23,6 +23,8 @@ public:
     MainComponent();
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
+    OpenImportedSong onNewImportedSong;
+    void openImportedSong(std::unique_ptr<ostfstudio::OstfpPreview>);
     void displayTransportPosition(juce::int64 tick, double seconds = -1, const juce::ScrollBar* anchoredView = nullptr);
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -30,6 +32,7 @@ public:
     bool keyPressed(const juce::KeyPress&) override;
     bool keyStateChanged(bool) override;
     void focusOfChildComponentChanged(FocusChangeType) override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
@@ -63,6 +66,14 @@ private:
     juce::Rectangle<int> getWorkspace() const;
     int getArrangementHeight(int workspaceHeight) const;
     void refreshTimelineLanes();
+    std::optional<ostfstudio::TimelineLane> globalLaneAt(juce::Point<int>) const;
+    juce::int64 arrangementTickAt(int x) const;
+    void globalCommand(int command);
+    void placeResult(ImportResultRow&, std::optional<std::size_t> track, juce::int64 tick, bool replace);
+    void applyGlobalChange(ostfstudio::TimelineLane, juce::Array<juce::var> remove, juce::Array<juce::var> insert);
+    std::optional<ostfstudio::TimelineLane> selectedGlobal_, copiedLane_;
+    juce::int64 selectedGlobalTick_ = 0, copiedPpq_ = 0;
+    juce::var copiedEvent_;
     ostfstudio::ArrangementView currentArrangement() const;
     std::vector<std::size_t> displayedTrackOrder() const;
     juce::StringArray getMenuBarNames() override;
@@ -70,6 +81,7 @@ private:
     void menuItemSelected(int item, int topLevelMenuIndex) override;
     void inspectOSTF();
     void newProject();
+    void adoptProject(std::unique_ptr<ostfstudio::OstfpPreview>, const juce::String&, bool, const juce::File&);
     bool openPreview(juce::InputStream& input, const juce::String& filename, bool plainScore = false, const juce::File& sourceFolder = {});
     void editSongInformation();
     void updateDocumentLabel();
@@ -155,7 +167,10 @@ private:
     PianoInspector pianoInspector_ {pianoGrid_};
     bool blueTheme() const { return pianoInspector_.theme == pianoHarmony::Theme::studioBlue; }
     juce::Viewport pianoInspectorView_;
-    EditorDivider pianoDivider_, columnDivider_ {true};
+    EditorDivider pianoDivider_, columnDivider_{true}, parameterDivider_;
+    juce::ComboBox pitchZoom_;
+    double parameterFraction_ = 0;
+    int parameterBottom_ = 0, parameterHeight_ = 0;
     int preferredHeaderWidth_ = 487, trackHeaderWidth = 487, trackNameWidth = 172;
     double arrangementFraction_ = 0.6;
     PianoVelocityLane pianoVelocity_ {pianoGrid_};

@@ -113,6 +113,7 @@ struct SongCredit {
 struct SongInformation {
     juce::String title, subtitle, description;
     std::vector<SongCredit> credits;
+    std::optional<juce::StringArray> genres, moods;
 };
 
 struct OstfpPreview {
@@ -137,6 +138,8 @@ struct OstfpPreview {
     SongInformation songInformation() const;
     juce::Result renameTrack(std::size_t index, const juce::String& name);
     juce::Result applySongInformation(const SongInformation&);
+    juce::Result changeGlobalEvents(TimelineLane lane, const juce::Array<juce::var>& remove,
+                                    const juce::Array<juce::var>& insert, juce::MemoryBlock& before);
     juce::Result applySongMusic(const SongMusicEdit&, juce::MemoryBlock& before);
     juce::Result checkAudition(int shift, double rate) const;
     std::vector<ArrangementLane> globalLanes, trackLanes;

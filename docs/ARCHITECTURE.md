@@ -1,5 +1,9 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## Import results and editing
+
+The import panel holds a draft in memory. Opening the draft transfers ownership to a new Studio window. Dragging a result converts its source ticks through seconds into destination ticks at the drop position. Chord changes use the same schema-validated edit transaction as the global timeline editor. The backing audio files remain available for later playback and explicit project saves.
+
 ## Overall product distinction
 
 The song settings editor writes the authored key and scale to the song and edits the initial tempo and meter in the canonical timeline. Whole-score transposition and tempo scaling build a candidate score and validate it before replacing the active model. The score edit history also holds these operations. Audition transposition and tempo scaling belong to the open transport. MIDI playback and the transport display use the temporary values, while file and MIDI export use the authored score. WAV playback keeps its native sample rate.
