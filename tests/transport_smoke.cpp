@@ -1,8 +1,60 @@
 #include "ui/MainComponent.h"
 #include "ui/SongInformationPanel.h"
+#include <iostream>
 
 using namespace ostfstudio;
 namespace {
+bool checkWaveform(const juce::File& directory) {
+    // One second of silence then a left-only half-second pulse. Trim the first half-second.
+    constexpr int rate = 8000, frames = 16000;
+    juce::MemoryOutputStream bytes;
+    bytes.write("RIFF", 4); bytes.writeInt(36 + frames * 4); bytes.write("WAVEfmt ", 8);
+    bytes.writeInt(16); bytes.writeShort(1); bytes.writeShort(2); bytes.writeInt(rate);
+    bytes.writeInt(rate * 4); bytes.writeShort(4); bytes.writeShort(16);
+    bytes.write("data", 4); bytes.writeInt(frames * 4);
+    for (int i = 0; i < frames; ++i) {
+        bytes.writeShort(i >= rate && i < rate * 3 / 2 ? (i % 8 < 4 ? 26000 : -26000) : 0);
+        bytes.writeShort(0);
+    }
+    const auto file = directory.getChildFile("waveform-source.wav");
+    if (!file.replaceWithData(bytes.getData(), bytes.getDataSize())) return false;
+    ProjectAudio region{0, "pulse.wav", file, {}};
+    region.startTick = 960;
+    region.startFrame = 4000;
+    region.frameCount = 8000;
+    TempoMap clock(960);
+    clock.append(0, 120); clock.append(1920, 60);
+    AudioClipWaveforms waveforms;
+    for (bool embedded : {false, true}) {
+        if (embedded) { region.localFile = juce::File{}; region.embedded = bytes.getMemoryBlock(); }
+        waveforms.load({region});
+        if (!waveforms.available(0) || std::abs(waveforms.endTick(region, clock) - 2400) > .001) {
+            std::cerr << "Could not load the trimmed WAV at its expected length\n";
+            return false;
+        }
+        bool ready = false;
+        for (int attempt = 0; !ready && attempt < 150; ++attempt) {
+            juce::Image image(juce::Image::ARGB, 128, 48, true, juce::SoftwareImageType{});
+            { juce::Graphics g(image); waveforms.draw(g, image.getBounds(), region, clock, 960, 2880); }
+            // Sound begins at tick 1920 (x64) and the source ends at 2400 (x96).
+            ready = image.getPixelAt(78, 6).getAlpha() > 0;
+            if (image.getPixelAt(43, 6).getAlpha() || image.getPixelAt(106, 6).getAlpha()
+                || image.getPixelAt(78, 30).getAlpha()) {
+                std::cerr << "Unexpected signal outside the left-channel pulse\n";
+                return false;
+            }
+            if (!ready) juce::Thread::sleep(10);
+        }
+        if (!ready) { std::cerr << "Missing left-channel waveform\n"; return false; }
+        juce::Image zoom(juce::Image::ARGB, 128, 48, true, juce::SoftwareImageType{});
+        { juce::Graphics g(zoom); waveforms.draw(g, zoom.getBounds(), region, clock, 1920, 2400); }
+        if (zoom.getPixelAt(24, 6).getAlpha() == 0) { std::cerr << "Missing zoomed pulse\n"; return false; }
+    }
+    region.embedded.reset();
+    waveforms.load({region});
+    return !waveforms.available(0);
+}
+
 bool savePng(const juce::File& file, juce::Component& component) {
     juce::MemoryOutputStream bytes;
     return juce::PNGImageFormat().writeImageToStream(component.createComponentSnapshot(component.getLocalBounds()), bytes)
@@ -30,6 +82,7 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     std::unique_ptr<OstfpPreview> song;
     juce::FileInputStream input(fixture);
     if (dir.createDirectory().failed() || readOstfpPreview(input, song).failed()) return 1;
+    if (!checkWaveform(dir)) return 42;
     auto score = juce::JSON::parse(song->sourceScore.toString());
     auto* timeline = score["timeline"].getDynamicObject();
     auto meter = score["timeline"]["meterChanges"][0].getDynamicObject();
@@ -49,6 +102,7 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     juce::MemoryInputStream raw(text.toRawUTF8(), text.getNumBytesAsUTF8(), false);
     if (readOstfPreview(raw, song).failed()) return 2;
     if (song->clock.bpmAt(959) != 120 || song->clock.bpmAt(960) != 60
+        || song->clock.nextChangeAfter(959) != 960 || song->clock.nextChangeAfter(960)
         || std::abs(song->clock.secondsAt(1920) - 1.5) > 1e-8 || std::abs(song->clock.tickAt(1.5) - 1920) > 1e-8
         || song->contextAt(TimelineLane::key, 960) != "G major"
         || song->contextAt(TimelineLane::chord, 959).isEmpty() || song->contextAt(TimelineLane::chord, 960).isNotEmpty()
@@ -190,6 +244,16 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     main.mouseWheelMove(wheelEvent, wheel);
     if (arrangementScroll->getCurrentRangeStart() <= 4.25 || ruler->playheadBar() != clicked) return 38;
     if (!main.keyPressed(juce::KeyPress(juce::KeyPress::homeKey)) || ruler->playheadBar() != 1) return 39;
+    ruler = dynamic_cast<ArrangementRuler*>(main.findChildWithID("piano-ruler"));
+    if (!ruler || !ruler->isVisible()) return 40;
+    pianoZoom->setValue(1, juce::sendNotificationSync);
+    pianoScroll->setCurrentRangeStart(7, juce::sendNotificationSync);
+    const auto pianoRange = pianoScroll->getCurrentRange();
+    const auto half = ruler->getWidth() / 2;
+    ruler->mouseDown(pointer(half, half, true)); ruler->mouseUp(pointer(half, half, false));
+    if (std::abs(ruler->playheadBar() - 7.5) > .003 || pianoScroll->getCurrentRange() != pianoRange
+        || !arrangementScroll->getCurrentRange().contains(ruler->playheadBar()) || pianoCursorX(main) < 0) return 41;
+    home->onClick();
     main.setSize(680, 550);
     main.displayTransportPosition(960);
     if (!savePng(dir.getChildFile("transport-compact.png"), main) || pianoCursorX(main) < 0) return 16;

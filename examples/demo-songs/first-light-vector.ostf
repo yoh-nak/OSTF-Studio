@@ -24782,6 +24782,26 @@
       "id": "foley",
       "name": "Transition Sweep",
       "clips": []
+    },
+    {
+      "id": "air-shaker-loop",
+      "name": "Air Shaker Loop",
+      "clips": []
+    },
+    {
+      "id": "glass-pulse-gate",
+      "name": "Glass Pulse Gate",
+      "clips": []
+    },
+    {
+      "id": "stereo-bell-echo",
+      "name": "Stereo Bell Echo",
+      "clips": []
+    },
+    {
+      "id": "lift-handclaps",
+      "name": "Lift Handclaps",
+      "clips": []
     }
   ],
   "soundSlots": [
@@ -25074,6 +25094,106 @@
                 "enabled": true
               }
             ]
+          },
+          {
+            "id": "air-shaker-loop-strip",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": -9,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "air-shaker-loop-strip-eq",
+              "air-shaker-loop-strip-compressor"
+            ],
+            "trackId": "air-shaker-loop",
+            "outputChannelId": "bus-1",
+            "sends": [
+              {
+                "id": "air-shaker-loop-room",
+                "targetChannelId": "return-1",
+                "gainDb": -21,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
+          },
+          {
+            "id": "glass-pulse-gate-strip",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": -9,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "glass-pulse-gate-strip-eq",
+              "glass-pulse-gate-strip-compressor"
+            ],
+            "trackId": "glass-pulse-gate",
+            "outputChannelId": "bus-2",
+            "sends": [
+              {
+                "id": "glass-pulse-gate-room",
+                "targetChannelId": "return-1",
+                "gainDb": -13,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
+          },
+          {
+            "id": "stereo-bell-echo-strip",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": -9,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "stereo-bell-echo-strip-eq",
+              "stereo-bell-echo-strip-compressor"
+            ],
+            "trackId": "stereo-bell-echo",
+            "outputChannelId": "bus-2",
+            "sends": [
+              {
+                "id": "stereo-bell-echo-room",
+                "targetChannelId": "return-1",
+                "gainDb": -13,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
+          },
+          {
+            "id": "lift-handclaps-strip",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": -9,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "lift-handclaps-strip-eq",
+              "lift-handclaps-strip-compressor"
+            ],
+            "trackId": "lift-handclaps",
+            "outputChannelId": "bus-1",
+            "sends": [
+              {
+                "id": "lift-handclaps-room",
+                "targetChannelId": "return-1",
+                "gainDb": -21,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           }
         ],
         "devices": [
@@ -25310,6 +25430,110 @@
               "vendor": "OSTF Studio",
               "name": "OSTF Compressor"
             }
+          },
+          {
+            "id": "air-shaker-loop-strip-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "air-shaker-loop-strip-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
+          },
+          {
+            "id": "glass-pulse-gate-strip-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "glass-pulse-gate-strip-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
+          },
+          {
+            "id": "stereo-bell-echo-strip-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "stereo-bell-echo-strip-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
+          },
+          {
+            "id": "lift-handclaps-strip-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "lift-handclaps-strip-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
           }
         ],
         "assets": [
@@ -25323,6 +25547,50 @@
             "sampleRateHz": 24000,
             "frameCount": 48000,
             "audioChannels": 2
+          },
+          {
+            "id": "air-shaker-loop",
+            "purpose": "audioSource",
+            "uri": "assets/air-shaker-loop.wav",
+            "mediaType": "audio/wav",
+            "sha256": "14f6f65622682b5bff663e8806d23e80b050d5ac69631668d7f839172f64d1ee",
+            "byteLength": 2454304,
+            "sampleRateHz": 22050,
+            "frameCount": 613565,
+            "audioChannels": 2
+          },
+          {
+            "id": "glass-pulse-gate",
+            "purpose": "audioSource",
+            "uri": "assets/glass-pulse-gate.wav",
+            "mediaType": "audio/wav",
+            "sha256": "114dd57eda9034d19e121f8666c9eb245989b1bbaccb606652664d52b0863b29",
+            "byteLength": 4908564,
+            "sampleRateHz": 22050,
+            "frameCount": 1227130,
+            "audioChannels": 2
+          },
+          {
+            "id": "stereo-bell-echo",
+            "purpose": "audioSource",
+            "uri": "assets/stereo-bell-echo.wav",
+            "mediaType": "audio/wav",
+            "sha256": "16c26eae88c30422a918c25740e6d832fe06bd212e10c9bb0f7c2c451ddef1e2",
+            "byteLength": 2454304,
+            "sampleRateHz": 22050,
+            "frameCount": 613565,
+            "audioChannels": 2
+          },
+          {
+            "id": "lift-handclaps",
+            "purpose": "audioSource",
+            "uri": "assets/lift-handclaps.wav",
+            "mediaType": "audio/wav",
+            "sha256": "332533788943674acad55365e5010aca8f79294431d120aec6b7f2f09d878d88",
+            "byteLength": 3067872,
+            "sampleRateHz": 22050,
+            "frameCount": 766957,
+            "audioChannels": 2
           }
         ],
         "audioRegions": [
@@ -25334,6 +25602,54 @@
             "durationTicks": 4416,
             "sourceStartFrame": 0,
             "sourceFrameCount": 48000,
+            "playbackMode": "native",
+            "gainDb": 0,
+            "mute": false
+          },
+          {
+            "id": "air-shaker-loop-cue",
+            "channelId": "air-shaker-loop-strip",
+            "sourceAssetId": "air-shaker-loop",
+            "startTick": 30720,
+            "durationTicks": 61440,
+            "sourceStartFrame": 0,
+            "sourceFrameCount": 613565,
+            "playbackMode": "native",
+            "gainDb": 0,
+            "mute": false
+          },
+          {
+            "id": "glass-pulse-gate-cue",
+            "channelId": "glass-pulse-gate-strip",
+            "sourceAssetId": "glass-pulse-gate",
+            "startTick": 92160,
+            "durationTicks": 122880,
+            "sourceStartFrame": 0,
+            "sourceFrameCount": 1227130,
+            "playbackMode": "native",
+            "gainDb": 0,
+            "mute": false
+          },
+          {
+            "id": "stereo-bell-echo-cue",
+            "channelId": "stereo-bell-echo-strip",
+            "sourceAssetId": "stereo-bell-echo",
+            "startTick": 184320,
+            "durationTicks": 61440,
+            "sourceStartFrame": 0,
+            "sourceFrameCount": 613565,
+            "playbackMode": "native",
+            "gainDb": 0,
+            "mute": false
+          },
+          {
+            "id": "lift-handclaps-cue",
+            "channelId": "lift-handclaps-strip",
+            "sourceAssetId": "lift-handclaps",
+            "startTick": 276480,
+            "durationTicks": 76800,
+            "sourceStartFrame": 0,
+            "sourceFrameCount": 766957,
             "playbackMode": "native",
             "gainDb": 0,
             "mute": false

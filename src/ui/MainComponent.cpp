@@ -501,19 +501,26 @@ MainComponent::MainComponent() {
     addAndMakeVisible(rowOverlay_);
     ruler_.headerWidth = trackHeaderWidth;
     ruler_.setComponentID("arrangement-ruler");
-    ruler_.setTitle(TRANS("Bar ruler"));
-    ruler_.setTooltip(TRANS("Click to position the playhead. Drag left or right to scroll."));
-    ruler_.visibleBars = [this] { return arrangementScroll_.getCurrentRange(); };
-    ruler_.playheadBar = [this] { return project_ && project_->ticksPerBar > 0 && cursorTick_ >= 0
-        ? project_->bars.firstBar + double(cursorTick_) / project_->ticksPerBar : -1.0; };
-    ruler_.locate = [this](double fraction) {
-        if (!project_ || recordTrack_) return;
-        const auto visible = arrangementScroll_.getCurrentRange();
-        const auto bar = visible.getStart() + fraction * visible.getLength();
-        locateTransport(std::llround((bar - project_->bars.firstBar) * project_->ticksPerBar), true);
+    pianoRuler_.setComponentID("piano-ruler");
+    const auto setupRuler = [this](ArrangementRuler& ruler, juce::ScrollBar& scroll) {
+        ruler.setTitle(TRANS("Bar ruler"));
+        ruler.setTooltip(TRANS("Click to position the playhead. Drag left or right to scroll."));
+        ruler.visibleBars = [&scroll] { return scroll.getCurrentRange(); };
+        ruler.playheadBar = [this] { return project_ && project_->ticksPerBar > 0 && cursorTick_ >= 0
+            ? project_->bars.firstBar + double(cursorTick_) / project_->ticksPerBar : -1.0; };
+        ruler.locate = [this, &scroll](double fraction) {
+            if (!project_) return;
+            const auto visible = scroll.getCurrentRange();
+            const auto bar = visible.getStart() + fraction * visible.getLength();
+            locateTransport(std::llround((bar - project_->bars.firstBar) * project_->ticksPerBar), &scroll);
+        };
+        ruler.pan = [this, &scroll](double fraction) { panTimeline(scroll, fraction); };
     };
-    ruler_.pan = [this](double fraction) { panArrangement(fraction); };
+    setupRuler(ruler_, arrangementScroll_);
+    setupRuler(pianoRuler_, pianoScroll_);
+    addChildComponent(pianoRuler_);
     rowOverlay_.addAndMakeVisible(ruler_);
+    waveforms_.onChange = [this] { repaint(rowOverlay_.getBounds()); };
     verticalScroll_.setAutoHide(false);
     verticalScroll_.setComponentID("arrangement-vertical-scroll");
     verticalScroll_.setSingleStepSize(32);
@@ -779,10 +786,14 @@ void MainComponent::mouseWheelMove(const juce::MouseEvent& event, const juce::Mo
 }
 
 void MainComponent::panArrangement(double fraction) {
-    if (!arrangementScroll_.isEnabled()) return;
-    const auto range = arrangementScroll_.getCurrentRange();
-    arrangementScroll_.setCurrentRangeStart(range.getStart() + fraction * range.getLength(), juce::sendNotificationSync);
-    if (transportActive_ && arrangementScroll_.getCurrentRangeStart() != range.getStart())
+    panTimeline(arrangementScroll_, fraction);
+}
+
+void MainComponent::panTimeline(juce::ScrollBar& scroll, double fraction) {
+    if (!scroll.isEnabled()) return;
+    const auto range = scroll.getCurrentRange();
+    scroll.setCurrentRangeStart(range.getStart() + fraction * range.getLength(), juce::sendNotificationSync);
+    if (transportActive_ && scroll.getCurrentRangeStart() != range.getStart())
         deck_.follow.setToggleState(false, juce::dontSendNotification);
 }
 
@@ -1180,14 +1191,14 @@ void MainComponent::navigateTransport(TransportKey::Action action) {
     locateTransport(target);
 }
 
-void MainComponent::locateTransport(juce::int64 tick, bool keepArrangementView) {
+void MainComponent::locateTransport(juce::int64 tick, const juce::ScrollBar* anchoredView) {
     if (!project_ || recordTrack_) return;
     tick = std::clamp<juce::int64>(tick, 0, project_->playbackEndTick());
     if (transportActive_) transport_.seekToTick(tick);
-    displayTransportPosition(tick, -1, keepArrangementView);
+    displayTransportPosition(tick, -1, anchoredView);
 }
 
-void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, bool keepArrangementView) {
+void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, const juce::ScrollBar* anchoredView) {
     cursorTick_ = tick;
     if (scoreView_ && scoreView_->isVisible()) scoreView_->playbackPosition(tick);
     if (!project_) return;
@@ -1195,7 +1206,7 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, b
     if (deck_.follow.getToggleState() && tick >= 0) {
         const auto bar = 1.0 + double(tick) / project_->ticksPerBar;
         for (auto* scroll : {&arrangementScroll_, &pianoScroll_}) {
-            if (!scroll->isEnabled() || !scroll->isVisible() || (keepArrangementView && scroll == &arrangementScroll_)) continue;
+            if (!scroll->isEnabled() || !scroll->isVisible() || scroll == anchoredView) continue;
             const auto range = scroll->getCurrentRange();
             if (bar < range.getStart() || bar >= range.getEnd() - range.getLength() * 0.05)
                 scroll->setCurrentRangeStart(bar - range.getLength() * 0.15, juce::dontSendNotification);
@@ -1272,6 +1283,7 @@ bool MainComponent::openPreview(juce::InputStream& input, const juce::String& fi
         }
         if (plainScore && sourceFolder != juce::File{})
             for (auto& audio : project_->audio) audio.localFile = sourceFolder.getChildFile(audio.path);
+        waveforms_.load(project_->audio);
         refreshTimelineLanes();
         ++projectGeneration_;
         selectedTrack_.reset();
@@ -1633,6 +1645,7 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
     workspaceMode_ = WorkspaceMode::arrangement;
     auto previous = std::move(trackControls_);
     project_ = std::move(updated);
+    waveforms_.load(project_->audio);
     ++projectGeneration_;
     if (remove) {
         previous.erase(previous.begin() + static_cast<std::ptrdiff_t>(*remove));
@@ -1849,6 +1862,7 @@ void MainComponent::linkAudio(std::size_t index) {
                 safe->project_->clock.tickAt(reader->lengthInSamples / reader->sampleRate))), 1, safe->project_->playbackEndTick());
             if (entry == audio.end()) audio.push_back(std::move(linked));
             else *entry = std::move(linked);
+            safe->waveforms_.load(audio);
             safe->statusLabel_.setText(TRANS("Linked at song start: ") + file.getFileName(), juce::dontSendNotification);
             safe->repaint();
         });
@@ -2365,6 +2379,7 @@ void MainComponent::refreshEditor() {
     const bool piano = arranging && project_ && editorVisible_ && !showMixer;
     refreshPianoNotes();
     pianoGrid_.setVisible(piano && selectedTrack_.has_value());
+    pianoRuler_.setVisible(pianoGrid_.isVisible());
     if (!pianoGrid_.isVisible()) pianoVelocity_.setVisible(false);
     pianoSnap_.setVisible(piano && pianoGrid_.editable);
     pianoButton_.setToggleState(piano, juce::dontSendNotification);
@@ -2574,6 +2589,7 @@ void MainComponent::resized() {
     editor.removeFromTop(arrangerHeight + 8);
     const PianoLayout pianoLayout(editor.withTrimmedTop(30).withTrimmedBottom(timelineNavigationHeight));
     pianoGrid_.setBounds(pianoLayout.grid);
+    pianoRuler_.setBounds(pianoLayout.ruler);
     pianoVelocity_.setBounds(pianoLayout.lane.withTrimmedTop(16));
     pianoVelocity_.setVisible(pianoGrid_.isVisible() && pianoGrid_.editable && performanceLane_.getSelectedId() == 1
                               && pianoLayout.lane.getHeight() >= 20);
@@ -2762,15 +2778,23 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             const auto audio = std::find_if(project_->audio.begin(), project_->audio.end(), [i](const auto& item) { return item.track == i; });
             if (audio != project_->audio.end()) {
                 const auto start = 1.0 + static_cast<double>(audio->startTick) / project_->ticksPerBar;
-                const auto length = audio->durationTicks > 0 ? static_cast<double>(audio->durationTicks) / project_->ticksPerBar : 1.0;
-                auto clip = clipBounds({start, start + length}, area.withY(y).withHeight(rowHeight)).reduced(0, 2);
+                const bool missing = !waveforms_.available(i);
+                const auto endBar = missing && audio->durationTicks <= 0 ? start + 1
+                    : 1.0 + waveforms_.endTick(*audio, project_->clock) / project_->ticksPerBar;
+                auto clip = clipBounds({start, endBar}, area.withY(y).withHeight(rowHeight)).reduced(0, 2);
                 if (!clip.isEmpty()) {
-                    const bool missing = audio->embedded.isEmpty() && !audio->localFile.existsAsFile();
                     g.setColour(juce::Colour(missing ? 0xff754842 : 0xff386d70));
                     g.fillRoundedRectangle(clip.toFloat(), 3);
+                    auto body = clip.reduced(0, 2);
+                    const auto labelArea = missing ? body : body.removeFromTop(std::min(14, body.getHeight() / 3));
+                    if (!missing)
+                        waveforms_.draw(g, body, *audio, project_->clock,
+                                        (std::max(start, visible.start) - 1) * project_->ticksPerBar,
+                                        (std::min(endBar, visible.end) - 1) * project_->ticksPerBar);
                     g.setColour(juce::Colours::white);
                     const auto label = missing ? TRANS("Missing WAV") : audio->path.fromLastOccurrenceOf("/", false, false);
-                    g.drawFittedText(label, clip.reduced(3, 0), juce::Justification::centredLeft, 1);
+                    if (clip.getWidth() >= 25)
+                        g.drawText(label, labelArea.reduced(3, 0), juce::Justification::centredLeft);
                 }
             }
             const juce::Rectangle<int> hit(labels.getX(), y, labels.getWidth() + area.getWidth(), rowHeight);
@@ -2906,13 +2930,11 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
         for (auto tick = static_cast<juce::int64>(std::ceil(origin / step)) * step; tick < origin + length; tick += step)
             g.drawVerticalLine(juce::roundToInt(tickX(tick)), float(area.getY()), float(area.getBottom()));
     }
-    const auto barStep = std::max<juce::int64>(1, (endBar - firstBar + 7) / 8);
+    const auto barStep = std::max<juce::int64>(1, static_cast<juce::int64>((visible.end - visible.start) / (area.getWidth() < 420 ? 4 : 8)));
     for (auto bar = firstBar; bar < endBar; bar += barStep) {
         const auto x = juce::roundToInt(tickX(bar * barLength));
         g.setColour(juce::Colour(0xff526578));
         g.drawVerticalLine(x, static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
-        g.setColour(juce::Colour(muted));
-        g.drawText(juce::String(bar + 1), x + 3, ruler.getY(), 30, ruler.getHeight(), juce::Justification::centredLeft);
     }
 
     g.saveState();
@@ -2932,6 +2954,8 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
         if (cursorTick_ == project_->playbackEndTick() && visible.end == project_->bars.endBar)
             x = static_cast<float>(area.getRight() - 1);
         if (x < area.getX() || x >= area.getRight()) return;
+        // Centre the stroke on the same raster column as the ruler's playhead.
+        x = static_cast<float>(std::min(juce::roundToInt(x), area.getRight() - 1)) + .5f;
         g.setColour(juce::Colour(hardwareAmber));
         g.drawLine(x, static_cast<float>(ruler.getY()), x, static_cast<float>(bottom), 2);
         juce::Path head;

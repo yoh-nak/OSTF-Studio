@@ -54,4 +54,11 @@ OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、�
 
 「Paper Lantern Replies」の **Glass Lantern Chimes** は1小節目の2拍目、「First Light Vector」の **Transition Sweep** は8小節目の3拍目から鳴ります。各トラックをソロにし、FXのEQ／コンプレッサー、出力先のHarmonyバス、Roomリターンへのセンドを個別に確認できます。
 
-両方の効果音は生成スクリプトで合成したオリジナルのステレオWAVです。単体の `.ostf` では隣の `assets/` フォルダーを一緒に置いてください。`.ostfp` には同じ素材と、Production Sessionのオーディオリージョンに素材を対応づけるバインディングを同梱しています。
+クラブ系の2曲には、曲のテンポとコードに合わせて作ったステレオWAVも収録しています。小節番号は画面と同じ1始まりです。
+
+| 曲 | オーディオトラックを聴ける区間 |
+|---|---|
+| Relay Circuit（テクノ） | 9〜24小節の Swinging Hat Loop、37〜60小節の Foundry Toms、45〜60小節の Tape Dub Chords、69〜92小節の Warehouse Claps。45小節からはリズムバスのタムとハーモニーバスのコードが重なります。 |
+| First Light Vector（トランス） | スイープに加え、9〜24小節に Air Shaker Loop、25〜56小節に Glass Pulse Gate、49〜64小節に Stereo Bell Echo、73〜92小節に Lift Handclaps が入ります。49小節でゲート音とベルを交互にソロにすると違いを聴けます。 |
+
+ピアノロールまたはアレンジの小節ルーラーをクリックすると、その位置から試聴できます。オーディオトラックにはWAVの左右の波形が表示されます。全素材は生成スクリプトで合成したオリジナルです。単体の `.ostf` では隣の `assets/` フォルダーを一緒に置いてください。`.ostfp` には同じWAVとProduction Sessionのバインディングを同梱しています。

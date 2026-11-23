@@ -4,6 +4,8 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
+- Both bar rulers seek the shared transport using their own zoom and scroll. Audio regions draw stereo peaks from linked or embedded WAVs with source trims and tempo changes. Relay Circuit has four audio tracks; First Light Vector has five. Sample-by-sample rendering is reproducible with the demo generator. The transport smoke test checks the seek coordinates and waveform against a known pulse; the stock FX test checks both overlapping stems during playback.
+
 - The piano roll edits source MIDI notes, including mapped drum hits, by stable OSTF note ID. It supports multi-selection, copying, trimming either edge, grid nudge, velocity and bounded undo/redo. Test with `ostf_studio_piano_edits`, which exercises pointer gestures, round trips in both formats and SMF. A note referenced by vocal or other data stays in its owning clip. The chord voicing projection remains read-only.
 
 - `feature/track-actions-ui-scale` adds toolbar actions for melody, chorus, pitched, drum, audio, bus and return tracks. Right-click the name in the arrangement or mixer to duplicate a part or remove it after confirmation. Master, Cue and the derived chord voicing are fixed. Source parts can occupy 15 of the 16 playback channels. There are up to eight buses and eight returns. Existing output slot IDs remain compatible.

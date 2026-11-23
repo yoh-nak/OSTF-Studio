@@ -36,11 +36,11 @@ static int checkGallery(const juce::File& directory) {
     constexpr Expectation cases[] {
         {"neon-platforms.ostfp", 76, 8, 106.0},
         {"blue-hour-waltz.ostfp", 128, 7, 132.0},
-        {"relay-circuit.ostfp", 96, 8, 128.0},
+        {"relay-circuit.ostfp", 96, 12, 128.0},
         {"paper-lantern-replies.ostfp", 56, 9, 78.0},
         {"offset-bridges.ostfp", 0, 0, 0.0},
         {"copper-mile.ostfp", 64, 6, 116.0},
-        {"first-light-vector.ostfp", 96, 7, 138.0},
+        {"first-light-vector.ostfp", 96, 11, 138.0},
     };
     for (const auto& expected : cases) {
         juce::FileInputStream input(directory.getChildFile(expected.file));
@@ -105,14 +105,17 @@ static int checkGallery(const juce::File& directory) {
             for (std::size_t track = 0; track < project->sourceTrackCount(); ++track) {
                 const auto& plugin = project->savedMix->instruments[track];
                 if (project->trackKinds[track] == ostfstudio::TrackKind::audio) {
-                    if (plugin.isObject() || project->audio.size() != 1 || project->audio[0].track != track
-                        || authored.trackEffects[track].size() != 2 || authored.tracks[track].outputBus != 1
+                    const auto onTrack = [track](const auto& r) { return r.track == track; };
+                    const auto wav = std::find_if(project->audio.begin(), project->audio.end(), onTrack);
+                    const auto plain = std::find_if(fromScore->audio.begin(), fromScore->audio.end(), onTrack);
+                    if (plugin.isObject() || wav == project->audio.end() || plain == fromScore->audio.end()
+                        || authored.trackEffects[track].size() != 2 || authored.tracks[track].outputBus < 0
                         || authored.tracks[track].returnSends[0] <= 0 || fromScore->trackKinds[track] != ostfstudio::TrackKind::audio)
                         return 1;
-                    const auto& wav = project->audio.front();
                     juce::MemoryBlock external;
-                    if (wav.startTick <= 0 || wav.durationTicks <= 0 || wav.frameCount != 48000 || wav.embedded.isEmpty()
-                        || !directory.getChildFile(fromScore->audio.front().path).loadFileAsData(external) || external != wav.embedded) return 1;
+                    if (wav->startTick != plain->startTick || wav->durationTicks <= 0 || wav->durationTicks != plain->durationTicks
+                        || wav->frameCount != plain->frameCount || wav->frameCount <= 0 || wav->embedded.isEmpty()
+                        || !directory.getChildFile(plain->path).loadFileAsData(external) || external != wav->embedded) return 1;
                     continue;
                 }
                 const auto& events = project->programChanges[track];

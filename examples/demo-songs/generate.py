@@ -9,7 +9,7 @@ import struct
 import wave
 from copy import deepcopy
 from pathlib import Path
-from zipfile import ZipFile, ZipInfo
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 
 PPQ = 960
@@ -805,7 +805,92 @@ def sound_effect(stem):
     return output.getvalue(), rate, frames
 
 
-def production_session(song, cue=None):
+def club_stem(song, voice, start_bar, bars, bpm):
+    """Render a tempo-locked stereo part. Pitched hits follow the chord at their onset."""
+    from array import array
+    from bisect import bisect_right
+    rate = 22050
+    beat_seconds = 60 / bpm
+    frames = round(bars * 4 * beat_seconds * rate)
+    left, right = (array("f", [0]) * frames for _ in range(2))
+    trance = bpm == 138
+    rng = random.Random(930 + start_bar)
+    harmony = song["harmony"]["chords"]
+    starts = [h["start"] for h in harmony]
+    steps = {"tops": (2, 6, 9, 10, 14), "tom": (0, 3, 7, 10, 14), "dub": (2, 8, 14),
+             "gate": (0, 3, 6, 8, 11, 14), "clap": (4, 12), "bell": (2, 7, 10, 15)}[voice]
+    for bar in range(bars):
+        hits = sorted(set(steps) | ({13, 15} if bar % 4 == 3 else set()))
+        for step in hits:
+            beat = 4 * bar + step / 4 + (.025 if step % 2 and not trance else 0)
+            tick = round((4 * start_bar + beat) * PPQ)
+            chord = harmony[max(0, bisect_right(starts, tick) - 1)]["voicing"]["pitches"]
+            pitches = chord if voice in ("dub", "gate") else [chord[(bar + step) % len(chord)]]
+            freqs = [math.tau * 440 * 2 ** ((p - 69) / 12) for p in pitches]
+            onset = round(beat * beat_seconds * rate)
+            duration = {"tops": .12, "tom": .23, "dub": .37, "gate": .20, "clap": .18, "bell": .46}[voice]
+            count = min(round(duration * rate), frames - onset)
+            strength = (.70 if step % 4 else 1) * (.75 + .25 * min(1, (bar + 1) / 4))
+            pan = .16 * math.sin(step + bar / 2)
+            last_noise = 0
+            for i in range(count):
+                t = i / rate
+                if voice in ("tops", "clap"):
+                    noise = rng.uniform(-1, 1)
+                    high = (noise - last_noise) * .43
+                    last_noise = noise
+                    if voice == "clap":
+                        value = high * (.8 + .2 * math.cos(330 * t)) * math.exp(-30 * t)
+                    else:
+                        value = high * math.exp(-(30 if step % 4 == 2 else 85) * t)
+                elif voice == "tom":
+                    phase = math.tau * ((110 if step % 4 == 0 else 172) * t + 2.5 * (1 - math.exp(-28 * t)))
+                    value = .65 * math.sin(phase) * math.exp(-18 * t)
+                elif voice == "bell":
+                    phase = freqs[0] * t
+                    value = .52 * math.sin(2 * phase + 1.7 * math.exp(-12*t) * math.sin(3 * phase)) * math.exp(-8*t)
+                else:
+                    tones = sum(math.sin(f*t) + .23*math.sin(2*f*t) for f in freqs) / len(freqs)
+                    value = tones * math.exp(-(12 if voice == "dub" else 7) * t) * .65
+                sample = value * strength * min(1, i / 42, (count - i - 1) / 128)
+                left[onset + i] += sample * (1 - pan)
+                right[onset + i] += sample * (1 + pan)
+    pcm = bytearray(frames * 4)
+    delay = round(.75 * beat_seconds * rate)
+    echo = .27 if voice in ("dub", "bell", "gate") else .055
+    for i in range(frames):
+        fade = min(1, (frames - i - 1) / 512)
+        l = left[i] + (echo * right[i-delay] if i >= delay else 0)
+        r = right[i] + (echo * left[i-2*delay] if i >= 2*delay else 0)
+        struct.pack_into("<hh", pcm, i * 4, *(round(32767 * fade * max(-1, min(1, v))) for v in (l, r)))
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setparams((2, 2, rate, frames, "NONE", "not compressed"))
+        wav.writeframes(pcm)
+    return output.getvalue(), rate, frames
+
+
+def audio_parts(stem, song):
+    if stem == "paper-lantern-replies":
+        yield "foley", "Glass Lantern Chimes", "glass-lantern-chimes", PPQ, 78, "bus-2", sound_effect(stem)
+    if stem not in ("relay-circuit", "first-light-vector"):
+        return
+    if stem == "relay-circuit":
+        bpm = 128
+        parts = [("Swinging Hat Loop", "tops", 8, 16), ("Foundry Toms", "tom", 36, 24),
+                 ("Tape Dub Chords", "dub", 44, 16), ("Warehouse Claps", "clap", 68, 24)]
+    else:
+        bpm = 138
+        yield "foley", "Transition Sweep", "transition-sweep", 30 * PPQ, bpm, "bus-2", sound_effect(stem)
+        parts = [("Air Shaker Loop", "tops", 8, 16), ("Glass Pulse Gate", "gate", 24, 32),
+                 ("Stereo Bell Echo", "bell", 48, 16), ("Lift Handclaps", "clap", 72, 20)]
+    for name, voice, bar, bars in parts:
+        identifier = name.lower().replace(" ", "-")
+        bus = "bus-2" if voice in ("dub", "gate", "bell") else "bus-1"
+        yield identifier, name, identifier, bar * 4 * PPQ, bpm, bus, club_stem(song, voice, bar, bars, bpm)
+
+
+def production_session(song, cues):
     programs = {
         "hook": 27, "horn": 65, "arp": 81, "voice-track": 53, "backing": 52, "keys": 4, "bass": 33,
         "answer": 5, "nylon": 24, "strings": 48, "comp": 28, "brass": 61, "pad": 89, "vibes": 11,
@@ -890,18 +975,18 @@ def production_session(song, cue=None):
         insert(strip, *inserts)
         channels.append(strip)
     production = {"channels": channels, "devices": devices}
-    if cue:
-        name, asset, start, length = cue
-        song["tracks"].append({"id": "foley", "name": name, "clips": []})
-        strip = channel("foley-strip", "track", trackId="foley", gainDb=-7, pan=.18, outputChannelId="bus-2",
-                        sends=[{"id": "foley-room", "targetChannelId": "return-1", "gainDb": -13,
+    for identifier, name, asset, start, length, bus in cues:
+        song["tracks"].append({"id": identifier, "name": name, "clips": []})
+        strip = channel(identifier + "-strip", "track", trackId=identifier, gainDb=-7 if identifier == "foley" else -9,
+                        pan=.18 if identifier == "foley" else 0, outputChannelId=bus,
+                        sends=[{"id": identifier + "-room", "targetChannelId": "return-1", "gainDb": -13 if bus == "bus-2" else -21,
                                 "preFader": False, "enabled": True}])
         insert(strip, "EQ", "Compressor")
         channels.append(strip)
-        production["assets"] = [asset]
-        production["audioRegions"] = [{"id": "foley-cue", "channelId": strip["id"], "sourceAssetId": asset["id"],
+        production.setdefault("assets", []).append(asset)
+        production.setdefault("audioRegions", []).append({"id": identifier + "-cue", "channelId": strip["id"], "sourceAssetId": asset["id"],
             "startTick": start, "durationTicks": length, "sourceStartFrame": 0,
-            "sourceFrameCount": asset["frameCount"], "playbackMode": "native", "gainDb": 0, "mute": False}]
+            "sourceFrameCount": asset["frameCount"], "playbackMode": "native", "gainDb": 0, "mute": False})
     return production
 
 
@@ -912,21 +997,17 @@ def json_bytes(document):
 def write_song(stem, document):
     vary_harmonic_rhythm(document)
     media = []
-    cue = None
-    cues = {"paper-lantern-replies": ("Glass Lantern Chimes", "glass-lantern-chimes", PPQ, 78),
-            "first-light-vector": ("Transition Sweep", "transition-sweep", 30 * PPQ, 138)}
-    if stem in cues:
-        title, filename, start, bpm = cues[stem]
-        wav, rate, frames = sound_effect(stem)
+    cues = []
+    for identifier, title, filename, start, bpm, bus, (wav, rate, frames) in audio_parts(stem, document):
         path = f"assets/{filename}.wav"
         asset = {"id": filename, "purpose": "audioSource", "uri": path, "mediaType": "audio/wav",
                  "sha256": hashlib.sha256(wav).hexdigest(), "byteLength": len(wav), "sampleRateHz": rate,
                  "frameCount": frames, "audioChannels": 2}
-        cue = title, asset, start, round(frames * bpm * PPQ / (rate * 60))
+        cues.append((identifier, title, asset, start, round(frames * bpm * PPQ / (rate * 60)), bus))
         (DESTINATION / path).parent.mkdir(exist_ok=True)
         (DESTINATION / path).write_bytes(wav)
         media.append((path, wav))
-    production = production_session(document, cue)
+    production = production_session(document, cues)
     document.setdefault("extensions", {})["org.ostf.studio"] = {
         "version": "1.0", "status": "current", "dependencies": {"scope": "document"}, "data": production,
     }
@@ -943,15 +1024,19 @@ def write_song(stem, document):
                 "documents": [{"id": "studio-production", "role": "productionSession", "path": session_path,
                                "family": "OSTF-Production-Session", "version": "0.3.0",
                                "sha256": hashlib.sha256(session).hexdigest()}]}
-    if cue:
-        manifest["assets"].append({"id": "packed-foley", "path": path, "purpose": asset["purpose"],
-                                   "mediaType": asset["mediaType"], "sha256": asset["sha256"], "sizeBytes": len(wav)})
+    for identifier, _, asset, _, _, _ in cues:
+        packed = "packed-" + identifier
+        manifest["assets"].append({"id": packed, "path": asset["uri"], "purpose": asset["purpose"],
+                                   "mediaType": asset["mediaType"], "sha256": asset["sha256"], "sizeBytes": asset["byteLength"]})
         manifest["bindings"].append({"resourceKind": "productionAsset", "resourceId": asset["id"],
-                                     "documentPath": session_path, "assetId": "packed-foley"})
+                                     "documentPath": session_path, "assetId": packed})
     with ZipFile(DESTINATION / f"{stem}.ostfp", "w") as archive:
         for path, payload in (("mimetype", b"application/vnd.ostf-project+zip"),
                               ("manifest.json", json_bytes(manifest)), ("score/song.ostf", data), (session_path, session), *media):
-            archive.writestr(ZipInfo(path), payload)
+            info = ZipInfo(path)
+            if path.endswith(".wav") and len(payload) > 200000:
+                info.compress_type = ZIP_DEFLATED
+            archive.writestr(info, payload)
 
 
 if __name__ == "__main__":

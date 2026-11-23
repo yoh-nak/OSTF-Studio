@@ -8,6 +8,7 @@
 #include "ui/PreviewTransport.h"
 #include "ui/ViewButton.h"
 #include "ui/ArrangementRuler.h"
+#include "ui/AudioClipWaveforms.h"
 #include "ui/PianoNoteGrid.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
@@ -19,7 +20,7 @@ public:
     MainComponent();
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
-    void displayTransportPosition(juce::int64 tick, double seconds = -1, bool keepArrangementView = false);
+    void displayTransportPosition(juce::int64 tick, double seconds = -1, const juce::ScrollBar* anchoredView = nullptr);
     void paint(juce::Graphics& g) override;
     void resized() override;
     bool keyPressed(const juce::KeyPress&) override;
@@ -49,8 +50,9 @@ private:
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
     void stopTransport();
     void navigateTransport(TransportKey::Action);
-    void locateTransport(juce::int64 tick, bool keepArrangementView = false);
+    void locateTransport(juce::int64 tick, const juce::ScrollBar* anchoredView = nullptr);
     void panArrangement(double fraction);
+    void panTimeline(juce::ScrollBar&, double fraction);
     void showShortcutList();
     void updateTransportMix();
     void togglePluginBrowser();
@@ -176,7 +178,8 @@ private:
     bool mixedHeights_ = false;
     juce::ScrollBar arrangementScroll_ {false}, pianoScroll_ {false};
     juce::Component rowOverlay_;
-    ArrangementRuler ruler_;
+    ArrangementRuler ruler_, pianoRuler_;
+    AudioClipWaveforms waveforms_;
     bool spaceHeld_ = false;
     juce::ScrollBar verticalScroll_ {true};
     juce::StringArray performanceLaneNames_;

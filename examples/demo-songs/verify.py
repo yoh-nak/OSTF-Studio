@@ -29,11 +29,15 @@ def verify(path, spec, schemas, catalog):
         assert hashlib.sha256(score_bytes).hexdigest() == session["score"]["sha256"] == manifest["score"]["sha256"]
         assert score["extensions"]["org.ostf.studio"]["data"] == {k: v for k, v in session.items()
             if k not in ("profile", "profileVersion", "score")}
-        if path.stem in ("paper-lantern-replies", "first-light-vector"):
-            source, = session["assets"]
-            region, = session["audioRegions"]
-            asset, = manifest["assets"]
-            binding, = manifest["bindings"]
+        regions = session.get("audioRegions", [])
+        count = {"relay-circuit": 4, "first-light-vector": 5, "paper-lantern-replies": 1}.get(path.stem, 0)
+        assert len(regions) == len(manifest["assets"]) == len(manifest["bindings"]) == len(session.get("assets", [])) == count
+        audio_strips = {r["channelId"] for r in regions}
+        assert len(audio_strips) == count
+        for region in regions:
+            source, = [a for a in session["assets"] if a["id"] == region["sourceAssetId"]]
+            binding, = [b for b in manifest["bindings"] if b["resourceId"] == source["id"]]
+            asset, = [a for a in manifest["assets"] if a["id"] == binding["assetId"]]
             assert binding == {"resourceKind": "productionAsset", "documentPath": document["path"],
                                "resourceId": source["id"], "assetId": asset["id"]}
             wav = package.read(asset["path"])
@@ -45,8 +49,16 @@ def verify(path, spec, schemas, catalog):
                     source["sampleRateHz"], source["audioChannels"], region["sourceFrameCount"])
                 assert any(audio.readframes(audio.getnframes()))
             strip, = [c for c in session["channels"] if c["id"] == region["channelId"]]
-            assert strip["outputChannelId"] == "bus-2" and strip["sends"][0]["targetChannelId"] == "return-1"
+            assert strip["outputChannelId"] in ("bus-1", "bus-2") and strip["sends"][0]["targetChannelId"] == "return-1"
             assert len(strip["deviceIds"]) == 2
+        if count >= 4:
+            bar = score["ppq"] * 4
+            long_stems = [r for r in regions if r["durationTicks"] >= 16 * bar]
+            assert len(long_stems) == 4
+            assert any(min(a["startTick"] + a["durationTicks"], b["startTick"] + b["durationTicks"])
+                       - max(a["startTick"], b["startTick"]) >= 8 * bar
+                       for i, a in enumerate(long_stems) for b in long_stems[i+1:])
+            assert {c["outputChannelId"] for c in session["channels"] if c["id"] in audio_strips} == {"bus-1", "bus-2"}
     channels = {c["id"]: c for c in session["channels"]}
     devices = {d["id"]: d for d in session["devices"]}
     assert len(channels) == len(session["channels"]) and len(devices) == len(session["devices"])
@@ -57,7 +69,7 @@ def verify(path, spec, schemas, catalog):
     used = set()
     for c in channels.values():
         chain = [devices[k] for k in c["deviceIds"]]
-        if c["kind"] == "track" and c["trackId"] != "foley":
+        if c["kind"] == "track" and c["id"] not in audio_strips:
             gm, *chain = chain
             assert gm["role"] == "instrument" and gm["plugin"]["name"] == "OSTF GM Sound Module"
         for d in chain:
@@ -90,7 +102,7 @@ def verify(path, spec, schemas, catalog):
     sends = [s for c in tracks for s in c.get("sends", [])]
     assert len(sends) >= 2 and all(s["enabled"] and not s["preFader"] and s["targetChannelId"] == room["id"]
                                    and s["gainDb"] < 0 for s in sends)
-    print(f"{path.stem}: {len(tracks)} tracks, {len(assigned) - len(tracks)} inserts, {len(sends)} sends")
+    print(f"{path.stem}: {len(tracks)} tracks ({count} audio), {len(assigned) - len(tracks) + count} inserts, {len(sends)} sends")
     return used
 
 

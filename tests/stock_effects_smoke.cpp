@@ -224,5 +224,28 @@ int checkStockEffects(const juce::StringArray& args) {
         || cuePeak(at, false, false, false, false, 0, true) != 0
         || cuePeak(at, false, false, false, true, 0, true) <= .00001f
         || std::abs(cuePeak(at, false, false, true, false, 0, true) - dry) < .00001f) return 31;
+    // Seek into the overlap, with only the authored audio tracks feeding the two buses.
+    for (const auto* file : {"relay-circuit.ostfp", "first-light-vector.ostfp"}) {
+        juce::FileInputStream source(juce::File(args[3]).getSiblingFile(file));
+        std::unique_ptr<ostfstudio::OstfpPreview> club;
+        if (ostfstudio::readOstfpPreview(source, club).failed() || !club->savedMix) return 39;
+        PreviewTransport playback;
+        playback.setOutputMix(club->savedMix->routing);
+        for (const auto& clip : club->audio)
+            playback.setChannelMix(clip.track, club->savedMix->tracks[clip.track], true, 0);
+        if (playback.preparePlayback(*club, {}, {}, 48000, 256).failed()) return 40;
+        const auto tick = club->audio[club->audio.size() - 2].startTick;
+        playback.seekToTick(tick);
+        float master = 0;
+        for (int block = 0; block < 120; ++block) {
+            playback.renderBlock(audio.getArrayOfWritePointers(), 2, 256);
+            master = std::max(master, audio.getMagnitude(0, 0, 256));
+        }
+        const auto meters = playback.takeMeters();
+        const auto sounding = std::count_if(club->audio.begin(), club->audio.end(), [&](const auto& region) {
+            return meters.tracks[region.track][0] > .001f;
+        });
+        if (master <= .001f || sounding != 2) return 41;
+    }
     return 0;
 }

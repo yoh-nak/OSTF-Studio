@@ -24976,6 +24976,26 @@
         "mode": "singleChannel",
         "channel": 8
       }
+    },
+    {
+      "id": "swinging-hat-loop",
+      "name": "Swinging Hat Loop",
+      "clips": []
+    },
+    {
+      "id": "foundry-toms",
+      "name": "Foundry Toms",
+      "clips": []
+    },
+    {
+      "id": "tape-dub-chords",
+      "name": "Tape Dub Chords",
+      "clips": []
+    },
+    {
+      "id": "warehouse-claps",
+      "name": "Warehouse Claps",
+      "clips": []
     }
   ],
   "soundSlots": [
@@ -25284,6 +25304,106 @@
                 "enabled": true
               }
             ]
+          },
+          {
+            "id": "swinging-hat-loop-strip",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": -9,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "swinging-hat-loop-strip-eq",
+              "swinging-hat-loop-strip-compressor"
+            ],
+            "trackId": "swinging-hat-loop",
+            "outputChannelId": "bus-1",
+            "sends": [
+              {
+                "id": "swinging-hat-loop-room",
+                "targetChannelId": "return-1",
+                "gainDb": -21,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
+          },
+          {
+            "id": "foundry-toms-strip",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": -9,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "foundry-toms-strip-eq",
+              "foundry-toms-strip-compressor"
+            ],
+            "trackId": "foundry-toms",
+            "outputChannelId": "bus-1",
+            "sends": [
+              {
+                "id": "foundry-toms-room",
+                "targetChannelId": "return-1",
+                "gainDb": -21,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
+          },
+          {
+            "id": "tape-dub-chords-strip",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": -9,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "tape-dub-chords-strip-eq",
+              "tape-dub-chords-strip-compressor"
+            ],
+            "trackId": "tape-dub-chords",
+            "outputChannelId": "bus-2",
+            "sends": [
+              {
+                "id": "tape-dub-chords-room",
+                "targetChannelId": "return-1",
+                "gainDb": -13,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
+          },
+          {
+            "id": "warehouse-claps-strip",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": -9,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [
+              "warehouse-claps-strip-eq",
+              "warehouse-claps-strip-compressor"
+            ],
+            "trackId": "warehouse-claps",
+            "outputChannelId": "bus-1",
+            "sends": [
+              {
+                "id": "warehouse-claps-room",
+                "targetChannelId": "return-1",
+                "gainDb": -21,
+                "preFader": false,
+                "enabled": true
+              }
+            ]
           }
         ],
         "devices": [
@@ -25546,6 +25666,206 @@
               "vendor": "OSTF Studio",
               "name": "OSTF Flanger"
             }
+          },
+          {
+            "id": "swinging-hat-loop-strip-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "swinging-hat-loop-strip-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
+          },
+          {
+            "id": "foundry-toms-strip-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "foundry-toms-strip-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
+          },
+          {
+            "id": "tape-dub-chords-strip-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "tape-dub-chords-strip-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
+          },
+          {
+            "id": "warehouse-claps-strip-eq",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "vendor": "OSTF Studio",
+              "name": "OSTF EQ"
+            }
+          },
+          {
+            "id": "warehouse-claps-strip-compressor",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Compressor"
+            }
+          }
+        ],
+        "assets": [
+          {
+            "id": "swinging-hat-loop",
+            "purpose": "audioSource",
+            "uri": "assets/swinging-hat-loop.wav",
+            "mediaType": "audio/wav",
+            "sha256": "e0f3989de1c090a6fefc3ba1b62ac45c2d2d5fcfb7bb80091166ce0c75de58a0",
+            "byteLength": 2646044,
+            "sampleRateHz": 22050,
+            "frameCount": 661500,
+            "audioChannels": 2
+          },
+          {
+            "id": "foundry-toms",
+            "purpose": "audioSource",
+            "uri": "assets/foundry-toms.wav",
+            "mediaType": "audio/wav",
+            "sha256": "289b8196d900b82190e11fbb98824191bc15ad9d683774a1c02a28518607983f",
+            "byteLength": 3969044,
+            "sampleRateHz": 22050,
+            "frameCount": 992250,
+            "audioChannels": 2
+          },
+          {
+            "id": "tape-dub-chords",
+            "purpose": "audioSource",
+            "uri": "assets/tape-dub-chords.wav",
+            "mediaType": "audio/wav",
+            "sha256": "828f099c36c9744048fc46f3ad42e86c2a36ba2248f62825c9575fa6c301544a",
+            "byteLength": 2646044,
+            "sampleRateHz": 22050,
+            "frameCount": 661500,
+            "audioChannels": 2
+          },
+          {
+            "id": "warehouse-claps",
+            "purpose": "audioSource",
+            "uri": "assets/warehouse-claps.wav",
+            "mediaType": "audio/wav",
+            "sha256": "aea5d70a3d913136261b7e1a0eeaa94c0102a8c16b04b1206f9c0cbe4a8a6bf7",
+            "byteLength": 3969044,
+            "sampleRateHz": 22050,
+            "frameCount": 992250,
+            "audioChannels": 2
+          }
+        ],
+        "audioRegions": [
+          {
+            "id": "swinging-hat-loop-cue",
+            "channelId": "swinging-hat-loop-strip",
+            "sourceAssetId": "swinging-hat-loop",
+            "startTick": 30720,
+            "durationTicks": 61440,
+            "sourceStartFrame": 0,
+            "sourceFrameCount": 661500,
+            "playbackMode": "native",
+            "gainDb": 0,
+            "mute": false
+          },
+          {
+            "id": "foundry-toms-cue",
+            "channelId": "foundry-toms-strip",
+            "sourceAssetId": "foundry-toms",
+            "startTick": 138240,
+            "durationTicks": 92160,
+            "sourceStartFrame": 0,
+            "sourceFrameCount": 992250,
+            "playbackMode": "native",
+            "gainDb": 0,
+            "mute": false
+          },
+          {
+            "id": "tape-dub-chords-cue",
+            "channelId": "tape-dub-chords-strip",
+            "sourceAssetId": "tape-dub-chords",
+            "startTick": 168960,
+            "durationTicks": 61440,
+            "sourceStartFrame": 0,
+            "sourceFrameCount": 661500,
+            "playbackMode": "native",
+            "gainDb": 0,
+            "mute": false
+          },
+          {
+            "id": "warehouse-claps-cue",
+            "channelId": "warehouse-claps-strip",
+            "sourceAssetId": "warehouse-claps",
+            "startTick": 261120,
+            "durationTicks": 92160,
+            "sourceStartFrame": 0,
+            "sourceFrameCount": 992250,
+            "playbackMode": "native",
+            "gainDb": 0,
+            "mute": false
           }
         ]
       }
