@@ -1,4 +1,5 @@
 #include "ui/MediaImport.h"
+#include "ui/LocalStemAnalysis.h"
 #include "ui/GlobalTimelineEdit.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <map>
@@ -24,6 +25,7 @@ struct ImportSong {
     int ppq = 480, beats = 4, beatType = 4, count = 0;
     Tick length = 1;
     std::map<Tick, double> tempos{{0, 120.0}};
+    std::map<Tick, std::pair<int, int>> meters{{0, {4, 4}}};
     std::set<int> drums;
     std::vector<Part> parts;
 };
@@ -112,7 +114,7 @@ juce::Result detectTriads(juce::AudioFormatReader& reader, int ppq, List& result
 
 // YIN's first dip in the normalised difference function estimates one fundamental.
 // Limit the search to the tested melodic range and reject unvoiced/quiet frames.
-int fundamental(const float* samples) {
+int fundamental(const float *samples, int rate) {
     constexpr int window = 256, maxLag = 115;
     float power = 0;
     for (int i = 0; i < window; ++i)
@@ -133,16 +135,16 @@ int fundamental(const float* samples) {
             const float a = difference[lag - 2], b = difference[lag - 1], c = difference[lag];
             const float curve = a - 2 * b + c;
             const double refined = lag - 1 + (curve > 0.000001f ? 0.5f * (a - c) / curve : 0.f);
-            return juce::roundToInt(69.0 + 12.0 * std::log2(8000.0 / (refined * 440.0)));
+            return juce::roundToInt(69.0 + 12.0 * std::log2(rate / (refined * 440.0)));
         }
     }
     return -1;
 }
-juce::Result transcribe(juce::AudioFormatReader& reader, ImportSong& song) {
-    if (reader.lengthInSamples / reader.sampleRate > 120.0)
+juce::Result transcribe(juce::AudioFormatReader &reader, ImportSong &song, bool boundedSolo = true, int rate = 8000) {
+    if (boundedSolo && reader.lengthInSamples / reader.sampleRate > 120.0)
         return fail("Use up to two minutes of isolated melody for transcription.");
-    // Block-average to 8 kHz. Keep one short mono analysis buffer regardless of source rate.
-    const auto size = static_cast<std::size_t>(std::ceil(reader.lengthInSamples * 8000.0 / reader.sampleRate));
+    // Block-average at the voice or bass analysis rate. Keep one short mono analysis buffer regardless of source rate.
+    const auto size = static_cast<std::size_t>(std::ceil(reader.lengthInSamples * double(rate) / reader.sampleRate));
     std::vector<float> mono(size, 0.f);
     juce::AudioBuffer<float> block(static_cast<int>(reader.numChannels), 4096);
     for (Tick pos = 0; pos < reader.lengthInSamples;) {
@@ -152,8 +154,8 @@ juce::Result transcribe(juce::AudioFormatReader& reader, ImportSong& song) {
         const int channel =
             reader.numChannels == 2 && block.getRMSLevel(1, 0, count) > block.getRMSLevel(0, 0, count) ? 1 : 0;
         for (int i = 0; i < count; ++i) {
-            const auto j = static_cast<std::size_t>((pos + i) * 8000.0 / reader.sampleRate);
-            mono[j] += block.getSample(channel, i) * static_cast<float>(8000.0 / reader.sampleRate);
+            const auto j = static_cast<std::size_t>((pos + i) * double(rate) / reader.sampleRate);
+            mono[j] += block.getSample(channel, i) * static_cast<float>(double(rate) / reader.sampleRate);
         }
         pos += count;
     }
@@ -164,7 +166,7 @@ juce::Result transcribe(juce::AudioFormatReader& reader, ImportSong& song) {
     auto change = [&](int pitch, std::size_t at) {
         if (pitch == active)
             return;
-        if (active >= 0 && at >= start + 480) {
+        if (active >= 0 && at >= start + rate * .06) {
             const Tick first = static_cast<Tick>(std::llround(start * 2.0 * song.ppq / 8000));
             const Tick end = static_cast<Tick>(std::llround(at * 2.0 * song.ppq / 8000));
             melody.notes.add(obj({{"id", "draft-" + juce::String(++song.count)},
@@ -175,10 +177,10 @@ juce::Result transcribe(juce::AudioFormatReader& reader, ImportSong& song) {
         active = pitch;
         start = at;
     };
-    for (std::size_t i = 0; i + 371 <= mono.size(); i += 80)
-        change(fundamental(mono.data() + i), i + 128);
+    for (std::size_t i = 0; i + 371 <= mono.size(); i += rate / 100)
+        change(fundamental(mono.data() + i, rate), i + 128);
     change(-1, mono.size());
-    if (melody.notes.isEmpty())
+    if (boundedSolo && melody.notes.isEmpty())
         return fail("No stable melody detected. Choose a single-note recording or use WAV reference.");
     song.parts.push_back(std::move(melody));
     return juce::Result::ok();
@@ -192,7 +194,7 @@ juce::Result readMidi(const juce::File& source, ImportSong& song) {
         return fail("Choose a PPQ-based MIDI format 0 or 1 file.");
     song.ppq = file.getTimeFormat();
     song.length = std::max<Tick>(1, static_cast<Tick>(file.getLastTimestamp()));
-    std::map<Tick, std::pair<int, int>> meters;
+    auto &meters = song.meters;
     for (int tr = 0; tr < file.getNumTracks(); ++tr) {
         const auto* seq = file.getTrack(tr);
         juce::String name;
@@ -249,9 +251,6 @@ juce::Result readMidi(const juce::File& source, ImportSong& song) {
         return fail("Studio can open up to fifteen source tracks.");
     if (meters.count(0))
         std::tie(song.beats, song.beatType) = meters.at(0);
-    for (const auto& [tick, meter] : meters)
-        if (meter != std::pair{song.beats, song.beatType})
-            return fail("Changing meter is outside the current Studio import range.");
     return juce::Result::ok();
 }
 } // namespace
@@ -311,7 +310,10 @@ juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpP
     const Tick duration = ((song.length + bar - 1) / bar) * bar;
     if (duration > 256 * bar)
         return fail("Studio can open up to 256 bars.");
-    List tracks, slots, tempos;
+    List tracks, slots, tempos, meters;
+    for (const auto &[at, m] : song.meters)
+        if (at < duration)
+            meters.add(obj({{"at", at}, {"numerator", m.first}, {"denominator", m.second}}));
     for (auto& p : song.parts) {
         auto id = "track-" + juce::String(tracks.size() + 1);
         List clips;
@@ -335,14 +337,13 @@ juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpP
              {"version", "5.0.0"},
              {"ppq", song.ppq},
              {"song", obj({{"title", source.getFileNameWithoutExtension()}})},
-             {"timeline",
-              obj({{"duration", duration},
-                   {"sections", List{obj({{"id", "section-1"},
-                                          {"name", source.getFileNameWithoutExtension()},
-                                          {"start", 0},
-                                          {"duration", duration}})}},
-                   {"meterChanges", List{obj({{"at", 0}, {"numerator", song.beats}, {"denominator", song.beatType}})}},
-                   {"tempoChanges", tempos}})},
+             {"timeline", obj({{"duration", duration},
+                               {"sections", List{obj({{"id", "section-1"},
+                                                      {"name", source.getFileNameWithoutExtension()},
+                                                      {"start", 0},
+                                                      {"duration", duration}})}},
+                               {"meterChanges", meters},
+                               {"tempoChanges", tempos}})},
              {"harmony", obj({{"chords", chordEvents}, {"scales", List{}}})},
              {"tracks", tracks},
              {"soundSlots", slots},
@@ -427,6 +428,180 @@ juce::Result separateStemImport(const juce::File& wav, std::unique_ptr<OstfpPrev
                              summary);
 }
 
+namespace {
+const std::array<juce::String, 4> stemNames{"drums", "bass", "other", "vocals"};
+
+void draftDrumHits(juce::AudioFormatReader &reader, ImportSong &song, List &notes) {
+    const int hop = std::max(1, juce::roundToInt(reader.sampleRate * .01));
+    juce::AudioBuffer<float> block(int(reader.numChannels), hop);
+    double floor = 0;
+    Tick last = -1000;
+    for (Tick frame = 0; frame < reader.lengthInSamples; frame += hop) {
+        const int n = int(std::min<Tick>(hop, reader.lengthInSamples - frame));
+        if (!reader.read(&block, 0, n, frame, true, true))
+            break;
+        int channel = block.getNumChannels() == 2 && block.getRMSLevel(1, 0, n) > block.getRMSLevel(0, 0, n) ? 1 : 0;
+        const double level = block.getRMSLevel(channel, 0, n);
+        const Tick tick = std::llround(frame * 2. * song.ppq / reader.sampleRate);
+        if (level > std::max(.009, floor * 2.3) && tick - last >= song.ppq / 12) {
+            int crossings = 0;
+            const auto *x = block.getReadPointer(channel);
+            for (int j = 1; j < n; ++j)
+                if ((x[j] > 0) != (x[j - 1] > 0))
+                    ++crossings;
+            const double frequency = crossings * reader.sampleRate / (2 * n);
+            const int pitch = frequency < 230 ? 36 : frequency > 2400 ? 42 : 38;
+            song.drums.insert(pitch);
+            notes.add(obj({{"id", "hit-" + juce::String(++song.count)},
+                           {"start", tick},
+                           {"duration", std::max<Tick>(1, std::min<Tick>(song.ppq / 16, song.length - tick))},
+                           {"velocity", std::clamp(juce::roundToInt(127 * std::sqrt(level)), 1, 127)},
+                           {"soundSlotId", "gm-" + juce::String(pitch)}}));
+            last = tick;
+        }
+        floor = .78 * floor + .22 * level;
+    }
+}
+} // namespace
+
+juce::Result analyseImportParts(const juce::File &file, bool useDemucs, std::unique_ptr<OstfpPreview> &waveParts,
+                                std::unique_ptr<OstfpPreview> &noteParts, juce::String &summary) {
+    if (file.hasFileExtension("mid;midi") && !file.isDirectory()) {
+        auto result = prepareMediaImport(file, waveParts, summary);
+        if (result.wasOk())
+            noteParts.reset();
+        return result;
+    }
+    const bool folder = file.isDirectory();
+    juce::String info;
+    std::unique_ptr<OstfpPreview> base, aligned;
+    const auto reference = folder ? file.getChildFile("other.wav") : file;
+    if (auto r = prepareMediaImport(reference, base, info, false, true); r.failed())
+        return r;
+    auto score = juce::JSON::parse(base->sourceScore.toString());
+    score["song"].getDynamicObject()->setProperty("title", file.getFileNameWithoutExtension());
+    score["timeline"]["sections"][0].getDynamicObject()->setProperty("name", file.getFileNameWithoutExtension());
+    juce::WavAudioFormat wav;
+    if (folder || useDemucs) {
+        auto r = folder ? prepareStemImport(file, aligned, info) : separateStemImport(file, aligned, info);
+        if (r.failed())
+            return r;
+    } else {
+        std::unique_ptr<juce::AudioFormatReader> reader(
+            wav.createReaderFor(reference.createInputStream().release(), true));
+        std::array<juce::MemoryBlock, 4> encoded;
+        if (!reader)
+            return fail("Could not read WAV samples.");
+        if (auto r = estimateStemAudio(*reader, encoded); r.failed())
+            return r;
+        aligned = std::move(base);
+        const auto region = aligned->audio.front();
+        aligned->audio.clear();
+        for (size_t i = 0; i < encoded.size(); ++i) {
+            auto part = region;
+            part.path = stemNames[i] + ".wav";
+            part.track = i;
+            part.localFile = juce::File{};
+            part.embedded = std::move(encoded[i]);
+            aligned->audio.push_back(std::move(part));
+        }
+    }
+    const Tick duration = score["timeline"]["duration"];
+    List audioTracks, midiTracks, slots;
+    ImportSong transcription;
+    transcription.ppq = int(score["ppq"]);
+    transcription.length = duration;
+    for (size_t i = 0; i < stemNames.size(); ++i) {
+        const auto &part = aligned->audio[i];
+        std::unique_ptr<juce::InputStream> stream;
+        if (!part.embedded.isEmpty())
+            stream = std::make_unique<juce::MemoryInputStream>(part.embedded, false);
+        else
+            stream = part.localFile.createInputStream();
+        if (!stream)
+            return fail("Could not read WAV samples.");
+        std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(stream.release(), true));
+        if (!reader)
+            return fail("Could not read WAV samples.");
+        const auto &name = stemNames[i];
+        auto track = obj({{"id", "stem-" + name}, {"name", name}, {"trackType", "melodic"}, {"clips", List{}}});
+        audioTracks.add(track.clone());
+        track.getDynamicObject()->setProperty("id","midi-"+name);
+        List notes;
+        if (i == 0) {
+            draftDrumHits(*reader, transcription, notes);
+            track.getDynamicObject()->setProperty("trackType", "drum");
+        } else if (auto r = transcribe(*reader, transcription, false, i == 1 ? 4000 : 8000); r.wasOk()) {
+            notes = std::move(transcription.parts.back().notes);
+            transcription.parts.pop_back();
+        } else
+            return r;
+        track.getDynamicObject()->setProperty("midi",
+                                              obj({{"mode", "singleChannel"}, {"channel", i == 0 ? 10 : int(i)}}));
+        if (!notes.isEmpty())
+            track.getDynamicObject()->setProperty(
+                "clips", List{obj({{"id", "phrase-" + name}, {"start", 0}, {"duration", duration}, {"notes", notes}})});
+        midiTracks.add(track);
+    }
+    auto projectFrom = [&](const juce::var &data, std::unique_ptr<OstfpPreview> &out) {
+        const auto json = juce::JSON::toString(data, true);
+        juce::MemoryInputStream input(json.toRawUTF8(), json.getNumBytesAsUTF8(), false);
+        return readOstfPreview(input, out);
+    };
+    score.getDynamicObject()->setProperty("tracks", audioTracks);
+    std::unique_ptr<OstfpPreview> waves, midi;
+    if (auto r = projectFrom(score, waves); r.failed())
+        return r;
+    waves->audio = std::move(aligned->audio);
+    std::fill_n(waves->trackKinds.begin(), 4, TrackKind::audio);
+    for (int pitch : transcription.drums)
+        slots.add(obj({{"id", "gm-" + juce::String(pitch)},
+                       {"name", pitch == 36   ? "Kick"
+                                : pitch == 38 ? "Snare"
+                                              : "Closed hat"},
+                       {"midiMapping", obj({{"standard", "gm1"}, {"note", pitch}})}}));
+    score.getDynamicObject()->setProperty("tracks", midiTracks);
+    score.getDynamicObject()->setProperty("soundSlots", slots);
+    if (auto r = projectFrom(score, midi); r.failed())
+        return r;
+    waveParts = std::move(waves);
+    noteParts = std::move(midi);
+    summary = folder      ? TRANS("Four aligned stems are ready.")
+              : useDemucs ? TRANS("Four stems separated with Demucs.")
+                          : TRANS("Four locally estimated stems. Sounds may overlap.");
+    return juce::Result::ok();
+}
+
+juce::Result combineImportParts(const OstfpPreview& waves, const OstfpPreview& notes,
+                                std::unique_ptr<OstfpPreview>& combined) {
+    auto score = juce::JSON::parse(notes.sourceScore.toString());
+    auto audio = juce::JSON::parse(waves.sourceScore.toString());
+    auto tracks = audio["tracks"].clone();
+    for (const auto& t : *score["tracks"].getArray()) {
+        auto draft = t.clone();
+        draft.getDynamicObject()->setProperty("name", t["name"].toString()+" (MIDI)");
+        tracks.getArray()->add(draft);
+    }
+    score.getDynamicObject()->setProperty("tracks", tracks);
+    const auto json = juce::JSON::toString(score, true);
+    juce::MemoryInputStream input(json.toRawUTF8(),json.getNumBytesAsUTF8(),false);
+    std::unique_ptr<OstfpPreview> song;
+    if (auto r=readOstfPreview(input,song); r.failed()) return r;
+    song->audio=waves.audio;
+    SessionMix mix;
+    mix.tracks.resize(song->trackLanes.size());
+    mix.audioTracks.resize(song->trackLanes.size());
+    for (size_t i=0;i<song->trackLanes.size();++i) {
+        if (i<waves.sourceTrackCount()) {
+            song->trackKinds[i]=TrackKind::audio;
+            mix.audioTracks[i]=true;
+        } else mix.tracks[i].muted=true;
+    }
+    song->savedMix=std::move(mix);
+    combined=std::move(song);
+    return juce::Result::ok();
+}
+
 juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPreview& dest,
                               std::optional<std::size_t> track, juce::int64 tick, juce::MemoryBlock& before,
                               bool replace) {
@@ -500,6 +675,19 @@ juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPrevie
             return fail("Too many audio regions for this project.");
         dest.audio = std::move(regions);
         return juce::Result::ok();
+    }
+    if (source.trackKinds[index] == TrackKind::drum) {
+        std::vector<NoteEdit> hits;
+        for (auto n : source.drumNotes[index]) {
+            n.startTick = convert(n.startTick);
+            n.endTick = convert(n.endTick);
+            if (n.endTick > dest.durationTicks)
+                return fail("The result does not fit inside the song.");
+            n.slotId.clear(); // Resolve the MIDI note in the destination kit.
+            hits.push_back({NoteEdit::insert, n});
+        }
+        juce::StringArray ids;
+        return dest.editNotes(*track, hits, before, ids);
     }
     if (source.trackKinds[index] != TrackKind::pitched)
         return fail("Choose a pitched or audio result.");

@@ -18,6 +18,8 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
         seq.addEvent(juce::MidiMessage::noteOn(channel, channel == 1 ? 64 : 38, static_cast<juce::uint8>(91)), 480);
         seq.addEvent(juce::MidiMessage::noteOff(channel, channel == 1 ? 64 : 38), 1200);
     }
+    seq.addEvent(juce::MidiMessage::timeSignatureMetaEvent(2,2),1920);
+    seq.addEvent(juce::MidiMessage::endOfTrack(),2160);
     song.addTrack(seq);
     juce::MemoryOutputStream midi;
     if (!song.writeTo(midi, 0) || !file.replaceWithData(midi.getData(), midi.getDataSize()))
@@ -27,7 +29,7 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
     if (prepareMediaImport(file, project, info).failed() || project->sourceTrackCount() != 2 ||
         project->pitchedNotes[0].size() != 1 || project->drumNotes[1].size() != 1 ||
         project->pitchedNotes[0][0].startTick != 480 || project->pitchedNotes[0][0].endTick != 1200 ||
-        project->sourceMidiChannels[1] != 10 || saveMediaImport(*project, dir.getChildFile("phrase.ostf")).failed())
+        project->sourceMidiChannels[1] != 10 || project->meters.size()!=2 || project->meters.back().numerator!=2 || saveMediaImport(*project, dir.getChildFile("phrase.ostf")).failed())
         return false;
     juce::MemoryOutputStream wav;
     wav.write("RIFF", 4);
@@ -89,6 +91,31 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
     std::unique_ptr<OstfpPreview> analysed;
     if (!mixed.replaceWithData(harmony.getData(), harmony.getDataSize()) ||
         prepareMediaImport(mixed, analysed, info, false, true).failed())
+        return false;
+    std::unique_ptr<OstfpPreview> localWaves, localNotes;
+    if (analyseImportParts(mixed, false, localWaves, localNotes, info).failed() || !localWaves || !localNotes ||
+        localWaves->sourceTrackCount() != 4 || localNotes->sourceTrackCount() != 4 ||
+        localNotes->trackKinds[0] != TrackKind::drum || localWaves->audio.size() != 4 ||
+        localNotes->trackKinds[3] != TrackKind::pitched)
+        return false;
+    juce::WavAudioFormat format;
+    juce::AudioBuffer<float> sum(1, frames), partAudio(1, frames);
+    sum.clear();
+    for (const auto &part : localWaves->audio) {
+        const auto &bytes = part.embedded;
+        std::unique_ptr<juce::AudioFormatReader> reader(
+            format.createReaderFor(new juce::MemoryInputStream(bytes, false), true));
+        if (!reader || reader->lengthInSamples != frames || reader->sampleRate != 8000 ||
+            !reader->read(&partAudio, 0, frames, 0, true, true) || partAudio.getMagnitude(0, frames) < .001f)
+            return false;
+        sum.addFrom(0, 0, partAudio, 0, 0, frames);
+    }
+    auto sourceWav = mixed.createInputStream();
+    std::unique_ptr<juce::AudioFormatReader> original(format.createReaderFor(sourceWav.release(), true));
+    if (!original || !original->read(&partAudio, 0, frames, 0, true, true))
+        return false;
+    sum.addFrom(0, 0, partAudio, 0, 0, frames, -1.f);
+    if (sum.getMagnitude(0, frames) > .001f)
         return false;
     const auto scoreData = juce::JSON::parse(analysed->sourceScore.toString());
     const auto resultChords = scoreData["harmony"]["chords"];
@@ -157,8 +184,40 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
         project->pitchedNotes[1].size() != 2 || project->pitchedNotes[1][0].pitch != 69 ||
         project->pitchedNotes[1][1].pitch != 72 || std::abs(project->pitchedNotes[1][1].startTick - 768) > 60)
         return false;
+    if (analyseImportParts(melody, false, localWaves, localNotes, info).failed() ||
+        std::none_of(localNotes->pitchedNotes[3].begin(), localNotes->pitchedNotes[3].end(),
+                     [](const auto &n) { return n.pitch == 69; }))
+        return false;
     std::unique_ptr<OstfpPreview> notesTarget;
     if (prepareMediaImport(dir.getChildFile("phrase.mid"), notesTarget, info).failed()) return false;
+    if (notesTarget->slotsByTrack[1].size() != 16)
+        return false;
+    const auto originalHits = notesTarget->drumNotes[1].size();
+    if (placeImportTrack(*notesTarget, 1, *notesTarget, 1, 0, before).failed() ||
+        notesTarget->drumNotes[1].size() != originalHits * 2)
+        return false;
+    const auto snare = std::find_if(notesTarget->slotsByTrack[1].begin(), notesTarget->slotsByTrack[1].end(),
+                                    [](const auto &p) { return p.pitch == 38; }) -
+                       notesTarget->slotsByTrack[1].begin();
+    if (notesTarget->editDrumPad(1, int(snare), {}, before).wasOk() ||
+        notesTarget->editDrumPad(1, int(snare), 74, before).failed() || notesTarget->drumNotes[1].front().pitch != 74 ||
+        notesTarget->editDrumPad(1, -1, 74, before).wasOk() || notesTarget->editDrumPad(1, -1, 75, before).failed() ||
+        notesTarget->slotsByTrack[1].size() != 17 || notesTarget->editDrumPad(1, 16, {}, before).failed() ||
+        notesTarget->slotsByTrack[1].size() != 16)
+        return false;
+    std::unique_ptr<OstfpPreview> kitCopy, freshKit;
+    if (notesTarget->editTracks(TrackKind::drum,{},kitCopy,1).failed() ||
+        kitCopy->editDrumPad(2,int(snare),76,before).failed() || kitCopy->drumNotes[1].front().pitch!=74 ||
+        kitCopy->drumNotes[2].front().pitch!=76 || kitCopy->editTracks(TrackKind::drum,{},freshKit).failed() ||
+        freshKit->slotsByTrack[3].size()!=16 || freshKit->slotsByTrack[3].front().pitch!=36) return false;
+    std::unique_ptr<OstfpPreview> combined, reopened;
+    if (combineImportParts(*localWaves,*localNotes,combined).failed() || combined->sourceTrackCount()!=8 ||
+        !combined->savedMix->tracks[7].muted || combined->savedMix->tracks[0].muted) return false;
+    juce::MemoryOutputStream savedReview;
+    if (writeOstfpPreview(*combined,*combined->savedMix,savedReview).failed()) return false;
+    juce::MemoryInputStream savedInput(savedReview.getData(),savedReview.getDataSize(),false);
+    if (readOstfpPreview(savedInput,reopened).failed() || reopened->audio.size()!=4 ||
+        !reopened->savedMix->tracks[7].muted || reopened->pitchedNotes[7].empty()) return false;
     const auto oldTempo = juce::JSON::parse(notesTarget->sourceScore.toString())["timeline"]["tempoChanges"][0].clone();
     auto slower = oldTempo.clone();
     slower.getDynamicObject()->setProperty("bpm", 60);

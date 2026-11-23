@@ -172,6 +172,13 @@ int checkPianoEdits(const juce::File& fixture) {
         editor.strumSelection(PianoNoteGrid::Stroke::highFirst, 12);
         if (onset("high") != -1 || onset("mid") != 6 || onset("low") != 12) return 71;
         editor.percussion = true;
+        editor.kitPitches = {36, 38, 42, 46, 50, 55, 60, 64, 67, editor.high};
+        std::sort(editor.kitPitches.begin(), editor.kitPitches.end());
+        editor.kitPitches.erase(std::unique(editor.kitPitches.begin(), editor.kitPitches.end()),
+                                editor.kitPitches.end());
+        if (editor.rowPitch(editor.rowCount() - 1) != 36 || editor.pitchRow(37) != -1 ||
+            editor.rowPitch(editor.pitchRow(46)) != 46)
+            return 90;
         batch.clear();
         editor.strumSelection(PianoNoteGrid::Stroke::lowFirst, 20);
         if (!batch.empty()) return 72;
@@ -343,6 +350,9 @@ int checkPianoEdits(const juce::File& fixture) {
             select->setSelectedItemIndex(i,juce::sendNotificationSync);
     }
     drumMode->setSelectedId(2,juce::sendNotificationSync);
+    auto *bank = main.findChildWithID("drum-pad-bank");
+    if (!bank || !bank->isVisible() || bank->getWidth() < 100 || bank->getHeight() < 80)
+        return 91;
     if (!steps->isVisible() || steps->getWidth()<200 || grid->isVisible() || picker->isVisible()) return 75;
     const auto path=juce::SystemStats::getEnvironmentVariable("OSTF_DRUM_SMOKE_PNG",{});
     if (path.isNotEmpty()) {

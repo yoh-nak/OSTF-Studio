@@ -24,6 +24,23 @@ public:
     double grid = 1;
     juce::int64 endTick = 1, quarter = 1;
     int low = 52, high = 70;
+    std::vector<int> kitPitches; // Ascending; rows are displayed highest first.
+    int rowCount() const {
+        return percussion ? int(kitPitches.size()) : high - low + 1;
+    }
+    int rowPitch(int row) const {
+        return percussion ? kitPitches.at(size_t(rowCount() - 1 - row)) : high - row;
+    }
+    int pitchRow(int p) const {
+        if (!percussion)
+            return high - p;
+        auto it = std::lower_bound(kitPitches.begin(), kitPitches.end(), p);
+        return it == kitPitches.end() || *it != p ? -1 : int(kitPitches.end() - it) - 1;
+    }
+    int rowAt(int y) const {
+        return std::clamp(int(std::floor(double(y) * rowCount() / std::max(1, getHeight()))), 0,
+                          std::max(0, rowCount() - 1));
+    }
     bool editable = false, absoluteSnap = false, pencil = false, percussion = false;
     const std::vector<Edit>& pendingEdits() const { return pending; }
 
@@ -148,12 +165,15 @@ public:
         repaint();
     }
 
-    float noteY(int pitch) const { return float(high - pitch) * getHeight() / (high - low + 1); }
+    float noteY(int pitch) const {
+        return float(pitchRow(pitch)) * getHeight() / std::max(1, rowCount());
+    }
     juce::Rectangle<float> box(const Note& n) const {
         const auto range = tickRange();
         const auto scale = getWidth() / std::max(1.0, range.getLength());
         return {float((n.startTick - range.getStart()) * scale), noteY(n.pitch),
-                std::max(2.f, float((n.endTick - n.startTick) * scale)), std::max(1.f, noteY(0) - noteY(1) - 1)};
+                std::max(2.f, float((n.endTick - n.startTick) * scale)),
+                std::max(1.f, float(getHeight()) / std::max(1, rowCount()) - 1)};
     }
     void paint(juce::Graphics& g) override {
         if (!editable || !tickRange) return;
@@ -198,7 +218,8 @@ public:
     }
     void mouseDown(const juce::MouseEvent& e) override {
         cancel();
-        if (!editable || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu()) return;
+        if (!editable || rowCount() == 0 || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu())
+            return;
         if (isShowing()) grabKeyboardFocus();
         anchor = current = e.getPosition();
         auto* hit = hitNote(e.position);
@@ -229,7 +250,9 @@ public:
         repaint();
     }
     void mouseDoubleClick(const juce::MouseEvent& e) override {
-        if (pencil || !editable || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu() || hitNote(e.position) || getHeight() < 1) return;
+        if (pencil || !editable || rowCount() == 0 || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu() ||
+            hitNote(e.position) || getHeight() < 1)
+            return;
         cancel();
         commit({{Edit::insert, newNoteAt(e)}});
     }
@@ -255,7 +278,8 @@ public:
             const auto line = std::round(snapAnchor / step);
             const auto relativeDelta = std::llround((line + std::round(dx / step)) * step) - std::llround(line * step);
             const auto dt = current.x == anchor.x ? 0 : absoluteSnap ? snapTick(snapAnchor + dx, step) - snapAnchor : relativeDelta;
-            makeChanges(dt, pitchAt(current.y) - pitchAt(anchor.y), (anchor.y - current.y) / 2);
+            makeChanges(dt, percussion ? rowAt(anchor.y) - rowAt(current.y) : pitchAt(current.y) - pitchAt(anchor.y),
+                        (anchor.y - current.y) / 2);
         }
         repaint();
     }
@@ -266,6 +290,8 @@ public:
     }
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override {
         if (w.deltaY == 0 || e.mods.isAnyModifierKeyDown()) { Component::mouseWheelMove(e, w); return; }
+        if (percussion)
+            return;
         const auto delta = std::clamp(w.deltaY > 0 ? 3 : -3, -low, 127 - high);
         low += delta; high += delta;
         if (auto* p = getParentComponent()) p->repaint();
@@ -354,7 +380,11 @@ private:
         return {start, std::min(endTick, end), pitchAt(e.y), 96, true, {}};
     }
     juce::int64 snapAnchor = 0;
-    int pitchAt(int y) const { return std::clamp(high - int(std::floor(double(y) * (high - low + 1) / std::max(1, getHeight()))), 0, 127); }
+    int pitchAt(int y) const {
+        if (percussion)
+            return rowCount() ? rowPitch(rowAt(y)) : 0;
+        return std::clamp(high - int(std::floor(double(y) * (high - low + 1) / std::max(1, getHeight()))), 0, 127);
+    }
     const Note* hitNote(juce::Point<float> p) const {
         for (auto it = notes.rbegin(); it != notes.rend(); ++it)
             if (box(*it).contains(p)) return &*it;
@@ -378,7 +408,8 @@ private:
         for (const auto& n : notes) if (selection.contains(n.id)) {
             if (gesture == move) {
                 dt = std::clamp(dt, -n.startTick, endTick - n.endTick);
-                dp = std::clamp(dp, -n.pitch, 127 - n.pitch);
+                dp = percussion ? std::clamp(dp, pitchRow(n.pitch) - rowCount() + 1, pitchRow(n.pitch))
+                                : std::clamp(dp, -n.pitch, 127 - n.pitch);
             } else if (gesture == trimStart) dt = std::clamp(dt, -n.startTick, n.endTick - n.startTick - 1);
             else if (gesture == trimEnd) dt = std::clamp(dt, n.startTick + 1 - n.endTick, endTick - n.endTick);
         }
@@ -386,7 +417,8 @@ private:
             auto n = original;
             if (gesture == move || gesture == trimStart) n.startTick += dt;
             if (gesture == move || gesture == trimEnd) n.endTick += dt;
-            if (gesture == move) n.pitch += dp;
+            if (gesture == move && dp)
+                n.pitch = percussion ? rowPitch(pitchRow(n.pitch) - dp) : n.pitch + dp;
             if (gesture == velocity && dv != 0) n.velocity = std::clamp(n.velocity.value_or(96) + dv, 1, 127);
             if (n.startTick != original.startTick || n.endTick != original.endTick || n.pitch != original.pitch || n.velocity != original.velocity)
                 pending.push_back({copy && gesture == move ? Edit::duplicate : Edit::change, n});

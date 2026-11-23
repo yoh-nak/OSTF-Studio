@@ -12,6 +12,7 @@
 #include "ui/PianoInspector.h"
 #include "ui/PerformanceEditor.h"
 #include "ui/DrumSteps.h"
+#include "ui/DrumPads.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
@@ -179,6 +180,8 @@ private:
     PianoVelocityLane pianoVelocity_ {pianoGrid_};
     juce::ComboBox pianoSnap_, pianoColours_, drumMode_;
     DrumSteps drumSteps_;
+    DrumPads drumPads_;
+    juce::String padTrack_;
     PerformanceEditor controllerEditor_{pianoGrid_};
     std::map<juce::String,ostfstudio::MidiControl> controllerKeys_;
     void refreshControllerLane();

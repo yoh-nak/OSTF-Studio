@@ -473,6 +473,54 @@ MainComponent::MainComponent() {
     drumMode_.setComponentID("drum-mode"); drumMode_.addItem(TRANS("Drum notes"),1); drumMode_.addItem(TRANS("Slot steps"),2);
     drumMode_.setSelectedId(1,juce::dontSendNotification);
     drumMode_.onChange=[this]{refreshEditor();};
+    addChildComponent(drumPads_);
+    drumPads_.selectionChanged = [this](int row) { drumSteps_.selectRow(row); };
+    drumSteps_.rowChanged = [this](int row) { drumPads_.select(row); };
+    drumPads_.edit = [this](int row, std::optional<int> pitch) {
+        if (!project_ || !selectedTrack_ || recordTrack_)
+            return;
+        const bool playing = transportActive_;
+        if (playing)
+            stopTransport();
+        juce::MemoryBlock before;
+        auto r = project_->editDrumPad(*selectedTrack_, row, pitch, before);
+        if (r.wasOk()) {
+            rememberScoreEdit(std::move(before));
+            finishNoteEdit(playing);
+        } else {
+            if (playing)
+                startTransport(false);
+            statusLabel_.setText(juce::translate(r.getErrorMessage()), juce::dontSendNotification);
+        }
+    };
+    drumPads_.trigger = [this](int row, bool down) {
+        if (!project_ || !selectedTrack_ || *selectedTrack_ >= project_->slotsByTrack.size())
+            return;
+        const auto &pads = project_->slotsByTrack[*selectedTrack_];
+        if (row < 0 || row >= int(pads.size()))
+            return;
+        const auto &pad = pads[row];
+        if (recordTrack_) {
+            if (*recordTrack_ == *selectedTrack_ && pad.pitch >= 0)
+                transport_.inputNote(down ? juce::MidiMessage::noteOn(10, pad.pitch, juce::uint8(100))
+                                          : juce::MidiMessage::noteOff(10, pad.pitch));
+        } else if (down) {
+            const auto end = project_->playbackEndTick();
+            const auto step = pianoGrid_.grid > 1 ? pianoGrid_.grid : project_->ppq / 4.;
+            const auto t = std::clamp<juce::int64>(
+                std::llround(std::round(std::max<juce::int64>(0, cursorTick_) / step) * step), 0, end - 1);
+            applyNoteGesture({{ostfstudio::NoteEdit::insert,
+                               {t,
+                                std::min<juce::int64>(end, t + std::max(1LL, std::llround(step))),
+                                pad.pitch,
+                                100,
+                                true,
+                                {},
+                                false,
+                                {},
+                                pad.id}}});
+        }
+    };
     drumSteps_.commit=[this](const auto& edits){applyNoteGesture(edits);};
     drumSteps_.loopChanged=[this]{updateDrumLoop();};
 
@@ -1488,9 +1536,9 @@ void MainComponent::restoreInstrumentAssignments(const ostfstudio::SessionMix& m
 
 void MainComponent::startTransport(bool recording) {
     if (!project_ || (recording && !selectedTrack_)) return;
-    if (recording && (*selectedTrack_ >= project_->sourceTrackCount()
-        || project_->trackKinds[*selectedTrack_] != ostfstudio::TrackKind::pitched)) {
-        statusLabel_.setText(TRANS("MIDI recording requires a pitched track in this preview"), juce::dontSendNotification);
+    if (recording && (*selectedTrack_ >= project_->sourceTrackCount() ||
+                      project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::audio)) {
+        statusLabel_.setText(TRANS("Select a pitched or drum track for MIDI recording."), juce::dontSendNotification);
         return;
     }
     if (transportActive_) {
@@ -1523,7 +1571,8 @@ void MainComponent::startTransport(bool recording) {
     for (std::size_t i = 0; i < std::min(trackControls_.size(), PreviewTransport::maxTracks); ++i)
         copyEffects(trackControls_[i]->effects, inserts[PreviewTransport::outputCount + i]);
     const auto start = cursorTick_ >= project_->playbackEndTick() ? 0 : std::max<juce::int64>(0, cursorTick_);
-    const auto result = transport_.start(deviceSettings_->devices(), *project_, recording, tracks, inserts, start, auditionShift_, auditionRate_);
+    const auto result = transport_.start(deviceSettings_->devices(), *project_, recording, tracks, inserts, start,
+                                         auditionShift_, auditionRate_, recording ? selectedTrack_ : std::nullopt);
     if (result.failed()) {
         statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
         return;
@@ -1531,6 +1580,8 @@ void MainComponent::startTransport(bool recording) {
     transportActive_ = true;
     activeLoop_ = {};
     recordTrack_ = recording ? selectedTrack_ : std::nullopt;
+    if (recording && drumPads_.isVisible())
+        refreshEditor();
     updateDrumLoop();
     deck_.play.setToggleState(!recording, juce::dontSendNotification);
     deck_.stop.setToggleState(false, juce::dontSendNotification);
@@ -1554,10 +1605,28 @@ void MainComponent::stopTransport() {
     auto recorded = transport_.stop(&parked);
     if (recordTrack_ && project_) {
         const auto count = static_cast<int>(recorded.size());
-        const bool added = project_->addSessionClip(*recordTrack_, "Recorded MIDI", std::move(recorded));
+        bool added = false;
+        juce::String failure;
+        if (project_->trackKinds[*recordTrack_] == ostfstudio::TrackKind::drum && !recorded.empty()) {
+            std::vector<ostfstudio::NoteEdit> hits;
+            for (const auto &n : recorded)
+                hits.push_back({ostfstudio::NoteEdit::insert, n});
+            juce::MemoryBlock before;
+            juce::StringArray ids;
+            auto result = project_->editNotes(*recordTrack_, hits, before, ids);
+            added = result.wasOk();
+            failure = result.getErrorMessage();
+            if (added)
+                rememberScoreEdit(std::move(before));
+        } else if (!recorded.empty())
+            added = project_->addSessionClip(*recordTrack_, "Recorded MIDI", std::move(recorded));
         if (added) refreshTrackTheory(*recordTrack_);
-        selectTrack(*recordTrack_);
-        statusLabel_.setText(added ? juce::String(count) + TRANS(" MIDI notes captured") : TRANS("No MIDI notes captured"),
+        const auto finishedTrack = *recordTrack_;
+        recordTrack_.reset();
+        transportActive_ = false;
+        selectTrack(finishedTrack);
+        statusLabel_.setText(added ? juce::String(count) + TRANS(" MIDI notes captured")
+                                   : (failure.isEmpty() ? TRANS("No MIDI notes captured") : juce::translate(failure)),
                              juce::dontSendNotification);
     } else {
         statusLabel_.setText(TRANS("Stopped"), juce::dontSendNotification);
@@ -1745,6 +1814,12 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, c
 }
 
 void MainComponent::timerCallback() {
+    if (recordTrack_ && drumPads_.isVisible()) {
+        if (const int p = transport_.lastInputPitch.exchange(-1); p >= 0)
+            drumPads_.flash(p);
+        else
+            drumPads_.repaint();
+    }
     if (!transport_.isRunning()) { stopTransport(); return; }
     const auto frame = transport_.takeMeters();
     const auto cursor = transport_.cursor();
@@ -3275,6 +3350,7 @@ void MainComponent::refreshPianoNotes() {
     pianoTrack_ = selectedTrack_;
     auto& grid = pianoGrid_;
     grid.notes.clear();
+    grid.kitPitches.clear();
     pianoMaxEnds_.clear();
     grid.editable = false;
     if (!project_ || !selectedTrack_) { grid.resetRange(false); return; }
@@ -3287,6 +3363,16 @@ void MainComponent::refreshPianoNotes() {
     for (const auto& note : grid.notes) {
         maxEnd = std::max(maxEnd, note.endTick);
         pianoMaxEnds_.push_back(maxEnd);
+    }
+    if (project_->trackKinds[track] == ostfstudio::TrackKind::drum) {
+        std::set<int> mapped;
+        for (const auto &s : project_->slotsByTrack[track])
+            if (s.pitch >= 0)
+                mapped.insert(s.pitch);
+        for (const auto &n : grid.notes)
+            if (n.pitch >= 0)
+                mapped.insert(n.pitch);
+        grid.kitPitches.assign(mapped.begin(), mapped.end());
     }
     grid.editable = track < project_->sourceTrackCount() && project_->trackKinds[track] != ostfstudio::TrackKind::audio;
     grid.setTooltip(grid.editable ? TRANS("Double-click to add a note. Drag its body to move or either edge to resize.")
@@ -3663,6 +3749,11 @@ void MainComponent::refreshEditor() {
     const bool steps = drum && drumMode_.getSelectedId()==2;
     drumSteps_.bind(drum ? project_.get() : nullptr,selectedTrack_.value_or(0),std::max<juce::int64>(0,cursorTick_),pianoGrid_.grid);
     drumSteps_.setVisible(steps);
+    drumPads_.setVisible(drum);
+    const auto kitId = drum ? project_->trackIds[int(*selectedTrack_)] : juce::String{};
+    if (drum)
+        drumPads_.bind(project_->slotsByTrack[*selectedTrack_], steps, padTrack_ != kitId, !recordTrack_);
+    padTrack_ = kitId;
     updateDrumLoop();
     pianoGrid_.setVisible(piano && selectedTrack_.has_value() && !steps);
     pianoRuler_.setVisible(pianoGrid_.isVisible());
@@ -3722,7 +3813,7 @@ void MainComponent::refreshEditor() {
     pianoInspectorView_.setVisible(piano && pianoGrid_.editable && !steps);
     pianoDivider_.setVisible(editing);
     parameterDivider_.setVisible(piano && !steps);
-    pitchZoom_.setVisible(piano && !steps);
+    pitchZoom_.setVisible(piano && !drum);
     columnDivider_.setVisible(piano);
     midiDrag_.setVisible(piano);
     midiDrag_.setEnabled(selectedTrack_ && canExportTrack(*selectedTrack_));
@@ -3949,6 +4040,9 @@ void MainComponent::resized() {
     if (pianoSnap_.isVisible()) pianoSnap_.setBounds(pianoNavigation.removeFromRight(137).reduced(2, 0));
     if (drumMode_.isVisible()) drumMode_.setBounds(pianoNavigation.removeFromLeft(std::min(210,pianoNavigation.getWidth())).reduced(2,0));
     if (pianoColours_.isVisible()) pianoColours_.setBounds(pianoNavigation.removeFromLeft(std::min(210, pianoNavigation.getWidth())).reduced(2, 0));
+    if (drumPads_.isVisible())
+        drumPads_.setBounds(inspector.removeFromTop(drumSteps_.isVisible() ? inspector.getHeight()
+                                                                           : std::min(56, inspector.getHeight())));
     pianoInspectorView_.setBounds(inspector);
     const bool showLegend = pianoColours_.isVisible() && pianoColours_.getSelectedId() != plainNotes;
     pianoInspector_.showLegend = showLegend;
@@ -4473,8 +4567,11 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     area = layout.grid;
     if (area.isEmpty()) return;
 
-    const auto rowHeight = static_cast<float>(area.getHeight()) / static_cast<float>(high - low + 1);
-    auto noteY = [&](int pitch) { return static_cast<float>(area.getY()) + static_cast<float>(high - pitch) * rowHeight; };
+    const auto rowHeight =
+        static_cast<float>(area.getHeight()) / static_cast<float>(std::max(1, pianoGrid_.rowCount()));
+    auto noteY = [&](int pitch) {
+        return static_cast<float>(area.getY()) + static_cast<float>(pianoGrid_.pitchRow(pitch)) * rowHeight;
+    };
     auto tickX = [&](juce::int64 tick) {
         return static_cast<float>(area.getX() + (static_cast<double>(tick) - origin) / length * area.getWidth());
     };
@@ -4514,7 +4611,8 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     constexpr bool isBlack[] {false, true, false, true, false, false, true, false, true, false, true, false};
     constexpr const char* pitchNames[] {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
     g.setFont(juce::FontOptions(10.0f));
-    for (int pitch = high; pitch >= low; --pitch) {
+    for (int row = 0; row < pianoGrid_.rowCount(); ++row) {
+        const int pitch = pianoGrid_.rowPitch(row);
         const auto y = noteY(pitch);
         const int sounding = pitch + (pitchedSelection() ? auditionShift_ : 0);
         const int pc = ((sounding % 12) + 12) % 12;
@@ -4526,7 +4624,8 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
         g.fillRect(key.reduced(0, 0.5f));
         if (rowHeight >= 11.0f || (pitch % 12 == 0 && rowHeight * 12.0f >= 12.0f)) {
             g.setColour(black ? juce::Colours::white : juce::Colour(0xff283037));
-            g.drawText(juce::String(pitchNames[pc]) + juce::String((sounding - pc) / 12 - 1),
+            g.drawText(pianoGrid_.percussion ? juce::String(pitch)
+                                             : juce::String(pitchNames[pc]) + juce::String((sounding - pc) / 12 - 1),
                        key.toNearestInt(), juce::Justification::centred);
         }
     }

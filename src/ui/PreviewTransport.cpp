@@ -62,14 +62,17 @@ bool PreviewTransport::supportsInsert(const juce::AudioPluginInstance& effect) {
         && effect.getTotalNumOutputChannels() == 2;
 }
 
-juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const ostfstudio::OstfpPreview& project,
-                                    bool record, std::span<const TrackSetup> tracks, const Inserts& inserts, juce::int64 startTick,
-                                    int semitones, double tempoRate) {
+juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const ostfstudio::OstfpPreview &project,
+                                     bool record, std::span<const TrackSetup> tracks, const Inserts &inserts,
+                                     juce::int64 startTick, int semitones, double tempoRate,
+                                     std::optional<size_t> inputTrack) {
     stop();
     auto* device = devices.getCurrentAudioDevice();
     if (!device || !device->isOpen() || device->getActiveOutputChannels().isZero())
         return juce::Result::fail("Select an active audio output in Settings first.");
-    if (record) {
+    const bool drumInput = record && inputTrack && *inputTrack < project.sourceTrackCount() &&
+                           project.trackKinds[*inputTrack] == ostfstudio::TrackKind::drum;
+    if (record && !drumInput) {
         bool enabled = false;
         for (const auto& input : juce::MidiInput::getAvailableDevices())
             enabled = enabled || devices.isMidiInputDeviceEnabled(input.identifier);
@@ -78,11 +81,34 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const os
     const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples(), semitones, tempoRate);
     if (result.failed()) return result;
     if (startTick > 0) seekToTick(startTick);
-    recording_ = record;
+    if (record)
+        prepareRecording(project, tracks, inputTrack);
     devices_ = &devices;
     devices.addAudioCallback(this);
     if (record) devices.addMidiInputDeviceCallback({}, this);
     return result;
+}
+
+void PreviewTransport::prepareRecording(const ostfstudio::OstfpPreview &project, std::span<const TrackSetup> tracks,
+                                        std::optional<size_t> inputTrack) {
+    jassert(devices_ == nullptr);
+    recording_ = true;
+    const bool drumInput = inputTrack && *inputTrack < project.trackKinds.size() &&
+                           project.trackKinds[*inputTrack] == ostfstudio::TrackKind::drum;
+    inputPitches_.fill(!drumInput);
+    if (drumInput)
+        for (const auto &pad : project.slotsByTrack[*inputTrack])
+            if (pad.pitch >= 0 && pad.pitch < 128)
+                inputPitches_[pad.pitch] = true;
+    monitorTrack_.reset();
+    if (inputTrack && *inputTrack < tracks.size()) {
+        monitorTrack_ = tracks[*inputTrack].outputTrack.value_or(*inputTrack);
+        monitorChannel_ = tracks[*inputTrack].midiChannel;
+    }
+    liveMessages_.clear();
+    liveMessages_.ensureSize(32768);
+    queuedLiveMessages_ = 0;
+    lastInputPitch = -1;
 }
 
 juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& project, std::span<const TrackSetup> tracks,
@@ -347,6 +373,7 @@ std::vector<ostfstudio::PitchedNote> PreviewTransport::stop(Cursor* stoppedAt) {
                 recorded_.push_back({pressed_[key], tick, static_cast<int>(key % 128), pressedVelocity_[key]});
     }
     recording_ = false;
+    monitorTrack_.reset();
     sample_ = 0;
     takeMeters();
     return std::exchange(recorded_, {});
@@ -427,6 +454,14 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
         pluginMidi_.addEvents(slot.seekEvents, 0, -1, 0);
         slot.seekEvents.clear();
         pluginMidi_.addEvents(slot.timeline, first, end - first, -first);
+        if (monitorTrack_ == track) {
+            const juce::SpinLock::ScopedTryLockType lock(liveLock_);
+            if (lock.isLocked()) {
+                pluginMidi_.addEvents(liveMessages_, 0, -1, 0);
+                liveMessages_.clear();
+                queuedLiveMessages_ = 0;
+            }
+        }
         block.clear();
         if (slot.instance) {
             juce::AudioBuffer<float> pluginBlock(block.getArrayOfWritePointers(),
@@ -539,13 +574,34 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
 }
 
 void PreviewTransport::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message) {
-    if (!running_ || (!message.isNoteOn() && !message.isNoteOff())) return;
+    inputNote(message);
+}
+
+void PreviewTransport::inputNote(const juce::MidiMessage &message) {
+    if (!running_ || !recording_ || (!message.isNoteOn() && !message.isNoteOff()) ||
+        !inputPitches_[message.getNoteNumber()])
+        return;
+    if (message.isNoteOn())
+        lastInputPitch = message.getNoteNumber();
+    if (monitorTrack_) {
+        const juce::SpinLock::ScopedLockType lock(liveLock_);
+        auto routed = message;
+        routed.setChannel(monitorChannel_);
+        if (queuedLiveMessages_ >= 1024) {
+            liveMessages_.clear();
+            queuedLiveMessages_ = 0;
+            liveMessages_.addEvent(juce::MidiMessage::allSoundOff(monitorChannel_), 0);
+        }
+        liveMessages_.addEvent(routed, 0);
+        ++queuedLiveMessages_;
+    }
     const auto tick = positionTick();
     const auto key = (message.getChannel() - 1) * 128 + message.getNoteNumber();
     const std::scoped_lock lock(recordingMutex_);
     auto& start = pressed_[static_cast<std::size_t>(key)];
-    if (start >= 0 && tick > start && recorded_.size() < 10000)
-        recorded_.push_back({start, tick, message.getNoteNumber(), pressedVelocity_[static_cast<std::size_t>(key)]});
+    if (start >= 0 && start < scoreTicks_ && recorded_.size() < 10000)
+        recorded_.push_back({start, std::max<juce::int64>(start + 1, tick), message.getNoteNumber(),
+                             pressedVelocity_[static_cast<std::size_t>(key)]});
     start = message.isNoteOn() ? tick : -1;
     if (message.isNoteOn()) pressedVelocity_[static_cast<std::size_t>(key)] = message.getVelocity();
 }

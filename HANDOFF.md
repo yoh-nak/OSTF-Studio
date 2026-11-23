@@ -4,6 +4,8 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
+- The import part review, local four-stem estimator, parallel MIDI drafts, drum pad mapping and recording are on `feature/import-parts-drum-pads`. Windows package path: `dist/windows-import-drum-pads`. PDF OMR and physical pad testing remain open.
+
 - Windows x64 Release passed all 23 CTest cases for `1.0.0-alpha.3+audio-clip-editor`, including real WAV drop placement, selection-driven editor switching, warp-marker movement, loop edge dragging, waveform/PCM checks across a tempo boundary, and saving/reopening Studio timing. The edited-WAV regression checks source identity and retention of trim and markers. The local Studio scanner cache lists Melodyne as a Celemony VST3 effect. macOS, hardware monitoring, and end-to-end UI interaction in Melodyne and Splice have not been tested for this change.
 - On `feature/audio-clip-editor`, the Theory Guide fits the chord degrees and recognised progressions on one bracketed row above the harmonic functions. Added plagal, deceptive and turnaround readings with same-key adjacency checks.
 - The bottom editor now follows the selected audio track. Looping repeats the trimmed source under the arrangement right-edge handle. Re-pitch warp uses a cycle length in quarter notes and draggable interior anchors. The thumbnail and transport share the source mapping. Loop and marker edits round-trip in the Studio host extension.

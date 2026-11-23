@@ -179,6 +179,7 @@ struct OstfpPreview {
     juce::Result editTracks(TrackKind kind, std::optional<std::size_t> remove, std::unique_ptr<OstfpPreview>& result,
                             std::optional<std::size_t> duplicate = {}, MixerTrackGroup group = MixerTrackGroup::pitched) const;
     bool insertGeneratorPattern(std::size_t track, int bar);
+    juce::Result editDrumPad(size_t track, int row, std::optional<int> pitch, juce::MemoryBlock &before);
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);
     juce::Result editNotes(std::size_t track, const std::vector<NoteEdit>& edits, juce::MemoryBlock& before,
                            juce::StringArray& resultingIds);

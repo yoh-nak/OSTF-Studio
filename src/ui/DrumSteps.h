@@ -11,6 +11,13 @@ public:
     double grid = 1;
     std::function<void(std::vector<Edit>)> commit;
     std::function<void()> loopChanged;
+    std::function<void(int)> rowChanged;
+    void selectRow(int row) {
+        selected = row;
+        const int visible = std::max(1, gridArea().getHeight() / rowHeight);
+        first = std::clamp(first, std::max(0, row - visible + 1), row);
+        repaint();
+    }
     DrumSteps() {
         setComponentID("drum-steps");
         for (auto* b : {&back, &forward, &locate, &fill})
@@ -145,6 +152,8 @@ public:
         const int row = first + (e.y - 44) / rowHeight;
         if (row >= int(song->slotsByTrack[track].size())) return;
         selected = row;
+        if (rowChanged)
+            rowChanged(row);
         repaint();
         if (e.x < labelWidth || !commit || gridArea().getWidth() <= 0) return;
         const int n = std::clamp((e.x - labelWidth) * count() / gridArea().getWidth(), 0, count() - 1);

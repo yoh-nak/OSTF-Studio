@@ -60,6 +60,29 @@ bool checkPerformanceAudio() {
     if (audio.getSample(0, 0) < .45f || audio.getSample(1, 0) > .01f || audio.getSample(0, 95) > .01f ||
         audio.getSample(1, 95) < .45f)
         return false;
+    {
+        PerformanceProbe padInstrument;
+        PreviewTransport capture;
+        const std::array<PreviewTransport::TrackSetup, 1> drumRoutes{{{{}, &padInstrument, 10}}};
+        song.trackKinds = {TrackKind::drum};
+        song.slotsByTrack = {{{"kick", "Kick", 36}}};
+        if (capture.preparePlayback(song, drumRoutes, {}, 960, 96).failed())
+            return false;
+        capture.prepareRecording(song, drumRoutes, 0);
+        capture.inputNote(juce::MidiMessage::noteOn(1, 36, juce::uint8(87)));
+        capture.inputNote(juce::MidiMessage::noteOn(1, 37, juce::uint8(127)));
+        capture.renderBlock(audio.getArrayOfWritePointers(), 2, 64);
+        capture.inputNote(juce::MidiMessage::noteOff(1, 36));
+        capture.renderBlock(audio.getArrayOfWritePointers(), 2, 32);
+        const auto hits = capture.stop();
+        if (hits.size() != 1 || hits[0].pitch != 36 || hits[0].velocity != 87 || hits[0].startTick != 0 ||
+            hits[0].endTick != 64 ||
+            !std::any_of(padInstrument.received.begin(), padInstrument.received.end(), [](const auto &e) {
+                auto m = e.getMessage();
+                return m.isNoteOn() && m.getChannel() == 10 && m.getNoteNumber() == 36;
+            }))
+            return false;
+    }
     const auto heard = [&](int sample) {
         bool cc = false, bend = false, at = false;
         for (auto e : probe.received) {

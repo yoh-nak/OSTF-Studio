@@ -143,6 +143,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         ostf_score_validation
         OSTFStudioAssets
         juce::juce_gui_extra
+        juce::juce_dsp
         juce::juce_audio_utils
         juce::juce_cryptography
         juce::juce_recommended_config_flags

@@ -25,9 +25,14 @@ public:
     static bool supportsInstrument(const juce::AudioPluginInstance& instrument);
     static bool supportsInsert(const juce::AudioPluginInstance& effect);
     ~PreviewTransport() override;
-    juce::Result start(juce::AudioDeviceManager& devices, const ostfstudio::OstfpPreview& project,
-                       bool record, std::span<const TrackSetup> tracks, const Inserts& inserts = {}, juce::int64 startTick = 0,
-                       int semitones = 0, double tempoRate = 1);
+    juce::Result start(juce::AudioDeviceManager &devices, const ostfstudio::OstfpPreview &project, bool record,
+                       std::span<const TrackSetup> tracks, const Inserts &inserts = {}, juce::int64 startTick = 0,
+                       int semitones = 0, double tempoRate = 1, std::optional<size_t> inputTrack = {});
+    // Arm after preparePlayback and before attaching device callbacks or rendering audio.
+    void prepareRecording(const ostfstudio::OstfpPreview &, std::span<const TrackSetup>,
+                          std::optional<size_t> inputTrack);
+    void inputNote(const juce::MidiMessage &message);
+    std::atomic<int> lastInputPitch{-1};
     struct Cursor { juce::int64 tick; double seconds; };
     std::vector<ostfstudio::PitchedNote> stop(Cursor* stoppedAt = nullptr);
     juce::Result updateLoopNotes(const ostfstudio::OstfpPreview&);
@@ -100,6 +105,12 @@ private:
     juce::Range<int> loopSamples_;
     bool loopRestart_ = false;
     bool recording_ = false;
+    std::optional<size_t> monitorTrack_;
+    std::array<bool, 128> inputPitches_{};
+    int monitorChannel_ = 1;
+    juce::SpinLock liveLock_;
+    juce::MidiBuffer liveMessages_;
+    int queuedLiveMessages_ = 0;
     std::mutex recordingMutex_;
     std::array<juce::int64, 16 * 128> pressed_ {};
     std::array<int, 16 * 128> pressedVelocity_ {};

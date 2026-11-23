@@ -115,3 +115,9 @@ The desktop reader dispatches standalone scores by exact version. The 3.5.0 and 
 An audio track has one WAV region. Its timeline duration controls how long it sounds. The clip editor displays one complete source cycle. Both the waveform thumbnail and the audio reader use the same ordered warp anchors. A native loop repeats in source seconds. A warped loop repeats in score ticks and follows tempo changes. Linear single-pass warps use Production 0.3 fit with followRate. The Studio host extension carries loop length and interior marker pairs for readers that implement them. Exported assets keep their source samples.
 
 External sample drops use the local WAV import path. The Melodyne external-editor workflow exports a separate working file and checks source identity, sample rate and frame count before applying edited samples. Transfer uses the installed VST3 and host transport. ARA document hosting and Splice catalogue access remain open.
+
+## Import review and drum input
+
+Media import prepares part projections on a background worker. A WAV result owns four aligned audio regions, a separate drum and melodic transcription, and the chord timeline. The native separator uses complementary short-time Fourier masks and overlap-add. The audio and notation projections share a musical clock and can each become an unsaved document. MIDI uses the same review and placement controls. PDF recognition awaits an OMR provider.
+
+The ordered sound-slot membership of an OSTF drum kit drives both editors. The piano roll indexes distinct mapped pitches. Kit edits materialise implicit memberships and isolate shared assignments before remapping events. MIDI recording routes mapped notes to the selected instrument and stores sound-slot references with recorded velocities and timing.

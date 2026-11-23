@@ -15,6 +15,22 @@
 namespace ostfstudio {
 namespace {
 constexpr char mediaType[] = "application/vnd.ostf-project+zip";
+const std::array<DrumSlot, 16> defaultPads{{{{}, "Kick", 36},
+                                            {{}, "Snare", 38},
+                                            {{}, "Closed hat", 42},
+                                            {{}, "Open hat", 46},
+                                            {{}, "Clap", 39},
+                                            {{}, "Low tom", 45},
+                                            {{}, "Side stick", 37},
+                                            {{}, "Pedal hat", 44},
+                                            {{}, "Low floor tom", 41},
+                                            {{}, "High floor tom", 43},
+                                            {{}, "Low-mid tom", 47},
+                                            {{}, "High-mid tom", 48},
+                                            {{}, "High tom", 50},
+                                            {{}, "Crash", 49},
+                                            {{}, "Ride", 51},
+                                            {{}, "Ride bell", 53}}};
 constexpr int maxBytes = 4 * 1024 * 1024;
 constexpr int maxAudioBytes = 16 * 1024 * 1024;
 // Allow four full-size WAV stems plus score, session and ZIP overhead.
@@ -309,17 +325,26 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             juce::var members;
             if (track.hasProperty("drumKitId") && score["drumKits"].isArray())
                 for (const auto& kit : array(score["drumKits"])) if (kit["id"] == track["drumKitId"]) members = kit["soundSlotIds"];
-            for (const auto& s : array(score["soundSlots"])) {
-                if (members.isArray() && !members.getArray()->contains(s["id"])) continue;
+            const auto appendSlot = [&](const juce::var &s) {
                 const auto m = s["midiMapping"];
                 const int pitch = (m["standard"] == "gm1" || m["standard"] == "custom") ? int(m["note"]) : -1;
                 slotList.push_back({s["id"].toString(), s.getProperty("name", s["id"]).toString(), pitch});
-            }
+            };
+            if (members.isArray()) {
+                for (const auto &id : array(members))
+                    for (const auto &s : array(score["soundSlots"]))
+                        if (s["id"] == id) {
+                            appendSlot(s);
+                            break;
+                        }
+            } else
+                for (const auto &s : array(score["soundSlots"]))
+                    appendSlot(s);
         }
         if (track["trackType"] == "drum" && !track.hasProperty("drumKitId")) {
-            for (const DrumSlot suggested : {DrumSlot{{}, "Kick", 36}, DrumSlot{{}, "Snare", 38},
-                                             DrumSlot{{}, "Closed hi-hat", 42}, DrumSlot{{}, "Open hi-hat", 46}})
-                if (std::none_of(slotList.begin(), slotList.end(), [&](const auto& s){return s.pitch == suggested.pitch;}))
+            for (const auto &suggested : defaultPads)
+                if (slotList.size() < 16 && std::none_of(slotList.begin(), slotList.end(),
+                                                         [&](const auto &s) { return s.pitch == suggested.pitch; }))
                     slotList.push_back(suggested);
         }
         if (clips.isVoid()) continue;
@@ -1154,6 +1179,29 @@ const char* OstfpPreview::keepLabel(juce::String label) {
 }
 
 namespace {
+juce::var arrayProperty(juce::var parent, const char *key);
+juce::String drumSlot(juce::var score, juce::var track, int pitch);
+
+juce::var createKit(juce::var score, juce::var track, const std::vector<DrumSlot> &pads) {
+    juce::Array<juce::var> members;
+    for (const auto &s : pads)
+        members.add(s.id.isEmpty() ? drumSlot(score, track, s.pitch) : s.id);
+    const auto id = "kit-" + juce::Uuid().toString();
+    auto kit = object({{"id", id}, {"name", track["name"]}, {"soundSlotIds", members}});
+    arrayProperty(score, "drumKits").getArray()->add(kit);
+    track.getDynamicObject()->setProperty("drumKitId", id);
+    return kit;
+}
+
+// Pin the previously visible memberships before changing the global slot registry.
+void materialiseKits(juce::var score, const OstfpPreview &project) {
+    for (size_t i = 0; i < project.sourceTrackCount(); ++i) {
+        auto t = score["tracks"][int(i)];
+        if (t["trackType"] == "drum" && !t.hasProperty("drumKitId"))
+            createKit(score, t, project.slotsByTrack[i]);
+    }
+}
+
 using IdCopies = std::map<juce::String, juce::String>;
 
 void collectOwnedIds(const juce::var& value, IdCopies& ids, bool makeCopies = false) {
@@ -1269,12 +1317,18 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
             if (kind != TrackKind::audio) track.getDynamicObject()->setProperty("trackType", kind == TrackKind::drum ? "drum" : "melodic");
             if (group == MixerTrackGroup::melody || group == MixerTrackGroup::vocal)
                 track.getDynamicObject()->setProperty("role", group == MixerTrackGroup::melody ? "melody" : "vocal");
+            if (kind == TrackKind::drum) {
+                materialiseKits(score, *this);
+                createKit(score, track, {defaultPads.begin(), defaultPads.end()});
+                track.getDynamicObject()->setProperty("midi", object({{"mode", "singleChannel"}, {"channel", 10}}));
+            }
             entries.add(track);
             score.getDynamicObject()->setProperty("tracks", tracks);
         }
         reviseDocument(score, before, revision);
         auto next = projectScore(score);
-        next->sourceScore = editedScoreBytes(before, score, {"tracks", "document", "extensions", "lyrics"});
+        next->sourceScore =
+            editedScoreBytes(before, score, {"tracks", "document", "extensions", "lyrics", "soundSlots", "drumKits"});
         require(next->sourceScore.getSize() <= maxBytes, "OSTF score is too large.");
         next->sourceManifest = sourceManifest;
         next->panAutomation = panAutomation;
@@ -1333,13 +1387,72 @@ juce::String drumSlot(juce::var score, juce::var track, int pitch) {
             && (!members.isArray() || members.getArray()->contains(slot["id"]))) return slot["id"].toString();
     }
     const auto id = "slot-" + juce::Uuid().toString();
-    const juce::String name = pitch == 36 ? "Kick" : pitch == 38 ? "Snare" : pitch == 42 ? "Closed hi-hat"
-                            : pitch == 46 ? "Open hi-hat" : "MIDI " + juce::String(pitch);
+    auto pad = std::find_if(defaultPads.begin(), defaultPads.end(), [&](const auto &p) { return p.pitch == pitch; });
+    const auto name = pad == defaultPads.end() ? "MIDI " + juce::String(pitch) : pad->name;
     slots.getArray()->add(object({{"id", id}, {"name", name},
                                  {"midiMapping", object({{"standard", pitch >= 35 && pitch <= 81 ? "gm1" : "custom"}, {"note", pitch}})}}));
     if (members.isArray()) members.getArray()->add(id);
     return id;
 }
+}
+
+juce::Result OstfpPreview::editDrumPad(size_t index, int row, std::optional<int> pitch, juce::MemoryBlock &before) try {
+    require(index < sourceTrackCount() && trackKinds[index] == TrackKind::drum, "Select a drum track.");
+    const auto &pads = slotsByTrack.at(index);
+    require(row >= -1 && row < int(pads.size()) && (row >= 0 || pitch), "Choose a pad.");
+    if (pitch) {
+        require(*pitch >= 0 && *pitch <= 127, "Choose MIDI note 0-127.");
+        for (int i = 0; i < int(pads.size()); ++i)
+            require(i == row || pads[i].pitch != *pitch, "That MIDI note is already assigned.");
+    } else {
+        const auto &used = slotHits.at(index);
+        require(std::none_of(used.begin(), used.end(), [&](const auto &h) { return h.slotId == pads[row].id; }),
+                "This pad has hits. Move or remove them first.");
+    }
+    before = savedScore(*this);
+    auto score = parseObject(before);
+    materialiseKits(score, *this);
+    auto track = score["tracks"][int(index)], kits = arrayProperty(score, "drumKits");
+    juce::var kit;
+    for (const auto &k : array(kits))
+        if (k["id"] == track["drumKitId"])
+            kit = k;
+    require(kit.isObject(), "Missing drum kit.");
+    if (std::count_if(array(score["tracks"]).begin(), array(score["tracks"]).end(),
+                      [&](const auto &t) { return t["drumKitId"] == kit["id"]; }) > 1) {
+        kit = kit.clone();
+        kit.getDynamicObject()->setProperty("id", "kit-" + juce::Uuid().toString());
+        track.getDynamicObject()->setProperty("drumKitId", kit["id"]);
+        kits.getArray()->add(kit);
+    }
+    auto members = kit["soundSlotIds"];
+    if (row < 0) {
+        drumSlot(score, track, *pitch);
+    } else if (!pitch) {
+        members.getArray()->remove(row);
+    } else {
+        const auto old = members[row].toString();
+        auto slots = arrayProperty(score, "soundSlots");
+        juce::var updated;
+        for (const auto &s : array(slots))
+            if (s["id"] == old)
+                updated = s.clone();
+        require(updated.isObject(), "Unknown drum slot.");
+        const auto id = "slot-" + juce::Uuid().toString();
+        updated.getDynamicObject()->setProperty("id", id);
+        updated.getDynamicObject()->setProperty("midiMapping", object({{"standard", "custom"}, {"note", *pitch}}));
+        slots.getArray()->add(updated);
+        members.getArray()->set(row, id);
+        for (const auto &clip : array(track["clips"]))
+            if (clip["notes"].isArray())
+                for (const auto &n : array(clip["notes"]))
+                    if (n["soundSlotId"] == old)
+                        n.getDynamicObject()->setProperty("soundSlotId", id);
+    }
+    reviseDocument(score, before, "studio-" + juce::Uuid().toString());
+    return restoreNoteScore(editedScoreBytes(before, score, {"tracks", "drumKits", "soundSlots", "document"}));
+} catch (const std::exception &e) {
+    return juce::Result::fail(e.what());
 }
 
 juce::Result OstfpPreview::checkAudition(int shift, double rate) const {
@@ -1589,6 +1702,8 @@ juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEd
     require(index < sourceTrackCount() && trackKinds[index] != TrackKind::audio && !edits.empty(), "Select a MIDI track.");
     before = savedScore(*this);
     auto score = parseObject(before);
+    if (trackKinds[index] == TrackKind::drum)
+        materialiseKits(score, *this);
     auto track = score["tracks"][static_cast<int>(index)];
     auto clips = arrayProperty(track, "clips");
     juce::StringArray ids;
