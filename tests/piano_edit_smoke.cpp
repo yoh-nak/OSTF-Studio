@@ -103,6 +103,81 @@ int checkPianoEdits(const juce::File& fixture) {
         resize(true);
         if (results.size() != 1 || results.front().note.startTick != 84 || results.front().note.endTick != 119) return 51;
     }
+    {
+        PianoNoteGrid editor;
+        editor.setSize(500, 160);
+        editor.editable = true;
+        editor.endTick = 500;
+        editor.quarter = 100;
+        editor.grid = 20;
+        editor.tickRange = [] { return juce::Range<double>(0, 500); };
+        editor.notes = {{0, 101, 67, 80, true, "high"}, {0, 100, 60, 60, true, "low"},
+                        {0, 98, 64, 85, true, "mid"}, {0, 99, 64, 88, true, "unison"},
+                        {40, 42, 50, 65, true, "short"}, {40, 90, 55, 65, true, "second"},
+                        {0, 120, 71, 99, true, "other"}};
+        editor.selection = {"low", "high", "mid", "unison", "short", "second"};
+        std::vector<NoteEdit> batch;
+        editor.commit = [&](const auto& edits) { batch = edits; };
+        editor.strumSelection(PianoNoteGrid::Stroke::alternate, 100);
+        auto onset = [&](juce::String id) {
+            for (const auto& edit : batch) if (edit.note.id == id) return int(edit.note.startTick);
+            return -1;
+        };
+        if (batch.size() != 4 || onset("mid") != 20 || onset("unison") != 20 || onset("high") != 39
+            || onset("short") != 41 || onset("other") != -1) return 70;
+        editor.strumSelection(PianoNoteGrid::Stroke::highFirst, 12);
+        if (onset("high") != -1 || onset("mid") != 6 || onset("low") != 12) return 71;
+        editor.percussion = true;
+        batch.clear();
+        editor.strumSelection(PianoNoteGrid::Stroke::lowFirst, 20);
+        if (!batch.empty()) return 72;
+        editor.selection = {"high", "short"};
+        editor.splitIntoTriplets();
+        if (batch.size() != 3 || batch[0].note.startTick != 34 || batch[0].note.endTick != 67
+            || batch[1].note.endTick != 101 || batch[2].note.startTick != 0 || batch[2].note.endTick != 34) return 73;
+
+        const juce::Point<float> down {369, 12}, end {462, 12};
+        editor.pencil = true;
+        batch.clear();
+        editor.mouseDown(pointer(editor, down, down));
+        editor.mouseDrag(pointer(editor, end, down));
+        if (!batch.empty()) return 74;
+        editor.mouseUp(pointer(editor, end, down));
+        if (batch.size() != 1 || batch[0].action != NoteEdit::insert || batch[0].note.startTick != 360 || batch[0].note.endTick != 460) return 75;
+        editor.mouseDown(pointer(editor, down, down));
+        editor.mouseUp(pointer(editor, down, down));
+        if (batch.size() != 1 || batch[0].note.endTick != 380) return 76;
+        batch.clear();
+        editor.mouseDown(pointer(editor, down, down)); editor.cancel(); editor.mouseUp(pointer(editor, down, down));
+        if (!batch.empty()) return 77;
+
+        // PPQ 100 cannot represent an eighth-note triplet as a fixed integer tick length.
+        editor.grid = 100.0 / 3;
+        editor.notes = {{67, 90, editor.high, 96, true, "existing"}};
+        const auto alt = juce::ModifierKeys::altModifier;
+        const juce::Point<float> left {1, 1}, right {196, 1};
+        auto paint = [&](auto from, auto to) {
+            editor.mouseDown(pointer(editor, from, from, alt));
+            editor.mouseDrag(pointer(editor, to, from, alt));
+            editor.mouseUp(pointer(editor, to, from, alt));
+        };
+        for (bool reverse : {false, true}) {
+            paint(reverse ? right : left, reverse ? left : right);
+            if (batch.size() != 5 || batch[0].note.startTick != 0 || batch[1].note.startTick != 33
+                || batch[1].note.endTick != 67 || batch[2].note.startTick != 100 || batch[4].note.endTick != 200) return 81;
+        }
+        const juce::Point<float> tail {499, 1};
+        paint(tail, tail);
+        if (batch.size() != 1 || batch[0].note.startTick != 467 || batch[0].note.endTick != 500) return 82;
+        editor.pencil = false;
+        editor.notes = {{33, 50, editor.high, 96, true, "fractional"}};
+        editor.selection = {"fractional"};
+        const auto centre = editor.box(editor.notes.front()).getCentre();
+        const auto next = centre.translated(33.f, 0);
+        editor.mouseDown(pointer(editor, centre, centre)); editor.mouseDrag(pointer(editor, next, centre));
+        editor.mouseUp(pointer(editor, next, centre));
+        if (batch.size() != 1 || batch[0].note.startTick != 67) return 85;
+    }
     MainComponent main;
     main.setVisible(true); main.setSize(1280, 900);
     if (!main.openDocument(fixture)) return 20;
@@ -116,6 +191,20 @@ int checkPianoEdits(const juce::File& fixture) {
     if (grid->notes.size() != initial + 1 || grid->selection.size() != 1) return 22;
     auto selected = [&] { for (auto n : grid->notes) if (grid->selection.contains(n.id)) return n; return PitchedNote{}; };
     const auto inserted = selected();
+    grid->splitIntoTriplets();
+    if (grid->notes.size() != initial + 3 || grid->selection.size() != 3 || !grid->selection.contains(inserted.id)) return 78;
+    std::vector<PitchedNote> repetitions;
+    for (const auto& n : grid->notes) if (grid->selection.contains(n.id)) repetitions.push_back(n);
+    if (repetitions.size() != 3 || repetitions.front().startTick != inserted.startTick || repetitions.back().endTick != inserted.endTick
+        || repetitions[0].endTick != repetitions[1].startTick || repetitions[1].endTick != repetitions[2].startTick
+        || repetitions[2].velocity != inserted.velocity || repetitions[1].pitch != inserted.pitch) return 79;
+    grid->keyPressed(juce::KeyPress('Z', juce::ModifierKeys::commandModifier, 0));
+    if (grid->notes.size() != initial + 1 || std::none_of(grid->notes.begin(), grid->notes.end(),
+        [&](const auto& n) { return n.id == inserted.id && n.endTick == inserted.endTick; })) return 80;
+    grid->selection = juce::StringArray(inserted.id);
+    if (!grid->keyPressed(juce::KeyPress('B')) || !grid->pencil) return 83;
+    grid->keyPressed(juce::KeyPress('B'));
+    if (grid->pencil) return 84;
     auto drag = [&](juce::Point<float> start, juce::Point<float> delta, int mods = 0) {
         grid->mouseDown(pointer(*grid, start, start, mods));
         grid->mouseDrag(pointer(*grid, start + delta, start, mods));

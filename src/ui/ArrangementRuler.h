@@ -22,7 +22,8 @@ public:
 
     void paint(juce::Graphics& g) override {
         g.fillAll(juce::Colour(0xff2e363e));
-        g.setFont(juce::FontOptions(11.0f));
+        const juce::Font rulerFont(juce::FontOptions(std::clamp(float(getHeight() - 3), 12.f, 15.f), juce::Font::bold));
+        g.setFont(rulerFont);
         g.setColour(juce::Colour(0xffc7d2dc));
         g.drawText(TRANS("BARS"), getLocalBounds().removeFromLeft(headerWidth).reduced(5, 0), juce::Justification::centredLeft);
         auto row = getLocalBounds().withTrimmedLeft(headerWidth).withTrimmedBottom(3);
@@ -32,13 +33,15 @@ public:
         const auto bars = visibleBars();
         if (bars.isEmpty()) return;
         const auto xAt = [&](double bar) { return row.getX() + juce::roundToInt((bar - bars.getStart()) * row.getWidth() / bars.getLength()); };
-        const int step = std::max(1, static_cast<int>(bars.getLength() / (row.getWidth() < 420 ? 4 : 8)));
+        const auto widest = juce::String(static_cast<int>(std::ceil(bars.getEnd())));
+        const int labelWidth = juce::roundToInt(juce::GlyphArrangement::getStringWidth(rulerFont, widest)) + 12;
+        const int step = std::max(1, static_cast<int>(std::ceil(labelWidth * bars.getLength() / row.getWidth())));
         for (int bar = static_cast<int>(std::ceil(bars.getStart())); bar < bars.getEnd(); bar += step) {
             int x = xAt(bar);
             g.setColour(juce::Colour(0xff526675));
             g.drawVerticalLine(x, static_cast<float>(row.getBottom() - 6), static_cast<float>(row.getBottom()));
             g.setColour(juce::Colour(0xffc7d2dc));
-            g.drawText(juce::String(bar), row.withLeft(x).withWidth(std::min(46, row.getRight() - x)).withTrimmedLeft(3),
+            g.drawText(juce::String(bar), row.withLeft(x).withWidth(std::min(labelWidth, row.getRight() - x)).withTrimmedLeft(3),
                        juce::Justification::centredLeft);
         }
         if (const int x = playheadColumn(); x >= 0) {

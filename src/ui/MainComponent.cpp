@@ -49,7 +49,7 @@ struct PianoLayout {
         inspector = area.removeFromLeft(headerWidth - 52);
         lane = area.removeFromBottom(std::min(84, area.getHeight() / 3)).withTrimmedLeft(52);
         keys = area.removeFromLeft(52);
-        ruler = area.removeFromTop(compact ? 13 : 18);
+        ruler = area.removeFromTop(compact ? 16 : 21);
         chords = area.removeFromTop(contextStrip ? (compact ? 13 : 21) : 0);
         keys.removeFromTop(ruler.getHeight() + chords.getHeight());
         grid = area;
@@ -78,6 +78,7 @@ juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds) {
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
                    exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts };
+constexpr int themeBlue = 89, themeHarmonic = 90;
 constexpr int timelineMenuBase = 100;
 constexpr int showTheory = 80, showChordFit = 81, showScaleFit = 82, scaleReferenceBase = 1000;
 constexpr int musicSettings = 83, musicDefaults = 84, musicTransform = 85, musicAudition = 86, undoScore = 87, redoScore = 88;
@@ -367,6 +368,7 @@ MainComponent::MainComponent() {
         interfaceScale_ = std::clamp(config->getIntValue("interfaceScale", 100), minInterfaceScale, maxInterfaceScale);
         juce::Desktop::getInstance().setGlobalScaleFactor(interfaceScale_ / 100.f);
         timelineLaneMask_ = static_cast<unsigned>(config->getIntValue("timelineLanes", 0xff));
+        pianoInspector_.theme = config->getValue("workspaceTheme") == "harmonic" ? pianoHarmony::Theme::harmonic : pianoHarmony::Theme::studioBlue;
         theoryVisible_ = config->getBoolValue("theoryGuide", false);
         chordFitVisible_ = config->getBoolValue("showChordFit", true);
         scaleFitVisible_ = config->getBoolValue("showScaleFit", true);
@@ -564,7 +566,7 @@ MainComponent::MainComponent() {
     pianoSnap_.setSelectedId(16, juce::dontSendNotification);
     pianoSnap_.onChange = [this] {
         pianoGrid_.grid = pianoSnap_.getSelectedId() == 1 ? 1
-            : std::max<juce::int64>(1, pianoGrid_.quarter * 4 / pianoSnap_.getSelectedId());
+            : std::max(1.0, pianoGrid_.quarter * 4.0 / pianoSnap_.getSelectedId());
         pianoGrid_.selectionChanged();
         repaint();
     };
@@ -873,6 +875,10 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         }
         case 3: {
             menu.addItem(showDevices, TRANS("Audio / MIDI Devices..."));
+            juce::PopupMenu themes;
+            themes.addItem(themeBlue, TRANS("Studio Blue"), true, blueTheme());
+            themes.addItem(themeHarmonic, TRANS("Harmonic colours"), true, !blueTheme());
+            menu.addSubMenu(TRANS("Colour theme"), themes);
             juce::PopupMenu languages;
             const auto selected = viewPreferences_.getUserSettings()->getValue("language", "system");
             languages.addItem(languageSystem, TRANS("Use system language"), true, selected == "system");
@@ -907,6 +913,16 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
 }
 
 void MainComponent::menuItemSelected(int item, int) {
+    if (item == themeBlue || item == themeHarmonic) {
+        pianoInspector_.theme = item == themeBlue ? pianoHarmony::Theme::studioBlue : pianoHarmony::Theme::harmonic;
+        if (auto* config = viewPreferences_.getUserSettings()) {
+            config->setValue("workspaceTheme", blueTheme() ? "blue" : "harmonic");
+            viewPreferences_.saveIfNeeded();
+        }
+        menuItemsChanged();
+        repaint();
+        return;
+    }
     if (item == musicSettings) {
         musicMenu().showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&musicButton_),
             [safe = juce::Component::SafePointer<MainComponent>(this)](int id) { if (safe && id) safe->menuItemSelected(id, 0); });
@@ -1419,6 +1435,7 @@ void MainComponent::showShortcutList() {
         {"Shift + wheel / horizontal scroll", "Scroll the timeline horizontally"},
         {"Mouse wheel", "Scroll through tracks"}, {"Right-click a track name", "Open track actions"},
         {"Double-click empty piano grid", "Add a note"}, {"Drag note / edge", "Move / resize notes"},
+        {"B (piano roll)", "Toggle pencil"}, {"Alt/Option + pencil drag", "Repeat notes on the grid"},
         {"Shift during note drag", "Temporarily disable snap"},
         {"Shift-click / drag empty grid", "Select multiple notes"}, {"Alt / Option + drag", "Copy notes"},
         {"Drag a velocity handle", "Adjust note velocity"}, {"Ctrl / Cmd + drag vertically", "Adjust note velocity"}, {"Delete / Backspace", "Delete selected notes"},
@@ -3109,12 +3126,12 @@ void MainComponent::resized() {
     const bool showLegend = pianoColours_.isVisible() && pianoColours_.getSelectedId() != plainNotes;
     pianoInspector_.showLegend = showLegend;
     pianoInspector_.updateActions(pianoGrid_.grid > 1, pianoGrid_.selection.size());
-    const int inspectorHeight = showLegend ? 202 : 90;
+    const int inspectorHeight = PianoInspector::controlsHeight + (showLegend ? 112 : 0);
     pianoInspector_.setSize(std::max(1, inspector.getWidth() - (inspector.getHeight() < inspectorHeight ? pianoInspectorView_.getScrollBarThickness() : 0)), inspectorHeight);
 }
 
 void MainComponent::paint(juce::Graphics& g) {
-    g.fillAll(juce::Colour(bg));
+    g.fillAll(juce::Colour(blueTheme() ? 0xff111d29 : bg));
     g.setColour(juce::Colour(0xff1b2229));
     g.fillRect(0, menuHeight, getWidth(), viewBarHeight(getWidth()));
     if (workspaceMode_ != WorkspaceMode::arrangement) return;
@@ -3236,6 +3253,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
     int y = area.getY() + laneHeight;
     const int globalLaneHeight = project_ ? groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)] : laneHeight;
     rowHeight = globalLaneHeight - 4;
+    constexpr juce::uint32 blueGlobal[] {0xff315478, 0xff3b6088, 0xff36506b, 0xff304b66, 0xff314961, 0xff345b71};
     const juce::uint32 globalColours[] {0xff314d72, 0xff493c64, 0xff31495a, 0xff31404e, 0xff31404e, 0xff2c6058};
     bool drewTheory = false;
     const auto globalTheory = [&] {
@@ -3245,12 +3263,13 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         drewTheory = true;
     };
     for (std::size_t i = 0; i < view.globalLanes.size(); ++i) {
-        drawLane(view.globalLanes[i], y, juce::Colour(globalColours[i % std::size(globalColours)]));
+        drawLane(view.globalLanes[i], y, juce::Colour((blueTheme() ? blueGlobal : globalColours)[i % std::size(globalColours)]));
         y += globalLaneHeight;
         if (theoryVisible_ && project_ && view.globalLanes[i].kind == TimelineLane::chord) globalTheory();
     }
     if (theoryVisible_ && project_ && !drewTheory) globalTheory();
 
+    constexpr juce::uint32 blueTracks[] {0xff335f83, 0xff356d91, 0xff455d88, 0xff416d82, 0xff495f78};
     const juce::uint32 trackColours[] {0xff2a657d, 0xff265e57, 0xff4b517f, 0xff744366, 0xff526070};
     auto heading = [&](const char* title) {
         g.setColour(juce::Colour(accent));
@@ -3287,7 +3306,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                  : group == ostfstudio::MixerTrackGroup::vocal ? Icon::chorus : group == ostfstudio::MixerTrackGroup::melody ? Icon::melody
                  : project_->chordVoicingTrack == i ? Icon::score : Icon::pitched;
         }
-        drawLane(view.trackLanes[i], y, juce::Colour(trackColours[i % std::size(trackColours)]), icon);
+        drawLane(view.trackLanes[i], y, juce::Colour((blueTheme() ? blueTracks : trackColours)[i % std::size(trackColours)]), icon);
         if (project_) {
             if (trackControls_[i]->size.expanded()) {
                 g.setColour(juce::Colour(muted));
@@ -3469,10 +3488,10 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
             else if (f.function == "Secondary dominant") symbol = "D/";
             else if (f.function == "Dominant substitute") symbol = "D'";
             auto colour = juce::Colour(0xff505667);
-            if (f.function.startsWith("Tonic")) colour = juce::Colour(0xff306453);
+            if (f.function.startsWith("Tonic")) colour = juce::Colour(blueTheme() ? 0xff33617e : 0xff306453);
             if (f.function == "Subdominant") colour = juce::Colour(0xff365979);
-            if (symbol.startsWith("D")) colour = juce::Colour(0xff795338);
-            cell(degreeBand, f.start, f.end, juce::Colour(0xff504660), f.degree, f.degree);
+            if (symbol.startsWith("D")) colour = juce::Colour(blueTheme() ? 0xff535884 : 0xff795338);
+            cell(degreeBand, f.start, f.end, juce::Colour(blueTheme() ? 0xff364e6e : 0xff504660), f.degree, f.degree);
             cell(top, f.start, f.end, colour, symbol, symbol);
         });
         visibleSpans(theory_->progressions, [&](const auto& p) {
@@ -3520,7 +3539,7 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
                 if (value < 50) colour = juce::Colour(0xff963f4e);
                 else if (value < 75) colour = juce::Colour(0xff975323);
                 else if (value < 90) colour = juce::Colour(0xff776629);
-                else colour = juce::Colour(0xff256d61);
+                else colour = juce::Colour(blueTheme() ? 0xff34698b : 0xff256d61);
             }
             const auto next = chord ? f.chordEnd : i + 1;
             cell(row, chord ? theory_->cells[f.chordBegin].start : c.start, theory_->cells[next - 1].end, colour, label, shortLabel);
@@ -3614,7 +3633,7 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
             const auto x = [&](double bar) { return area.getX() + juce::roundToInt((bar-visible.start)/(visible.end-visible.start)*area.getWidth()); };
             const auto cell = layout.chords.withLeft(std::max(area.getX(), x(r.exactBars->start)))
                 .withRight(std::min(area.getRight(), x(r.exactBars->end)));
-            g.setColour(juce::Colour(0xff504361)); g.fillRect(cell.withTrimmedRight(1));
+            g.setColour(juce::Colour(blueTheme() ? 0xff385b7a : 0xff504361)); g.fillRect(cell.withTrimmedRight(1));
             g.setColour(juce::Colours::white);
             if (cell.getWidth() > 12) g.drawText(ostfstudio::shiftedLabel(juce::String::fromUTF8(r.label), auditionShift_),
                 cell.reduced(2,0), juce::Justification::centredLeft, false);
@@ -3657,7 +3676,7 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
                 const auto tone = theory_->tone(p, chord, scaleMask);
                 const int root = scaleMode ? (scale >= 0 ? theory_->scales[scale].tonic : -1) : (chord ? chord->root : -1);
                 if (root < 0 || (scaleMode ? !theory_->contains(scaleMask, p) : tone == Tone::outside || tone == Tone::unknown)) continue;
-                g.setColour(degreeColour(p, root).withAlpha(0.22f));
+                g.setColour((blueTheme() ? juce::Colour(0x1c81b5e6) : degreeColour(p, root, pianoInspector_.theme).withAlpha(0.22f)));
                 g.fillRect(x, noteY(p), w, rowHeight);
             }
         }
@@ -3665,8 +3684,8 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     const auto step = pianoGrid_.grid;
     if (pianoGrid_.editable && step > 1 && double(step) * area.getWidth() / length >= 8) {
         g.setColour(juce::Colour(0xff354653));
-        for (auto tick = static_cast<juce::int64>(std::ceil(origin / step)) * step; tick < origin + length; tick += step)
-            g.drawVerticalLine(juce::roundToInt(tickX(tick)), float(area.getY()), float(area.getBottom()));
+        for (auto line = juce::int64(std::ceil((origin - 0.5) / step)); line * step < origin + length; ++line)
+            g.drawVerticalLine(juce::roundToInt(tickX(std::llround(line * step))), float(area.getY()), float(area.getBottom()));
     }
     const auto barStep = std::max<juce::int64>(1, static_cast<juce::int64>((visible.end - visible.start) / (area.getWidth() < 420 ? 4 : 8)));
     for (auto bar = firstBar; bar < endBar; bar += barStep) {
@@ -3696,7 +3715,7 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
             auto rect = juce::Rectangle<float>(a, noteY(note.pitch), std::max(1.f, b-a), height);
             const auto role = theory_->tone(note.pitch, chord, scaleMask);
             const int root = scaleMode ? (index >= 0 ? theory_->scales[index].tonic : -1) : (chord ? chord->root : -1);
-            auto fill = degreeColour(note.pitch, root);
+            auto fill = degreeColour(note.pitch, root, pianoInspector_.theme);
             if (scaleMode && scaleMask && !theory_->contains(scaleMask, note.pitch))
                 fill = fill.interpolatedWith(juce::Colour(0xff646671), 0.65f);
             g.setColour(fill);

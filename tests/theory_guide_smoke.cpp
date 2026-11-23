@@ -163,8 +163,8 @@ int songMusicChecks(const juce::File& demo) {
     return 0;
 }
 
-Command find(juce::MenuBarModel& model, const juce::String& label) {
-    const auto menu = model.getMenuForIndex(1, TRANS("View"));
+Command find(juce::MenuBarModel& model, const juce::String& label, int menuIndex = 1) {
+    const auto menu = model.getMenuForIndex(menuIndex, {});
     juce::PopupMenu::MenuItemIterator it(menu, true);
     while (it.next()) if (it.getItem().text == label) return {it.getItem().itemID, it.getItem().isTicked};
     return {};
@@ -201,8 +201,11 @@ int checkTheoryGuide(const juce::File& demo) {
     };
     const auto show = find(*model, TRANS("Show Theory Guide")), chord = find(*model, TRANS("Chord tone fit")),
                scale = find(*model, TRANS("Scale fit"));
+    const auto blue = find(*model, TRANS("Studio Blue"), 3), harmonic = find(*model, TRANS("Harmonic colours"), 3);
+    if (!blue.id || !harmonic.id || blue.checked == harmonic.checked) return 44;
     const auto savedMode = colours->getSelectedId();
     juce::ScopeGuard restore([&] {
+        model->menuItemSelected(blue.checked ? blue.id : harmonic.id, 3);
         colours->setSelectedId(savedMode, juce::sendNotificationSync);
         set("Show Theory Guide", true); set("Chord tone fit", chord.checked);
         set("Scale fit", scale.checked); set("Show Theory Guide", show.checked);
@@ -223,7 +226,16 @@ int checkTheoryGuide(const juce::File& demo) {
     main.displayTransportPosition(13 * project->ticksPerBar);
     if (auto* scroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-horizontal-scroll")))
             scroll->setCurrentRangeStart(13, juce::sendNotificationSync);
+    model->menuItemSelected(harmonic.id, 3);
+    const auto multicolour = main.createComponentSnapshot(main.getLocalBounds());
+    model->menuItemSelected(blue.id, 3);
     const auto snapshot = main.createComponentSnapshot(main.getLocalBounds());
+    if (!find(*model, TRANS("Studio Blue"), 3).checked) return 45;
+    int different = 0;
+    for (int y = grid->getY(); y < grid->getBottom(); y += 3)
+        for (int x = grid->getX(); x < grid->getRight(); x += 3)
+            different += snapshot.getPixelAt(x, y) != multicolour.getPixelAt(x, y);
+    if (different < 20) return 46;
     const auto snapshotPath = juce::SystemStats::getEnvironmentVariable("OSTF_THEORY_SMOKE_PNG", {});
     if (snapshotPath.isNotEmpty()) {
         juce::FileOutputStream out {juce::File(snapshotPath)};

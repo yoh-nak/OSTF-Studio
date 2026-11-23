@@ -4,24 +4,27 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <cmath>
 #include <limits>
+#include <map>
+#include <set>
 
 class PianoNoteGrid final : public juce::Component, public juce::SettableTooltipClient {
     using Note = ostfstudio::PitchedNote;
     using Edit = ostfstudio::NoteEdit;
-    enum Gesture { idle, marquee, move, trimStart, trimEnd, velocity };
+    enum Gesture { idle, marquee, draw, repeat, move, trimStart, trimEnd, velocity };
 public:
     std::function<juce::Range<double>()> tickRange;
     std::function<void(const std::vector<Edit>&)> commit;
     std::function<void(const std::vector<Edit>&)> previewEdit;
     std::function<void(const Note&)> inspectNote;
     std::function<void(bool)> undoRedo;
-    std::function<void()> selectionChanged;
+    std::function<void()> selectionChanged, togglePencil;
     std::function<juce::String(juce::int64, const Note&)> theoryHint;
     std::vector<Note> notes;
     juce::StringArray selection;
-    juce::int64 grid = 1, endTick = 1, quarter = 1;
+    double grid = 1;
+    juce::int64 endTick = 1, quarter = 1;
     int low = 52, high = 70;
-    bool editable = false, absoluteSnap = false;
+    bool editable = false, absoluteSnap = false, pencil = false, percussion = false;
     const std::vector<Edit>& pendingEdits() const { return pending; }
 
     PianoNoteGrid() { setWantsKeyboardFocus(true); setComponentID("piano-note-grid"); }
@@ -29,7 +32,7 @@ public:
     void quantizeSelection(int strength) {
         if (grid <= 1 || strength <= 0) return;
         editSelection([&](Note& note) {
-            const auto nearest = std::llround(double(note.startTick) / grid) * grid;
+            const auto nearest = snapTick(double(note.startTick), grid);
             const auto delta = std::clamp<juce::int64>(std::llround((nearest - note.startTick) * strength / 100.0),
                                                       -note.startTick, endTick - note.endTick);
             note.startTick += delta;
@@ -48,6 +51,64 @@ public:
         });
     }
 
+    void splitIntoTriplets() {
+        if (!editable || !commit) return;
+        std::vector<Edit> changes;
+        for (const auto& source : notes) {
+            const auto length = source.endTick - source.startTick;
+            if (!selection.contains(source.id) || length < 3) continue;
+            // Round both boundaries against the original span so the last note ends exactly on time.
+            const auto third = length / 3 + (length % 3 == 2 ? 1 : 0);
+            const juce::int64 cuts[] {source.startTick, source.startTick + third, source.endTick - third, source.endTick};
+            for (const int part : {1, 2, 0}) {
+                auto note = source;
+                note.startTick = cuts[part];
+                note.endTick = cuts[part + 1];
+                changes.push_back({part == 0 ? Edit::change : Edit::duplicate, note});
+            }
+        }
+        if (!changes.empty()) commit(changes);
+    }
+
+    enum class Stroke { lowFirst, highFirst, alternate };
+    void strumSelection(Stroke direction, int spreadPercent) {
+        if (!editable || percussion || !commit || spreadPercent <= 0 || selection.size() < 2) return;
+        std::map<juce::int64, std::vector<Note>> chords;
+        for (const auto& note : notes) if (selection.contains(note.id)) chords[note.startTick].push_back(note);
+        std::vector<Edit> changes;
+        bool descending = direction == Stroke::highFirst;
+        for (auto it = chords.begin(); it != chords.end(); ++it) {
+            auto& chord = it->second;
+            std::sort(chord.begin(), chord.end(), [descending](const Note& a, const Note& b) {
+                return descending ? a.pitch > b.pitch : a.pitch < b.pitch;
+            });
+            if (chord.front().pitch == chord.back().pitch) continue;
+            int intervals = 0;
+            auto spread = juce::int64(std::llround(quarter * std::clamp(spreadPercent, 0, 100) / 100.0));
+            for (size_t i = 0; i < chord.size(); ++i) {
+                if (i && chord[i].pitch != chord[i - 1].pitch) ++intervals;
+                spread = std::min(spread, chord[i].endTick - it->first - 1);
+            }
+            if (auto next = std::next(it); next != chords.end())
+                spread = std::min(spread, next->first - it->first - 1);
+            int rank = 0;
+            for (size_t i = 1; i < chord.size(); ++i) {
+                if (chord[i].pitch != chord[i - 1].pitch) ++rank;
+                auto note = chord[i];
+                note.startTick += std::llround(double(spread) * rank / intervals);
+                if (note.startTick != it->first) changes.push_back({Edit::change, note});
+            }
+            if (direction == Stroke::alternate) descending = !descending;
+        }
+        if (!changes.empty()) {
+            auto selected = selection;
+            commit(changes);
+            selection = selected;
+            if (selectionChanged) selectionChanged();
+            repaint();
+        }
+    }
+
     juce::String getTooltip() override {
         if (theoryHint && tickRange && getWidth() > 0) {
             const auto point = getMouseXYRelative().toFloat();
@@ -61,6 +122,7 @@ public:
     }
 
     void resetRange(bool drum) {
+        percussion = drum;
         low = drum ? 33 : 52;
         high = drum ? 54 : 70;
         if (!notes.empty()) {
@@ -72,7 +134,7 @@ public:
         cancel();
     }
     void cancel() {
-        gesture = idle; pending.clear(); lastPreview.reset();
+        gesture = idle; pending.clear(); occupiedOnsets.clear(); lastPreview.reset();
         if (previewEdit) previewEdit(pending);
         repaint();
     }
@@ -116,7 +178,7 @@ public:
         auto* hit = hitNote(e.position);
         const auto mode = hit ? part(*hit, e) : idle;
         setMouseCursor(mode == trimStart || mode == trimEnd ? juce::MouseCursor::LeftRightResizeCursor
-            : mode == velocity ? juce::MouseCursor::UpDownResizeCursor : juce::MouseCursor::NormalCursor);
+            : mode == velocity ? juce::MouseCursor::UpDownResizeCursor : (!hit && pencil && editable ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::NormalCursor));
     }
     void mouseDown(const juce::MouseEvent& e) override {
         cancel();
@@ -127,7 +189,15 @@ public:
         if (!hit) {
             if (!e.mods.isShiftDown()) selection.clear();
             originalSelection = selection;
-            gesture = marquee;
+            if (pencil && !e.mods.isShiftDown()) {
+                gesture = e.mods.isAltDown() && grid > 1 ? repeat : draw;
+                const auto note = newNoteAt(e);
+                if (gesture == repeat) {
+                    for (const auto& existing : notes) if (existing.pitch == note.pitch) occupiedOnsets.insert(existing.startTick);
+                    updateRepeats(current.x);
+                } else pending.push_back({Edit::insert, note});
+                setDescription({});
+            } else gesture = marquee;
         } else {
             if (inspectNote) inspectNote(*hit);
             if (e.mods.isShiftDown() && selection.contains(hit->id)) { selection.removeString(hit->id); if (selectionChanged) selectionChanged(); repaint(); return; }
@@ -143,18 +213,22 @@ public:
         repaint();
     }
     void mouseDoubleClick(const juce::MouseEvent& e) override {
-        if (!editable || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu() || hitNote(e.position) || getHeight() < 1) return;
+        if (pencil || !editable || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu() || hitNote(e.position) || getHeight() < 1) return;
         cancel();
-        const auto range = tickRange();
-        const auto tick = range.getStart() + e.x * range.getLength() / std::max(1, getWidth());
-        auto start = std::clamp(static_cast<juce::int64>(std::floor(tick / grid)) * grid, juce::int64(0), endTick - 1);
-        const auto duration = grid > 1 ? grid : std::max<juce::int64>(1, quarter / 4);
-        commit({{Edit::insert, {start, std::min(endTick, start + duration), pitchAt(e.y), 96, true, {}}}});
+        commit({{Edit::insert, newNoteAt(e)}});
     }
     void mouseDrag(const juce::MouseEvent& e) override {
         if (gesture == idle || !e.mouseWasDraggedSinceMouseDown()) return;
         current = e.getPosition();
-        if (gesture == marquee) {
+        if (gesture == repeat) {
+            updateRepeats(current.x);
+        } else if (gesture == draw) {
+            auto& note = pending.front().note;
+            const auto step = e.mods.isShiftDown() ? juce::int64(1) : grid;
+            const auto end = snapTick(tickAtX(e.x), step);
+            const auto minimum = step > 1 ? boundary(std::llround(note.startTick / grid) + 1) : note.startTick + 1;
+            note.endTick = std::clamp(end, std::min(minimum, endTick), endTick);
+        } else if (gesture == marquee) {
             selection = originalSelection;
             const auto rect = juce::Rectangle<int>(anchor, current).toFloat();
             for (const auto& n : notes) if (rect.intersects(box(n))) selection.addIfNotAlreadyThere(n.id);
@@ -162,8 +236,9 @@ public:
         } else {
             const auto dx = (current.x - anchor.x) * tickRange().getLength() / std::max(1, getWidth());
             const auto step = e.mods.isShiftDown() ? juce::int64(1) : grid;
-            const auto origin = absoluteSnap ? snapAnchor : juce::int64(0);
-            const auto dt = current.x == anchor.x ? 0 : std::llround((origin + dx) / step) * step - origin;
+            const auto line = std::round(snapAnchor / step);
+            const auto relativeDelta = std::llround((line + std::round(dx / step)) * step) - std::llround(line * step);
+            const auto dt = current.x == anchor.x ? 0 : absoluteSnap ? snapTick(snapAnchor + dx, step) - snapAnchor : relativeDelta;
             makeChanges(dt, pitchAt(current.y) - pitchAt(anchor.y), (anchor.y - current.y) / 2);
         }
         repaint();
@@ -188,6 +263,7 @@ public:
             return false;
         }
         if (k.isKeyCode(juce::KeyPress::escapeKey)) { cancel(); selection.clear(); if (selectionChanged) selectionChanged(); return true; }
+        if (k.isKeyCode('B') && !m.isAnyModifierKeyDown() && togglePencil) { cancel(); togglePencil(); return true; }
         if (selection.isEmpty()) return false;
         if (k.isKeyCode(juce::KeyPress::deleteKey) || k.isKeyCode(juce::KeyPress::backspaceKey)) {
             std::vector<Edit> changes;
@@ -199,7 +275,15 @@ public:
         const int dx = int(k.isKeyCode(juce::KeyPress::rightKey)) - int(k.isKeyCode(juce::KeyPress::leftKey));
         if (dx == 0 && dy == 0) return false;
         gesture = move; copy = false;
-        makeChanges(dx * grid, dy * (m.isShiftDown() ? 12 : 1), 0);
+        auto ticks = juce::int64(0);
+        if (dx) {
+            auto first = std::find_if(notes.begin(), notes.end(), [&](const auto& n) { return selection.contains(n.id); });
+            if (first != notes.end()) {
+                const auto line = std::llround(first->startTick / grid);
+                ticks = boundary(line + dx) - boundary(line);
+            }
+        }
+        makeChanges(ticks, dy * (m.isShiftDown() ? 12 : 1), 0);
         auto changes = std::move(pending);
         cancel();
         if (!changes.empty()) commit(changes);
@@ -222,6 +306,36 @@ private:
             if (selectionChanged) selectionChanged();
             repaint();
         }
+    }
+    double tickAtX(int x) const {
+        const auto range = tickRange();
+        return range.getStart() + x * range.getLength() / std::max(1, getWidth());
+    }
+    static juce::int64 snapTick(double tick, double step) { return std::llround(std::round(tick / step) * step); }
+    juce::int64 boundary(juce::int64 line) const { return std::llround(line * grid); }
+    juce::int64 lineAtX(int x) const {
+        const auto tick = std::clamp(tickAtX(std::clamp(x, 0, getWidth())), 0.0, double(endTick - 1));
+        auto line = juce::int64(std::floor(tick / grid));
+        // A MIDI tick can represent the next fractional grid line after rounding.
+        if (boundary(line + 1) <= tick) ++line;
+        if (boundary(line) > tick && line > 0) --line;
+        return line;
+    }
+    void updateRepeats(int x) {
+        const auto first = lineAtX(anchor.x), last = lineAtX(x);
+        pending.clear();
+        for (auto i = std::min(first, last); i <= std::max(first, last); ++i) {
+            const auto start = boundary(i);
+            if (!occupiedOnsets.contains(start))
+                pending.push_back({Edit::insert, {start, std::min(endTick, boundary(i + 1)), pitchAt(anchor.y), 96, true, {}}});
+        }
+    }
+    std::set<juce::int64> occupiedOnsets;
+    Note newNoteAt(const juce::MouseEvent& e) const {
+        const auto line = lineAtX(e.x);
+        const auto start = boundary(line);
+        const auto end = grid > 1 ? boundary(line + 1) : start + std::max<juce::int64>(1, quarter / 4);
+        return {start, std::min(endTick, end), pitchAt(e.y), 96, true, {}};
     }
     juce::int64 snapAnchor = 0;
     int pitchAt(int y) const { return std::clamp(high - int(std::floor(double(y) * (high - low + 1) / std::max(1, getHeight()))), 0, 127); }

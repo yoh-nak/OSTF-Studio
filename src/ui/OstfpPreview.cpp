@@ -1341,7 +1341,7 @@ juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEd
             require(found != existing.end(), "The selected note has changed.");
             clip = found->second.first;
             event = found->second.second;
-            existing.erase(found);
+            if (edit.action != NoteEdit::duplicate) existing.erase(found);
         }
         if (edit.action == NoteEdit::erase) {
             auto notes = clip["notes"];

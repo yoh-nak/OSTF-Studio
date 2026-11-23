@@ -151,6 +151,7 @@ private:
     void finishNoteEdit(bool playing);
     PianoNoteGrid pianoGrid_;
     PianoInspector pianoInspector_ {pianoGrid_};
+    bool blueTheme() const { return pianoInspector_.theme == pianoHarmony::Theme::studioBlue; }
     juce::Viewport pianoInspectorView_;
     EditorDivider pianoDivider_, columnDivider_ {true};
     int preferredHeaderWidth_ = 487, trackHeaderWidth = 487, trackNameWidth = 172;
