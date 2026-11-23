@@ -4,7 +4,7 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
-- The [arranger exchange design](docs/ARRANGER_PHRASE_EXCHANGE.ja.md) proposes placing a generated progression on the global chord lane, then using it for bass and keys even before any performance clips exist. Selecting an existing OSTF phrase also imports the chords sounding in its range. The first end-to-end check uses a mid-bar chord change shared by both parts. Audition, SMF and Studio insertion should agree on the generated notes. The current preview still uses its fixed pattern.
+- The [arranger exchange design](docs/ARRANGER_PHRASE_EXCHANGE.ja.md) proposes embedding Composer’s chord functions in every part arranger. Test that the same notes and settings produce the same analysis in both plug-ins and that a bass arranger works on its own. Keep existing OSTF chord spans, analyse gaps with pitched evidence, and label newly composed harmony as a suggestion. The cross-part check uses a mid-bar chord change on the global lane. The current preview still uses its fixed pattern.
 
 - Both bar rulers seek the shared transport using their own zoom and scroll. Audio regions draw stereo peaks from linked or embedded WAVs with source trims and tempo changes. Relay Circuit has four audio tracks; First Light Vector has five. Sample-by-sample rendering is reproducible with the demo generator. The transport smoke test checks the seek coordinates and waveform against a known pulse; the stock FX test checks both overlapping stems during playback.
 

@@ -86,7 +86,7 @@ When Studio opens **OSTF Arranger**, the editor also displays **Drag notes to an
 
 ### OSTF Arranger and piano-roll performance lanes
 
-The proposed arranger workflow starts with a chord tool on a new song. Place the chosen progression on the global chord lane and use the same bars to generate bass, keys or other parts. Importing an existing OSTF phrase automatically includes the chords sounding in its range. MIDI phrases can still be edited and auditioned without chords. [Arranger design (Japanese)](docs/ARRANGER_PHRASE_EXCHANGE.ja.md)
+In the proposed design, Composer and each part arranger share chord analysis and progression generation. An arranger can use the chords accompanying an OSTF phrase, analyse unlabelled notes or suggest new harmony when the source is ambiguous. Place the chosen progression on the global chord lane to use the same bars for bass, keys and other parts. [Arranger design (Japanese)](docs/ARRANGER_PHRASE_EXCHANGE.ja.md)
 
 Double-click an empty cell to add a note. Drag its body to move it, either edge to trim it, or Alt/Option-drag to copy it. Shift-click or drag a selection box to edit several notes together. Ctrl/Command-drag vertically to adjust velocity. Choose a snap division in the piano-roll footer. Delete removes the selection, and Ctrl/Command+Z undoes the last note edit. The Help menu lists the shortcuts.
 
