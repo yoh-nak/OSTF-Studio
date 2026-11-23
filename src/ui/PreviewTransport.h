@@ -78,6 +78,8 @@ private:
         juce::AudioBuffer<float> wav;
         double wavRate = 0.0;
         int wavStart = 0, wavEnd = 0;
+        juce::int64 wavStartTick = 0;
+        ostfstudio::ClipTiming wavTiming;
         float wavGain = 1.0f;
     };
     std::array<InstrumentTrack, maxTracks> instruments_;

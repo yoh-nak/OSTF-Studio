@@ -1,4 +1,5 @@
 #pragma once
+#include "core/ClipTiming.h"
 
 #include "ui/ArrangementView.h"
 #include "core/MixerState.h"
@@ -103,6 +104,7 @@ struct ProjectAudio {
     juce::String sha256;
     int sampleRate = 0, channels = 0;
     juce::int64 assetFrames = 0;
+    ClipTiming timing;
 };
 
 enum class TrackKind { pitched, drum, audio };

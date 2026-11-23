@@ -8,7 +8,7 @@
 #include "ui/PreviewTransport.h"
 #include "ui/ViewButton.h"
 #include "ui/ArrangementRuler.h"
-#include "ui/AudioClipWaveforms.h"
+#include "ui/AudioClipEditor.h"
 #include "ui/PianoInspector.h"
 #include "ui/PerformanceEditor.h"
 #include "ui/DrumSteps.h"
@@ -18,7 +18,7 @@
 #include "ui/TheoryGuide.h"
 
 class MainComponent final : public juce::Component, public juce::TooltipClient, public juce::DragAndDropContainer,
-                            public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
+                            public juce::FileDragAndDropTarget, public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
 public:
     MainComponent();
     ~MainComponent() override;
@@ -35,6 +35,9 @@ public:
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseUp(const juce::MouseEvent& event) override;
+    bool isInterestedInFileDrag(const juce::StringArray&) override;
+    void filesDropped(const juce::StringArray&, int x, int y) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 private:
     bool isInterestedInDragSource(const SourceDetails& details) override;
@@ -67,7 +70,7 @@ private:
     int getArrangementHeight(int workspaceHeight) const;
     void refreshTimelineLanes();
     std::optional<ostfstudio::TimelineLane> globalLaneAt(juce::Point<int>) const;
-    juce::int64 arrangementTickAt(int x) const;
+    juce::int64 arrangementTickAt(int x, bool endBoundary = false) const;
     void globalCommand(int command);
     void placeResult(ImportResultRow&, std::optional<std::size_t> track, juce::int64 tick, bool replace);
     void applyGlobalChange(ostfstudio::TimelineLane, juce::Array<juce::var> remove, juce::Array<juce::var> insert);
@@ -124,7 +127,7 @@ private:
     void updateEffectButton(EffectChain& chain);
     void showEffects(bool output, std::size_t index);
     void appendEffect(bool output, std::size_t index, const juce::PluginDescription& description);
-    void loadEffect(bool output, std::size_t index, std::size_t slot, const juce::PluginDescription& description);
+    void loadEffect(bool output, std::size_t index, std::size_t slot, const juce::PluginDescription& description, bool openEditor = false);
     void restoreEffects(bool output, std::size_t index, const juce::StringArray& ids);
     PluginBrowser& ensurePluginBrowser();
     void showTrackMix(std::size_t index);
@@ -237,7 +240,22 @@ private:
     juce::ScrollBar arrangementScroll_ {false};
     juce::Component rowOverlay_;
     ArrangementRuler ruler_, pianoRuler_;
+    ostfstudio::ProjectAudio* clipOn(std::size_t track) const;
+    void placeWav(const juce::File&, std::size_t track, juce::int64 tick, bool replace);
+    void openMelodyne();
+    void showMelodyneActions();
+    void editMelodyneCopy();
+    void applyMelodyneCopy();
+    struct MelodyneCopy {
+        juce::File wav;
+        juce::String originalHash;
+    };
+    std::map<juce::String, MelodyneCopy> melodyneCopies_;
+    void openEffectEditor(bool output, std::size_t index, std::size_t slot);
     AudioClipWaveforms waveforms_;
+    AudioClipEditor audioEditor_{waveforms_};
+    std::optional<std::size_t> resizingAudio_;
+    juce::int64 previewAudioLength_ = 0;
     bool spaceHeld_ = false;
     juce::ScrollBar verticalScroll_ {true};
     juce::StringArray performanceLaneNames_;

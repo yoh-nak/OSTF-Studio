@@ -28,6 +28,11 @@ public:
     }
 
     bool available(std::size_t track) const { return entries_.count(track) > 0; }
+    double nativeTicks(const ostfstudio::ProjectAudio& clip, const ostfstudio::TempoMap& clock) const {
+        const auto it = entries_.find(clip.track);
+        if (it == entries_.end()) return 0;
+        return clock.tickAt(clock.secondsAt(clip.startTick) + double(sourceFrames(clip, it->second)) / it->second.rate) - clip.startTick;
+    }
     double endTick(const ostfstudio::ProjectAudio& clip, const ostfstudio::TempoMap& clock) const {
         if (clip.durationTicks > 0) return double(clip.startTick + clip.durationTicks);
         const auto it = entries_.find(clip.track);
@@ -36,29 +41,54 @@ public:
     }
 
     void draw(juce::Graphics& g, juce::Rectangle<int> area, const ostfstudio::ProjectAudio& clip,
-              const ostfstudio::TempoMap& clock, double firstTick, double lastTick) const {
+              const ostfstudio::TempoMap& clock, double firstTick, double lastTick,
+              const ostfstudio::ClipTiming* preview = nullptr) const {
         const auto it = entries_.find(clip.track);
         if (it == entries_.end() || area.isEmpty() || lastTick <= firstTick) return;
         const auto& data = it->second;
         const auto onset = clock.secondsAt(clip.startTick);
-        const auto sourceEnd = clock.tickAt(onset + sourceFrames(clip, data) / data.rate);
-        const auto end = std::min(lastTick, sourceEnd);
+        const auto seconds = double(sourceFrames(clip, data)) / data.rate;
+        if (seconds <= 0 || firstTick < clip.startTick - 0.001) return;
+        const auto secondsAt = [&](double tick) {
+            const auto n = static_cast<juce::int64>(std::floor(tick));
+            return clock.secondsAt(n) + (tick - n) * (clock.secondsAt(n + 1) - clock.secondsAt(n));
+        };
+        const auto& timing = preview ? *preview : clip.timing;
+        const auto phaseAt = [&](double tick) {
+            return timing.cycleTicks ? (tick - clip.startTick) / timing.cycleTicks : (secondsAt(tick) - onset) / seconds;
+        };
+        const auto tickAt = [&](double phase) {
+            return timing.cycleTicks ? clip.startTick + phase * timing.cycleTicks : clock.tickAt(onset + phase * seconds);
+        };
         const auto xAt = [&](double tick) {
             return area.getX() + juce::roundToInt((tick - firstTick) / (lastTick - firstTick) * area.getWidth());
         };
-        const auto secondsAt = [&](double tick) {
-            const auto n = static_cast<juce::int64>(std::floor(tick));
-            return clip.startFrame / data.rate + clock.secondsAt(n) - onset
-                   + (tick - n) * (clock.secondsAt(n + 1) - clock.secondsAt(n));
-        };
+        const double end = timing.loop ? lastTick : std::min(lastTick, tickAt(1));
+        const double offset = clip.startFrame / data.rate;
         g.setColour(juce::Colour(0xffa8e7df));
-        // A native WAV runs in seconds; each constant-tempo span has its own mapping to pixels.
-        for (double tick = firstTick; tick < end;) {
-            const auto change = clock.nextChangeAfter(static_cast<juce::int64>(std::floor(tick)));
-            const auto next = change ? std::min(end, double(*change)) : end;
-            const auto segment = area.withLeft(xAt(tick)).withRight(xAt(next));
-            if (!segment.isEmpty())
-                data.thumbnail->drawChannels(g, segment, secondsAt(tick), secondsAt(next), 1.f);
+        for (double tick = firstTick; tick < end - 1e-7;) {
+            const double phase = std::max(0.0, phaseAt(tick));
+            const double cycle = std::floor(phase + 1e-9);
+            const double local = std::max(0.0, phase - cycle);
+            auto marker = std::upper_bound(timing.markers.begin(), timing.markers.end(), local + 1e-9,
+                [](double p, const auto& point) { return p < point.position; });
+            double next = std::min(end, tickAt(cycle + (marker == timing.markers.end() ? 1. : marker->position)));
+            if (!timing.cycleTicks)
+                if (auto change = clock.nextChangeAfter(static_cast<juce::int64>(std::floor(tick))))
+                    next = std::min(next, double(*change));
+            const auto left = xAt(tick);
+            if (timing.loop && xAt(tickAt(cycle + 1)) <= left && xAt(tickAt(cycle + 2)) <= left + 1) {
+                // At overview zoom a pixel can contain thousands of complete cycles.
+                const double perPixel = (lastTick - firstTick) / area.getWidth();
+                next = std::min(end, tick + perPixel);
+                data.thumbnail->drawChannels(g, area.withX(left).withWidth(1), offset, offset + seconds, 1.f);
+            } else {
+                const auto segment = area.withLeft(left).withRight(xAt(next));
+                if (!segment.isEmpty())
+                    data.thumbnail->drawChannels(g, segment, offset + seconds * timing.sourcePhase(local),
+                        offset + seconds * timing.sourcePhase(std::clamp(phaseAt(next) - cycle, 0., 1.)), 1.f);
+            }
+            if (next <= tick + 1e-8) break;
             tick = next;
         }
     }

@@ -1,5 +1,6 @@
 #include "ui/MainComponent.h"
 #include "ui/GlobalTimelineEdit.h"
+#include "ui/ExternalAudioEdit.h"
 #include "ui/MediaImport.h"
 #include "ui/SongInformationPanel.h"
 #include "ui/DemoArrangement.h"
@@ -27,7 +28,7 @@ constexpr int maxInterfaceScale = 150;
 constexpr int timelineNavigationHeight = 24;
 constexpr int arrangementHeadingHeight = 24;
 constexpr int globalRowHeight = 28;
-constexpr int theoryGuideHeight = 72, fitLaneHeight = 24;
+constexpr int theoryGuideHeight = 54, fitLaneHeight = 24;
 enum PianoColourMode { plainNotes = 1, chordNotes, scaleNotes, chordAndScaleNotes };
 using namespace pianoHarmony;
 
@@ -669,7 +670,21 @@ MainComponent::MainComponent() {
     setupRuler(pianoRuler_, arrangementScroll_);
     addChildComponent(pianoRuler_);
     rowOverlay_.addAndMakeVisible(ruler_);
-    waveforms_.onChange = [this] { repaint(rowOverlay_.getBounds()); };
+    addChildComponent(audioEditor_);
+    audioEditor_.sourceClip = [this] { return selectedTrack_ ? clipOn(*selectedTrack_) : nullptr; };
+    audioEditor_.clock = [this]() -> const ostfstudio::TempoMap& { return project_->clock; };
+    audioEditor_.onMelodyne = [this] { showMelodyneActions(); };
+    audioEditor_.onEdit = [this](const ostfstudio::ClipTiming& edit) {
+        auto* clip = selectedTrack_ ? clipOn(*selectedTrack_) : nullptr;
+        if (!clip || recordTrack_) return;
+        const bool playing = transportActive_;
+        if (playing) stopTransport();
+        if (!edit.loop && edit.cycleTicks && edit.cycleTicks != clip->timing.cycleTicks)
+            clip->durationTicks = std::clamp<juce::int64>(edit.cycleTicks, 1, project_->playbackEndTick() - clip->startTick);
+        clip->timing = edit;
+        finishNoteEdit(playing);
+    };
+    waveforms_.onChange = [this] { repaint(rowOverlay_.getBounds()); audioEditor_.repaint(); };
     verticalScroll_.setAutoHide(false);
     verticalScroll_.setComponentID("arrangement-vertical-scroll");
     verticalScroll_.setSingleStepSize(32);
@@ -1798,6 +1813,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     stopTransport();
     scoreView_.reset();
     selectedGlobal_.reset();
+    melodyneCopies_.clear();
     project_ = std::move(next);
     auditionShift_ = 0;
     auditionRate_ = 1;
@@ -1822,6 +1838,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
             audio.localFile = sourceFolder.getChildFile(audio.path);
     waveforms_.load(project_->audio);
     refreshTimelineLanes();
+    resizingAudio_.reset();
     ++projectGeneration_;
     selectedTrack_.reset();
     trackRows_.clear();
@@ -2135,6 +2152,7 @@ void MainComponent::editOutput(bool send, std::optional<std::size_t> source, boo
         || send != ostfstudio::isReturnOutput(*source)))) return;
     const auto index = source ? (send ? ostfstudio::outputReturnIndex(*source) : ostfstudio::outputBusIndex(*source)) : count;
     stopTransport();
+    resizingAudio_.reset();
     ++projectGeneration_;
     workspaceMode_ = WorkspaceMode::arrangement;
     showOutputTracks_ = true;
@@ -2189,6 +2207,8 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
     theory_.reset();
     refreshTheory();
     waveforms_.load(project_->audio);
+    std::erase_if(melodyneCopies_, [this](const auto& copy) { return !project_->trackIds.contains(copy.first); });
+    resizingAudio_.reset();
     ++projectGeneration_;
     if (remove) {
         previous.erase(previous.begin() + static_cast<std::ptrdiff_t>(*remove));
@@ -2381,6 +2401,70 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
         });
 }
 
+ostfstudio::ProjectAudio* MainComponent::clipOn(std::size_t track) const {
+    if (!project_) return nullptr;
+    auto& clips = project_->audio;
+    const auto it = std::find_if(clips.begin(), clips.end(), [track](const auto& clip) { return clip.track == track; });
+    return it != clips.end() ? &*it : nullptr;
+}
+
+bool MainComponent::isInterestedInFileDrag(const juce::StringArray& files) {
+    return project_ && !recordTrack_ && workspaceMode_ == WorkspaceMode::arrangement
+           && files.size() == 1 && files[0].endsWithIgnoreCase(".wav");
+}
+
+void MainComponent::filesDropped(const juce::StringArray& files, int x, int y) {
+    if (!isInterestedInFileDrag(files)) return;
+    auto track = pluginDropTrack({x, y});
+    if (audioEditor_.isVisible() && audioEditor_.getBounds().contains(x, y)) track = selectedTrack_;
+    if (!track || project_->trackKinds[*track] != ostfstudio::TrackKind::audio) {
+        statusLabel_.setText(TRANS("Drop the WAV onto an audio track"), juce::dontSendNotification);
+        return;
+    }
+    const auto tick = trackRows_[*track].withTrimmedLeft(trackHeaderWidth).contains(x, y)
+        ? arrangementTickAt(x) : std::max<juce::int64>(0, cursorTick_);
+    placeWav(juce::File(files[0]), *track, tick, false);
+}
+
+void MainComponent::placeWav(const juce::File& file, std::size_t index, juce::int64 tick, bool replace) {
+    if (!project_ || index >= project_->sourceTrackCount() || recordTrack_) return;
+    auto* prior = clipOn(index);
+    if (prior && !replace) {
+        juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, TRANS("Replace"),
+            TRANS("Replace the WAV on this track?"), TRANS("Replace"), TRANS("Cancel"), this,
+            juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<MainComponent>(this),
+                generation = projectGeneration_, index, tick, file](int answer) {
+                if (answer && safe && generation == safe->projectGeneration_) safe->placeWav(file, index, tick, true);
+            }));
+        return;
+    }
+    juce::WavAudioFormat wav;
+    auto stream = file.createInputStream();
+    std::unique_ptr<juce::AudioFormatReader> reader(stream ? wav.createReaderFor(stream.release(), true) : nullptr);
+    if (!reader || reader->sampleRate <= 0 || reader->lengthInSamples < 1 || reader->lengthInSamples > 8 * 1024 * 1024
+        || file.getSize() > 16 * 1024 * 1024 || reader->numChannels < 1 || reader->numChannels > 2) {
+        statusLabel_.setText(TRANS("Unsupported WAV") + ": " + file.getFileName(), juce::dontSendNotification);
+        return;
+    }
+    const auto end = project_->playbackEndTick();
+    if (tick < 0 || tick >= end) {
+        statusLabel_.setText(TRANS("Drop the sample before the song end"), juce::dontSendNotification);
+        return;
+    }
+    ostfstudio::ProjectAudio clip{index, file.getFileName(), file, {}};
+    clip.startTick = tick;
+    clip.durationTicks = std::clamp<juce::int64>(std::ceil(project_->clock.tickAt(project_->clock.secondsAt(tick)
+        + reader->lengthInSamples / reader->sampleRate) - tick), 1, end - tick);
+    const bool playing = transportActive_;
+    if (playing) stopTransport();
+    if (prior) *prior = std::move(clip);
+    else project_->audio.push_back(std::move(clip));
+    waveforms_.load(project_->audio);
+    selectTrack(index);
+    finishNoteEdit(playing);
+    statusLabel_.setText(file.getFileName(), juce::dontSendNotification);
+}
+
 void MainComponent::linkAudio(std::size_t index) {
     if (!project_ || index >= project_->sourceTrackCount()) return;
     chooser_ = std::make_unique<juce::FileChooser>(TRANS("Link WAV at the start of the track"), juce::File{}, "*.wav");
@@ -2389,25 +2473,7 @@ void MainComponent::linkAudio(std::size_t index) {
             if (!safe || safe->projectGeneration_ != generation) return;
             const auto file = picker.getResult();
             if (file == juce::File{}) return;
-            auto& audio = safe->project_->audio;
-            const auto entry = std::find_if(audio.begin(), audio.end(), [index](const auto& item) { return item.track == index; });
-            if (entry == audio.end() && audio.size() >= ostfstudio::OstfpPreview::maxTracks) return;
-            safe->stopTransport();
-            ostfstudio::ProjectAudio linked{index, file.getFileName(), file, {}};
-            juce::WavAudioFormat wav;
-            std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(file.createInputStream().release(), true));
-            if (!reader || reader->sampleRate <= 0 || reader->lengthInSamples < 1 || reader->lengthInSamples > 8 * 1024 * 1024
-                || reader->numChannels < 1 || reader->numChannels > 2) {
-                safe->statusLabel_.setText(TRANS("Unsupported WAV") + ": " + file.getFileName(), juce::dontSendNotification);
-                return;
-            }
-            linked.durationTicks = std::clamp<juce::int64>(static_cast<juce::int64>(std::ceil(
-                safe->project_->clock.tickAt(reader->lengthInSamples / reader->sampleRate))), 1, safe->project_->playbackEndTick());
-            if (entry == audio.end()) audio.push_back(std::move(linked));
-            else *entry = std::move(linked);
-            safe->waveforms_.load(audio);
-            safe->statusLabel_.setText(TRANS("Linked at song start: ") + file.getFileName(), juce::dontSendNotification);
-            safe->repaint();
+            safe->placeWav(file, index, 0, false);
         });
 }
 
@@ -2664,16 +2730,7 @@ void MainComponent::showEffects(bool output, std::size_t index) {
             if (chain.loading || static_cast<std::size_t>(position) >= chain.slots.size()) return;
             auto& slot = chain.slots[static_cast<std::size_t>(position)];
             if (!slot.effect) return;
-            if (!slot.editor) {
-                std::unique_ptr<juce::AudioProcessorEditor> editor(slot.effect->createEditorAndMakeActive());
-                if (!editor) editor = std::make_unique<juce::GenericAudioProcessorEditor>(*slot.effect);
-                auto window = std::make_unique<PluginWindow>(slot.effect->getName());
-                window->setContentOwned(editor.release(), true);
-                window->centreWithSize(window->getWidth(), window->getHeight());
-                slot.editor = std::move(window);
-            }
-            slot.editor->setVisible(true);
-            slot.editor->toFront(true);
+            self->openEffectEditor(output, index, size_t(position));
         },
         [current, output, index](int position) {
             auto* self = current();
@@ -2710,6 +2767,138 @@ void MainComponent::showEffects(bool output, std::size_t index) {
     juce::CallOutBox::launchAsynchronously(std::move(panel), getLocalArea(&chain.button, chain.button.getLocalBounds()), this);
 }
 
+namespace {
+juce::File melodyneApplication() {
+#if JUCE_WINDOWS
+    return juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory)
+        .getChildFile("Celemony/Melodyne 5/Melodyne.exe");
+#elif JUCE_MAC
+    return juce::File("/Applications/Melodyne 5/Melodyne.app");
+#else
+    return {};
+#endif
+}
+}
+
+void MainComponent::showMelodyneActions() {
+    if (!selectedTrack_ || !audioEditor_.sourceClip()) return;
+    juce::PopupMenu menu;
+    menu.addItem(1, TRANS("Edit a WAV copy in Melodyne..."));
+    menu.addItem(2, TRANS("Apply edited WAV"), melodyneCopies_.contains(project_->trackIds[int(*selectedTrack_)]));
+    menu.addSeparator();
+    menu.addItem(3, TRANS("Open Melodyne VST3 (Transfer)"));
+    menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&audioEditor_),
+        [safe = juce::Component::SafePointer<MainComponent>(this), track = selectedTrack_, generation = projectGeneration_](int choice) {
+            if (!safe || safe->projectGeneration_ != generation || safe->selectedTrack_ != track) return;
+            if (choice == 1) safe->editMelodyneCopy();
+            if (choice == 2) safe->applyMelodyneCopy();
+            if (choice == 3) safe->openMelodyne();
+        });
+}
+
+void MainComponent::editMelodyneCopy() {
+    const auto* clip = audioEditor_.sourceClip();
+    if (!clip || recordTrack_) return;
+    const auto initial = juce::File::getSpecialLocation(juce::File::userMusicDirectory)
+        .getNonexistentChildFile(clip->path.fromLastOccurrenceOf("/", false, false).upToLastOccurrenceOf(".", false, false) + "-Melodyne", ".wav");
+    chooser_ = std::make_unique<juce::FileChooser>(TRANS("Save working WAV for Melodyne"), initial, "*.wav");
+    chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+            | juce::FileBrowserComponent::warnAboutOverwriting,
+        [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, track = *selectedTrack_](const auto& picker) {
+            if (!safe || generation != safe->projectGeneration_ || safe->recordTrack_) return;
+            auto* current = safe->clipOn(track);
+            const auto copy = picker.getResult();
+            if (!current || copy == juce::File{}) return;
+            if (!copy.hasFileExtension("wav") || std::any_of(safe->project_->audio.begin(), safe->project_->audio.end(),
+                [&](const auto& audio) { return audio.localFile == copy; })) {
+                safe->statusLabel_.setText(TRANS("Choose a separate WAV working file"), juce::dontSendNotification);
+                return;
+            }
+            auto bytes = sourceWavBytes(*current);
+            const auto digest = juce::SHA256(bytes).toHexString();
+            if (current->sha256.isNotEmpty() && current->sha256 != digest) {
+                safe->statusLabel_.setText(TRANS("The source has changed. Create a new working copy."), juce::dontSendNotification);
+                return;
+            }
+            juce::TemporaryFile writing(copy);
+            if (bytes.isEmpty() || !writing.getFile().replaceWithData(bytes.getData(), bytes.getSize())
+                || !writing.overwriteTargetFileWithTemporary()) {
+                safe->statusLabel_.setText(TRANS("Could not save the working WAV"), juce::dontSendNotification);
+                return;
+            }
+            safe->melodyneCopies_[safe->project_->trackIds[int(track)]] = {copy, digest};
+            const auto app = melodyneApplication();
+#if JUCE_MAC
+            juce::ChildProcess opener;
+            const bool opened = app.isDirectory() && opener.start(juce::StringArray{"/usr/bin/open", "-a", app.getFullPathName(), copy.getFullPathName()});
+#else
+            const bool opened = app.existsAsFile() && app.startAsProcess(copy.getFullPathName().quoted());
+#endif
+            safe->statusLabel_.setText((opened ? TRANS("Use Replace Audio in Melodyne, then Apply edited WAV")
+                                               : TRANS("Open this WAV in Melodyne, then use Apply edited WAV"))
+                                        + "   " + copy.getFullPathName(), juce::dontSendNotification);
+        });
+}
+
+void MainComponent::applyMelodyneCopy() {
+    if (!selectedTrack_ || recordTrack_) return;
+    auto* clip = clipOn(*selectedTrack_);
+    const auto it = melodyneCopies_.find(project_->trackIds[int(*selectedTrack_)]);
+    if (!clip || it == melodyneCopies_.end()) return;
+    ostfstudio::ProjectAudio edited;
+    const auto check = ostfstudio::prepareEditedWav(*clip, it->second.wav, it->second.originalHash, edited);
+    if (check.failed()) {
+        statusLabel_.setText(juce::translate(check.getErrorMessage()), juce::dontSendNotification);
+        return;
+    }
+    const bool playing = transportActive_;
+    if (playing) stopTransport();
+    *clip = std::move(edited);
+    it->second.originalHash = clip->sha256;
+    waveforms_.load(project_->audio);
+    finishNoteEdit(playing);
+    statusLabel_.setText(TRANS("Edited WAV applied") + "   " + clip->path, juce::dontSendNotification);
+}
+
+void MainComponent::openMelodyne() {
+    if (!selectedTrack_ || !audioEditor_.sourceClip() || recordTrack_) return;
+    const auto index = *selectedTrack_;
+    auto& chain = effectChain(false, index);
+    if (chain.loading) return;
+    for (size_t i = 0; i < chain.slots.size(); ++i)
+        if (chain.slots[i].effect && chain.slots[i].effect->getName().containsIgnoreCase("Melodyne")) {
+            openEffectEditor(false, index, i);
+            return;
+        }
+    if (chain.slots.size() >= ostfstudio::SessionMix::maxEffects) {
+        statusLabel_.setText(TRANS("The insert chain is full"), juce::dontSendNotification);
+        return;
+    }
+    for (const auto& type : ensurePluginBrowser().types())
+        if (!type.isInstrument && type.pluginFormatName == "VST3" && type.name.containsIgnoreCase("Melodyne")
+            && type.manufacturerName.containsIgnoreCase("Celemony")) {
+            chain.slots.emplace_back();
+            loadEffect(false, index, chain.slots.size() - 1, type, true);
+            return;
+        }
+    if (!pluginBrowserButton_.getToggleState()) togglePluginBrowser();
+    statusLabel_.setText(TRANS("Scan the installed Melodyne VST3, then press Melodyne again"), juce::dontSendNotification);
+}
+
+void MainComponent::openEffectEditor(bool output, std::size_t index, std::size_t position) {
+    auto& slot = effectChain(output, index).slots[position];
+    if (!slot.editor) {
+        std::unique_ptr<juce::AudioProcessorEditor> editor(slot.effect->createEditorAndMakeActive());
+        if (!editor) editor = std::make_unique<juce::GenericAudioProcessorEditor>(*slot.effect);
+        auto window = std::make_unique<PluginWindow>(slot.effect->getName());
+        window->setContentOwned(editor.release(), true);
+        window->centreWithSize(window->getWidth(), window->getHeight());
+        slot.editor = std::move(window);
+    }
+    slot.editor->setVisible(true);
+    slot.editor->toFront(true);
+}
+
 void MainComponent::appendEffect(bool output, std::size_t index, const juce::PluginDescription& description) {
     auto& chain = effectChain(output, index);
     if (chain.loading || chain.slots.size() >= ostfstudio::SessionMix::maxEffects || description.isInstrument) return;
@@ -2734,14 +2923,14 @@ void MainComponent::restoreEffects(bool output, std::size_t index, const juce::S
     updateEffectButton(chain);
 }
 
-void MainComponent::loadEffect(bool output, std::size_t index, std::size_t position, const juce::PluginDescription& description) {
+void MainComponent::loadEffect(bool output, std::size_t index, std::size_t position, const juce::PluginDescription& description, bool openEditor) {
     auto& chain = effectChain(output, index);
     ++chain.loading;
     refreshTrackActions();
     updateEffectButton(chain);
     pluginFormats_.createPluginInstanceAsync(description, 44100.0, 512,
         [safe = juce::Component::SafePointer<MainComponent>(this), output, index, position,
-         generation = projectGeneration_, description](std::unique_ptr<juce::AudioPluginInstance> effect, const juce::String& error) {
+         generation = projectGeneration_, description, openEditor](std::unique_ptr<juce::AudioPluginInstance> effect, const juce::String& error) {
             if (!safe || safe->projectGeneration_ != generation) return;
             auto& chain = safe->effectChain(output, index);
             --chain.loading;
@@ -2759,6 +2948,10 @@ void MainComponent::loadEffect(bool output, std::size_t index, std::size_t posit
                     effect->setStateInformation(state.getData(), static_cast<int>(state.getSize()));
                 slot.effect = std::move(effect);
                 slot.id = effectId(description);
+                if (openEditor) {
+                    std::rotate(chain.slots.begin(), chain.slots.begin() + position, chain.slots.begin() + position + 1);
+                    safe->openEffectEditor(output, index, 0);
+                }
             }
             safe->updateEffectButton(chain);
         });
@@ -2781,13 +2974,13 @@ std::optional<TimelineLane> MainComponent::globalLaneAt(juce::Point<int> p) cons
     return {};
 }
 
-juce::int64 MainComponent::arrangementTickAt(int x) const {
+juce::int64 MainComponent::arrangementTickAt(int x, bool endBoundary) const {
     const auto area = rowOverlay_.getBounds().withTrimmedLeft(trackHeaderWidth);
     const auto range = horizontalRange();
     const auto bar =
         range.start - 1. +
         (range.end - range.start) * juce::jlimit(0., 1., double(x - area.getX()) / std::max(1, area.getWidth()));
-    return std::clamp<juce::int64>(std::llround(bar * project_->ticksPerBar), 0, project_->durationTicks - 1);
+    return std::clamp<juce::int64>(std::llround(bar * project_->ticksPerBar), 0, endBoundary ? project_->playbackEndTick() : project_->durationTicks - 1);
 }
 
 void MainComponent::applyGlobalChange(TimelineLane lane, juce::Array<juce::var> remove, juce::Array<juce::var> insert) {
@@ -2964,6 +3157,7 @@ void MainComponent::globalCommand(int command) {
 }
 
 void MainComponent::mouseDown(const juce::MouseEvent& event) {
+    resizingAudio_.reset();
     pendingMidiDrag_.reset();
     selectedGlobal_.reset();
     if (!rowOverlay_.isVisible() || !rowOverlay_.getBounds().contains(event.getPosition())) return;
@@ -3001,6 +3195,17 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
                 && canExportTrack(i))
                 pendingMidiDrag_ = i;
             selectTrack(i);
+            const auto timeline = trackRows_[i].withTrimmedLeft(trackHeaderWidth);
+            if (auto* clip = clipOn(i); clip && !recordTrack_ && event.mods.isLeftButtonDown() && timeline.contains(event.getPosition())) {
+                const auto& clock = auditionClock_ ? *auditionClock_ : project_->clock;
+                const auto range = horizontalRange();
+                const double bar = 1 + waveforms_.endTick(*clip, clock) / project_->ticksPerBar;
+                const double edge = timeline.getX() + (bar - range.start) / (range.end - range.start) * timeline.getWidth();
+                if (std::abs(event.x - edge) <= 8 && waveforms_.available(i)) {
+                    resizingAudio_ = i;
+                    previewAudioLength_ = clip->durationTicks;
+                }
+            }
             return;
         }
     }
@@ -3023,12 +3228,34 @@ void MainComponent::mouseDoubleClick(const juce::MouseEvent& event) {
 }
 
 void MainComponent::mouseDrag(const juce::MouseEvent& event) {
+    if (resizingAudio_) {
+        if (const auto* clip = clipOn(*resizingAudio_)) {
+            auto maxLength = project_->playbackEndTick() - clip->startTick;
+            if (!clip->timing.loop && !clip->timing.cycleTicks)
+                maxLength = std::min<juce::int64>(maxLength, std::max<juce::int64>(1, std::ceil(waveforms_.nativeTicks(*clip, project_->clock))));
+            previewAudioLength_ = std::clamp<juce::int64>(arrangementTickAt(event.x, true) - clip->startTick, 1, maxLength);
+            repaint(trackRows_[*resizingAudio_]);
+        }
+        return;
+    }
     if (!pendingMidiDrag_ || event.getDistanceFromDragStart() < 5) return;
     const auto track = *pendingMidiDrag_;
     pendingMidiDrag_.reset();
     const auto error = MidiDragButton::dragMidi(trackMidiFile_.getFile(), this,
         [this, track](juce::OutputStream& stream) { return writeTrackMidi(track, stream); });
     if (error.isNotEmpty()) statusLabel_.setText(error, juce::dontSendNotification);
+}
+
+void MainComponent::mouseUp(const juce::MouseEvent& event) {
+    if (!resizingAudio_) return;
+    auto* clip = clipOn(*resizingAudio_);
+    resizingAudio_.reset();
+    if (!clip || recordTrack_ || !event.mouseWasDraggedSinceMouseDown()) return;
+    const bool playing = transportActive_;
+    if (playing) stopTransport();
+    clip->durationTicks = previewAudioLength_;
+    if (!clip->timing.loop && clip->timing.cycleTicks) clip->timing.cycleTicks = previewAudioLength_;
+    finishNoteEdit(playing);
 }
 
 void MainComponent::selectTrack(std::size_t index) {
@@ -3131,6 +3358,9 @@ juce::String MainComponent::getTooltip() {
             const auto next = std::next(it);
             if (next != functions.end() && next->start == it->end && next->key == it->key && it->function == "Secondary dominant")
                 name += "  " + juce::String::charToString(0x2192) + "  " + ostfstudio::shiftedLabel(theory_->chords[next->chord].name, auditionShift_);
+            const auto& groups = theory_->progressions;
+            const auto group = std::partition_point(groups.begin(), groups.end(), [tick](const auto& p) { return p.end <= tick; });
+            if (group != groups.end() && group->start <= tick) name += "   " + group->label;
             return name;
         }
     }
@@ -3421,7 +3651,11 @@ void MainComponent::refreshEditor() {
     const bool showMixer = arranging && mixerSelected_;
     deck_.follow.setEnabled(arranging && project_ != nullptr);
     mixerButton_.setToggleState(showMixer, juce::dontSendNotification);
-    const bool piano = arranging && project_ && editorVisible_ && !showMixer;
+    const bool editing = arranging && project_ && editorVisible_ && !showMixer;
+    const bool audio = editing && selectedTrack_ && project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::audio;
+    audioEditor_.setVisible(audio);
+    if (audio) audioEditor_.bind(project_->ppq, !recordTrack_.has_value());
+    const bool piano = editing && !audio;
     refreshPianoNotes();
     pianoGrid_.setDescription(noteFitReading());
     const bool drum = piano && selectedTrack_ && pianoGrid_.percussion;
@@ -3435,7 +3669,7 @@ void MainComponent::refreshEditor() {
     if (!pianoGrid_.isVisible()) pianoVelocity_.setVisible(false);
     pianoSnap_.setVisible(piano && pianoGrid_.editable);
     pianoColours_.setVisible(piano && pitchedSelection());
-    pianoButton_.setToggleState(piano, juce::dontSendNotification);
+    pianoButton_.setToggleState(editing, juce::dontSendNotification);
     outputButton_.setToggleState(arranging && showOutputTracks_, juce::dontSendNotification);
     for (auto* button : {&pianoButton_, &mixerButton_, &leadButton_, &scoreButton_}) button->setEnabled(project_ != nullptr);
     outputButton_.setEnabled(arranging && project_ != nullptr);
@@ -3486,7 +3720,7 @@ void MainComponent::refreshEditor() {
     refreshGroupHeight();
     arrangementScroll_.setVisible(arranging && project_ != nullptr);
     pianoInspectorView_.setVisible(piano && pianoGrid_.editable && !steps);
-    pianoDivider_.setVisible(piano);
+    pianoDivider_.setVisible(editing);
     parameterDivider_.setVisible(piano && !steps);
     pitchZoom_.setVisible(piano && !steps);
     columnDivider_.setVisible(piano);
@@ -3604,7 +3838,7 @@ void MainComponent::resized() {
         const int after = int(firstChord - view.globalLanes.begin()) + int(firstChord != view.globalLanes.end());
         const int guideY = ruler_.getBounds().getBottom() + arrangement.getY()
             - juce::roundToInt(verticalScroll_.getCurrentRangeStart()) + after * groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)];
-        functionRow_ = arrangement.withTrimmedLeft(trackHeaderWidth).withY(guideY).withHeight(2 * theoryGuideHeight / 3);
+        functionRow_ = arrangement.withTrimmedLeft(trackHeaderWidth).withY(guideY).withHeight(theoryGuideHeight);
         bool arrangementHeading = false;
         trackRows_.assign(trackControls_.size(), {});
         for (const auto i : order) {
@@ -3689,6 +3923,7 @@ void MainComponent::resized() {
     const PianoLayout pianoLayout(editor.withTrimmedTop(30), trackHeaderWidth, verticalScroll_.isVisible(),
                                   pitchedSelection() && pianoColours_.getSelectedId() != plainNotes,
                                   parameterFraction_);
+    audioEditor_.setBounds(editor.withTrimmedTop(30));
     pianoGrid_.setBounds(pianoLayout.grid);
     parameterDivider_.setBounds(pianoLayout.divider);
     parameterBottom_ = pianoLayout.lane.getBottom();
@@ -3744,7 +3979,7 @@ void MainComponent::paint(juce::Graphics& g) {
                                           juce::Colour(panel), 0.0f, static_cast<float>(area.getBottom()), false));
     g.fillRoundedRectangle(area.toFloat(), 10.0f);
     area.removeFromTop(30);
-    if (!mixerButton_.getToggleState()) {
+    if (!mixerButton_.getToggleState() && !audioEditor_.isVisible()) {
         drawPianoRoll(g, area);
     }
 }
@@ -3945,7 +4180,8 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                 const auto start = 1.0 + static_cast<double>(audio->startTick) / project_->ticksPerBar;
                 const bool missing = !waveforms_.available(i);
                 const auto& audioClock = auditionClock_ ? *auditionClock_ : project_->clock;
-                const auto endBar = missing && audio->durationTicks <= 0 ? start + 1
+                const auto endBar = resizingAudio_ == i && previewAudioLength_ > 0 ? start + double(previewAudioLength_) / project_->ticksPerBar
+                    : missing && audio->durationTicks <= 0 ? start + 1
                     : 1.0 + waveforms_.endTick(*audio, audioClock) / project_->ticksPerBar;
                 auto clip = clipBounds({start, endBar}, area.withY(y).withHeight(rowHeight)).reduced(0, 2);
                 if (!clip.isEmpty()) {
@@ -3953,14 +4189,25 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                     g.fillRoundedRectangle(clip.toFloat(), 3);
                     auto body = clip.reduced(0, 2);
                     const auto labelArea = missing ? body : body.removeFromTop(std::min(14, body.getHeight() / 3));
-                    if (!missing)
+                    if (!missing) {
+                        std::optional<ostfstudio::ClipTiming> preview;
+                        if (resizingAudio_ == i && audio->timing.cycleTicks && !audio->timing.loop) {
+                            preview = audio->timing;
+                            preview->cycleTicks = previewAudioLength_;
+                        }
                         waveforms_.draw(g, body, *audio, audioClock,
                                         (std::max(start, visible.start) - 1) * project_->ticksPerBar,
-                                        (std::min(endBar, visible.end) - 1) * project_->ticksPerBar);
+                                        (std::min(endBar, visible.end) - 1) * project_->ticksPerBar, preview ? &*preview : nullptr);
+                    }
                     g.setColour(juce::Colours::white);
                     const auto label = missing ? TRANS("Missing WAV") : audio->path.fromLastOccurrenceOf("/", false, false);
+                    if (selectedTrack_ == i && !missing && endBar <= visible.end) {
+                        g.setColour(juce::Colour(0xffffc479));
+                        g.fillRect(clip.getRight() - 3, clip.getY() + 1, 3, std::max(1, clip.getHeight() - 2));
+                    }
+                    g.setColour(juce::Colours::white);
                     if (clip.getWidth() >= 25)
-                        g.drawText(label, labelArea.reduced(3, 0), juce::Justification::centredLeft);
+                        g.drawText((audio->timing.loop ? juce::String::charToString(0x21bb) + " " : juce::String()) + label, labelArea.reduced(3, 0), juce::Justification::centredLeft);
                 }
             }
             const juce::Rectangle<int> hit(labels.getX(), y, labels.getWidth() + area.getWidth(), rowHeight);
@@ -4078,11 +4325,10 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
         juce::String reading;
         if (function)
             reading = ostfstudio::shiftedLabel(theory_->chords[function->chord].name, auditionShift_) + "   " + function->degree + "  " + juce::translate(function->function);
-        const int h = bounds.getHeight() / 3;
-        const auto degreeBand = band(bounds.getY(), h, TRANS("Degree"), function ? function->degree : juce::String());
-        const auto top = band(degreeBand.getBottom(), h, TRANS("Function"), reading);
-        const auto lower = band(top.getBottom(), bounds.getBottom() - top.getBottom(), TRANS("Progression"),
-                                progression ? progression->label : juce::String());
+        const auto degreeBand = band(bounds.getY(), bounds.getHeight() - fitLaneHeight,
+                                     TRANS("Degree") + " / " + TRANS("Progression"),
+                                     progression ? progression->label : function ? function->degree : juce::String());
+        const auto top = band(degreeBand.getBottom(), fitLaneHeight, TRANS("Function"), reading);
         if (clip.isEmpty()) return;
         auto visibleSpans = [&](const auto& list, auto draw) {
             auto it = std::partition_point(list.begin(), list.end(), [first](const auto& f) { return f.end <= first; });
@@ -4100,11 +4346,22 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
             if (f.function.startsWith("Tonic")) colour = juce::Colour(blueTheme() ? 0xff33617e : 0xff306453);
             if (f.function == "Subdominant") colour = juce::Colour(0xff365979);
             if (symbol.startsWith("D")) colour = juce::Colour(blueTheme() ? 0xff535884 : 0xff795338);
-            cell(degreeBand, f.start, f.end, juce::Colour(blueTheme() ? 0xff364e6e : 0xff504660), f.degree, f.degree);
+            auto degree = f.degree;
+            const auto phrase = std::lower_bound(theory_->progressions.begin(), theory_->progressions.end(), f.start,
+                [](const auto& p, auto startTick) { return p.start < startTick; });
+            if (phrase != theory_->progressions.end() && phrase->start == f.start)
+                degree = (degree + "    [" + phrase->label + "]").trim();
+            cell(degreeBand.withTrimmedBottom(5), f.start, f.end,
+                 juce::Colour(blueTheme() ? 0xff364e6e : 0xff504660), degree, f.degree);
             cell(top, f.start, f.end, colour, (symbol + "  " + juce::translate(f.function)).trim(), symbol);
         });
         visibleSpans(theory_->progressions, [&](const auto& p) {
-            cell(lower, p.start, p.end, juce::Colour(0xff46556b), p.label, p.label.upToFirstOccurrenceOf(" ", false, false));
+            const int left = x(double(p.start)), right = x(double(p.end)) - 1;
+            const int y = degreeBand.getBottom() - 2;
+            g.setColour(juce::Colour(0xff94cbe4));
+            g.drawHorizontalLine(y, float(left), float(std::max(left + 1, right)));
+            if (p.start >= start) g.drawVerticalLine(left, float(y - 3), float(y + 1));
+            if (p.end <= end) g.drawVerticalLine(right, float(y - 3), float(y + 1));
         });
         return;
     }

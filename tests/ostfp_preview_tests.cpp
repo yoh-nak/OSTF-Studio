@@ -474,6 +474,8 @@ int main(int argc, char** argv) {
     wav.writeInt(4);
     wav.writeInt(0);
     project->audio.push_back({0, "test.wav", {}, wav.getMemoryBlock()});
+    project->audio.front().timing = {true, 240, {{0.3, 0.6}}};
+    project->audio.front().durationTicks = 960;
     juce::MemoryOutputStream withMedia, bundledMedia;
     const auto scoreFile = destination.getFile();
     if (ostfstudio::writeOstfPreview(*project, mix, scoreFile, withMedia).failed()
@@ -490,6 +492,12 @@ int main(int argc, char** argv) {
         || !external->savedMix->routing.outputMuted[1] || !bundled->savedMix->routing.outputMuted[1]
         || external->audio.size() != 1 || bundled->audio.size() != 1
         || bundled->audio.front().embedded != wav.getMemoryBlock()) return 1;
+    for (auto* reopened : {external.get(), bundled.get()}) {
+        const auto& clip = reopened->audio.front();
+        if (clip.durationTicks != 960 || !clip.timing.loop || clip.timing.cycleTicks != 240
+            || clip.timing.markers.size() != 1 || clip.timing.markers[0].source != 0.6
+            || clip.timing.markers[0].position != 0.3) return 1;
+    }
     const auto relativePath = external->audio.front().path;
     if (!relativePath.startsWith(scoreFile.getFileNameWithoutExtension() + ".media/")) return 1;
     const auto copiedWav = scoreFile.getSiblingFile(relativePath);

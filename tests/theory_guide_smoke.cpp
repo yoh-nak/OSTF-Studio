@@ -17,7 +17,7 @@ int modelChecks() {
         {"id":"local","tonic":{"step":"A"},"intervals":[0,3,5,7,10],"start":22,"duration":2,
          "targets":[{"type":"track","id":"solo"}]}]}})");
     TheoryGuide guide(score, 40);
-    if (guide.functions.size() != 4 || guide.progressions.size() != 1 || guide.progressions[0].label != "ii-V-I  /  V-I"
+    if (guide.functions.size() != 4 || guide.progressions.size() != 1 || guide.progressions[0].label != "ii-V-I"
         || guide.functions[0].function != "Subdominant" || guide.functions[1].function != "Dominant"
         || guide.functions[2].function != "Tonic" || guide.functions[3].degree.isNotEmpty()) return 1;
     std::vector<PitchedNote> notes {{16, 24, 65}, {24, 28, 64}, {20, 30, 60, {}, false}, {20, 30, 60, {}, true, "switch", true}};
@@ -84,7 +84,7 @@ int modelChecks() {
         {"root":{"step":"D","alter":-1},"intervals":[0,4,7,10],"start":4,"duration":4},
         {"root":{"step":"C"},"intervals":[0,4,7],"start":8,"duration":4}]}})");
     const TheoryGuide sub(substitution, 12);
-    if (sub.progressions.size() != 1 || sub.progressions[0].label != "ii-subV-I  /  subV-I"
+    if (sub.progressions.size() != 1 || sub.progressions[0].label != "ii-subV-I"
         || sub.functions[1].function != "Dominant substitute") return 45;
     auto subChord = (*substitution["harmony"]["chords"].getArray())[1];
     subChord.getDynamicObject()->setProperty("intervals", juce::JSON::parse("[0,4,7,11]"));
@@ -95,7 +95,7 @@ int modelChecks() {
     predominant.getDynamicObject()->setProperty("root", juce::JSON::parse(R"({"step":"F"})"));
     predominant.getDynamicObject()->setProperty("intervals", juce::JSON::parse("[0,4,7]"));
     const TheoryGuide iv(substitution, 12);
-    if (iv.progressions.size() != 1 || iv.progressions.front().label != "IV-V-I  /  V-I") return 47;
+    if (iv.progressions.size() != 1 || iv.progressions.front().label != "IV-V-I") return 47;
     auto applied = juce::JSON::parse(R"({"song":{"key":{"state":"tonal","tonic":{"step":"C"},"mode":"major"}},
         "harmony":{"chords":[{"root":{"step":"A"},"intervals":[0,4,7,10,15],"start":0,"duration":4},
         {"root":{"step":"D"},"intervals":[0,3,7,10],"start":4,"duration":4},
@@ -112,6 +112,29 @@ int modelChecks() {
     if (localCadence.progressions.empty() || localCadence.progressions.front().label != "(ii-V)/ii") return 57;
     (*applied["harmony"]["chords"].getArray())[1].getDynamicObject()->setProperty("start", 5);
     if (TheoryGuide(applied, 12).functions.front().degree == "V/ii") return 25;
+    auto cadenceScore = substitution.clone();
+    auto events = cadenceScore["harmony"]["chords"];
+    events.getArray()->remove(1);
+    (*events.getArray())[1].getDynamicObject()->setProperty("start", 4);
+    const TheoryGuide plagal(cadenceScore, 8);
+    if (plagal.progressions.size() != 1 || plagal.progressions[0].label != "IV-I") return 58;
+    auto firstChord = (*events.getArray())[0].getDynamicObject();
+    auto secondChord = (*events.getArray())[1].getDynamicObject();
+    firstChord->setProperty("root", juce::JSON::parse(R"({"step":"G"})"));
+    secondChord->setProperty("root", juce::JSON::parse(R"({"step":"A"})"));
+    secondChord->setProperty("intervals", juce::JSON::parse("[0,3,7]"));
+    const TheoryGuide deceptive(cadenceScore, 8);
+    if (deceptive.progressions.size() != 1 || deceptive.progressions[0].label != "V-vi") return 59;
+    secondChord->setProperty("start", 5);
+    if (!TheoryGuide(cadenceScore, 9).progressions.empty()) return 60;
+    auto turnaround = juce::JSON::parse(R"({"song":{"key":{"state":"tonal","tonic":{"step":"C"},"mode":"major"}},
+        "harmony":{"chords":[{"root":{"step":"C"},"intervals":[0,4,7],"start":0,"duration":1},
+        {"root":{"step":"A"},"intervals":[0,3,7],"start":1,"duration":1},
+        {"root":{"step":"D"},"intervals":[0,3,7],"start":2,"duration":1},
+        {"root":{"step":"G"},"intervals":[0,4,7,10],"start":3,"duration":1},
+        {"root":{"step":"C"},"intervals":[0,4,7],"start":4,"duration":1}]}})");
+    const TheoryGuide longGuide(turnaround, 5);
+    if (longGuide.progressions.size() != 1 || longGuide.progressions.front().label != "I-vi-ii-V-I") return 61;
     return 0;
 }
 

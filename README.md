@@ -8,6 +8,12 @@
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
 
+## Audio clip editing (development build)
+
+Select an audio track to open its waveform below the arrangement. Enable **Loop** and drag the clip’s amber right edge to repeat it. **Warp (re-pitch)** fits one cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker and drag it to move that point in time. Pitch follows the change in speed. You can drop a downloaded WAV from Splice Desktop or the file manager onto an audio track.
+
+The **Melodyne…** menu can open a separate working WAV in an installed copy of Melodyne. Use **Replace Audio** in Melodyne, then **Apply edited WAV** in Studio to keep the edited audio in your project. The menu also opens the installed Melodyne VST3 in Transfer mode. The Theory Guide groups cadences directly on the degree row. The function row stays available underneath.
+
 ## OSTF Wave Analyzer (development build)
 
 Insert **OSTF Wave Analyzer** on a track or master bus. It shows left and right waveforms, a 4096-sample spectrum, sample peak and RMS, stereo correlation, momentary/short-term/integrated LUFS and maximum 4× interpolated true peak. Hover over the spectrum for frequency and level. Freeze holds the display while measurement continues. Reset meters starts a fresh measurement on the next audio block. The plug-in runs locally and passes its input to the output with zero added latency.

@@ -1,3 +1,4 @@
+#include "ui/ExternalAudioEdit.h"
 #include "ui/MainComponent.h"
 #include "ui/SongInformationPanel.h"
 #include <iostream>
@@ -136,6 +137,51 @@ bool checkWaveform(const juce::File& directory) {
         { juce::Graphics g(zoom); waveforms.draw(g, zoom.getBounds(), region, clock, 1920, 2400); }
         if (zoom.getPixelAt(24, 6).getAlpha() == 0) { std::cerr << "Missing zoomed pulse\n"; return false; }
     }
+    const ClipTiming unordered{false, 960, {{0.3, 0.8}, {0.6, 0.7}}};
+    if (unordered.valid()) return false;
+    region.durationTicks = 1920;
+    region.timing = {true, 960, {{0.25, 0.5}}};
+    juce::Image repeats(juce::Image::ARGB, 128, 48, true, juce::SoftwareImageType{});
+    { juce::Graphics g(repeats); waveforms.draw(g, repeats.getBounds(), region, clock, 960, 2880); }
+    if (repeats.getPixelAt(8, 6).getAlpha() || repeats.getPixelAt(72, 6).getAlpha()
+        || !repeats.getPixelAt(30, 6).getAlpha() || !repeats.getPixelAt(94, 6).getAlpha()) return false;
+    OstfpPreview song;
+    song.ppq = 960; song.ticksPerBar = 3840; song.bars = {1, 2}; song.clock = clock;
+    song.trackIds.add("sample"); song.pitchedNotes.resize(1); song.drumNotes.resize(1);
+    song.programChanges.resize(1); song.performanceCurves.resize(1);
+    song.audio.push_back(region);
+    const std::array<PreviewTransport::TrackSetup, 1> tracks{};
+    PreviewTransport engine;
+    juce::AudioBuffer<float> block(2, 32);
+    auto run = [&](const ClipTiming& timing) {
+        song.audio.front().timing = timing;
+        if (engine.preparePlayback(song, tracks, {}, rate, 32).failed()) return false;
+        engine.setChannelMix(0, {}, true, 0); engine.setOutputMix({});
+        return true;
+    };
+    auto level = [&](int tick) {
+        engine.seekToTick(tick);
+        engine.renderBlock(block.getArrayOfWritePointers(), 2, 32);
+        return block.getMagnitude(0, 0, 32);
+    };
+    if (!run(region.timing) || level(1056) > 0.01f || level(1440) < 0.15f
+        || level(2016) > 0.01f || level(2400) < 0.15f || level(2880) > 0.01f) return false;
+    // The trimmed native sample repeats every second, including across the tempo change.
+    if (!run({true, 0, {}}) || level(2320) < 0.15f || level(2450) > 0.01f) return false;
+    if (!run({false, 960, {}}) || level(1445) < 0.15f || level(2200) > 0.01f) return false;
+    const auto hash = juce::SHA256(region.embedded).toHexString();
+    const auto editFile = directory.getChildFile("edited-source.wav");
+    auto editedBytes = region.embedded;
+    static_cast<char*>(editedBytes.getData())[44 + 4 * rate] ^= 0x40;
+    ProjectAudio replacement;
+    if (!editFile.replaceWithData(editedBytes.getData(), editedBytes.getSize())
+        || prepareEditedWav(region, editFile, "stale", replacement).wasOk()
+        || prepareEditedWav(region, editFile, hash, replacement).failed()
+        || replacement.embedded != editedBytes || replacement.sha256 == hash
+        || replacement.startFrame != region.startFrame || replacement.startTick != region.startTick
+        || !replacement.timing.loop || replacement.timing.markers.size() != 1
+        || prepareEditedWav(replacement, editFile, replacement.sha256, region).wasOk()
+        || region.embedded != bytes.getMemoryBlock()) return false;
     region.embedded.reset();
     waveforms.load({region});
     return !waveforms.available(0);

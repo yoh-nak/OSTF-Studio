@@ -189,11 +189,29 @@ void TheoryGuide::buildFunctions() {
             addProgression(start, tonic.end, label);
             continue;
         }
+        if (v.end != tonic.start || v.key != tonic.key) continue;
+        if ((v.degree.equalsIgnoreCase("IV") && tonic.degree.equalsIgnoreCase("I"))
+            || (v.degree == "V" && tonic.degree.equalsIgnoreCase("VI"))) {
+            addProgression(v.start, tonic.end, v.degree + "-" + tonic.degree);
+            continue;
+        }
         if ((v.degree != "V" && v.degree != "subV") || (tonic.degree != "I" && tonic.degree != "i") || v.end != tonic.start || v.key != tonic.key) continue;
         if (i >= 2) {
             const auto& ii = functions[i-2];
             if ((ii.degree.startsWith("ii") || ii.degree.equalsIgnoreCase("IV")) && ii.end == v.start && ii.key == v.key) {
-                addProgression(ii.start, tonic.end, ii.degree + "-" + v.degree + "-" + tonic.degree + "  /  " + v.degree + "-" + tonic.degree);
+                auto start = ii.start;
+                auto label = ii.degree + "-" + v.degree + "-" + tonic.degree;
+                if (i >= 4 && ii.degree == "ii") {
+                    const auto& opening = functions[i-4];
+                    const auto& sixth = functions[i-3];
+                    if ((opening.degree == "I" || opening.degree == "iii") && sixth.degree == "vi"
+                        && opening.key == ii.key && sixth.key == ii.key
+                        && opening.end == sixth.start && sixth.end == ii.start) {
+                        start = opening.start;
+                        label = opening.degree + "-vi-" + label;
+                    }
+                }
+                addProgression(start, tonic.end, label);
                 continue;
             }
         }

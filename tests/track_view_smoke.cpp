@@ -89,6 +89,59 @@ int checkTrackView(const juce::File& fixture) {
     }
     if (!click("Add melody track") || !click("Add chorus vocal track") || !click("Add drum / percussion track")
         || !click("Add audio track") || tracks->getNumItems() != 5) return 34;
+    auto* audioEditor = dynamic_cast<AudioClipEditor*>(main.findChildWithID("audio-clip-editor"));
+    if (!audioEditor || !audioEditor->isVisible() || audioEditor->getWidth() < 200) return 51;
+    const auto audioTrack = tracks->getSelectedId();
+    tracks->setSelectedId(1, juce::sendNotificationSync);
+    if (audioEditor->isVisible()) return 52;
+    tracks->setSelectedId(audioTrack, juce::sendNotificationSync);
+    if (!audioEditor->isVisible() || !main.isInterestedInFileDrag({"Splice sample.wav"})
+        || main.isInterestedInFileDrag({"notes.mid"})) return 53;
+    main.setSize(1450, 1200);
+    const auto sample = fixture.getParentDirectory().getParentDirectory().getParentDirectory()
+        .getChildFile("examples/demo-songs/assets/glass-lantern-chimes.wav");
+    const auto drop = audioEditor->getBounds().getCentre();
+    main.filesDropped({sample.getFullPathName()}, drop.x, drop.y);
+    const auto* imported = audioEditor->sourceClip();
+    if (!imported || imported->localFile != sample || imported->durationTicks <= 0) return 54;
+    for (auto* child : audioEditor->getChildren())
+        if (auto* b = dynamic_cast<juce::TextButton*>(child); b && (b->getButtonText() == TRANS("Warp (re-pitch)") || b->getButtonText() == TRANS("Loop"))) {
+            if (!b->isEnabled()) return 55;
+            b->setToggleState(true, juce::dontSendNotification);
+            b->onClick();
+        }
+    if (!imported->timing.loop || !imported->timing.cycleTicks) return 56;
+    const auto editorPoint = audioEditor->getLocalBounds().getCentre().toFloat();
+    const auto gesture = [](juce::Component* target, juce::Point<float> from, juce::Point<float> to) {
+        const auto time = juce::Time::getCurrentTime();
+        return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), to,
+            juce::ModifierKeys::leftButtonModifier, 1, 0, 0, 0, 0, target, target, time, from, time, 1, from != to);
+    };
+    audioEditor->mouseDoubleClick(gesture(audioEditor, editorPoint, editorPoint));
+    if (imported->timing.markers.size() != 1) return 57;
+    auto later = editorPoint.translated(65, 0);
+    audioEditor->mouseDown(gesture(audioEditor, editorPoint, editorPoint));
+    audioEditor->mouseDrag(gesture(audioEditor, editorPoint, later));
+    audioEditor->mouseUp(gesture(audioEditor, editorPoint, later));
+    if (imported->timing.markers[0].position <= imported->timing.markers[0].source) return 58;
+    auto* grip = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
+    if (!grip) return 59;
+    const auto row = main.getLocalArea(grip, grip->getLocalBounds());
+    const auto timeline = main.getLocalArea(&main, main.getLocalBounds());
+    // Ask the hit-tested right edge (the amber grip) for its actual pixel, regardless of saved zoom or UI scale.
+    const auto snapshot = main.createComponentSnapshot(timeline);
+    int edge = -1;
+    const int rowY = row.getY() - 6;
+    for (int x = row.getX() + 150; x < row.getRight(); ++x)
+        if (snapshot.getPixelAt(x, rowY).getARGB() == 0xffffc479) edge = x;
+    if (edge < 0) return 60;
+    const juce::Point<float> edgePoint{float(edge), float(rowY)};
+    const auto extendTo = edgePoint.translated(50, 0);
+    const auto length = imported->durationTicks;
+    main.mouseDown(gesture(&main, edgePoint, edgePoint));
+    main.mouseDrag(gesture(&main, edgePoint, extendTo));
+    main.mouseUp(gesture(&main, edgePoint, extendTo));
+    if (imported->durationTicks <= length) return 61;
     const auto selected = tracks->getText();
     auto trackActions = model.getMenuForIndex(2, {});
     for (juce::PopupMenu::MenuItemIterator it(trackActions); it.next();)

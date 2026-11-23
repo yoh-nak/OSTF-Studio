@@ -812,6 +812,23 @@ std::optional<SessionMix> readEmbeddedMix(const juce::var& score, PanAutomation&
     return readMix(score, settings["data"], envelopes);
 }
 
+// Linear re-pitch fit has a standard representation. Loops and non-linear timing are Studio edits.
+void storeClipTiming(juce::var& production, const OstfpPreview& project) {
+    auto host = production["hostExtensions"][0]["data"];
+    auto edits = object({});
+    for (const auto& clip : project.audio) {
+        const auto& timing = clip.timing;
+        require(timing.valid(), "Invalid audio clip timing");
+        if (!timing.loop && timing.markers.empty()
+            && (!timing.cycleTicks || timing.cycleTicks == clip.durationTicks)) continue;
+        juce::Array<juce::var> points;
+        for (auto p : timing.markers) points.add(object({{"position", p.position}, {"source", p.source}}));
+        edits.getDynamicObject()->setProperty("region-" + juce::String(int(clip.track + 1)),
+            object({{"loop", timing.loop}, {"cycleTicks", juce::int64(timing.cycleTicks)}, {"markers", points}}));
+    }
+    if (edits.getDynamicObject()->getProperties().size()) host.getDynamicObject()->setProperty("clipTiming", edits);
+}
+
 juce::MemoryBlock scoreWithMix(const OstfpPreview& project, const SessionMix& mix,
                                const juce::Array<juce::var>& assets, const juce::Array<juce::var>& regions) {
     const auto core = savedScore(project, true);
@@ -819,6 +836,7 @@ juce::MemoryBlock scoreWithMix(const OstfpPreview& project, const SessionMix& mi
     auto extensions = score["extensions"];
     if (!extensions.isObject()) extensions = object({});
     auto settings = productionMix(score, mix, project.panAutomation);
+    storeClipTiming(settings, project);
     if (!assets.isEmpty()) {
         settings.getDynamicObject()->setProperty("assets", assets);
         settings.getDynamicObject()->setProperty("audioRegions", regions);
@@ -882,7 +900,21 @@ void readAudioReferences(const juce::var& score, const juce::var& production, Os
             item.startTick = integer(region["startTick"]); item.durationTicks = integer(region["durationTicks"]);
             item.startFrame = integer(region["sourceStartFrame"]); item.frameCount = integer(region["sourceFrameCount"]);
             item.gainDb = static_cast<double>(region["gainDb"]); item.muted = static_cast<bool>(region["mute"]);
-            require(region["playbackMode"] == "native" && integer(region.getProperty("fadeInTicks", 0)) == 0
+            const bool fit = region["playbackMode"] == "fit" && region["pitchPolicy"] == "followRate";
+            if (fit) item.timing.cycleTicks = item.durationTicks;
+            const auto host = production["hostExtensions"];
+            const auto timing = host.isArray() && host.size() > 0
+                ? host[0]["data"]["clipTiming"][juce::Identifier(region["id"].toString())] : juce::var{};
+            if (!timing.isVoid()) {
+                require(timing["loop"].isBool() && timing["markers"].isArray(), "Invalid Studio audio timing");
+                item.timing.loop = static_cast<bool>(timing["loop"]);
+                item.timing.cycleTicks = integer(timing["cycleTicks"]);
+                require(array(timing["markers"]).size() <= 128, "Too many warp markers");
+                for (const auto& p : array(timing["markers"]))
+                    item.timing.markers.push_back({double(p["position"]), double(p["source"])});
+                require(item.timing.valid(), "Invalid Studio warp markers");
+            }
+            require((fit || region["playbackMode"] == "native") && integer(region.getProperty("fadeInTicks", 0)) == 0
                     && integer(region.getProperty("fadeOutTicks", 0)) == 0, "Unsupported audio region stretch or fade");
             require(item.startTick >= 0 && item.durationTicks > 0 && item.durationTicks <= project.playbackEndTick() - item.startTick
                     && item.startFrame >= 0 && item.frameCount > 0 && item.frameCount <= item.assetFrames - item.startFrame
@@ -948,9 +980,9 @@ void describeWav(const OstfpPreview& project, const ProjectAudio& audio, const j
             "WAV differs from its production asset descriptor");
     const auto number = juce::String(static_cast<int>(audio.track + 1));
     const auto id = "source-" + number;
-    const auto frames = audio.frameCount > 0 ? audio.frameCount : reader->lengthInSamples;
+    const auto frames = audio.frameCount > 0 ? audio.frameCount : reader->lengthInSamples - audio.startFrame;
     const auto length = audio.durationTicks > 0 ? audio.durationTicks : std::clamp<juce::int64>(
-        static_cast<juce::int64>(std::ceil(project.clock.tickAt(frames / reader->sampleRate))), 1, project.playbackEndTick());
+        static_cast<juce::int64>(std::ceil(project.clock.tickAt(project.clock.secondsAt(audio.startTick) + frames / reader->sampleRate) - audio.startTick)), 1, project.playbackEndTick() - audio.startTick);
     assets.add(object({{"id", id}, {"purpose", "audioSource"}, {"uri", path}, {"mediaType", "audio/wav"},
         {"sha256", hash}, {"byteLength", static_cast<juce::int64>(bytes.getSize())},
         {"sampleRateHz", static_cast<int>(reader->sampleRate)}, {"audioChannels", static_cast<int>(reader->numChannels)},
@@ -958,6 +990,10 @@ void describeWav(const OstfpPreview& project, const ProjectAudio& audio, const j
     regions.add(object({{"id", "region-" + number}, {"channelId", "track-" + number}, {"sourceAssetId", id},
         {"startTick", audio.startTick}, {"durationTicks", length}, {"sourceStartFrame", audio.startFrame},
         {"sourceFrameCount", frames}, {"playbackMode", "native"}, {"gainDb", audio.gainDb}, {"mute", audio.muted}}));
+    if (audio.timing.cycleTicks && !audio.timing.loop) {
+        regions.getLast().getDynamicObject()->setProperty("playbackMode", "fit");
+        regions.getLast().getDynamicObject()->setProperty("pitchPolicy", "followRate");
+    }
 }
 }
 
@@ -1820,6 +1856,7 @@ juce::Result writeOstfpPreview(const OstfpPreview& project, const SessionMix& mi
         const auto hash = juce::SHA256(score).toHexString();
         const auto core = parseObject(score);
         auto document = productionMix(core, mix, project.panAutomation);
+        storeClipTiming(document, project);
         auto* profile = document.getDynamicObject();
         if (!sources.isEmpty() || core["extensions"][mixNamespace]["data"].hasProperty("assets")
             || core["extensions"][mixNamespace]["data"].hasProperty("audio")) {

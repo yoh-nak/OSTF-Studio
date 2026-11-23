@@ -130,9 +130,12 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
         if (audio.sha256.isNotEmpty() && (reader->sampleRate != audio.sampleRate
             || static_cast<int>(reader->numChannels) != audio.channels || reader->lengthInSamples != audio.assetFrames))
             return juce::Result::fail("WAV format does not match its descriptor: " + audio.path);
-        const auto frames = audio.frameCount > 0 ? audio.frameCount : reader->lengthInSamples;
+        const auto frames = audio.frameCount > 0 ? audio.frameCount : reader->lengthInSamples - audio.startFrame;
         if (audio.startFrame < 0 || frames > reader->lengthInSamples - audio.startFrame)
             return juce::Result::fail("Invalid WAV source range: " + audio.path);
+        if (!audio.timing.valid()) return juce::Result::fail("Invalid WAV timing");
+        slot.wavTiming = audio.timing;
+        slot.wavStartTick = audio.startTick;
         slot.wavStart = juce::roundToInt(clock_.secondsAt(audio.startTick) * sampleRate_);
         slot.wavEnd = audio.durationTicks > 0 ? juce::roundToInt(clock_.secondsAt(audio.startTick + audio.durationTicks) * sampleRate_)
                                               : static_cast<int>(lastSample_);
@@ -437,7 +440,9 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
                 auto* dest = block.getWritePointer(c);
                 const auto last = std::min(audible, slot.wavEnd - first);
                 for (int i = std::max(0, slot.wavStart - first); i < last; ++i) {
-                    const auto frame = (first + i - slot.wavStart) * slot.wavRate / sampleRate_;
+                    const auto nativeFrame = (first + i - slot.wavStart) * slot.wavRate / sampleRate_;
+                    const auto tick = slot.wavTiming.cycleTicks ? clock_.tickAt((first + i) / sampleRate_) - slot.wavStartTick : 0.0;
+                    const auto frame = slot.wavTiming.frameAt(nativeFrame, std::max(0.0, tick), slot.wav.getNumSamples());
                     if (frame >= slot.wav.getNumSamples()) break;
                     const auto pos = static_cast<int>(frame);
                     const auto next = std::min(pos + 1, slot.wav.getNumSamples() - 1);
