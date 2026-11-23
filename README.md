@@ -20,6 +20,10 @@ Use **File → Open** to open a standalone OSTF 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.
 
 ## Transport and song information in alpha 3
 
+**File → Song settings** and the metronome icon open the musical settings. **Song defaults** sets the key, scale, opening BPM and time signature. Local key and scale events apply in their own ranges. **Transpose or change tempo of score** shifts pitched notes and harmony and scales every tempo change. Use **Undo score edit** to revert. **Playback and display overrides** lets you audition another key or speed before committing to an edit. Opening a song resets the audition settings. Recorded audio plays at its native pitch and speed.
+
+The Theory Guide toolbar button toggles the arrangement analysis. Track headers distinguish pitched instruments, drums and audio with keyboard, drum and waveform icons. The piano roll shows chord names under the bar ruler. Select or drag a pitched note with harmony colouring enabled to read its chord and scale percentages. A sustained note is evaluated over the time it spends on each side of a harmony change.
+
 The transport shows the active section, tempo, meter, key, scale and chord alongside bar/beat/tick and 30 fps timecode. **Home** returns to the beginning. **Rewind** and **Forward** move one bar per click and repeat when held. Stop parks the playhead and Play resumes there. At the end of the song, Play starts again from the beginning.
 
 **Follow** is on by default. As the playhead approaches the right edge, the arrangement and piano roll scroll at their own zoom levels. Turn Follow off to inspect another passage while playback continues. Turning it back on brings the playhead into view. The view toolbar shows the song title and filename.

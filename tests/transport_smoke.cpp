@@ -109,6 +109,9 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
         || song->contextAt(TimelineLane::scale, 960) != "G Lydian" || song->contextAt(TimelineLane::scale, 1440) != "A natural minor") return 3;
     PreviewTransport engine;
     juce::AudioBuffer<float> buffer(2, 400);
+    if (engine.preparePlayback(*song, {}, {}, 8000, 400, 2, .5).failed()) return 43;
+    for (int i = 0; i < 60; ++i) engine.renderBlock(buffer.getArrayOfWritePointers(), 2, 400);
+    if (engine.positionTick() != 1920 || song->clock.bpmAt(960) != 60) return 44;
     if (engine.preparePlayback(*song, {}, {}, 8000, 400).failed()) return 4;
     for (int i = 0; i < 30; ++i) engine.renderBlock(buffer.getArrayOfWritePointers(), 2, 400);
     if (engine.positionTick() != 1920) return 5;

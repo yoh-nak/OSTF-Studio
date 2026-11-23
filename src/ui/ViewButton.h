@@ -4,8 +4,13 @@
 
 class ViewButton final : public juce::Button {
 public:
-    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut };
+    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
+    std::function<void(juce::String)> onHint;
+    void mouseEnter(const juce::MouseEvent& e) override { Button::mouseEnter(e); if (onHint) onHint(getTooltip()); }
+    void mouseExit(const juce::MouseEvent& e) override { Button::mouseExit(e); if (onHint) onHint({}); }
+    void focusGained(FocusChangeType t) override { Button::focusGained(t); if (onHint) onHint(getTooltip()); }
+    void focusLost(FocusChangeType t) override { Button::focusLost(t); if (onHint) onHint({}); }
 
     void paintButton(juce::Graphics& g, bool hover, bool down) override {
         const auto on = getToggleState();
@@ -14,8 +19,21 @@ public:
         g.fillRoundedRectangle(rect, 4);
         g.setColour(juce::Colour(on ? 0xff74dfd1 : 0xffcfdae1).withMultipliedAlpha(isEnabled() ? 1.0f : 0.38f));
         const float x = rect.getCentreX() - 10, y = rect.getCentreY() - 9;
+        drawIcon(g, icon_, x, y);
+        if (icon_ >= Icon::melody && icon_ <= Icon::send) {
+            g.drawLine(x+14,y+14,x+20,y+14,1.6f); g.drawLine(x+17,y+11,x+17,y+17,1.6f);
+        }
+        if (hasKeyboardFocus(false)) g.drawRoundedRectangle(rect, 4, 1.5f);
+    }
+    static void drawIcon(juce::Graphics& g, Icon icon, float x, float y) {
         const auto line = [&](int x1, int y1, int x2, int y2) { g.drawLine(x+x1, y+y1, x+x2, y+y2, 1.6f); };
-        switch (icon_) {
+        switch (icon) {
+            case Icon::theory:
+                for (int i : {2,10,18}) { g.drawEllipse(x+i-2,y+(i==10?1:10),4,4,1.6f); }
+                line(3,10,9,5); line(11,5,17,10); line(3,16,17,16); break;
+            case Icon::songMusic:
+                line(3,16,8,1); line(8,1,12,1); line(12,1,17,16); line(3,16,17,16);
+                line(10,13,17,4); g.fillEllipse(x+15,y+2,4,4); break;
             case Icon::information:
                 g.drawEllipse(x+2, y, 16, 16, 1.6f);
                 g.fillEllipse(x+9, y+3, 2, 2); line(10,7,10,13); break;
@@ -42,7 +60,7 @@ public:
             case Icon::zoomIn:
             case Icon::zoomOut:
                 g.drawEllipse(x+1,y,13,13,1.7f); line(12,12,19,18); line(4,6,11,6);
-                if (icon_ == Icon::zoomIn) line(7,3,7,9);
+                if (icon == Icon::zoomIn) line(7,3,7,9);
                 break;
             case Icon::arrangement:
                 line(1, 1, 1, 17);
@@ -84,10 +102,6 @@ public:
                 }
                 break;
         }
-        if (icon_ >= Icon::melody && icon_ <= Icon::send) {
-            line(14,14,20,14); line(17,11,17,17);
-        }
-        if (hasKeyboardFocus(false)) g.drawRoundedRectangle(rect, 4, 1.5f);
     }
 private:
     Icon icon_;

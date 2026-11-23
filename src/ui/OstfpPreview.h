@@ -3,6 +3,7 @@
 #include "ui/ArrangementView.h"
 #include "core/MixerState.h"
 #include "core/TempoMap.h"
+#include "ui/SongMusic.h"
 #include <juce_core/juce_core.h>
 #include <deque>
 #include <map>
@@ -99,6 +100,8 @@ struct OstfpPreview {
     SongInformation songInformation() const;
     juce::Result renameTrack(std::size_t index, const juce::String& name);
     juce::Result applySongInformation(const SongInformation&);
+    juce::Result applySongMusic(const SongMusicEdit&, juce::MemoryBlock& before);
+    juce::Result checkAudition(int shift, double rate) const;
     std::vector<ArrangementLane> globalLanes, trackLanes;
     std::vector<std::vector<PitchedNote>> pitchedNotes, drumNotes;
     struct ProgramChange { juce::int64 tick; int program; std::optional<int> channel; };

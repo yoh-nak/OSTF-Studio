@@ -4,6 +4,9 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 ## Current state
 
+- The song settings toolbar and File menu expose score defaults, undoable whole-score transposition and tempo scaling, and session-only audition controls. The Theory Guide button is beside the timeline lanes button. The piano roll displays chord names and updates selected-note and aggregate fit while dragging. The theory-guide smoke test exercises score defaults, tempo-map preservation, transposition, save/reopen, and piano-roll editing on Neon Platforms. The Windows development package for this change uses the build identifier `1.0.0-alpha.3+song-controls`.
+- Windows x64 Release passed all 21 CTest checks. The GUI check dragged C to C-sharp over Cmaj7 and verified both the drag preview and the committed result. The rendered four-bar piano-roll view was inspected. The audition clock was exercised by offline audio rendering. macOS and physical audio-device playback have not been checked for this change.
+
 - The [arranger exchange design](docs/ARRANGER_PHRASE_EXCHANGE.ja.md) proposes embedding Composer’s chord functions in every part arranger. Test that the same notes and settings produce the same analysis in both plug-ins and that a bass arranger works on its own. Keep existing OSTF chord spans, analyse gaps with pitched evidence, and label newly composed harmony as a suggestion. The cross-part check uses a mid-bar chord change on the global lane. The current preview still uses its fixed pattern.
 
 - The proposed native editor’s first musical test regenerates only the ending of a four-bar bass phrase. Compare takes on the same loop, adopt one, save/reopen and compare both exports. Include a bass note sustained across the selection boundary and verify old instrument-only plug-in state still opens.

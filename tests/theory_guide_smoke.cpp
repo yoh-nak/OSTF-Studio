@@ -90,6 +90,53 @@ int modelChecks() {
 }
 
 struct Command { int id; bool checked; };
+int songMusicChecks(const juce::File& demo) {
+    if (shiftedLabel("Dbmaj7/F", 2) != "Ebmaj7/G" || shiftedLabel("Blues", 2) != "Blues" ||
+        shiftedLabel("Dorian", -2) != "Dorian") return 45;
+    auto score = juce::JSON::parse(demo);
+    auto& tempos = *score["timeline"]["tempoChanges"].getArray();
+    tempos.add(juce::JSON::parse(R"({"at":960,"bpm":80})"));
+    const auto note = score["tracks"][0]["clips"][0]["notes"][0];
+    note.getDynamicObject()->setProperty("pitchRole", "fixedTrigger");
+    const auto fixedId = note["id"].toString();
+    const auto utf8 = juce::JSON::toString(score);
+    juce::MemoryInputStream input(utf8.toRawUTF8(), utf8.getNumBytesAsUTF8(), false);
+    std::unique_ptr<OstfpPreview> song;
+    if (readOstfPreview(input, song).failed()) return 30;
+    const auto original = song->sourceScore;
+    const auto pitches = song->pitchedNotes;
+    const auto drum = song->drumNotes;
+    if (song->checkAudition(2, .5).failed() || song->clock.scaled(.5)->bpmAt(960) != 40
+        || song->sourceScore != original || song->checkAudition(127, 1).wasOk()) return 31;
+    SongMusicEdit transform; transform.mode = SongMusicEdit::transform; transform.semitones = 2; transform.rate = .5;
+    juce::MemoryBlock before;
+    if (song->applySongMusic(transform, before).failed() || before != original || song->clock.bpmAt(0) != 53
+        || song->clock.bpmAt(960) != 40 || song->contextAt(TimelineLane::chord, 0) != "Dmaj7"
+        || song->contextAt(TimelineLane::key, 0) != "D major" || song->contextAt(TimelineLane::scale, 0) != "D Ionian") return 32;
+    for (std::size_t t = 0; t < pitches.size(); ++t) {
+        for (std::size_t i = 0; i < pitches[t].size(); ++i)
+            if (song->pitchedNotes[t][i].pitch != pitches[t][i].pitch + (pitches[t][i].id == fixedId || song->trackKinds[t] == TrackKind::drum ? 0 : 2)) return 33;
+        for (std::size_t i = 0; i < drum[t].size(); ++i)
+            if (song->drumNotes[t][i].pitch != drum[t][i].pitch) return 34;
+    }
+    const auto transposed = song->sourceScore;
+    transform.semitones = 127;
+    if (song->applySongMusic(transform, before).wasOk() || song->sourceScore != transposed) return 35;
+    SongMusicEdit base; base.key = juce::JSON::parse(R"({"state":"tonal","tonic":{"step":"F","alter":0},"mode":"minor"})");
+    base.scale = juce::JSON::parse(R"({"id":"fm","tonic":{"step":"F","alter":0},"intervals":[0,3,5,7,10],"label":"F minor pentatonic"})");
+    base.numerator = 6; base.denominator = 8; base.bpm = 90;
+    if (song->applySongMusic(base, before).failed() || before != transposed || song->clock.bpmAt(0) != 90
+        || song->clock.bpmAt(960) != 40 || song->beatUnit != 8 || song->meterBeats != 6 || song->contextAt(TimelineLane::key, 0) != "F minor"
+        || song->defaultScale != "F minor pentatonic" || song->contextAt(TimelineLane::scale, 0) != "D Ionian") return 36;
+    juce::MemoryOutputStream out;
+    if (writeOstfPreview(*song, out).failed()) return 37;
+    juce::MemoryInputStream saved(out.getData(), out.getDataSize(), false);
+    std::unique_ptr<OstfpPreview> reopened;
+    if (readOstfPreview(saved, reopened).failed() || reopened->meterBeats != 6 || reopened->clock.bpmAt(960) != 40
+        || reopened->defaultScale != song->defaultScale || song->restoreNoteScore(original).failed() || song->sourceScore != original) return 38;
+    return 0;
+}
+
 Command find(juce::MenuBarModel& model, const juce::String& label) {
     const auto menu = model.getMenuForIndex(1, TRANS("View"));
     juce::PopupMenu::MenuItemIterator it(menu, true);
@@ -100,6 +147,7 @@ Command find(juce::MenuBarModel& model, const juce::String& label) {
 
 int checkTheoryGuide(const juce::File& demo) {
     if (int failed = modelChecks()) return failed;
+    if (int failed = songMusicChecks(demo)) return failed;
     juce::FileInputStream file(demo);
     std::unique_ptr<OstfpPreview> project;
     if (readOstfPreview(file, project).failed()) return 10;
@@ -175,5 +223,32 @@ int checkTheoryGuide(const juce::File& demo) {
             || hint.contains("Ionian") != (mode == 3 || mode == 4)
             || grid->getHeight() != normal) return 26;
     }
+    auto* guideButton = dynamic_cast<ViewButton*>(main.findChildWithID("theory-guide"));
+    auto* musicButton = dynamic_cast<ViewButton*>(main.findChildWithID("song-settings"));
+    if (!guideButton || !musicButton || guideButton->getTooltip().isEmpty() || musicButton->getBounds().isEmpty()) return 39;
+    guideButton->onClick();
+    if (!guideButton->getToggleState() || !find(*model, TRANS("Show Theory Guide")).checked) return 40;
+    // Drag C to C-sharp over the opening Cmaj7. Inspect the actual readout before release and after committing.
+    for (auto* child : main.getChildren())
+        if (auto* slider = dynamic_cast<juce::Slider*>(child); slider && slider->getTitle() == TRANS("Piano roll horizontal zoom"))
+            slider->setValue(1, juce::sendNotificationSync);
+    auto* scroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("piano-horizontal-scroll"));
+    scroll->setCurrentRangeStart(1, juce::sendNotificationSync);
+    grid->commit({{NoteEdit::insert, {0, project->ppq, 84, 96, true, {}}}});
+    auto changed = std::find_if(grid->notes.begin(), grid->notes.end(), [&](const auto& n){ return grid->selection.contains(n.id); });
+    if (changed == grid->notes.end() || !grid->getDescription().contains("100%")) return 41;
+    const auto point = grid->box(*changed).getCentre();
+    const auto end = point.translated(0, -float(grid->getHeight()) / (grid->high - grid->low + 1));
+    auto mouse = [&](juce::Point<float> p) {
+        const auto t = juce::Time::getCurrentTime();
+        return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), p, juce::ModifierKeys::leftButtonModifier,
+            1, 0, 0, 0, 0, grid, grid, t, point, t, 1, p != point);
+    };
+    grid->mouseDown(mouse(point)); grid->mouseDrag(mouse(end));
+    const auto outside = grid->getDescription();
+    if (outside.isEmpty() || !outside.contains("0%") || outside.contains("100%")) return 42;
+    grid->mouseUp(mouse(end));
+    if (grid->getDescription() != outside || std::none_of(grid->notes.begin(), grid->notes.end(),
+        [&](const auto& n){ return grid->selection.contains(n.id) && n.pitch == 85; })) return 43;
     return 0;
 }

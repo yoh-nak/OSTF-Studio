@@ -125,6 +125,16 @@ private:
     void drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) const;
     void refreshPianoNotes();
     juce::PopupMenu theoryMenu() const;
+    juce::PopupMenu musicMenu() const;
+    void editSongMusic(ostfstudio::SongMusicEdit::Mode mode);
+    void rememberScoreEdit(juce::MemoryBlock before);
+    void previewNoteFit(const std::vector<ostfstudio::NoteEdit>&);
+    juce::String noteFitReading() const;
+    std::vector<ostfstudio::TheoryGuide::TrackCell> previewFits_;
+    std::optional<ostfstudio::PitchedNote> inspectedNote_, draggedNote_;
+    int auditionShift_ = 0;
+    double auditionRate_ = 1;
+    std::optional<ostfstudio::TempoMap> auditionClock_;
     void refreshTheory();
     void refreshTrackTheory(std::size_t track);
     int theoryTrackHeight(std::size_t track) const;
@@ -177,7 +187,9 @@ private:
                audioAdd_ {ViewButton::Icon::audio}, busAdd_ {ViewButton::Icon::bus}, returnAdd_ {ViewButton::Icon::send},
                uiSmaller_ {ViewButton::Icon::zoomOut}, uiLarger_ {ViewButton::Icon::zoomIn};
     int interfaceScale_ = 100;
-    juce::TooltipWindow tooltips_ {this, 450};
+    ViewButton theoryButton_ {ViewButton::Icon::theory}, musicButton_ {ViewButton::Icon::songMusic};
+    juce::Label toolbarHint_;
+    juce::TooltipWindow tooltips_ {nullptr, 350};
     bool editorVisible_ = true, mixerSelected_ = false;
     TransportPanel deck_;
     juce::Label documentLabel_;

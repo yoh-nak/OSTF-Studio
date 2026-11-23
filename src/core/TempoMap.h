@@ -19,6 +19,12 @@ public:
         return true;
     }
     bool empty() const { return points_.empty(); }
+    std::optional<TempoMap> scaled(double factor) const {
+        TempoMap result(ppq_);
+        for (const auto& p : points_)
+            if (!result.append(p.tick, p.bpm * factor)) return std::nullopt;
+        return result;
+    }
     double secondsAt(std::int64_t tick) const {
         if (empty()) return 0;
         const auto& p = atTick(tick);

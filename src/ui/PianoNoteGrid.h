@@ -12,6 +12,8 @@ class PianoNoteGrid final : public juce::Component, public juce::SettableTooltip
 public:
     std::function<juce::Range<double>()> tickRange;
     std::function<void(const std::vector<Edit>&)> commit;
+    std::function<void(const std::vector<Edit>&)> previewEdit;
+    std::function<void(const Note&)> inspectNote;
     std::function<void(bool)> undoRedo;
     std::function<juce::String(juce::int64, const Note&)> theoryHint;
     std::vector<Note> notes;
@@ -19,6 +21,7 @@ public:
     juce::int64 grid = 1, endTick = 1, quarter = 1;
     int low = 52, high = 70;
     bool editable = false;
+    const std::vector<Edit>& pendingEdits() const { return pending; }
 
     PianoNoteGrid() { setWantsKeyboardFocus(true); setComponentID("piano-note-grid"); }
 
@@ -45,7 +48,11 @@ public:
         selection.clear();
         cancel();
     }
-    void cancel() { gesture = idle; pending.clear(); repaint(); }
+    void cancel() {
+        gesture = idle; pending.clear(); lastPreview.reset();
+        if (previewEdit) previewEdit(pending);
+        repaint();
+    }
 
     float noteY(int pitch) const { return float(high - pitch) * getHeight() / (high - low + 1); }
     juce::Rectangle<float> box(const Note& n) const {
@@ -59,8 +66,16 @@ public:
         g.setColour(juce::Colour(0xffffc57e));
         for (const auto& n : notes) if (selection.contains(n.id)) g.drawRoundedRectangle(box(n).reduced(.5f), 2, 1.5f);
         for (const auto& e : pending) {
-            g.setColour(juce::Colour(0xcaffc57e));
-            g.fillRoundedRectangle(box(e.note), 2);
+            g.setColour(juce::Colour(0xffffc57e));
+            g.drawRoundedRectangle(box(e.note).reduced(.5f), 2, 1.5f);
+        }
+        if (gesture != velocity && !pending.empty() && getDescription().isNotEmpty()) {
+            const juce::Font font(juce::FontOptions(13.f));
+            g.setFont(font);
+            const int w = juce::roundToInt(juce::GlyphArrangement::getStringWidth(font, getDescription())) + 18;
+            auto tag = juce::Rectangle<int>(current.x + 10, current.y - 27, std::min(getWidth(), w), 23).constrainedWithin(getLocalBounds());
+            g.setColour(juce::Colour(0xff18212a)); g.fillRoundedRectangle(tag.toFloat(), 3);
+            g.setColour(juce::Colours::white); g.drawText(getDescription(), tag.reduced(5, 0), juce::Justification::centred);
         }
         if (gesture == velocity && !pending.empty()) {
             const auto value = pending.front().note.velocity.value_or(96);
@@ -91,6 +106,7 @@ public:
             originalSelection = selection;
             gesture = marquee;
         } else {
+            if (inspectNote) inspectNote(*hit);
             if (e.mods.isShiftDown() && selection.contains(hit->id)) { selection.removeString(hit->id); repaint(); return; }
             if (!selection.contains(hit->id)) {
                 if (!e.mods.isShiftDown()) selection.clear();
@@ -178,6 +194,9 @@ private:
         return move;
     }
     void makeChanges(juce::int64 dt, int dp, int dv) {
+        const std::array<juce::int64, 3> delta {dt, dp, gesture == velocity ? dv : 0};
+        if (lastPreview == delta) return;
+        lastPreview = delta;
         pending.clear();
         // One shared delta preserves chord intervals and timing at the song and MIDI limits.
         for (const auto& n : notes) if (selection.contains(n.id)) {
@@ -196,7 +215,9 @@ private:
             if (n.startTick != original.startTick || n.endTick != original.endTick || n.pitch != original.pitch || n.velocity != original.velocity)
                 pending.push_back({copy && gesture == move ? Edit::duplicate : Edit::change, n});
         }
+        if (previewEdit && gesture != velocity) previewEdit(pending);
     }
+    std::optional<std::array<juce::int64, 3>> lastPreview;
     Gesture gesture = idle;
     juce::Point<int> anchor, current;
     juce::StringArray originalSelection;

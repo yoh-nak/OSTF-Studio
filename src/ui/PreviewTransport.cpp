@@ -53,7 +53,8 @@ bool PreviewTransport::supportsInsert(const juce::AudioPluginInstance& effect) {
 }
 
 juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const ostfstudio::OstfpPreview& project,
-                                    bool record, std::span<const TrackSetup> tracks, const Inserts& inserts, juce::int64 startTick) {
+                                    bool record, std::span<const TrackSetup> tracks, const Inserts& inserts, juce::int64 startTick,
+                                    int semitones, double tempoRate) {
     stop();
     auto* device = devices.getCurrentAudioDevice();
     if (!device || !device->isOpen() || device->getActiveOutputChannels().isZero())
@@ -64,7 +65,7 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const os
             enabled = enabled || devices.isMidiInputDeviceEnabled(input.identifier);
         if (!enabled) return juce::Result::fail("Enable a MIDI input in Settings before recording.");
     }
-    const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples());
+    const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples(), semitones, tempoRate);
     if (result.failed()) return result;
     if (startTick > 0) seekToTick(startTick);
     recording_ = record;
@@ -75,13 +76,14 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager& devices, const os
 }
 
 juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& project, std::span<const TrackSetup> tracks,
-                                             const Inserts& inserts, double sampleRate, int blockSize) {
+                                             const Inserts& inserts, double sampleRate, int blockSize, int semitones, double tempoRate) {
     stop();
     if (!std::isfinite(sampleRate) || sampleRate <= 0 || blockSize < 1)
         return juce::Result::fail("Invalid audio configuration");
     sampleRate_ = sampleRate;
     if (project.clock.empty()) return juce::Result::fail("The song needs an initial tempo.");
-    clock_ = project.clock;
+    if (auto check = project.checkAudition(semitones, tempoRate); check.failed()) return check;
+    clock_ = *project.clock.scaled(tempoRate);
     ppq_ = project.ppq;
     meterBeats_ = project.meterBeats;
     beatUnit_ = project.beatUnit;
@@ -150,8 +152,9 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
             midi->addEvent(juce::MidiMessage::noteOff(channel, pitch), last);
             return true;
         };
+        const int shift = track < project.trackKinds.size() && project.trackKinds[track] != ostfstudio::TrackKind::pitched ? 0 : semitones;
         for (const auto& note : project.pitchedNotes[track])
-            if (note.enabled && !addNote(note.startTick, note.endTick, note.pitch, note.velocity.value_or(92), setup.midiChannel))
+            if (note.enabled && !addNote(note.startTick, note.endTick, note.pitch + (note.fixedTrigger ? 0 : shift), note.velocity.value_or(92), setup.midiChannel))
                 return juce::Result::fail("Preview transport supports up to 20,000 notes.");
         if (track < project.drumNotes.size())
             for (const auto& note : project.drumNotes[track])

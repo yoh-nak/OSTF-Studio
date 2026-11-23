@@ -22,9 +22,9 @@ constexpr int menuHeight = 28;
 int viewBarHeight(int width) { return width < 860 ? 64 : 32; }
 constexpr int minInterfaceScale = 75;
 constexpr int maxInterfaceScale = 150;
-constexpr int trackHeaderWidth = 465;
+constexpr int trackHeaderWidth = 487;
 constexpr int timelineNavigationHeight = 24;
-constexpr int trackNameWidth = 150;
+constexpr int trackNameWidth = 172;
 constexpr int arrangementHeadingHeight = 24;
 constexpr int globalRowHeight = 28;
 constexpr int theoryGuideHeight = 52, fitLaneHeight = 24;
@@ -52,7 +52,7 @@ juce::String toneName(Tone tone) {
 }
 
 struct PianoLayout {
-    juce::Rectangle<int> heading, lane, keys, ruler, grid;
+    juce::Rectangle<int> heading, lane, keys, ruler, chords, grid;
     explicit PianoLayout(juce::Rectangle<int> area) {
         const bool compact = area.getHeight() < 130;
         area.reduce(13, compact ? 2 : 8);
@@ -60,7 +60,8 @@ struct PianoLayout {
         lane = area.removeFromBottom(std::min(84, area.getHeight() / 3)).withTrimmedLeft(52);
         keys = area.removeFromLeft(52);
         ruler = area.removeFromTop(compact ? 13 : 18);
-        keys.removeFromTop(ruler.getHeight());
+        chords = area.removeFromTop(compact ? 13 : 21);
+        keys.removeFromTop(ruler.getHeight() + chords.getHeight());
         grid = area;
     }
 };
@@ -89,6 +90,7 @@ enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevice
                    exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts };
 constexpr int timelineMenuBase = 100;
 constexpr int showTheory = 80, showChordFit = 81, showScaleFit = 82, scaleReferenceBase = 1000;
+constexpr int musicSettings = 83, musicDefaults = 84, musicTransform = 85, musicAudition = 86, undoScore = 87, redoScore = 88;
 constexpr int demoMenuBase = 300;
 constexpr struct { const char* title; const char* resource; } gallery[] {
     {"Neon Platforms (City Pop)", "neonplatforms_ostfp"},
@@ -389,11 +391,20 @@ MainComponent::MainComponent() {
     documentLabel_.setJustificationType(juce::Justification::centredRight);
     documentLabel_.setFont(juce::FontOptions(14.0f));
     documentLabel_.setComponentID("current-document");
+    addChildComponent(toolbarHint_);
+    toolbarHint_.setInterceptsMouseClicks(false, false);
+    toolbarHint_.setFont(juce::FontOptions(14.f, juce::Font::bold));
+    toolbarHint_.setColour(juce::Label::textColourId, juce::Colour(0xff94e8dd));
     const auto addView = [this](ViewButton& button, const char* label, int command) {
         const auto name = juce::translate(label);
         button.setName(name);
         button.setTitle(name);
         button.setTooltip(name);
+        button.onHint = [this](const juce::String& hint) {
+            toolbarHint_.setText(hint, juce::dontSendNotification);
+            toolbarHint_.setVisible(hint.isNotEmpty());
+            documentLabel_.setVisible(hint.isEmpty());
+        };
         button.setToggleable(command == showArrangement || command == showLeadSheet || command == showPartScore
                              || command == showPiano || command == showMixer || command == showPlugins || command == showOutputs);
         addAndMakeVisible(button);
@@ -408,6 +419,11 @@ MainComponent::MainComponent() {
     addView(leadButton_, "Lead sheet", showLeadSheet);
     addView(scoreButton_, "Score", showPartScore);
     addView(songInfoButton_, "Song information", showSongInformation);
+    addView(theoryButton_, "Show Theory Guide", showTheory);
+    theoryButton_.setComponentID("theory-guide");
+    theoryButton_.setToggleable(true);
+    addView(musicButton_, "Song settings", musicSettings);
+    musicButton_.setComponentID("song-settings");
     addView(melodyAdd_, "Add melody track", addMelody);
     addView(chorusAdd_, "Add chorus vocal track", addChorus);
     addView(pitchedAdd_, "Add pitched track", addPitched);
@@ -543,6 +559,8 @@ MainComponent::MainComponent() {
             : std::max<juce::int64>(1, pianoGrid_.quarter * 4 / pianoSnap_.getSelectedId());
         repaint();
     };
+    pianoGrid_.previewEdit = [this](const auto& edits) { previewNoteFit(edits); };
+    pianoGrid_.inspectNote = [this](const auto& n) { inspectedNote_ = n; pianoGrid_.setDescription(noteFitReading()); repaint(); };
     pianoGrid_.theoryHint = [this](juce::int64 tick, const ostfstudio::PitchedNote& n) -> juce::String {
         const int mode = pianoColours_.getSelectedId();
         if (mode == plainNotes || !theory_ || !pitchedSelection() || !n.enabled || n.fixedTrigger) return {};
@@ -550,15 +568,15 @@ MainComponent::MainComponent() {
         if (i >= theory_->cells.size()) return {};
         const auto& cell = theory_->cells[i];
         juce::StringArray details;
-        details.add(juce::MidiMessage::getMidiNoteName(n.pitch, true, true, 4));
+        details.add(juce::MidiMessage::getMidiNoteName(n.pitch + auditionShift_, true, true, 4));
         if (mode != scaleNotes && theory_->chordMask(cell)) {
             const auto& h = theory_->chords[cell.chord];
-            details.add(h.name + "  " + TRANS("Interval") + " " + theory_->interval(n.pitch, h.root) + " / "
+            details.add(ostfstudio::shiftedLabel(h.name, auditionShift_) + "  " + TRANS("Interval") + " " + theory_->interval(n.pitch, h.root) + " / "
                 + (theory_->contains(h.mask, n.pitch) ? toneName(theory_->tone(n.pitch, &h, 0)) : TRANS("Outside chord tones")));
         }
         const auto s = theory_->scaleForNote(theoryTracks_[*selectedTrack_][i], n);
         if (mode != chordNotes && s >= 0 && theory_->scales[s].mask)
-            details.add(theory_->scales[s].name + "  " + TRANS("Interval") + " " + theory_->interval(n.pitch, theory_->scales[s].tonic) + " / " + (theory_->contains(theory_->scales[s].mask, n.pitch)
+            details.add(ostfstudio::shiftedLabel(theory_->scales[s].name, auditionShift_) + "  " + TRANS("Interval") + " " + theory_->interval(n.pitch, theory_->scales[s].tonic) + " / " + (theory_->contains(theory_->scales[s].mask, n.pitch)
                 ? TRANS("In scale") : TRANS("Outside scale")));
         if (details.size() == 1) details.add(TRANS("No reference"));
         return details.joinIntoString("\n");
@@ -633,6 +651,166 @@ juce::PopupMenu MainComponent::timelineMenu() const {
     return lanes;
 }
 
+juce::PopupMenu MainComponent::musicMenu() const {
+    juce::PopupMenu menu;
+    const bool available = project_ && !recordTrack_;
+    menu.addItem(musicDefaults, TRANS("Song defaults..."), available);
+    menu.addItem(musicTransform, TRANS("Transpose or change tempo of score..."), available);
+    menu.addItem(musicAudition, TRANS("Playback and display overrides..."), available, auditionShift_ || auditionRate_ != 1);
+    menu.addSeparator();
+    menu.addItem(undoScore, TRANS("Undo score edit"), available && noteHistoryCursor_ > 0);
+    menu.addItem(redoScore, TRANS("Redo score edit"), available && noteHistoryCursor_ < noteHistory_.size());
+    return menu;
+}
+
+void MainComponent::editSongMusic(ostfstudio::SongMusicEdit::Mode mode) {
+    using namespace ostfstudio;
+    if (!project_ || recordTrack_) return;
+    const bool defaults = mode == SongMusicEdit::defaults, audition = mode == SongMusicEdit::audition;
+    const auto song = juce::JSON::parse(project_->sourceScore.toString())["song"];
+    const auto key = song["key"], scale = song["scale"];
+    auto dialog = std::make_unique<juce::AlertWindow>(
+        defaults ? TRANS("Song defaults") : audition ? TRANS("Playback and display overrides") : TRANS("Transpose or change tempo of score"),
+        defaults ? TRANS("Timeline key and scale events take precedence in their own ranges.")
+                 : audition ? TRANS("Temporary MIDI pitch and playback speed. Reset with 0 semitones and 100%.")
+                            : TRANS("Transpose pitched notes and harmony, and multiply all tempo changes. WAV recordings retain their original pitch and speed."),
+        juce::MessageBoxIconType::NoIcon, this);
+    auto combo = [&](const char* id, const juce::StringArray& options, int selected, juce::String caption) {
+        dialog->addComboBox(id, options, caption);
+        dialog->getComboBoxComponent(id)->setSelectedItemIndex(selected, juce::dontSendNotification);
+    };
+    const auto keyMode = key["mode"].toString();
+    const int keyPc = pitchClassOf(key["tonic"]), scalePc = pitchClassOf(scale["tonic"]);
+    const auto bpm = project_->clock.bpmAt(0);
+    const auto metre = juce::String(project_->meterBeats) + "/" + juce::String(project_->beatUnit);
+    juce::StringArray scaleNotes;
+    if (const auto* items = scale["intervals"].getArray()) for (auto& n : *items) scaleNotes.add(n.toString());
+    const auto intervals = scaleNotes.joinIntoString(" ");
+    const auto scaleLabel = scale["label"].toString();
+    auto tonics = chromaticNames();
+    tonics.insert(0, TRANS("Unspecified"));
+    if (defaults) {
+        auto keys = tonics; keys.add(TRANS("Atonal"));
+        combo("key", keys, key["state"] == "atonal" ? 13 : keyPc + 1, TRANS("Key tonic"));
+        dialog->addTextEditor("mode", keyMode, TRANS("Key mode (major, minor, dorian...)"));
+        combo("scale", tonics, scalePc + 1, TRANS("Scale tonic"));
+        const juce::StringArray patterns {"Ionian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Aeolian", "Locrian",
+                                           "Major pentatonic", "Minor pentatonic", "Harmonic minor", "Melodic minor"};
+        const juce::StringArray degrees {"0 2 4 5 7 9 11", "0 2 3 5 7 9 10", "0 1 3 5 7 8 10", "0 2 4 6 7 9 11",
+                                         "0 2 4 5 7 9 10", "0 2 3 5 7 8 10", "0 1 3 5 6 8 10", "0 2 4 7 9", "0 3 5 7 10",
+                                         "0 2 3 5 7 8 11", "0 2 3 5 7 9 11"};
+        auto options = patterns; options.insert(0, TRANS("Custom"));
+        combo("pattern", options, degrees.indexOf(intervals) + 1, TRANS("Scale pattern"));
+        dialog->addTextEditor("intervals", intervals, TRANS("Scale intervals (0-11, separated by spaces)"));
+        dialog->addTextEditor("label", scaleLabel, TRANS("Scale name"));
+        auto* w = dialog.get();
+        auto fillPattern = [w, patterns, degrees] {
+            const auto index = w->getComboBoxComponent("pattern")->getSelectedItemIndex() - 1;
+            if (index < 0) return;
+            auto* tonic = w->getComboBoxComponent("scale");
+            if (tonic->getSelectedItemIndex() == 0)
+                tonic->setSelectedItemIndex(std::clamp(w->getComboBoxComponent("key")->getSelectedItemIndex(), 1, 12), juce::dontSendNotification);
+            w->getTextEditor("intervals")->setText(degrees[index], false);
+            w->getTextEditor("label")->setText(tonic->getText() + " " + patterns[index], false);
+        };
+        w->getComboBoxComponent("pattern")->onChange = fillPattern;
+        w->getComboBoxComponent("scale")->onChange = [w, fillPattern] {
+            if (w->getComboBoxComponent("scale")->getSelectedItemIndex() > 0) fillPattern();
+        };
+        w->getTextEditor("intervals")->onTextChange = [w, degrees] {
+            const auto pos = degrees.indexOf(w->getTextEditorContents("intervals").trim());
+            w->getComboBoxComponent("pattern")->setSelectedItemIndex(pos + 1, juce::dontSendNotification);
+        };
+        dialog->addTextEditor("bpm", juce::String(bpm, 6).trimCharactersAtEnd("0").trimCharactersAtEnd("."), TRANS("Initial tempo (BPM)"));
+        dialog->addTextEditor("meter", metre, TRANS("Time signature"));
+    } else {
+        dialog->addTextEditor("shift", juce::String(audition ? auditionShift_ : 0), TRANS("Transpose (semitones)"));
+        dialog->addTextEditor("rate", juce::String(audition ? auditionRate_ * 100 : 100, 4), TRANS("Tempo (%)"));
+    }
+    dialog->addButton(TRANS("Apply"), 1, juce::KeyPress(juce::KeyPress::returnKey));
+    dialog->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    auto* window = dialog.release();
+    window->enterModalState(true, juce::ModalCallbackFunction::create(
+        [=, safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_](int answer) {
+            if (!safe || !answer || generation != safe->projectGeneration_ || safe->recordTrack_) return;
+            auto text = [&](const char* id) { return window->getTextEditorContents(id).trim(); };
+            auto fail = [&](const juce::String& msg) {
+                safe->statusLabel_.setText(msg, juce::dontSendNotification);
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, TRANS("Song settings"), msg);
+            };
+            auto number = [](const juce::String& s, double& value) {
+                const auto str = s.toStdString(); char* end = nullptr;
+                value = std::strtod(str.c_str(), &end);
+                return end != str.c_str() && *end == 0 && std::isfinite(value);
+            };
+            SongMusicEdit edit; edit.mode = mode;
+            if (defaults) {
+                int k = window->getComboBoxComponent("key")->getSelectedItemIndex();
+                if (k != (key["state"] == "atonal" ? 13 : keyPc + 1) || (k >= 1 && k <= 12 && text("mode") != keyMode)) {
+                    edit.key = juce::var(new juce::DynamicObject());
+                    auto* o = edit.key.getDynamicObject();
+                    o->setProperty("state", k == 0 ? "unspecified" : k == 13 ? "atonal" : "tonal");
+                    if (k >= 1 && k <= 12) {
+                        if (text("mode").isEmpty()) { fail(TRANS("Enter a tonal mode, for example major or minor.")); return; }
+                        o->setProperty("tonic", spelledClass(k - 1)); o->setProperty("mode", text("mode"));
+                    }
+                }
+                const int s = window->getComboBoxComponent("scale")->getSelectedItemIndex() - 1;
+                if (s != scalePc || text("intervals") != intervals || text("label") != scaleLabel) {
+                    edit.removeScale = s < 0;
+                    if (s >= 0) {
+                        juce::Array<juce::var> steps;
+                        for (const auto& token : juce::StringArray::fromTokens(text("intervals"), " ,", "")) {
+                            if (token.isEmpty()) continue;
+                            if (!token.containsOnly("0123456789") || token.length() > 2 || token.getIntValue() > 11 || steps.contains(token.getIntValue())) {
+                                fail(TRANS("Enter distinct scale intervals from 0 to 11, including 0.")); return;
+                            }
+                            steps.add(token.getIntValue());
+                        }
+                        if (!steps.contains(0)) { fail(TRANS("Enter distinct scale intervals from 0 to 11, including 0.")); return; }
+                        edit.scale = juce::var(new juce::DynamicObject()); auto* o = edit.scale.getDynamicObject();
+                        o->setProperty("id", scale.hasProperty("id") ? scale["id"].toString() : "scale-" + juce::Uuid().toString());
+                        o->setProperty("tonic", spelledClass(s)); o->setProperty("intervals", steps);
+                        o->setProperty("label", text("label").isEmpty() ? chromaticNames()[s] : text("label"));
+                    }
+                }
+                double value;
+                if (!number(text("bpm"), value) || value <= 0 || value > 1000) { fail(TRANS("Enter a tempo above zero and at most 1000 BPM.")); return; }
+                if (std::abs(value - bpm) > 0.0000005) edit.bpm = value;
+                if (text("meter") != metre) {
+                    const auto parts = juce::StringArray::fromTokens(text("meter"), "/", "");
+                    if (parts.size() != 2 || !parts[0].trim().containsOnly("0123456789") || !parts[1].trim().containsOnly("0123456789")
+                        || (edit.numerator = parts[0].getIntValue()) <= 0 || (edit.denominator = parts[1].getIntValue()) <= 0) {
+                        fail(TRANS("Enter a time signature such as 4/4 or 6/8.")); return;
+                    }
+                }
+            } else {
+                double shift, percent;
+                if (!number(text("shift"), shift) || std::floor(shift) != shift || std::abs(shift) > 127
+                    || !number(text("rate"), percent) || percent <= 0) { fail(TRANS("Enter whole semitones and a positive tempo percentage.")); return; }
+                edit.semitones = int(shift); edit.rate = percent / 100;
+            }
+            const bool playing = safe->transportActive_;
+            if (playing) safe->stopTransport();
+            juce::MemoryBlock before;
+            auto result = audition ? safe->project_->checkAudition(edit.semitones, edit.rate) : safe->project_->applySongMusic(edit, before);
+            if (result.wasOk()) {
+                if (audition) {
+                    safe->auditionShift_ = edit.semitones; safe->auditionRate_ = edit.rate;
+                    safe->auditionClock_ = edit.rate == 1 ? std::nullopt : safe->project_->clock.scaled(edit.rate);
+                } else if (!before.isEmpty()) {
+                    safe->rememberScoreEdit(std::move(before));
+                    safe->inspectedNote_.reset(); safe->scaleReference_ = -1; safe->theory_.reset(); safe->refreshTheory();
+                    safe->finishNoteEdit(false);
+                }
+                safe->displayTransportPosition(std::clamp<juce::int64>(safe->cursorTick_, 0, safe->project_->playbackEndTick()));
+                safe->updateDocumentLabel(); safe->repaint();
+            }
+            if (playing) safe->startTransport(false);
+            if (result.failed()) fail(juce::translate(result.getErrorMessage()));
+        }), true);
+}
+
 juce::PopupMenu MainComponent::theoryMenu() const {
     juce::PopupMenu menu;
     menu.addItem(showTheory, TRANS("Show Theory Guide"), project_ != nullptr, theoryVisible_);
@@ -659,6 +837,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
                 demos.addItem(demoMenuBase + static_cast<int>(i), gallery[i].title);
             menu.addSubMenu(TRANS("Demo songs"), demos);
             menu.addItem(showSongInformation, TRANS("Song information..."), project_ != nullptr);
+            menu.addSubMenu(TRANS("Song settings"), musicMenu(), project_ != nullptr);
             menu.addSeparator();
             menu.addItem(saveScore, TRANS("Save as OSTF..."), canEditTracks());
             menu.addItem(saveProject, TRANS("Save as OSTFP..."), canEditTracks());
@@ -719,9 +898,21 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
 }
 
 void MainComponent::menuItemSelected(int item, int) {
+    if (item == musicSettings) {
+        musicMenu().showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&musicButton_),
+            [safe = juce::Component::SafePointer<MainComponent>(this)](int id) { if (safe && id) safe->menuItemSelected(id, 0); });
+        return;
+    }
+    if (item >= musicDefaults && item <= musicAudition) {
+        editSongMusic(static_cast<ostfstudio::SongMusicEdit::Mode>(item - musicDefaults + 1)); return;
+    }
+    if (item == undoScore || item == redoScore) { undoPianoEdit(item == redoScore); return; }
     if (item == showTheory || item == showChordFit || item == showScaleFit || item >= scaleReferenceBase) {
         if (!project_) return;
-        if (item == showTheory) theoryVisible_ = !theoryVisible_;
+        if (item == showTheory) {
+            theoryVisible_ = !theoryVisible_;
+            theoryButton_.setToggleState(theoryVisible_, juce::dontSendNotification);
+        }
         else if (item == showChordFit) chordFitVisible_ = !chordFitVisible_;
         else if (item == showScaleFit) scaleFitVisible_ = !scaleFitVisible_;
         else scaleReference_ = item - scaleReferenceBase - 1;
@@ -1160,7 +1351,7 @@ void MainComponent::startTransport(bool recording) {
     for (std::size_t i = 0; i < std::min(trackControls_.size(), PreviewTransport::maxTracks); ++i)
         copyEffects(trackControls_[i]->effects, inserts[PreviewTransport::outputCount + i]);
     const auto start = cursorTick_ >= project_->playbackEndTick() ? 0 : std::max<juce::int64>(0, cursorTick_);
-    const auto result = transport_.start(deviceSettings_->devices(), *project_, recording, tracks, inserts, start);
+    const auto result = transport_.start(deviceSettings_->devices(), *project_, recording, tracks, inserts, start, auditionShift_, auditionRate_);
     if (result.failed()) {
         statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
         return;
@@ -1306,7 +1497,7 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, c
     cursorTick_ = tick;
     if (scoreView_ && scoreView_->isVisible()) scoreView_->playbackPosition(tick);
     if (!project_) return;
-    deck_.setPosition(*project_, std::max<juce::int64>(0, tick), seconds);
+    deck_.setPosition(*project_, std::max<juce::int64>(0, tick), seconds, auditionShift_, auditionRate_);
     bool scrolled = false;
     if (deck_.follow.getToggleState() && tick >= 0) {
         const auto bar = 1.0 + double(tick) / project_->ticksPerBar;
@@ -1385,6 +1576,7 @@ bool MainComponent::openPreview(juce::InputStream& input, const juce::String& fi
         stopTransport();
         scoreView_.reset();
         project_ = std::move(next);
+        auditionShift_ = 0; auditionRate_ = 1; auditionClock_.reset();
         scaleReference_ = -1;
         theory_.reset();
         refreshTheory();
@@ -1531,8 +1723,11 @@ void MainComponent::saveDocument(SaveFormat format) {
 }
 
 void MainComponent::updateDocumentLabel() {
-    const auto name = project_->title + "   " + juce::String::charToString(0x00b7) + "   "
+    juce::String name = project_->title + "   " + juce::String::charToString(0x00b7) + "   "
         + (currentFilename_.isEmpty() ? TRANS("Unsaved project") : currentFilename_);
+    if (auditionShift_ || auditionRate_ != 1)
+        name = TRANS("Audition") + "  " + (auditionShift_ > 0 ? "+" : "") + juce::String(auditionShift_)
+            + " st  " + juce::String(auditionRate_ * 100, 1) + "%     " + name;
     documentLabel_.setText(name, juce::dontSendNotification);
     documentLabel_.setTooltip(name);
 }
@@ -2382,6 +2577,7 @@ void MainComponent::selectTrack(std::size_t index) {
 
 void MainComponent::refreshPianoNotes() {
     const bool changed = pianoGeneration_ != projectGeneration_ || pianoTrack_ != selectedTrack_;
+    if (changed) inspectedNote_.reset();
     if (pianoGeneration_ != projectGeneration_) { noteHistory_.clear(); noteHistoryCursor_ = 0; }
     pianoGeneration_ = projectGeneration_;
     pianoTrack_ = selectedTrack_;
@@ -2441,6 +2637,14 @@ int MainComponent::theoryTrackHeight(std::size_t track) const {
 juce::String MainComponent::getTooltip() {
     if (!project_ || workspaceMode_ != WorkspaceMode::arrangement) return {};
     const auto p = getMouseXYRelative();
+    if (pianoGrid_.isVisible() && pianoGrid_.getWidth() > 0) {
+        const auto strip = pianoGrid_.getBounds().withTop(pianoRuler_.getBottom()).withBottom(pianoGrid_.getY());
+        if (strip.contains(p)) {
+            const auto range = pianoGrid_.tickRange();
+            const auto tick = static_cast<juce::int64>(std::floor(range.getStart() + (p.x-strip.getX()) * range.getLength() / strip.getWidth()));
+            return ostfstudio::shiftedLabel(project_->contextAt(TimelineLane::chord, tick), auditionShift_);
+        }
+    }
     if (!rowOverlay_.getBounds().contains(p)) return {};
     if (theoryVisible_ && theory_ && functionRow_.contains(p)) {
         const auto range = horizontalRange(false);
@@ -2449,16 +2653,18 @@ juce::String MainComponent::getTooltip() {
         const auto& functions = theory_->functions;
         auto it = std::partition_point(functions.begin(), functions.end(), [tick](const auto& f) { return f.end <= tick; });
         if (it != functions.end() && it->start <= tick) {
-            auto name = theory_->chords[it->chord].name + "  " + it->degree + "  " + juce::translate(it->function);
+            auto name = ostfstudio::shiftedLabel(theory_->chords[it->chord].name, auditionShift_) + "  " + it->degree + "  " + juce::translate(it->function);
             const auto next = std::next(it);
             if (next != functions.end() && next->start == it->end && next->key == it->key && it->function == "Secondary dominant")
-                name += "  " + juce::String::charToString(0x2192) + "  " + theory_->chords[next->chord].name;
+                name += "  " + juce::String::charToString(0x2192) + "  " + ostfstudio::shiftedLabel(theory_->chords[next->chord].name, auditionShift_);
             return name;
         }
     }
     for (std::size_t i = 0; i < trackRows_.size(); ++i) {
         if (trackRows_[i].withWidth(trackNameWidth).contains(p) && !trackRows_[i].isEmpty())
-            return juce::String::fromUTF8(project_->trackLanes[i].label);
+            return juce::String::fromUTF8(project_->trackLanes[i].label) + "  /  " +
+                (project_->trackKinds[i] == ostfstudio::TrackKind::drum ? TRANS("Drum / percussion") :
+                 project_->trackKinds[i] == ostfstudio::TrackKind::audio ? TRANS("Audio track") : TRANS("Pitched track"));
         const auto row = trackRows_[i].withTrimmedLeft(trackHeaderWidth);
         if (row.isEmpty()) continue;
         const auto lanes = row.withY(row.getBottom() + TrackRowSize::grip).withHeight(theoryTrackHeight(i));
@@ -2472,12 +2678,12 @@ juce::String MainComponent::getTooltip() {
         juce::StringArray lines;
         if (chordFitVisible_) {
             auto line = TRANS("Chord fit");
-            if (context.chord >= 0) line += " / " + theory_->chords[context.chord].name;
+            if (context.chord >= 0) line += " / " + ostfstudio::shiftedLabel(theory_->chords[context.chord].name, auditionShift_);
             lines.add(line + " " + (fit.chord.total ? juce::String(fit.chord.percent()) + "%" : juce::String::charToString(0x2014)));
         }
         if (scaleFitVisible_) {
             auto line = TRANS("Scale fit");
-            if (fit.backgroundScale >= 0) line += " / " + theory_->scales[fit.backgroundScale].name;
+            if (fit.backgroundScale >= 0) line += " / " + ostfstudio::shiftedLabel(theory_->scales[fit.backgroundScale].name, auditionShift_);
             else if (fit.backgroundScale == -2) line += " / " + TRANS("Select scale reference");
             lines.add(line + " " + (fit.scale.total ? juce::String(fit.scale.percent()) + "%" : juce::String::charToString(0x2014)));
         }
@@ -2486,13 +2692,69 @@ juce::String MainComponent::getTooltip() {
     return {};
 }
 
+void MainComponent::previewNoteFit(const std::vector<ostfstudio::NoteEdit>& edits) {
+    if (edits.empty()) {
+        if (draggedNote_) { draggedNote_.reset(); previewFits_.clear(); pianoGrid_.setDescription(noteFitReading()); repaint(); }
+        return;
+    }
+    if (!theory_ || !pitchedSelection()) return;
+    draggedNote_ = edits.front().note;
+    if (edits.front().action == ostfstudio::NoteEdit::duplicate) draggedNote_->id.clear();
+    const auto track = *selectedTrack_;
+    auto notes = project_->pitchedNotes[track];
+    std::map<juce::String, const ostfstudio::PitchedNote*> replacements;
+    for (const auto& e : edits) {
+        if (e.action == ostfstudio::NoteEdit::duplicate) { notes.push_back(e.note); notes.back().id.clear(); }
+        else replacements[e.note.id] = &e.note;
+    }
+    for (auto& note : notes) if (auto it = replacements.find(note.id); it != replacements.end()) note = *it->second;
+    previewFits_ = theory_->analyse(track, notes, scaleReference_);
+    pianoGrid_.setDescription(noteFitReading());
+    repaint();
+}
+
+juce::String MainComponent::noteFitReading() const {
+    const auto& note = draggedNote_ ? draggedNote_ : inspectedNote_;
+    if (!theory_ || !pitchedSelection() || !note || note->fixedTrigger || !note->enabled
+        || *selectedTrack_ >= theoryTracks_.size()) return {};
+    const auto& fits = draggedNote_ ? previewFits_ : theoryTracks_[*selectedTrack_];
+    ostfstudio::TheoryGuide::Fit chord, scale;
+    for (auto i = theory_->firstCell(double(note->startTick)); i < fits.size() && theory_->cells[i].start < note->endTick; ++i) {
+        const auto& cell = theory_->cells[i];
+        const auto duration = std::min(note->endTick, cell.end) - std::max(note->startTick, cell.start);
+        if (const int mask = theory_->chordMask(cell)) chord.add(theory_->contains(mask, note->pitch), duration);
+        const auto s = theory_->scaleForNote(fits[i], *note);
+        if (s >= 0 && theory_->scales[s].mask) scale.add(theory_->contains(theory_->scales[s].mask, note->pitch), duration);
+    }
+    auto percent = [](const auto& fit) { return fit.total == 0 ? juce::String::charToString(0x2014) : juce::String(fit.percent()) + "%"; };
+    return TRANS("Selected note") + "   " + TRANS("Chord tone fit") + " " + percent(chord) + "   " + TRANS("Scale fit") + " " + percent(scale);
+}
+
+void MainComponent::rememberScoreEdit(juce::MemoryBlock before) {
+    while (noteHistory_.size() > noteHistoryCursor_) noteHistory_.pop_back();
+    if (!noteHistory_.empty() && noteHistory_.back().after != before) noteHistory_.clear();
+    noteHistory_.push_back({std::move(before), project_->sourceScore});
+    std::size_t bytes = 0;
+    for (const auto& revision : noteHistory_) bytes += revision.before.getSize() + revision.after.getSize();
+    while (noteHistory_.size() > 1 && (noteHistory_.size() > 64 || bytes > 32 * 1024 * 1024)) {
+        bytes -= noteHistory_.front().before.getSize() + noteHistory_.front().after.getSize();
+        noteHistory_.pop_front();
+    }
+    noteHistoryCursor_ = noteHistory_.size();
+}
+
 void MainComponent::finishNoteEdit(bool playing) {
+    if ((auditionShift_ || auditionRate_ != 1) && project_->checkAudition(auditionShift_, auditionRate_).failed()) {
+        auditionShift_ = 0; auditionRate_ = 1; updateDocumentLabel();
+    }
+    auditionClock_ = auditionRate_ == 1 ? std::nullopt : project_->clock.scaled(auditionRate_);
     refreshTimelineLanes();
     if (pianoScroll_.getMaximumRangeLimit() != project_->bars.endBar) {
         updateHorizontalRange(true);
         updateHorizontalRange(false);
     }
     refreshEditor();
+    displayTransportPosition(std::clamp<juce::int64>(cursorTick_, 0, project_->playbackEndTick()));
     if (playing) startTransport(false);
 }
 
@@ -2509,16 +2771,10 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
         statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
         return;
     }
-    while (noteHistory_.size() > noteHistoryCursor_) noteHistory_.pop_back();
-    if (!noteHistory_.empty() && noteHistory_.back().after != before) noteHistory_.clear();
-    noteHistory_.push_back({std::move(before), project_->sourceScore});
-    std::size_t bytes = 0;
-    for (const auto& revision : noteHistory_) bytes += revision.before.getSize() + revision.after.getSize();
-    while (noteHistory_.size() > 1 && (noteHistory_.size() > 64 || bytes > 32 * 1024 * 1024)) {
-        bytes -= noteHistory_.front().before.getSize() + noteHistory_.front().after.getSize();
-        noteHistory_.pop_front();
-    }
-    noteHistoryCursor_ = noteHistory_.size();
+    rememberScoreEdit(std::move(before));
+    inspectedNote_.reset();
+    if (!ids.isEmpty()) for (const auto& n : project_->pitchedNotes[*selectedTrack_])
+        if (n.id == ids[0]) { inspectedNote_ = n; break; }
     pianoGrid_.selection = std::move(ids);
     if (theory_ && (theory_->cells.empty() || theory_->cells.back().end != project_->playbackEndTick())) {
         theory_.reset();
@@ -2543,6 +2799,7 @@ void MainComponent::undoPianoEdit(bool redo) {
     const auto result = project_->restoreNoteScore(redo ? revision.after : revision.before);
     if (result.wasOk()) {
         if (redo) ++noteHistoryCursor_; else --noteHistoryCursor_;
+        inspectedNote_.reset();
         pianoGrid_.selection.clear();
         theory_.reset();
         refreshTheory();
@@ -2587,6 +2844,7 @@ void MainComponent::refreshEditor() {
     mixerButton_.setToggleState(showMixer, juce::dontSendNotification);
     const bool piano = arranging && project_ && editorVisible_ && !showMixer;
     refreshPianoNotes();
+    pianoGrid_.setDescription(noteFitReading());
     pianoGrid_.setVisible(piano && selectedTrack_.has_value());
     pianoRuler_.setVisible(pianoGrid_.isVisible());
     if (!pianoGrid_.isVisible()) pianoVelocity_.setVisible(false);
@@ -2597,6 +2855,9 @@ void MainComponent::refreshEditor() {
     for (auto* button : {&pianoButton_, &mixerButton_, &leadButton_, &scoreButton_}) button->setEnabled(project_ != nullptr);
     outputButton_.setEnabled(arranging && project_ != nullptr);
     songInfoButton_.setEnabled(project_ != nullptr);
+    musicButton_.setEnabled(project_ != nullptr);
+    theoryButton_.setEnabled(arranging && project_ != nullptr);
+    theoryButton_.setToggleState(theoryVisible_ && arranging, juce::dontSendNotification);
     lanesButton_.setEnabled(arranging);
     trackPicker_.setVisible(arranging && project_ && editorVisible_);
     performanceLane_.setVisible(piano && selectedTrack_);
@@ -2654,13 +2915,14 @@ void MainComponent::resized() {
     const int width = std::clamp(getWidth() / 24, 24, 39);
     const auto place = [&](ViewButton& button) { button.setBounds(row.removeFromLeft(width).reduced(2, 2)); };
     for (auto* button : {&arrangementButton_, &leadButton_, &scoreButton_, &pianoButton_, &mixerButton_,
-                         &pluginBrowserButton_, &outputButton_, &lanesButton_, &songInfoButton_}) place(*button);
+                         &pluginBrowserButton_, &outputButton_, &lanesButton_, &theoryButton_, &songInfoButton_, &musicButton_}) place(*button);
     if (barHeight > 32) { documentLabel_.setBounds(row); row = viewBar; }
     row.removeFromLeft(8);
     for (auto* button : {&melodyAdd_, &chorusAdd_, &pitchedAdd_, &drumsAdd_, &audioAdd_, &busAdd_, &returnAdd_}) place(*button);
     row.removeFromLeft(8);
     place(uiSmaller_); place(uiLarger_);
     if (barHeight == 32) documentLabel_.setBounds(row.withTrimmedRight(8));
+    toolbarHint_.setBounds(documentLabel_.getBounds());
     deck_.setBounds(18, menuHeight + barHeight + 8, std::min(1480, getWidth() - 36), TransportPanel::panelHeight(getWidth()));
     statusLabel_.setBounds(20, getHeight() - 37, getWidth() - 40, 24);
     auto editor = getWorkspace();
@@ -2868,13 +3130,19 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
     if (laneHeight < 12 || area.getWidth() < 40) return;
     int rowHeight = laneHeight - 4;
 
-    auto drawRow = [&](const juce::String& label, int y) {
+    auto drawRow = [&](const juce::String& label, int y, std::optional<ViewButton::Icon> icon = {}) {
         g.setColour(juce::Colour(0xffe1e9ef));
         g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
         const int labelHeight = project_ && rowHeight >= TrackRowSize::normal - TrackRowSize::grip
                               ? std::min(27, rowHeight - 10) : rowHeight;
+        if (icon) {
+            g.setColour(juce::Colour(*icon == ViewButton::Icon::drums ? 0xffecc684 : 0xff8edbd4));
+            ViewButton::drawIcon(g, *icon, labels.getX() + 5.f, y + (labelHeight - 18) * .5f);
+            g.setColour(juce::Colour(0xffe1e9ef));
+        }
+        const int inset = icon ? 26 : 5;
         g.drawText(label,
-                         juce::Rectangle<int>(labels.getX() + 5, y, std::min(trackNameWidth, labels.getWidth()) - 10, labelHeight),
+                         juce::Rectangle<int>(labels.getX() + inset, y, std::min(trackNameWidth, labels.getWidth()) - inset - 5, labelHeight),
                          juce::Justification::centredLeft, true);
         const auto row = juce::Rectangle<int>(area.getX(), y, area.getWidth(), rowHeight);
         g.setColour(juce::Colour(0xff233443));
@@ -2910,8 +3178,8 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         }
     }
 
-    auto drawLane = [&](const ostfstudio::ArrangementLane& lane, int y, juce::Colour colour) {
-        const auto row = drawRow(lane.kind == TimelineLane::none ? juce::String::fromUTF8(lane.label) : juce::translate(lane.label), y);
+    auto drawLane = [&](const ostfstudio::ArrangementLane& lane, int y, juce::Colour colour, std::optional<ViewButton::Icon> icon = {}) {
+        const auto row = drawRow(lane.kind == TimelineLane::none ? juce::String::fromUTF8(lane.label) : juce::translate(lane.label), y, icon);
         g.setColour(juce::Colour(0xff3a4e5e));
         for (int bar = firstBar; bar < visible.end; bar += tickStep) {
             g.drawVerticalLine(positionX(bar, row), static_cast<float>(row.getY()), static_cast<float>(row.getBottom()));
@@ -2928,6 +3196,10 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
             g.setColour(juce::Colours::white.withAlpha(0.93f));
             auto label = juce::String::fromUTF8(region.label);
+            if (lane.kind == TimelineLane::key || lane.kind == TimelineLane::scale || lane.kind == TimelineLane::chord)
+                label = ostfstudio::shiftedLabel(label, auditionShift_);
+            if (lane.kind == TimelineLane::tempo && auditionRate_ != 1)
+                label = juce::String(label.getDoubleValue() * auditionRate_, 2);
             if (region.noteCount > 0) label = "[" + juce::String(region.noteCount) + TRANS(" notes] ") + label;
             auto caption = bounds.reduced(4, 0);
             if (rowHeight >= 70 - TrackRowSize::grip) caption = caption.removeFromTop(18);
@@ -2981,7 +3253,16 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         g.fillRoundedRectangle(channel.toFloat().reduced(1.0f), 3.0f);
         g.setColour(juce::Colour(0xff525d67));
         g.drawHorizontalLine(y + 1, static_cast<float>(channel.getX() + 4), static_cast<float>(channel.getRight() - 4));
-        drawLane(view.trackLanes[i], y, juce::Colour(trackColours[i % std::size(trackColours)]));
+        std::optional<ViewButton::Icon> icon;
+        if (project_) {
+            using Icon = ViewButton::Icon;
+            const auto kind = project_->trackKinds[i];
+            const auto group = project_->mixerGroups[i];
+            icon = kind == ostfstudio::TrackKind::drum ? Icon::drums : kind == ostfstudio::TrackKind::audio ? Icon::audio
+                 : group == ostfstudio::MixerTrackGroup::vocal ? Icon::chorus : group == ostfstudio::MixerTrackGroup::melody ? Icon::melody
+                 : project_->chordVoicingTrack == i ? Icon::score : Icon::pitched;
+        }
+        drawLane(view.trackLanes[i], y, juce::Colour(trackColours[i % std::size(trackColours)]), icon);
         if (project_) {
             if (trackControls_[i]->size.expanded()) {
                 g.setColour(juce::Colour(muted));
@@ -3010,8 +3291,9 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             if (audio != project_->audio.end()) {
                 const auto start = 1.0 + static_cast<double>(audio->startTick) / project_->ticksPerBar;
                 const bool missing = !waveforms_.available(i);
+                const auto& audioClock = auditionClock_ ? *auditionClock_ : project_->clock;
                 const auto endBar = missing && audio->durationTicks <= 0 ? start + 1
-                    : 1.0 + waveforms_.endTick(*audio, project_->clock) / project_->ticksPerBar;
+                    : 1.0 + waveforms_.endTick(*audio, audioClock) / project_->ticksPerBar;
                 auto clip = clipBounds({start, endBar}, area.withY(y).withHeight(rowHeight)).reduced(0, 2);
                 if (!clip.isEmpty()) {
                     g.setColour(juce::Colour(missing ? 0xff754842 : 0xff386d70));
@@ -3019,7 +3301,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                     auto body = clip.reduced(0, 2);
                     const auto labelArea = missing ? body : body.removeFromTop(std::min(14, body.getHeight() / 3));
                     if (!missing)
-                        waveforms_.draw(g, body, *audio, project_->clock,
+                        waveforms_.draw(g, body, *audio, audioClock,
                                         (std::max(start, visible.start) - 1) * project_->ticksPerBar,
                                         (std::min(endBar, visible.end) - 1) * project_->ticksPerBar);
                     g.setColour(juce::Colours::white);
@@ -3142,7 +3424,7 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
         const auto* progression = atCursor(theory_->progressions);
         juce::String reading;
         if (function)
-            reading = theory_->chords[function->chord].name + "   " + function->degree + "  " + juce::translate(function->function);
+            reading = ostfstudio::shiftedLabel(theory_->chords[function->chord].name, auditionShift_) + "   " + function->degree + "  " + juce::translate(function->function);
         const auto top = band(bounds.getY(), bounds.getHeight() / 2, TRANS("Function"), reading);
         const auto lower = band(top.getBottom(), bounds.getBottom() - top.getBottom(), TRANS("Progression"),
                                 progression ? progression->label : juce::String());
@@ -3165,16 +3447,18 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
         return;
     }
     if (*track >= theoryTracks_.size()) return;
-    const auto& fits = theoryTracks_[*track];
-    const auto currentCell = theory_->firstCell(double(cursorTick_));
+    const auto& fits = *track == selectedTrack_ && draggedNote_ ? previewFits_ : theoryTracks_[*track];
+    const auto& inspected = draggedNote_ ? draggedNote_ : inspectedNote_;
+    const auto readTick = *track == selectedTrack_ && inspected && !transportActive_ ? inspected->startTick : cursorTick_;
+    const auto currentCell = theory_->firstCell(double(readTick));
     const auto height = bounds.getHeight() / std::max(1, int(chordFitVisible_) + int(scaleFitVisible_));
     int y = bounds.getY();
     for (const bool chord : {true, false}) {
         if (chord ? !chordFitVisible_ : !scaleFitVisible_) continue;
         auto referenceName = [&](const auto& c, const auto& f) -> juce::String {
-            if (chord) return c.chord >= 0 ? theory_->chords[c.chord].name : juce::String();
+            if (chord) return c.chord >= 0 ? ostfstudio::shiftedLabel(theory_->chords[c.chord].name, auditionShift_) : juce::String();
             if (!f.noteScoped.empty()) return TRANS("Targeted scale");
-            if (f.backgroundScale >= 0) return theory_->scales[f.backgroundScale].name;
+            if (f.backgroundScale >= 0) return ostfstudio::shiftedLabel(theory_->scales[f.backgroundScale].name, auditionShift_);
             if (f.backgroundScale == -2) return TRANS("Select scale reference");
             return {};
         };
@@ -3212,7 +3496,8 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     const bool showChord = mode == chordNotes || mode == chordAndScaleNotes;
     const bool showScale = mode == scaleNotes || mode == chordAndScaleNotes;
     auto heading = layout.heading;
-    if (fit && heading.getWidth() > 330 && !heading.isEmpty()) {
+    const auto reading = noteFitReading();
+    if (fit && reading.isEmpty() && heading.getWidth() > 330 && !heading.isEmpty()) {
         const juce::Font font(juce::FontOptions(13.f));
         g.setFont(font);
         for (const auto tone : {Tone::outside, Tone::scale, Tone::chord, Tone::guide, Tone::root}) {
@@ -3229,8 +3514,9 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     }
     g.setColour(juce::Colour(accent));
     g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    const auto name = selectedTrack_ ? TRANS("PIANO ROLL  /  ") + juce::String::fromUTF8(project_->trackLanes[*selectedTrack_].label)
+    auto name = selectedTrack_ ? TRANS("PIANO ROLL  /  ") + juce::String::fromUTF8(project_->trackLanes[*selectedTrack_].label)
                                      : TRANS("PIANO ROLL");
+    if (reading.isNotEmpty()) name += "     " + reading;
     g.drawFittedText(selectedTrack_ && !pianoGrid_.editable ? name + "  /  " + TRANS("Read only") : name,
                      heading, juce::Justification::centredLeft, 1);
     if (!selectedTrack_) {
@@ -3263,6 +3549,21 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     auto tickX = [&](juce::int64 tick) {
         return static_cast<float>(area.getX() + (static_cast<double>(tick) - origin) / length * area.getWidth());
     };
+    g.setFont(juce::FontOptions(13.f, juce::Font::bold));
+    g.setColour(juce::Colour(0xffe6daef));
+    g.drawText(TRANS("CHORD"), layout.chords.withX(keys.getX()).withWidth(keys.getWidth()-2), juce::Justification::centredLeft);
+    for (const auto& chordLane : project_->globalLanes) if (chordLane.kind == TimelineLane::chord) {
+        for (const auto& r : chordLane.regions) {
+            if (!r.exactBars || r.exactBars->end <= visible.start || r.exactBars->start >= visible.end) continue;
+            const auto x = [&](double bar) { return area.getX() + juce::roundToInt((bar-visible.start)/(visible.end-visible.start)*area.getWidth()); };
+            const auto cell = layout.chords.withLeft(std::max(area.getX(), x(r.exactBars->start)))
+                .withRight(std::min(area.getRight(), x(r.exactBars->end)));
+            g.setColour(juce::Colour(0xff504361)); g.fillRect(cell.withTrimmedRight(1));
+            g.setColour(juce::Colours::white);
+            if (cell.getWidth() > 12) g.drawText(ostfstudio::shiftedLabel(juce::String::fromUTF8(r.label), auditionShift_),
+                cell.reduced(2,0), juce::Justification::centredLeft, false);
+        }
+    }
     const auto dirty = area.getIntersection(g.getClipBounds());
     const double left = origin + length * (dirty.getX() - area.getX()) / area.getWidth();
     const double right = origin + length * (dirty.getRight() - area.getX()) / area.getWidth();
@@ -3271,7 +3572,9 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     g.setFont(juce::FontOptions(10.0f));
     for (int pitch = high; pitch >= low; --pitch) {
         const auto y = noteY(pitch);
-        const bool black = isBlack[pitch % 12];
+        const int sounding = pitch + (pitchedSelection() ? auditionShift_ : 0);
+        const int pc = ((sounding % 12) + 12) % 12;
+        const bool black = isBlack[pc];
         g.setColour(juce::Colour(black ? 0xff192735 : 0xff233443));
         g.fillRect(static_cast<float>(area.getX()), y, static_cast<float>(area.getWidth()), rowHeight);
         const auto key = juce::Rectangle<float>(static_cast<float>(keys.getX()), y, static_cast<float>(keys.getWidth() - 2), rowHeight);
@@ -3279,7 +3582,7 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
         g.fillRect(key.reduced(0, 0.5f));
         if (rowHeight >= 11.0f || (pitch % 12 == 0 && rowHeight * 12.0f >= 12.0f)) {
             g.setColour(juce::Colours::white);
-            g.drawText(juce::String(pitchNames[pitch % 12]) + juce::String(pitch / 12 - 1),
+            g.drawText(juce::String(pitchNames[pc]) + juce::String((sounding - pc) / 12 - 1),
                        key.toNearestInt(), juce::Justification::centred);
         }
     }
@@ -3317,16 +3620,14 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
 
     g.saveState();
     g.reduceClipRegion(area);
-    const auto firstNote = std::upper_bound(pianoMaxEnds_.begin(), pianoMaxEnds_.end(), left) - pianoMaxEnds_.begin();
-    for (auto it = notes.begin() + firstNote; it != notes.end() && it->startTick < right; ++it) {
-        const auto& note = *it;
-        if (note.endTick <= left) continue;
+    const auto drawNote = [&](const ostfstudio::PitchedNote& note) {
+        if (note.endTick <= left || note.startTick >= right) return;
         const auto x = tickX(note.startTick);
         const auto width = std::max(2.0f, tickX(note.endTick) - x);
         const auto height = std::max(1.0f, rowHeight - 1.0f);
         g.setColour(juce::Colour(fit ? 0xff818a92 : accent));
         g.fillRoundedRectangle(x, noteY(note.pitch), width, height, 2.0f);
-        if (!fit || !note.enabled || note.fixedTrigger) continue;
+        if (!fit || !note.enabled || note.fixedTrigger) return;
         const auto& fits = theoryTracks_[*selectedTrack_];
         for (auto i = theory_->firstCell(std::max(left, double(note.startTick))); i < fits.size(); ++i) {
             const auto& c = theory_->cells[i];
@@ -3349,6 +3650,13 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
                 g.drawText(theory_->interval(note.pitch, root), rect.toNearestInt().reduced(3, 0), juce::Justification::centredLeft);
             }
         }
+    };
+    const auto firstNote = std::upper_bound(pianoMaxEnds_.begin(), pianoMaxEnds_.end(), left) - pianoMaxEnds_.begin();
+    for (auto it = notes.begin() + firstNote; it != notes.end() && it->startTick < right; ++it) drawNote(*it);
+    for (const auto& e : pianoGrid_.pendingEdits()) {
+        auto note = e.note;
+        if (e.action == ostfstudio::NoteEdit::duplicate) note.id.clear();
+        drawNote(note);
     }
     g.restoreState();
 

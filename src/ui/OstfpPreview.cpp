@@ -214,8 +214,8 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score) {
     if (const auto keyChanges = timeline["keyChanges"]; keyChanges.isArray()) {
         for (const auto& change : array(keyChanges)) {
             const auto tick = integer(change["at"]);
-            if (tick <= keyStart || tick >= duration) continue;
-            if (key.isNotEmpty()) keys.push_back(region(keyStart, tick, key));
+            if (tick < keyStart || tick >= duration) continue;
+            if (tick > keyStart && key.isNotEmpty()) keys.push_back(region(keyStart, tick, key));
             keyStart = tick;
             key = keyName(change["key"]);
             if (key.isEmpty()) key = change["label"].toString();
@@ -1199,6 +1199,114 @@ juce::String drumSlot(juce::var score, juce::var track, int pitch) {
     return id;
 }
 }
+
+juce::Result OstfpPreview::checkAudition(int shift, double rate) const {
+    if (!std::isfinite(rate) || rate <= 0 || !clock.scaled(rate))
+        return juce::Result::fail("A tempo change would exceed the OSTF tempo range.");
+    for (std::size_t i = 0; shift && i < pitchedNotes.size(); ++i) {
+        if (i < trackKinds.size() && trackKinds[i] != TrackKind::pitched) continue;
+        for (const auto& n : pitchedNotes[i])
+            if (!n.fixedTrigger && (n.pitch + shift < 0 || n.pitch + shift > 127))
+                return juce::Result::fail("A transposed pitch would fall outside MIDI notes 0-127.");
+    }
+    return juce::Result::ok();
+}
+
+juce::Result OstfpPreview::applySongMusic(const SongMusicEdit& edit, juce::MemoryBlock& before) try {
+    require(edit.mode != SongMusicEdit::audition, "Playback overrides belong to the transport.");
+    before = savedScore(*this);
+    const auto base = savedScore(*this, true);
+    auto score = parseObject(base);
+    auto song = score["song"], timeline = score["timeline"];
+    auto tempos = timeline["tempoChanges"];
+    auto set = [](const juce::var& value, const juce::Identifier& key, const juce::var& v) {
+        value.getDynamicObject()->setProperty(key, v);
+    };
+    if (edit.mode == SongMusicEdit::defaults) {
+        if (!edit.key.isVoid()) set(song, "key", edit.key);
+        if (edit.removeScale) song.getDynamicObject()->removeProperty("scale");
+        else if (!edit.scale.isVoid()) set(song, "scale", edit.scale);
+        if (edit.bpm != 0) {
+            require(std::isfinite(edit.bpm) && edit.bpm > 0 && edit.bpm <= 1000, "Tempo must be above zero and at most 1000 BPM.");
+            if (tempos.size() == 0) tempos.getArray()->add(object({{"at", 0}, {"bpm", edit.bpm}}));
+            else set(tempos[0], "bpm", edit.bpm);
+        }
+        if (edit.numerator != 0) {
+            auto meter = timeline["meterChanges"][0];
+            if (int(meter["numerator"]) != edit.numerator) meter.getDynamicObject()->removeProperty("beatGroups");
+            set(meter, "numerator", edit.numerator);
+            set(meter, "denominator", edit.denominator);
+        }
+    } else {
+        const int shift = edit.semitones;
+        require(shift >= -127 && shift <= 127 && std::isfinite(edit.rate) && edit.rate > 0, "Invalid transposition or tempo multiplier.");
+        if (edit.rate != 1) for (const auto& tempo : array(tempos)) {
+            const double bpm = double(tempo["bpm"]) * edit.rate;
+            require(bpm > 0 && bpm <= 1000, "A tempo change would exceed the OSTF tempo range.");
+            set(tempo, "bpm", bpm);
+        }
+        if (shift != 0) {
+            auto each = [](const juce::var& entries, auto visit) {
+                if (auto* list = entries.getArray()) for (auto& item : *list) visit(item);
+            };
+            auto midi = [shift](const juce::var& pitch) {
+                int p = int(pitch) + shift;
+                require(p >= 0 && p <= 127, "A transposed pitch would fall outside MIDI notes 0-127.");
+                return p;
+            };
+            auto absolute = [&](const juce::var& item, const char* name) {
+                if (item.hasProperty(name)) set(item, name, midi(item[name]));
+            };
+            auto transposeClass = [&](const juce::var& item, const char* name) {
+                const auto pc = pitchClassOf(item[name]);
+                if (pc >= 0 && shift % 12 != 0) set(item, name, spelledClass((pc + shift + 132) % 12));
+            };
+            auto labelled = [&](const juce::var& item, const char* name) {
+                if (pitchClassOf(item[name]) < 0) return;
+                transposeClass(item, name);
+                if (item.hasProperty("label")) set(item, "label", shiftedLabel(item["label"].toString(), shift));
+            };
+            auto note = [&](const juce::var& n) {
+                if (n["pitchRole"] != "fixedTrigger") absolute(n, "pitch");
+            };
+            labelled(song["key"], "tonic");
+            labelled(song["scale"], "tonic");
+            each(timeline["keyChanges"], [&](const auto& change) {
+                labelled(change["key"], "tonic");
+                if (change.hasProperty("label")) set(change, "label", shiftedLabel(change["label"].toString(), shift));
+            });
+            each(score["harmony"]["scales"], [&](const auto& scale) { labelled(scale, "tonic"); });
+            each(score["harmony"]["chords"], [&](const auto& chord) {
+                labelled(chord, "root");
+                transposeClass(chord, "bass");
+                each(chord["voicing"]["pitches"], [&](juce::var& p) { p = midi(p); });
+            });
+            for (int i = 0; i < score["tracks"].size(); ++i) {
+                const auto track = score["tracks"][i];
+                if (trackKinds.at(i) != TrackKind::pitched) continue;
+                each(track["clips"], [&](const auto& clip) {
+                    each(clip["notes"], note);
+                    each(clip["midiEvents"], [&](const auto& e) { if (e["type"] == "polyPressure") absolute(e, "pitch"); });
+                });
+                each(track["directions"], [&](const auto& direction) {
+                    const auto params = direction["parameters"];
+                    absolute(params, "lowPitch");
+                    absolute(params, "highPitch");
+                    labelled(params["pitchSource"]["scale"], "tonic");
+                });
+            }
+            each(score["relativePhrases"]["assignments"], [&](const auto& assignment) { absolute(assignment, "anchorPitch"); });
+            each(score["phraseLibrary"]["templates"], [&](const auto& t) { each(t["notes"], note); });
+        }
+    }
+    if (jsonBytes(score) == jsonBytes(parseObject(base))) { before.reset(); return juce::Result::ok(); }
+    reviseDocument(score, before, "studio-" + juce::Uuid().toString());
+    const auto bytes = edit.mode == SongMusicEdit::defaults ? editedScoreBytes(base, score, {"song", "timeline", "document"})
+        : edit.semitones == 0 ? editedScoreBytes(base, score, {"timeline", "document"})
+        : editedScoreBytes(base, score, {"song", "timeline", "tracks", "harmony", "relativePhrases", "phraseLibrary", "document"});
+    validateVersion("5.0.0", bytes);
+    return restoreNoteScore(bytes);
+} catch (const std::exception& e) { return juce::Result::fail(e.what()); }
 
 juce::Result OstfpPreview::restoreNoteScore(const juce::MemoryBlock& bytes) try {
     require(bytes.getSize() <= maxBytes, "OSTF score is too large.");

@@ -26,12 +26,13 @@ public:
     static bool supportsInsert(const juce::AudioPluginInstance& effect);
     ~PreviewTransport() override;
     juce::Result start(juce::AudioDeviceManager& devices, const ostfstudio::OstfpPreview& project,
-                       bool record, std::span<const TrackSetup> tracks, const Inserts& inserts = {}, juce::int64 startTick = 0);
+                       bool record, std::span<const TrackSetup> tracks, const Inserts& inserts = {}, juce::int64 startTick = 0,
+                       int semitones = 0, double tempoRate = 1);
     struct Cursor { juce::int64 tick; double seconds; };
     std::vector<ostfstudio::PitchedNote> stop(Cursor* stoppedAt = nullptr);
     void seekToTick(juce::int64 tick);
     juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
-                                 double sampleRate, int blockSize);
+                                 double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1);
     void renderBlock(float* const* output, int channels, int samples);
     ostfstudio::MeterFrame takeMeters() noexcept;
     void setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb);

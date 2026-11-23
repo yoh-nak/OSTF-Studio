@@ -1,6 +1,11 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
 ## Overall product distinction
+
+The song settings editor writes the authored key and scale to the song and edits the initial tempo and meter in the canonical timeline. Whole-score transposition and tempo scaling build a candidate score and validate it before replacing the active model. The score edit history also holds these operations. Audition transposition and tempo scaling belong to the open transport. MIDI playback and the transport display use the temporary values, while file and MIDI export use the authored score. WAV playback keeps its native sample rate.
+
+The piano chord strip shares the note grid's time axis. During a pitch or timing drag the editor analyses the selected track's prospective notes on the UI thread. The selected-note percentages weight its intersections with harmonic intervals by duration. Arrangement fit rows report the aggregate for that track. Committing or cancelling a drag discards the temporary analysis.
+
 - OSTF = portable musical structure (score and musical intent), independently portable.
 - OSTFP = container for song + optional production/session/assets, default save project.
 - DAW runtime = audio device, hosting, transport, timeline, editors, clipboard, AI integration.
