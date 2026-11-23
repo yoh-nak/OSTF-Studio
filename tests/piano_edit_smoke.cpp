@@ -321,12 +321,52 @@ int checkPianoEdits(const juce::File& fixture) {
     if (grid->getY() >= initialGridTop || grid->getWidth() < 200) return 53;
     divider->mouseDrag(pointer(*divider, {12.f, float(initialY - divider->getY())}, {12.f, 0.f}));
     auto* column = main.findChildWithID("piano-column-divider");
-    if (!column || !column->isVisible()) return 58;
-    const int gridX = grid->getX(), columnX = column->getX();
-    const int shift = gridX < 700 ? 32 : -32;
-    column->mouseDrag(pointer(*column, {float(shift + 6), 10.f}, {0.f, 10.f}));
-    if (grid->getX() != gridX + shift) return 59;
-    column->mouseDrag(pointer(*column, {float(columnX - column->getX() + 6), 10.f}, {0.f, 10.f}));
+    auto* upper = main.findChildWithID("arrangement-column-divider");
+    const auto exposed = [&](juce::Component* grip) {
+        return grip && grip->isVisible() && !grip->getBounds().isEmpty()
+            && main.getComponentAt(grip->getBounds().getCentre()) == grip;
+    };
+    const auto aligned = [&] { return exposed(column) && exposed(upper) &&
+        column->getRight() == grid->getX() && column->getX() == upper->getX() &&
+        column->getWidth() == upper->getWidth(); };
+    if (!aligned()) return 58;
+    const auto dragDivider = [&](juce::Component& grip, int delta, float grabX) {
+        const juce::Point<float> start(grabX, float(grip.getHeight() / 2));
+        grip.mouseDown(pointer(grip, start, start));
+        grip.mouseDrag(pointer(grip, start.translated(float(delta), 0.f), start));
+        grip.mouseUp(pointer(grip, start, start));
+    };
+    const int gridX = grid->getX(), shift = gridX < 700 ? 32 : -32;
+    dragDivider(*column, shift, 1.f);
+    if (!aligned() || grid->getX() != gridX + shift) return 59;
+    dragDivider(*upper, -shift, float(upper->getWidth() - 1));
+    if (!aligned() || grid->getX() != gridX) return 107;
+    juce::Button* browserButton = nullptr;
+    for (auto* child : main.getChildren()) if (child->getTitle() == TRANS("Plug-in Browser"))
+        browserButton = dynamic_cast<juce::Button*>(child);
+    if (!browserButton || !browserButton->onClick) return 108;
+    browserButton->onClick();
+    auto* browserGrip = main.findChildWithID("plugin-browser-divider");
+    PluginBrowser* browser = nullptr;
+    for (auto* child : main.getChildren()) if (auto* panel = dynamic_cast<PluginBrowser*>(child)) browser = panel;
+    if (!browser || !exposed(browserGrip) || browserGrip->getRight() != browser->getX()) return 109;
+    const auto originalBrowser = browser->getBounds();
+    const int wider = originalBrowser.getWidth() > 400 ? -36 : 36;
+    dragDivider(*browserGrip, -wider, 1.f);
+    const auto expanded = browser->getBounds();
+    if (expanded.getRight() != originalBrowser.getRight() || expanded.getWidth() != originalBrowser.getWidth() + wider
+        || !aligned() || !exposed(browserGrip) || browserGrip->getRight() != expanded.getX()) return 110;
+    browserButton->onClick();
+    if (browserGrip->isVisible() || browser->isVisible()) return 111;
+    browserButton->onClick();
+    if (expanded != browser->getBounds()) return 112;
+    main.setSize(680, 570);
+    if (!exposed(browserGrip) || !aligned() || browser->getWidth() > expanded.getWidth() || grid->getWidth() < 60)
+        return 113;
+    main.setSize(1280, 900);
+    if (expanded != browser->getBounds()) return 114;
+    dragDivider(*browserGrip, wider, float(browserGrip->getWidth() - 1));
+    browserButton->onClick();
     juce::Button* shape = nullptr;
     for (auto* child : main.getChildren())
         if (auto* view = dynamic_cast<juce::Viewport*>(child); view && view->getViewedComponent()) {
@@ -371,6 +411,8 @@ int checkPianoEdits(const juce::File& fixture) {
     if (!bank || !bank->isVisible() || bank->getWidth() < 100 || bank->getHeight() < 80)
         return 91;
     auto* surface = dynamic_cast<DrumPads*>(bank);
+    if (!exposed(column) || steps->getX() + DrumSteps::labelWidth != column->getRight() ||
+        column->getY() < steps->getY() + DrumSteps::headerHeight) return 115;
     if (!surface || !steps->song || !surface->trigger || !surface->reorder) return 96;
     const auto hitCount = steps->song->slotHits.at(steps->track).size();
     const auto& kit = steps->song->slotsByTrack.at(steps->track);

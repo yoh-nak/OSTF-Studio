@@ -151,17 +151,24 @@ public:
     std::function<void(int)> resizeAt;
     explicit EditorDivider(bool across = false) : across_(across) {
         setComponentID(across ? "piano-column-divider" : "piano-divider");
+        setRepaintsOnMouseActivity(across);
         setMouseCursor(across ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::UpDownResizeCursor);
         setTooltip(across ? TRANS("Drag to resize the inspector and track headers.") : TRANS("Drag to resize the arrangement and piano roll."));
     }
     void paint(juce::Graphics& g) override {
-        g.setColour(juce::Colour(0xff81929e));
+        if (across_) {
+            g.setColour(juce::Colour(isMouseOverOrDragging() ? 0xff5798a6 : 0xff42515b));
+            g.drawVerticalLine(getWidth() - 1, 0.0f, float(getHeight()));
+        }
+        g.setColour(across_ && isMouseOverOrDragging() ? juce::Colour(0xff93d5d9) : juce::Colour(0xff81929e));
         g.fillRoundedRectangle(getLocalBounds().withSizeKeepingCentre(across_ ? 3 : 48, across_ ? 32 : 3).toFloat(), 1.5f);
     }
+    void mouseDown(const juce::MouseEvent& e) override { grabX_ = e.x; }
     void mouseDrag(const juce::MouseEvent& e) override {
         const auto p = e.getEventRelativeTo(getParentComponent()).getPosition();
-        if (resizeAt) resizeAt(across_ ? p.x : p.y);
+        if (resizeAt) resizeAt(across_ ? p.x - grabX_ : p.y);
     }
 private:
     bool across_;
+    int grabX_ = 0;
 };

@@ -3,6 +3,7 @@
 
 class DrumSteps final : public juce::Component, public juce::SettableTooltipClient {
 public:
+    static constexpr int labelWidth = 120, headerHeight = 44;
     void adjustPattern(int index, double value, bool relative) {
         auto& box = index == 0 ? bars : repeats;
         if (box.getNumItems() > 0)
@@ -164,8 +165,8 @@ public:
         repaint();
     }
     void mouseDown(const juce::MouseEvent& e) override {
-        if (!song || !e.mods.isLeftButtonDown() || e.y < 44 || track >= song->slotsByTrack.size()) return;
-        const int visual = first + (e.y - 44) / rowHeight;
+        if (!song || !e.mods.isLeftButtonDown() || e.y < headerHeight || track >= song->slotsByTrack.size()) return;
+        const int visual = first + (e.y - headerHeight) / rowHeight;
         if (visual >= int(song->slotsByTrack[track].size())) return;
         const int row = displayRow(visual);
         selected = row;
@@ -188,7 +189,7 @@ private:
         return song && track < song->slotsByTrack.size() ? std::max(0, int(song->slotsByTrack[track].size()) - 1 - index) : 0;
     }
     std::map<int, juce::uint32> flashes;
-    static constexpr int labelWidth = 120, rowHeight = 24;
+    static constexpr int rowHeight = 24;
     juce::TextButton back, forward, locate, fill;
     juce::ToggleButton loop;
     juce::ComboBox bars, repeats;
@@ -201,7 +202,7 @@ private:
         auto i = int((t - start) / grid);
         return i + 1 < count() && boundary(i + 1) <= t ? i + 1 : i;
     }
-    juce::Rectangle<int> gridArea() const { return getLocalBounds().withTrimmedTop(44).withTrimmedLeft(labelWidth); }
+    juce::Rectangle<int> gridArea() const { return getLocalBounds().withTrimmedTop(headerHeight).withTrimmedLeft(labelWidth); }
     void notifyRange() {
         repaint();
         if (loopChanged) loopChanged();

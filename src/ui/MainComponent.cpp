@@ -28,6 +28,7 @@ constexpr int minInterfaceScale = 75;
 constexpr int maxInterfaceScale = 150;
 constexpr int timelineNavigationHeight = 32;
 constexpr int arrangementHeadingHeight = 24;
+constexpr int columnGripWidth = 8;
 constexpr int defaultTimelineHeight = 28;
 enum PianoColourMode { plainNotes = 1, chordNotes, scaleNotes, chordAndScaleNotes };
 using namespace pianoHarmony;
@@ -45,19 +46,19 @@ juce::String scaleContextName(const ostfstudio::TheoryGuide& guide, const ostfst
 struct PianoLayout {
     juce::Rectangle<int> heading, inspector, lane, divider, keys, ruler, chords, grid;
     PianoLayout(juce::Rectangle<int> area, int headerWidth, bool scrollbar, bool contextStrip,
-                double parameterFraction) {
+                double parameterFraction, int keyWidth = 52) {
         const bool compact = area.getHeight() < 130;
         area.reduce(13, compact ? 2 : 8);
         heading = area.removeFromTop(compact ? 0 : 24);
         if (scrollbar) area.removeFromRight(14);
-        inspector = area.removeFromLeft(headerWidth - 52);
+        inspector = area.removeFromLeft(headerWidth - keyWidth);
         const int height = area.getHeight();
         const auto size = parameterFraction > 0 ? juce::roundToInt(height * std::clamp(parameterFraction, 0.08, 0.65))
                                                 : std::min(84, height / 3);
         lane = area.removeFromBottom(std::clamp(size, std::min(20, height / 3), std::max(height / 3, height - 70)))
-                   .withTrimmedLeft(52);
-        divider = area.removeFromBottom(std::min(7, area.getHeight() / 8)).withTrimmedLeft(52);
-        keys = area.removeFromLeft(52);
+                   .withTrimmedLeft(keyWidth);
+        divider = area.removeFromBottom(std::min(7, area.getHeight() / 8)).withTrimmedLeft(keyWidth);
+        keys = area.removeFromLeft(keyWidth);
         ruler = area.removeFromTop(compact ? 16 : 21);
         chords = area.removeFromTop(contextStrip ? (compact ? 13 : 21) : 0);
         keys.removeFromTop(ruler.getHeight() + chords.getHeight());
@@ -82,6 +83,13 @@ juce::Rectangle<int> workspaceBounds(juce::Rectangle<int> bounds, int extra) {
     bounds.removeFromTop(headerHeight + extra);
     bounds.removeFromBottom(26);
     return bounds;
+}
+
+int browserWidthFor(int available, int preferred) {
+    // Keep both panes usable when UI scaling or a smaller window reduces the available width.
+    const int minimum = std::min(170, available / 3);
+    const int maximum = std::max(minimum, std::min(available / 2, available - 460 - columnGripWidth));
+    return std::clamp(preferred, minimum, maximum);
 }
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
@@ -655,11 +663,28 @@ MainComponent::MainComponent() {
         repaint();
     };
     addChildComponent(columnDivider_);
-    columnDivider_.resizeAt = [this](int x) {
-        preferredHeaderWidth_ = std::clamp(x - rowOverlay_.getX() + 52, 400, 760);
+    addChildComponent(arrangementColumnDivider_);
+    arrangementColumnDivider_.setComponentID("arrangement-column-divider");
+    arrangementColumnDivider_.resizeAt = columnDivider_.resizeAt = [this](int left) {
+        const int width = left + columnGripWidth - rowOverlay_.getX();
+        if (width == trackHeaderWidth) return;
+        preferredHeaderWidth_ = std::clamp(width, 400, 760);
         if (auto* prefs = viewPreferences_.getUserSettings()) prefs->setValue("trackHeaderWidth", preferredHeaderWidth_);
         resized();
         repaint();
+    };
+    addChildComponent(browserDivider_);
+    browserDivider_.setComponentID("plugin-browser-divider");
+    browserDivider_.setTooltip(TRANS("Drag to resize the plug-in browser."));
+    browserDivider_.resizeAt = [this](int left) {
+        const auto full = workspaceBounds(getLocalBounds(), topBasicsHeight());
+        const int width = browserWidthFor(full.getWidth(), full.getRight() - left - columnGripWidth);
+        if (pluginBrowser_ && width != pluginBrowser_->getWidth()) {
+            preferredBrowserWidth_ = width;
+            viewPreferences_.getUserSettings()->setValue("pluginBrowserWidth", width);
+            resized();
+            repaint();
+        }
     };
     pianoDivider_.resizeAt = [this](int y) {
         const auto workspace = getWorkspace();
@@ -685,6 +710,7 @@ MainComponent::MainComponent() {
     pianoColours_.addItem(TRANS("Scale mode"), scaleNotes);
     pianoColours_.addItem(TRANS("Chord + scale"), chordAndScaleNotes);
     const auto* settings = viewPreferences_.getUserSettings();
+    if (settings) preferredBrowserWidth_ = settings->getIntValue("pluginBrowserWidth", 230);
     if (settings) preferredHeaderWidth_ = std::clamp(settings->getIntValue("trackHeaderWidth", 487), 400, 760);
     if (settings) arrangementFraction_ = std::clamp(settings->getDoubleValue("arrangementFraction", .6), .18, .82);
     const int colourMode = settings ? settings->getIntValue("pianoColourMode", chordNotes) : chordNotes;
@@ -1405,7 +1431,7 @@ void MainComponent::togglePluginBrowser() {
 
 juce::Rectangle<int> MainComponent::getWorkspace() const {
     auto bounds = workspaceBounds(getLocalBounds(), topBasicsHeight());
-    if (pluginBrowserButton_.getToggleState()) bounds.removeFromRight(juce::jmin(230, bounds.getWidth() / 3) + 8);
+    if (pluginBrowserButton_.getToggleState()) bounds.removeFromRight(browserWidthFor(bounds.getWidth(), preferredBrowserWidth_) + columnGripWidth);
     return bounds;
 }
 
@@ -5637,6 +5663,7 @@ void MainComponent::refreshEditor() {
     parameterDivider_.setVisible(piano && !steps);
     pitchZoom_.setVisible(piano && !drum);
     columnDivider_.setVisible(piano);
+    arrangementColumnDivider_.setVisible(arranging && project_ != nullptr);
     midiDrag_.setVisible(piano);
     midiDrag_.setEnabled(selectedTrack_ && canExportTrack(*selectedTrack_));
     mixer_.setVisible(arranging && project_ != nullptr && showMixer);
@@ -5695,7 +5722,9 @@ void MainComponent::resized() {
     basics_.setVisible(project_ && workspaceMode_ == WorkspaceMode::arrangement);
     if (pluginBrowser_) {
         const auto full = workspaceBounds(getLocalBounds(), topBasicsHeight());
-        pluginBrowser_->setBounds(full.withLeft(editor.getRight() + 8));
+        browserDivider_.setVisible(pluginBrowser_->isVisible());
+        browserDivider_.setBounds(full.withX(editor.getRight()).withWidth(columnGripWidth));
+        pluginBrowser_->setBounds(full.withLeft(browserDivider_.getRight()));
     }
     if (workspaceMode_ != WorkspaceMode::arrangement) {
         rowOverlay_.setVisible(false);
@@ -5743,6 +5772,9 @@ void MainComponent::resized() {
         verticalScroll_.setVisible(contentHeight > viewportHeight);
         if (verticalScroll_.isVisible()) verticalScroll_.setBounds(arrangement.removeFromRight(14).withTrimmedLeft(2));
         rowOverlay_.setBounds(arrangement);
+        arrangementColumnDivider_.setBounds(arrangement.withX(arrangement.getX() + trackHeaderWidth - columnGripWidth)
+                                                      .withWidth(columnGripWidth));
+        arrangementColumnDivider_.toFront(false);
         importTrackDrop_.setBounds(arrangement.withTop(std::max(arrangement.getY(), arrangement.getBottom() - 36)).reduced(4, 2));
         ruler_.setBounds(rowOverlay_.getLocalBounds().removeFromTop(timelineRowHeight()));
         ruler_.toFront(false);
@@ -5820,7 +5852,7 @@ void MainComponent::resized() {
                 if (canArm && !strip.size.expanded()) strip.input.setBounds(row.removeFromLeft(28).reduced(1, 0));
             };
             placeGrip(strip.size, trackRows_[i]);
-            auto header = rowOverlay_.getLocalArea(this, trackRows_[i]).withWidth(trackHeaderWidth - 3);
+            auto header = rowOverlay_.getLocalArea(this, trackRows_[i]).withWidth(trackHeaderWidth - columnGripWidth);
             if (strip.size.compact()) {
                 header.removeFromLeft(trackNameWidth);
                 strip.mute.setBounds(header.removeFromLeft(29).reduced(2, 0));
@@ -5886,7 +5918,7 @@ void MainComponent::resized() {
             outputRows_[i] = {arrangement.getX(), y, arrangement.getWidth(), strip.size.height() - TrackRowSize::grip};
             y += strip.size.height();
             placeGrip(strip.size, outputRows_[i]);
-            auto header = rowOverlay_.getLocalArea(this, outputRows_[i]).withWidth(trackHeaderWidth);
+            auto header = rowOverlay_.getLocalArea(this, outputRows_[i]).withWidth(trackHeaderWidth - columnGripWidth);
             auto top = header.removeFromTop(std::min(34, header.getHeight())).withTrimmedLeft(trackNameWidth);
             strip.mute.setBounds(top.removeFromLeft(29).reduced(2, 1));
             strip.effects.button.setBounds(top.removeFromRight(54).reduced(2, 1));
@@ -5911,7 +5943,7 @@ void MainComponent::resized() {
     const int clipHeight = clipLane_.isVisible() ? std::min(24, editor.getHeight() / 5) : 0;
     const PianoLayout pianoLayout(editor.withTrimmedTop(30 + clipHeight), trackHeaderWidth, verticalScroll_.isVisible(),
                                   pitchedSelection() && pianoColours_.getSelectedId() != plainNotes,
-                                  parameterFraction_);
+                                  parameterFraction_, drumSteps_.isVisible() ? DrumSteps::labelWidth : 52);
     audioEditor_.setBounds(editor.withTrimmedTop(30 + clipHeight));
     auto clipBounds = audioEditor_.isVisible() ? audioEditor_.getBounds().reduced(8, 0) : pianoLayout.ruler;
     clipLane_.setBounds(clipBounds.withY(editor.getY() + 30).withHeight(clipHeight));
@@ -5941,7 +5973,12 @@ void MainComponent::resized() {
     pitchZoom_.setBounds(toolbar.removeFromLeft(155));
     mixer_.setBounds(editor);
     auto inspector = pianoLayout.inspector;
-    columnDivider_.setBounds(inspector.removeFromRight(6));
+    // Keep the grip inside the label column so the first tick remains editable.
+    const int gripTop = drumSteps_.isVisible() ? drumSteps_.getY() + DrumSteps::headerHeight
+                      : clipLane_.isVisible() ? clipLane_.getY() : pianoLayout.ruler.getY();
+    columnDivider_.setBounds(pianoLayout.ruler.getX() - columnGripWidth, gripTop, columnGripWidth,
+                             std::max(0, pianoLayout.lane.getBottom() - gripTop));
+    columnDivider_.toFront(false);
     auto pianoNavigation = inspector.removeFromTop(28).reduced(2, 1);
     if (pianoSnap_.isVisible()) pianoSnap_.setBounds(pianoNavigation.removeFromRight(137).reduced(2, 0));
     if (drumMode_.isVisible()) drumMode_.setBounds(pianoNavigation.removeFromLeft(std::min(210,pianoNavigation.getWidth())).reduced(2,0));

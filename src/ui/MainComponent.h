@@ -249,11 +249,12 @@ private:
     PianoInspector pianoInspector_ {pianoGrid_};
     bool blueTheme() const { return pianoInspector_.theme == pianoHarmony::Theme::studioBlue; }
     juce::Viewport pianoInspectorView_;
-    EditorDivider pianoDivider_, columnDivider_{true}, parameterDivider_;
+    EditorDivider pianoDivider_, columnDivider_{true}, arrangementColumnDivider_{true}, browserDivider_{true}, parameterDivider_;
     juce::ComboBox pitchZoom_;
     double parameterFraction_ = 0;
     int parameterBottom_ = 0, parameterHeight_ = 0;
     int preferredHeaderWidth_ = 487, trackHeaderWidth = 487, trackNameWidth = 172;
+    int preferredBrowserWidth_ = 230;
     double arrangementFraction_ = 0.6;
     PianoVelocityLane pianoVelocity_ {pianoGrid_};
     juce::ComboBox pianoSnap_, pianoColours_, drumMode_;

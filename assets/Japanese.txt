@@ -543,6 +543,7 @@ countries: jp
 "Degree colours" = "度数の色"
 "Note roles" = "ノート下端の色"
 
+"Drag to resize the plug-in browser." = "左右にドラッグしてプラグインブラウザーの幅を変更します。"
 "Drag to resize the inspector and track headers." = "左右にドラッグするとトラック名とピアノロールの編集パネルの幅が変わります。"
 
 "Colour theme" = "配色テーマ"
