@@ -178,7 +178,7 @@ Result discover() {
       catch (const winrt::hresult_error& e) { result.message = describe(e); }
     return result;
 }
-Result transfer(const Device& device, int slot, const std::optional<Smk25Preset>& toWrite) {
+Result transfer(const Device& device, int slot, const std::optional<Smk25Preset>& edited, bool studioSetup) {
     Result result;
     try {
         Apartment apartment;
@@ -188,6 +188,7 @@ Result transfer(const Device& device, int slot, const std::optional<Smk25Preset>
         const auto previous = readPreset(exchange, slot);
         result.preset = Smk25Preset::read(previous);
         check(result.preset.has_value(), TRANS("The controller returned an unrecognised preset."));
+        const auto toWrite = studioSetup ? std::optional(result.preset->forStudioSlot(slot)) : edited;
         if (toWrite && previous != toWrite->bytes()) {
             auto folder = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
                               .getChildFile("OSTF Studio").getChildFile("Controller Backups");
@@ -197,6 +198,7 @@ Result transfer(const Device& device, int slot, const std::optional<Smk25Preset>
             check(backup.replaceWithData(previous.data(), previous.size()), TRANS("Could not save the backup of the device preset."));
             result.backup = backup;
             writePreset(exchange, slot, previous, toWrite->bytes(), link.payloadLimit);
+            result.preset = toWrite;
         }
     } catch (const TransferError& e) {
         result.message = e.reason == Failure::model ? TRANS("The device did not identify itself as an SMK-25 II.")

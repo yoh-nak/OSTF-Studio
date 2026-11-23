@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## SMK-25 II rig and live MIDI monitoring
+
+Branch `feature/controller-rig-and-midi-monitor` adds Bluetooth discovery on opening the editor, per-preset read/write, verified bulk provisioning of 8 × 2 banks, contextual mixer/plugin knobs and coloured performance/command pads. Edited files can supply both banks of a slot. Armed MIDI tracks monitor through their instrument and FX while stopped. The instrument menu offers an external MIDI destination for monitoring and playback.
+
+Physical Windows BLE validation read all eight presets. With explicit permission, the slot 8 diagnostic changed one pad colour, verified the written image, restored the original and independently re-read all 2,504 bytes. No bulk overwrite was performed. Automatic tests exercise MIDI routing, monitor meters, score position, stopped monitoring with the bundled GM VST3, bank address conflicts and the BLE protocol. Hardware audio returns and macOS are unverified. Windows preview packages are under `dist/windows-controller-rig`.
+
 ## Track inputs, cue and program editing
 
 Branch `feature/input-cue-program-editors` adds per-track recording input selection, digital recording gain, stopped-transport input meters, headphone cue controls and distinct mute/solo/arm colours. Use IN or arm the audio track to open its device. The Track menu sets the bank and program at the start or cursor. MIDI tracks also have editable program and bank lanes below the piano roll. MIDI-receiving track inserts share the destination's patch messages. The tempo grid follows both edges of the arrangement ruler.

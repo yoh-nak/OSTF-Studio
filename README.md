@@ -12,9 +12,11 @@ OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical mu
 
 ## M-VAVE controller editor (development build)
 
-The SMK-25 II preset editor works without Midi Suite or a connected controller. Create a preset or open a `.mkcII` file. Select bank A or B and click a pad or knob to edit its MIDI channel, note, program change, pad colour or absolute CC. Save a copy, or use the bank as the live Note/CC mapping for a selected Studio input. The Studio assignments tab also accepts direct entry and MIDI Learn for generic note/CC controllers. Hardware mappings and editor drafts live in local settings.
+On Windows, the SMK-25 II preset editor discovers Bluetooth settings devices when opened. Choose a device and preset to read or write both banks, or select **Set up all 8 presets**. The bulk operation assigns the pads and knobs across 16 banks, preserves keyboard and pedal settings, backs up changed slots in the user's `OSTF Studio/Controller Backups` directory and reads each result back. To reuse edited files, select their destination preset and **Use both banks in Studio**. The live assignments tab shows the last operated bank, pad colours and actions.
 
-On Windows, **Scan Bluetooth** in the preset editor searches for the SMK-25 II settings service. Select a device and one of its eight preset slots. Reading loads both banks. Writing checks the model, backs up the original file in `OSTF Studio/Controller Backups` in user application data, and verifies the result by reading it back. Bluetooth preset transfer is specific to the SMK-25 II. Other model profiles use their existing Studio input mappings.
+Bank A plays drum slots. Bank B pads 1–8 select tracks, and 9–16 control mute, solo, record arm, play, stop, record, cue and control target. Mixer knobs adjust volume in A and pan in B. Presets page through groups of eight tracks, repeating for shorter projects. In follow mode a focused instrument or effect editor receives the knobs. Each preset and bank addresses another eight published parameters. Target selection also offers fixed mixer and selected instrument modes.
+
+Arm a MIDI track to play its assigned instrument while stopped and see its post-fader audio level. The track instrument menu's **MIDI OUT** destination sends live and sequenced MIDI to a hardware port. A separate audio input can receive the hardware's sound. Port selections are local to this computer.
 
 ## Recording in the lower editor (development build)
 

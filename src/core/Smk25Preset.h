@@ -61,6 +61,34 @@ public:
         return preset;
     }
 
+    // All sixteen pages have distinct MIDI addresses. Keep keyboard, wheels and pedal untouched.
+    Smk25Preset forStudioSlot(int slot) const {
+        auto result = *this;
+        if (slot < 0 || slot >= 8) return result;
+        const auto defaults = studioPreset();
+        for (int bank = 0; bank < 2; ++bank) {
+            for (int i = 0; i < 24; ++i) {
+                const auto pos = offset(bank, i);
+                std::copy_n(defaults.image.data() + pos, i < 16 ? 74 : 6, result.image.data() + pos);
+                auto control = result.control(bank, i);
+                control.channel = slot + 9;
+                if (i < 16) {
+                    if (bank == 0) control.rgb = i < 4 ? std::array{240,100,24} : i < 8 ? std::array{30,170,140} : std::array{70,120,210};
+                    else if (i < 8) control.rgb = {40,160,215};
+                    else {
+                        constexpr std::array<std::array<int,3>,8> commands {{
+                            {240,190,30}, {35,110,230}, {220,45,55}, {40,200,110},
+                            {185,185,185}, {245,20,35}, {140,90,215}, {235,85,200}
+                        }};
+                        control.rgb = commands[i - 8];
+                    }
+                }
+                result.edit(bank, i, control);
+            }
+        }
+        return result;
+    }
+
     const Image& bytes() const { return image; }
 
     // Each bank exposes 16 pads followed by eight knobs.
@@ -132,5 +160,38 @@ private:
         if (slot < 16) return 126 + (16 * bank + slot) * 74;
         return 30 + (8 * bank + slot - 16) * 6;
     }
+};
+
+// Complete user-edited layout. Negative entries are unassigned; ambiguous MIDI addresses
+// cannot identify a bank on input, so validate a new layout before publishing it.
+class Smk25Rig {
+public:
+    std::array<Smk25Preset,8> presets;
+    Smk25Rig() {
+        const auto base = Smk25Preset::studioPreset();
+        for (int slot = 0; slot < 8; ++slot) presets[slot] = base.forStudioSlot(slot);
+        rebuild();
+    }
+    bool rebuild() {
+        notes.fill(-1); controllers.fill(-1);
+        for (int slot = 0; slot < 8; ++slot) for (int bank = 0; bank < 2; ++bank) {
+            const auto map = presets[slot].studioBindings(bank);
+            if (!map) return false;
+            for (int i = 0; i < 24; ++i) {
+                const int key = i < 16 ? map->notes[i] : map->cc[i - 16];
+                if (key < 0) continue;
+                auto& hit = (i < 16 ? notes : controllers)[size_t(key)];
+                if (hit >= 0) return false;
+                hit = (slot * 2 + bank) * 24 + i;
+            }
+        }
+        return true;
+    }
+    int address(bool cc, int channel, int number) const {
+        if (channel < 1 || channel > 16 || number < 0 || number > 127) return -1;
+        return (cc ? controllers : notes)[size_t((channel - 1) * 128 + number)];
+    }
+private:
+    std::array<int,2048> notes, controllers;
 };
 }

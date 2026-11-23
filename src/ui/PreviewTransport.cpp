@@ -80,7 +80,7 @@ bool PreviewTransport::supportsInsert(const juce::AudioPluginInstance& effect) {
 juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const ostfstudio::OstfpPreview &project,
                                      bool record, std::span<const TrackSetup> tracks, const Inserts &inserts,
                                      juce::int64 startTick, int semitones, double tempoRate,
-                                     std::optional<size_t> inputTrack, const TakeOptions* options) {
+                                     std::optional<size_t> inputTrack, const TakeOptions* options, bool monitorOnly) {
     stop();
     auto* device = devices.getCurrentAudioDevice();
     if (!device || !device->isOpen() || device->getActiveOutputChannels().isZero())
@@ -97,24 +97,38 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
                 (options->midiInput.enabled && (options->midiInput.port.isEmpty() || options->midiInput.port == input.identifier))));
         if (!enabled) return juce::Result::fail("Enable a MIDI input in Settings before recording.");
     }
-    const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples(), semitones, tempoRate);
+    const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples(), semitones, tempoRate, monitorOnly);
     if (result.failed()) return result;
-    if (startTick > 0) seekToTick(startTick);
+    if (startTick > 0 && !monitorOnly) seekToTick(startTick);
+    if (monitorOnly && inputTrack && *inputTrack < tracks.size()) {
+        sample_ = juce::roundToInt(clock_.secondsAt(startTick) * sampleRate_);
+        Timelines patches;
+        makeMidiTimelines(project, tracks, 0, patches, true);
+        const auto dest = tracks[*inputTrack].outputTrack.value_or(*inputTrack);
+        if (dest < instruments_.size()) {
+            auto chased = midiAtSeek(patches[dest], int(sample_.load()) + 1);
+            for (auto event : chased) {
+                const auto m = event.getMessage();
+                if (m.isProgramChange() || m.isControllerOfType(0) || m.isControllerOfType(32))
+                    instruments_[dest].seekEvents.addEvent(m, 0);
+            }
+        }
+    }
     if (options && !options->cycle.isEmpty()) setLoop(options->cycle);
-    if (record && !inputs) prepareRecording(project, tracks, inputTrack);
-    if (record && options) {
+    if (!inputs && (record || inputTrack)) prepareRecording(project, tracks, inputTrack, record);
+    if ((record || inputTrack) && options) {
         if (const auto armed = prepareTake(*options); armed.failed()) { stop(); return armed; }
     }
     devices_ = &devices;
     devices.addAudioCallback(this);
-    if (record && !inputs) devices.addMidiInputDeviceCallback({}, this);
+    if (!inputs && (record || monitorTrack_)) devices.addMidiInputDeviceCallback({}, this);
     return result;
 }
 
 void PreviewTransport::prepareRecording(const ostfstudio::OstfpPreview &project, std::span<const TrackSetup> tracks,
-                                        std::optional<size_t> inputTrack) {
+                                        std::optional<size_t> inputTrack, bool capture) {
     jassert(devices_ == nullptr);
-    recording_ = true;
+    recording_ = capture;
     takeStart_ = sample_.load();
     const bool drumInput = inputTrack && *inputTrack < project.trackKinds.size() &&
                            project.trackKinds[*inputTrack] == ostfstudio::TrackKind::drum;
@@ -134,14 +148,19 @@ void PreviewTransport::prepareRecording(const ostfstudio::OstfpPreview &project,
 }
 
 juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& project, std::span<const TrackSetup> tracks,
-                                             const Inserts& inserts, double sampleRate, int blockSize, int semitones, double tempoRate) {
+                                             const Inserts& inserts, double sampleRate, int blockSize, int semitones, double tempoRate, bool monitorOnly) {
     stop();
+    monitorOnly_ = monitorOnly;
     if (!std::isfinite(sampleRate) || sampleRate <= 0 || blockSize < 1)
         return juce::Result::fail("Invalid audio configuration");
     sampleRate_ = sampleRate;
     if (project.clock.empty()) return juce::Result::fail("The song needs an initial tempo.");
-    if (auto check = project.checkAudition(semitones, tempoRate); check.failed()) return check;
-    clock_ = *project.clock.scaled(tempoRate);
+    if (!monitorOnly) {
+        if (auto check = project.checkAudition(semitones, tempoRate); check.failed()) return check;
+    }
+    const auto scaled = project.clock.scaled(tempoRate);
+    if (!scaled) return juce::Result::fail("Invalid tempo rate");
+    clock_ = *scaled;
     ppq_ = project.ppq;
     meters_ = project.meters;
     meterBeats_ = project.meterBeats;
@@ -158,7 +177,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     midiInput_ = {};
     elapsed_ = countRemaining_ = 0;
     beatSamples_.clear();
-    for (juce::int64 bar = 0; bar < scoreTicks_; bar += project.ticksPerBar) {
+    for (juce::int64 bar = 0; !monitorOnly && bar < scoreTicks_; bar += project.ticksPerBar) {
         const auto meter = ostfstudio::activeMeter(meters_, double(bar), {0, meterBeats_, beatUnit_});
         for (int beat = 0; beat < meter.numerator; ++beat) {
             const auto tick = bar + std::llround(beat * 4.0 * ppq_ / meter.denominator);
@@ -174,7 +193,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
         slot.wav.setSize(0, 0);
     }
     juce::WavAudioFormat wavFormat;
-    for (const auto& audio : project.audio) {
+    if (!monitorOnly) for (const auto& audio : project.audio) {
         if (audio.track >= instruments_.size()) continue;
         auto stream = audio.embedded.isEmpty()
             ? std::unique_ptr<juce::InputStream>(audio.localFile.createInputStream().release())
@@ -212,12 +231,15 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
         if (const auto it = project.panAutomation.find(project.trackIds[i]); it != project.panAutomation.end())
             instruments_[size_t(i)].panEnvelope = it->second;
     Timelines timelines;
-    if (auto result = makeMidiTimelines(project, tracks, semitones, timelines); result.failed()) return result;
+    if (!monitorOnly) {
+        if (auto result = makeMidiTimelines(project, tracks, semitones, timelines); result.failed()) return result;
+    }
     for (std::size_t i = 0; i < instruments_.size(); ++i) instruments_[i].timeline.swapWith(timelines[i]);
     playbackRoutes_.assign(tracks.begin(),tracks.end());
     playbackShift_ = semitones;
+    for (const auto& setup : tracks) if (setup.external) outputChannels = std::max(outputChannels, 2);
     for (const auto& setup : tracks)
-        if (setup.instrument)
+        if (setup.instrument && !setup.external)
             outputChannels = std::max({outputChannels, setup.instrument->getTotalNumInputChannels(),
                                        setup.instrument->getTotalNumOutputChannels()});
     for (const auto& chain : inserts) for (auto* effect : chain) if (effect) outputChannels = std::max(outputChannels, 2);
@@ -229,6 +251,18 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
         patchMidi_.ensureSize(1024 * 1024);
         for (std::size_t track = 0; track < std::min(tracks.size(), instruments_.size()); ++track) {
             const auto& setup = tracks[track];
+            auto& slot = instruments_[track];
+            slot.external = setup.external;
+            slot.externalChannels = {};
+            slot.sentChannels = {};
+            if (setup.external) {
+                slot.externalChannels[size_t(setup.midiChannel - 1)] = true;
+                for (auto event : slot.timeline) {
+                    const auto channel = event.getMessage().getChannel();
+                    if (channel > 0) slot.externalChannels[size_t(channel - 1)] = true;
+                }
+                continue;
+            }
             if (auto* instance = setup.instrument) {
                 instance->setPlayHead(this);
                 instance->setRateAndBufferSizeDetails(sampleRate_, blockSize);
@@ -237,6 +271,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
             instruments_[track].instance = setup.instrument;
         }
         inserts_ = inserts;
+        for (size_t i = 0; i < instruments_.size(); ++i) if (instruments_[i].external) inserts_[outputCount + i] = {};
         for (const auto& chain : inserts_) for (auto* effect : chain) if (effect) {
             effect->setPlayHead(this);
             effect->setRateAndBufferSizeDetails(sampleRate_, blockSize);
@@ -252,21 +287,21 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
 }
 
 juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview& project, std::span<const TrackSetup> tracks,
-                                                int semitones, Timelines& timelines) const {
+                                                int semitones, Timelines& timelines, bool patchesOnly) const {
     int noteCount = 0;
     for (std::size_t track = 0; track < std::min(project.pitchedNotes.size(), instruments_.size()); ++track) {
         const auto setup = track < tracks.size() ? tracks[track] : TrackSetup{};
         const auto outputTrack = setup.outputTrack.value_or(track);
         if (outputTrack >= instruments_.size()) continue;
         auto* midi = &timelines[outputTrack];
-        const bool instrument = outputTrack < tracks.size() && tracks[outputTrack].instrument && tracks[outputTrack].instrument->acceptsMidi();
+        const bool instrument = outputTrack < tracks.size() && (tracks[outputTrack].external || (tracks[outputTrack].instrument && tracks[outputTrack].instrument->acceptsMidi()));
         struct OrderedPatch { juce::int64 tick, order; size_t ordinal; juce::MidiMessage message; };
         std::vector<OrderedPatch> patches;
         if (track < project.performanceCurves.size()) for (const auto& curve : project.performanceCurves[track]) {
             const auto& k = curve.control;
             if (k.type.isEmpty() || k.type == "programChange" || !curve.enabled) continue;
             const bool bank = k.type == "controlChange" && (k.number == 0 || k.number == 32);
-            if (!instrument && !bank) continue;
+            if ((patchesOnly || !instrument) && !bank) continue;
             const int ch = k.channel ? k.channel : setup.midiChannel;
             for (const auto& p : curve.points) {
                 const int v = juce::roundToInt(p.value * k.maximum());
@@ -284,7 +319,7 @@ juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview&
             return std::tie(a.tick, a.order, a.ordinal) < std::tie(b.tick, b.order, b.ordinal);
         });
         for (const auto& e : patches) midi->addEvent(e.message, juce::roundToInt(clock_.secondsAt(e.tick) * sampleRate_));
-        if (!instrument) continue;
+        if (!instrument || patchesOnly) continue;
         auto addNote = [&](juce::int64 start, juce::int64 end, int pitch, int velocity, int channel) {
             if (noteCount >= 20000) return false;
             const auto first = static_cast<int>(std::llround(clock_.secondsAt(start) * sampleRate_));
@@ -301,7 +336,8 @@ juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview&
                 return juce::Result::fail("Preview transport supports up to 20,000 notes.");
         if (track < project.drumNotes.size())
             for (const auto& note : project.drumNotes[track])
-                if (note.enabled && !addNote(note.startTick, note.endTick, note.pitch, note.velocity.value_or(92), 10))
+                if (note.enabled && !addNote(note.startTick, note.endTick, note.pitch, note.velocity.value_or(92),
+                                             outputTrack < tracks.size() && tracks[outputTrack].external ? setup.midiChannel : 10))
                     return juce::Result::fail("Preview transport supports up to 20,000 notes.");
     }
     return juce::Result::ok();
@@ -390,11 +426,21 @@ void PreviewTransport::seekToTick(juce::int64 tick) {
 std::vector<ostfstudio::PitchedNote> PreviewTransport::stop(Cursor* stoppedAt) {
     running_ = false;
     if (devices_) {
-        if (recording_ && !captured_.getNumChannels()) devices_->removeMidiInputDeviceCallback({}, this);
+        if (!captured_.getNumChannels() && (recording_ || monitorTrack_)) devices_->removeMidiInputDeviceCallback({}, this);
         devices_->removeAudioCallback(this);
         devices_ = nullptr;
     }
+    for (auto& track : instruments_) if (track.external) track.external->clearPending();
     for (auto& track : instruments_) {
+        if (auto port = std::exchange(track.external, {})) {
+            juce::MidiBuffer panic;
+            for (int ch = 0; ch < 16; ++ch) if (track.sentChannels[size_t(ch)]) {
+                panic.addEvent(juce::MidiMessage::controllerEvent(ch + 1, 64, 0), 0);
+                panic.addEvent(juce::MidiMessage::allNotesOff(ch + 1), 0);
+                panic.addEvent(juce::MidiMessage::allSoundOff(ch + 1), 0);
+            }
+            if (!panic.isEmpty()) port->send(panic, 0, sampleRate_);
+        }
         if (auto* instance = std::exchange(track.instance, nullptr)) {
             instance->reset();
             instance->releaseResources();
@@ -415,6 +461,7 @@ std::vector<ostfstudio::PitchedNote> PreviewTransport::stop(Cursor* stoppedAt) {
             if (pressed_[key] >= 0) closeRecordedNote(key, elapsed_.load());
     }
     recording_ = false;
+    playbackRoutes_.clear();
     monitorTrack_.reset();
     sample_ = 0;
     takeMeters();
@@ -431,6 +478,7 @@ juce::int64 PreviewTransport::positionTick() const { return cursor().tick; }
 void PreviewTransport::setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb) {
     if (track >= gains_.size()) return;
     auto& channel = gains_[track];
+    channel.audible = audible;
     channel.level = audible ? ostfstudio::gainFromDb(mix.volumeDb) : 0.0f;
     channel.cue = mix.cue ? ostfstudio::gainFromDb(cueDb) : 0.0f;
     channel.pan = mix.pan;
@@ -468,7 +516,7 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PreviewTransport::getPosition(
     position.setTimeSignature(TimeSignature{meter.numerator, meter.denominator});
     const auto barPpq = meterBeats_ * 4.0 / beatUnit_;
     position.setPpqPositionOfLastBarStart(std::floor(tick / ppq_ / barPpq) * barPpq);
-    position.setIsPlaying(running_);
+    position.setIsPlaying(running_ && !monitorOnly_);
     return position;
 }
 
@@ -488,7 +536,7 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
     for (std::size_t track = 0; track < instruments_.size(); ++track) {
         auto& slot = instruments_[track];
         const auto& chain = inserts_[outputCount + track];
-        if (!slot.instance && slot.wav.getNumSamples() == 0 && std::none_of(chain.begin(), chain.end(), [](auto* fx) { return fx != nullptr; })) continue;
+        if (!slot.external && !slot.instance && slot.wav.getNumSamples() == 0 && std::none_of(chain.begin(), chain.end(), [](auto* fx) { return fx != nullptr; })) continue;
         const auto channelCount = slot.instance ? std::max({2, slot.instance->getTotalNumInputChannels(),
                                                             slot.instance->getTotalNumOutputChannels()}) : 2;
         if (channelCount < 1 || channelCount > pluginAudio_.getNumChannels()) continue;
@@ -497,7 +545,7 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
         if (loopRestart_) pluginMidi_.addEvents(slot.loopEvents, 0, -1, 0);
         pluginMidi_.addEvents(slot.seekEvents, 0, -1, 0);
         slot.seekEvents.clear();
-        pluginMidi_.addEvents(slot.timeline, first, end - first, -first);
+        if (!monitorOnly_) pluginMidi_.addEvents(slot.timeline, first, end - first, -first);
         if (monitorTrack_ == track) {
             const juce::SpinLock::ScopedTryLockType lock(liveLock_);
             if (lock.isLocked()) {
@@ -505,6 +553,24 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
                 liveMessages_.clear();
                 queuedLiveMessages_ = 0;
             }
+        }
+        if (slot.external) {
+            patchMidi_.clear();
+            if (gains_[track].audible) {
+                for (auto event : pluginMidi_) {
+                    const int ch = event.getMessage().getChannel() - 1;
+                    if (ch < 0 || !slot.externalChannels[size_t(ch)]) continue;
+                    slot.sentChannels[size_t(ch)] = true;
+                    patchMidi_.addEvent(event.getMessage(), event.samplePosition);
+                }
+            } else {
+                for (int ch = 0; ch < 16; ++ch) if (std::exchange(slot.sentChannels[size_t(ch)], false)) {
+                    patchMidi_.addEvent(juce::MidiMessage::controllerEvent(ch + 1, 64, 0), 0);
+                    patchMidi_.addEvent(juce::MidiMessage::allSoundOff(ch + 1), 0);
+                }
+            }
+            if (!patchMidi_.isEmpty()) slot.external->send(patchMidi_, blockTimeMs_, sampleRate_);
+            continue;
         }
         patchMidi_.clear();
         if (std::any_of(chain.begin(), chain.end(), [](auto* fx) { return fx && fx->acceptsMidi(); })) {
@@ -602,6 +668,12 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
         if (output[c]) juce::FloatVectorOperations::clear(output[c], count);
     if (!running_) return;
     if (pluginAudio_.getNumChannels() && count > pluginAudio_.getNumSamples()) { running_ = false; return; }
+    const auto blockStart = juce::Time::getMillisecondCounterHiRes() + 1.0;
+    blockTimeMs_ = blockStart;
+    if (monitorOnly_) {
+        if (pluginAudio_.getNumChannels()) renderInstruments(output, channels, count, int(sample_.load()), int(sample_.load()) + count);
+        return;
+    }
     int done = 0;
     while (done < count && running_) {
         if (const auto remaining = countRemaining_.load(); remaining > 0) {
@@ -625,6 +697,7 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
         std::array<float*, 4> dest {};
         const int outs = std::min(channels, int(dest.size()));
         for (int c=0; c<outs; ++c) dest[c] = output[c] ? output[c] + done : nullptr;
+        blockTimeMs_ = blockStart + done * 1000.0 / sampleRate_;
         if (pluginAudio_.getNumChannels()) renderInstruments(dest.data(), outs, part, int(first), int(first) + part);
         if (captured_.getNumChannels()) {
             const int pos = int(first) - captureOrigin_;
@@ -664,6 +737,9 @@ void PreviewTransport::inputFromDevice(const juce::MidiMessage& message, const j
     if (!midiInput_.accepts(port, message.getChannel())) return;
     if (surface_.port.isNotEmpty() && port == surface_.port) {
         if (surface_.model == ostfstudio::SurfaceModel::mixer) return;
+        const auto action = surface_.action(message);
+        if (surface_.studioRig && action.page >= 0 &&
+            (message.isController() || action.bank == 1 || !mapInput_)) return;
         const int index = mapInput_ ? surface_.padIndex(message) : -1;
         if (index >= 0) {
             if (surface_.pitches[index] >= 0) {
@@ -680,8 +756,9 @@ void PreviewTransport::inputFromDevice(const juce::MidiMessage& message, const j
 }
 
 void PreviewTransport::inputNote(const juce::MidiMessage &message) {
-    if (!running_ || countingIn() || !recording_ || captured_.getNumChannels() || (!message.isNoteOn() && !message.isNoteOff()) ||
-        !inputPitches_[message.getNoteNumber()])
+    const bool note = message.isNoteOnOrOff();
+    if (!running_ || countingIn() || (!recording_ && !monitorTrack_) || captured_.getNumChannels() ||
+        message.getChannel() <= 0 || (!note && !message.isController() && !message.isPitchWheel() && !message.isChannelPressure() && !message.isAftertouch() && !message.isProgramChange()) || (note && !inputPitches_[message.getNoteNumber()]))
         return;
     if (monitorTrack_) {
         const juce::SpinLock::ScopedLockType lock(liveLock_);
@@ -695,6 +772,7 @@ void PreviewTransport::inputNote(const juce::MidiMessage &message) {
         liveMessages_.addEvent(routed, 0);
         ++queuedLiveMessages_;
     }
+    if (!recording_ || !note) return;
     const auto elapsed = elapsed_.load();
     const auto key = (message.getChannel() - 1) * 128 + message.getNoteNumber();
     const std::scoped_lock lock(recordingMutex_);

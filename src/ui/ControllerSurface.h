@@ -1,5 +1,6 @@
 #pragma once
 #include "ui/ControllerMap.h"
+#include "core/Smk25Preset.h"
 #include "ui/MidiActivityLamp.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -12,7 +13,13 @@ public:
     juce::StringArray tracks, slots;
     std::array<int, 16> padInputs{};
     std::array<int, 8> knobInputs{};
-    int learningControl = -1;
+    int learningControl = -1, rigPage = 0, rigBank = 0;
+    bool rig = false;
+    std::array<juce::Colour,16> rigColours;
+    juce::ComboBox controlTarget;
+    juce::StringArray parameterNames;
+    std::array<double,8> parameterValues{};
+    bool showingParameters = false;
     static juce::String binding(int key, bool note) {
         if (key < 0) return TRANS("Unassigned");
         return "Ch" + juce::String(key / 128 + 1) + (note ? " N" : " CC") + juce::String(key % 128);
@@ -65,6 +72,10 @@ public:
             if (manualBinding) manualBinding(target.getSelectedId() - 1, (inputChannel.getSelectedId() - 1) * 128 + int(inputNumber.getValue()));
         };
         unassign.onClick = [this] { if (manualBinding) manualBinding(target.getSelectedId() - 1, -1); };
+        addChildComponent(controlTarget);
+        controlTarget.addItem(TRANS("Follow active editor"), 1);
+        controlTarget.addItem(TRANS("Mixer"), 2);
+        controlTarget.addItem(TRANS("Instrument"), 3);
         addAndMakeVisible(inputLamp);
         addAndMakeVisible(inputLabel);
         inputLabel.setText("MIDI IN", juce::dontSendNotification);
@@ -106,6 +117,7 @@ public:
         devices.setBounds(top.removeFromLeft(245).reduced(2));
         layer.setBounds(top.removeFromLeft(132).reduced(2));
         learning.setBounds(top);
+        controlTarget.setBounds(layer.getBounds().getUnion(top).withWidth(215));
         auto footer = getLocalBounds().reduced(12).removeFromBottom(88);
         auto form = footer.removeFromTop(32);
         target.setBounds(form.removeFromLeft(110).reduced(2));
@@ -137,12 +149,12 @@ public:
             g.setColour(juce::Colour(0xffb8c6cf));
             g.setFont(13.f);
             if (!mixer) g.drawFittedText(binding(knobInputs[i], false), knob.removeFromBottom(15), juce::Justification::centred, 1);
-            g.drawFittedText(tracks[i], knob.removeFromBottom(16), juce::Justification::centred, 1);
+            g.drawFittedText(showingParameters ? parameterNames[i] : tracks[i], knob.removeFromBottom(16), juce::Justification::centred, 1);
             auto dial = knob.toFloat().withSizeKeepingCentre(30, 30);
             g.setColour(juce::Colour(learningControl == i + 16 ? 0xff9b6932 : 0xff445561));
             g.fillEllipse(dial);
             auto c = dial.getCentre();
-            float a = float(((mixer || layer.getSelectedId() == 2 ? pans[i] : levels[i]) * 1.5 - .75) *
+            float a = float(((showingParameters ? parameterValues[i] : (rig ? rigBank == 1 : mixer || layer.getSelectedId() == 2) ? pans[i] : levels[i]) * 1.5 - .75) *
                             juce::MathConstants<double>::pi);
             g.setColour(juce::Colour(0xff8dd9d2));
             g.drawLine(c.x, c.y, c.x + 11 * std::sin(a), c.y - 11 * std::cos(a), 2.f);
@@ -160,6 +172,7 @@ public:
                 auto pad = cell(i % 8, 1 + i / 8).reduced(2);
                 const bool lit = int(juce::Time::getMillisecondCounter() - flashes[i]) < 200 && flashes[i] != 0;
                 g.setColour(juce::Colour(lit ? 0xff417f82 : learningControl == i ? 0xff916229 : 0xff344a5b));
+                if (rig && !lit) g.setColour(rigColours[i].darker(.62f));
                 g.fillRoundedRectangle(pad.toFloat(), 5);
                 g.setColour(juce::Colours::white);
                 g.drawFittedText(juce::String(i + 1) + "  " + slots[i] + "\n" + binding(padInputs[i], true), pad.reduced(3), juce::Justification::centred,

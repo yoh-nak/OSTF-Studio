@@ -20,10 +20,15 @@ public:
     static_assert(maxTracks >= ostfstudio::OstfpPreview::maxTracks + 1);
     using Chain = std::array<juce::AudioPluginInstance*, ostfstudio::SessionMix::maxEffects>;
     using Inserts = std::array<Chain, outputCount + maxTracks>;
+    struct MidiDestination {
+        std::function<void(const juce::MidiBuffer&, double, double)> send;
+        std::function<void()> clearPending;
+    };
     struct TrackSetup {
         std::optional<std::size_t> outputTrack;
         juce::AudioPluginInstance* instrument = nullptr; // Owned and rendered by this track.
         int midiChannel = 1;
+        std::shared_ptr<MidiDestination> external;
     };
     static bool supportsInstrument(const juce::AudioPluginInstance& instrument);
     static bool supportsInsert(const juce::AudioPluginInstance& effect);
@@ -46,10 +51,10 @@ public:
     std::optional<ostfstudio::ProjectAudio> finishAudioTake(size_t track);
     juce::Result start(juce::AudioDeviceManager &devices, const ostfstudio::OstfpPreview &project, bool record,
                        std::span<const TrackSetup> tracks, const Inserts &inserts = {}, juce::int64 startTick = 0,
-                       int semitones = 0, double tempoRate = 1, std::optional<size_t> inputTrack = {}, const TakeOptions* options = nullptr);
+                       int semitones = 0, double tempoRate = 1, std::optional<size_t> inputTrack = {}, const TakeOptions* options = nullptr, bool monitorOnly = false);
     // Arm after preparePlayback and before attaching device callbacks or rendering audio.
     void prepareRecording(const ostfstudio::OstfpPreview &, std::span<const TrackSetup>,
-                          std::optional<size_t> inputTrack);
+                          std::optional<size_t> inputTrack, bool capture = true);
     void inputNote(const juce::MidiMessage &message);
     void inputFromDevice(const juce::MidiMessage&, const juce::String& port = {});
     struct Cursor { juce::int64 tick; double seconds; };
@@ -58,7 +63,7 @@ public:
     void setLoop(juce::Range<juce::int64> ticks);
     void seekToTick(juce::int64 tick);
     juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
-                                 double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1);
+                                 double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1, bool monitorOnly = false);
     void renderBlock(float* const* output, int channels, int samples, const float* const* input = nullptr, int inputs = 0);
     ostfstudio::MeterFrame takeMeters() noexcept;
     void setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb);
@@ -71,7 +76,7 @@ private:
     juce::Optional<PositionInfo> getPosition() const override;
     void processEffects(const Chain& effects, juce::AudioBuffer<float>& audio, int count, const juce::MidiBuffer* patches = nullptr);
     using Timelines = std::array<juce::MidiBuffer, maxTracks>;
-    juce::Result makeMidiTimelines(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, int, Timelines&) const;
+    juce::Result makeMidiTimelines(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, int, Timelines&, bool patchesOnly = false) const;
     void adoptPendingNotes();
     Timelines pendingTimelines_, pendingLoopEvents_;
     bool pendingNotes_ = false;
@@ -87,6 +92,7 @@ private:
     juce::AudioDeviceManager* devices_ = nullptr;
     struct ChannelGains {
         std::atomic<float> level {0.0f}, cue {0.0f}, pan {0.0f};
+        std::atomic<bool> audible{true};
         std::atomic<int> bus {0};
         std::array<std::atomic<float>, ostfstudio::maxMixerReturns> sends {};
     };
@@ -96,6 +102,8 @@ private:
     ostfstudio::PeakMailbox cueMeter_;
     struct InstrumentTrack {
         juce::AudioPluginInstance* instance = nullptr;
+        std::shared_ptr<MidiDestination> external;
+        std::array<bool,16> externalChannels{}, sentChannels{};
         juce::MidiBuffer timeline;
         juce::MidiBuffer seekEvents, loopEvents;
         ostfstudio::PanEnvelope panEnvelope;
@@ -123,7 +131,8 @@ private:
     juce::int64 scoreTicks_ = 0;
     juce::Range<int> loopSamples_;
     bool loopRestart_ = false;
-    bool recording_ = false;
+    bool recording_ = false, monitorOnly_ = false;
+    double blockTimeMs_ = 0;
     std::optional<size_t> monitorTrack_;
     std::array<bool, 128> inputPitches_{};
     int monitorChannel_ = 1;

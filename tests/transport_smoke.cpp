@@ -101,6 +101,66 @@ bool checkPerformanceAudio() {
             }))
             return false;
     }
+    {
+        PerformanceProbe local, insert(true);
+        juce::MidiBuffer hardware;
+        auto port = std::make_shared<PreviewTransport::MidiDestination>();
+        port->send = [&](const juce::MidiBuffer& b, double, double) { hardware.addEvents(b, 0, -1, 0); };
+        port->clearPending = [] {};
+        PreviewTransport monitor;
+        PreviewTransport::Inserts chain{};
+        chain[PreviewTransport::outputCount][0] = &insert;
+        std::array<PreviewTransport::TrackSetup,1> live{{{{}, &local, 3}}};
+        song.trackKinds = {TrackKind::pitched};
+        song.pitchedNotes[0].push_back({2, 12, 72, 80});
+        for (bool external : {false,true}) {
+            live[0].external = external ? port : nullptr;
+            local.received.clear(); insert.received.clear();
+            if (monitor.preparePlayback(song, live, chain, 960, 96, 0, 1, true).failed()) return false;
+            monitor.prepareRecording(song, live, 0, false);
+            PreviewTransport::TakeOptions options;
+            options.midiInput = {"keys", "Keyboard", 1};
+            monitor.prepareTake(options);
+            monitor.setChannelMix(0, {}, true, 0);
+            monitor.setOutputMix({});
+            monitor.inputFromDevice(juce::MidiMessage::noteOn(1,64,juce::uint8(78)), "keys");
+            monitor.inputFromDevice(juce::MidiMessage::noteOn(1,65,juce::uint8(78)), "wrong");
+            monitor.inputFromDevice(juce::MidiMessage::controllerEvent(1,64,127), "keys");
+            monitor.inputFromDevice(juce::MidiMessage::noteOff(1,64), "keys");
+            monitor.renderBlock(audio.getArrayOfWritePointers(),2,96);
+            bool on = false, off = false, pedal = false;
+            for (auto e : (external ? hardware : local.received)) {
+                auto m = e.getMessage();
+                if (m.getChannel() != 3 || (m.isNoteOnOrOff() && m.getNoteNumber() != 64)) return false;
+                on |= m.isNoteOn(); off |= m.isNoteOff(); pedal |= m.isControllerOfType(64);
+            }
+            if (!on || !off || !pedal || monitor.positionTick() != 0 || (audio.getMagnitude(0,96) > 0) == external ||
+                (monitor.takeMeters().tracks[0][0] > 0) == external || (external && (!local.received.isEmpty() || !insert.received.isEmpty())) ||
+                !monitor.stop().empty()) return false;
+        }
+        hardware.clear();
+        if (monitor.preparePlayback(song,live,chain,960,96).failed()) return false;
+        monitor.renderBlock(audio.getArrayOfWritePointers(),2,96);
+        if (!std::any_of(hardware.begin(),hardware.end(),[](auto e) { return e.getMessage().isNoteOn() && e.getMessage().getNoteNumber() == 72; })
+            || audio.getMagnitude(0,96) != 0) return false;
+        monitor.stop();
+        song.pitchedNotes[0].clear();
+        song.trackKinds = {TrackKind::drum};
+        ControllerMap rig;
+        rig.studioRig = true; rig.model = SurfaceModel::smk25ii;
+        for (int p = 0; p < 8; ++p) for (int b = 0; b < 2; ++b) {
+            for (int i = 0; i < 16; ++i) {
+                auto msg = juce::MidiMessage::noteOn(p + 9,36 + b * 16 + i,juce::uint8(90));
+                const auto action = rig.action(msg);
+                if (action.kind != SurfaceAction::pad || action.index != i || action.page != p || action.bank != b ||
+                    rig.padIndex(msg) != (b == 0 ? i : -1)) return false;
+            }
+            for (int i = 0; i < 8; ++i) {
+                auto a = rig.action(juce::MidiMessage::controllerEvent(p + 9,16 + b * 8 + i,92));
+                if (a.kind != SurfaceAction::knob || a.index != i || a.value != 92 || a.page != p || a.bank != b) return false;
+            }
+        }
+    }
     for (int channels : {0, 1, 2}) {
         PreviewTransport capture;
         if (capture.preparePlayback(song, {}, {}, 960, 96).failed()) return false;

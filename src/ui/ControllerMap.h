@@ -1,4 +1,5 @@
 #pragma once
+#include "core/Smk25Preset.h"
 #include <juce_audio_devices/juce_audio_devices.h>
 
 namespace ostfstudio {
@@ -13,10 +14,16 @@ inline SurfaceModel surfaceModel(juce::String name) {
 }
 struct SurfaceAction {
     enum Kind { none, pad, knob, fader, relativePan, learned } kind = none;
-    int index = 0, value = 0;
+    int index = 0, value = 0, page = -1, bank = 0;
 };
 struct ControllerMap {
     juce::String port;
+    bool studioRig = false;
+    static std::shared_ptr<const Smk25Rig> factoryLayout() {
+        static const auto layout = std::make_shared<const Smk25Rig>();
+        return layout;
+    }
+    std::shared_ptr<const Smk25Rig> layout = factoryLayout();
     SurfaceModel model = SurfaceModel::none;
     std::array<int, 16> notes{}, pitches{};
     std::array<int, 8> cc{};
@@ -31,10 +38,23 @@ struct ControllerMap {
     int padIndex(const juce::MidiMessage &m) const {
         if (!learnable() || !(m.isNoteOn() || m.isNoteOff()))
             return -1;
+        if (studioRig) {
+            const auto hit = layout->address(false, m.getChannel(), m.getNoteNumber());
+            return hit >= 0 && (hit / 24) % 2 == 0 ? hit % 24 : -1;
+        }
         auto it = std::find(notes.begin(), notes.end(), (m.getChannel() - 1) * 128 + m.getNoteNumber());
         return it == notes.end() ? -1 : int(it - notes.begin());
     }
     SurfaceAction action(const juce::MidiMessage &m) const {
+        if (studioRig) {
+            if (!learnable() || !(m.isNoteOnOrOff() || m.isController())) return {};
+            const bool knob = m.isController();
+            const auto hit = layout->address(knob, m.getChannel(), knob ? m.getControllerNumber() : m.getNoteNumber());
+            if (hit < 0) return {};
+            const auto index = hit % 24 - (knob ? 16 : 0);
+            return {knob ? SurfaceAction::knob : m.isNoteOn() ? SurfaceAction::pad : SurfaceAction::none,
+                    index, knob ? m.getControllerValue() : pitches[index], hit / 48, (hit / 24) % 2};
+        }
         if (model == SurfaceModel::mixer) {
             if (m.isPitchWheel() && m.getChannel() <= 8)
                 return {SurfaceAction::fader, m.getChannel() - 1, m.getPitchWheelValue()};

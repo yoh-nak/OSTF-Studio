@@ -12,6 +12,6 @@ struct Result {
 };
 #if JUCE_WINDOWS && defined(_MSC_VER)
 Result discover();
-Result transfer(const Device&, int slot, const std::optional<Smk25Preset>& toWrite);
+Result transfer(const Device&, int slot, const std::optional<Smk25Preset>& toWrite, bool studioSetup = false);
 #endif
 }

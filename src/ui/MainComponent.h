@@ -63,6 +63,9 @@ private:
     void openController(bool show);
     void connectController(juce::MidiDeviceInfo);
     void refreshController();
+    juce::AudioPluginInstance* surfacePlugin() const;
+    size_t rigMixerBank(int page) const;
+    int rigTarget_ = 0;
     void applySurfaceAction(ostfstudio::SurfaceAction);
     void saveControllerBindings();
     SmkPresetEditor* presetEditor_ = nullptr;
@@ -91,7 +94,10 @@ private:
     void applyGroupHeight();
     void refreshGroupHeight();
     ostfstudio::TimelineExtent horizontalRange() const;
-    void startTransport(bool recording, bool replaceConfirmed = false);
+    void startTransport(bool recording, bool replaceConfirmed = false, bool monitorOnly = false);
+    void restartInputMonitor();
+    bool monitorActive_ = false, monitorPending_ = false;
+    std::map<juce::String, juce::MidiDeviceInfo> midiOutputs_;
     juce::Range<juce::int64> editorCycle_;
     juce::TextButton editorRecord_{TRANS("Record")}, cycleButton_{TRANS("Loop range")};
     std::map<juce::String, int> captureChannels_;

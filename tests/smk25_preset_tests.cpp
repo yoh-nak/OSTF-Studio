@@ -1,5 +1,6 @@
 #include "core/Smk25BleProtocol.h"
 #include <fstream>
+#include <set>
 #include <iostream>
 #include <vector>
 
@@ -82,11 +83,32 @@ int main(int argc, char** argv) {
         return 0;
     }
     const auto starter = Preset::studioPreset();
+    std::set<int> notes, knobs;
+    auto custom = starter.bytes();
+    custom[12] = 42; custom.back() = 82;
+    auto base = Preset::read(custom).value();
+    for (int page = 0; page < 8; ++page) {
+        const auto rig = base.forStudioSlot(page);
+        if (rig.bytes()[12] != 42 || rig.bytes().back() != 82 || rig.forStudioSlot(page).bytes() != rig.bytes()) return 19;
+        for (int bank = 0; bank < 2; ++bank) {
+            const auto map = rig.studioBindings(bank).value();
+            for (int key : map.notes) if (!notes.insert(key).second) return 20;
+            for (int key : map.cc) if (!knobs.insert(key).second) return 21;
+        }
+        if (rig.control(1, 9).rgb == rig.control(1, 10).rgb) return 22;
+    }
     for (int b = 0; b < 2; ++b) {
         const auto bank = starter.studioBindings(b);
         if (!bank || bank->notes[15] != 9 * 128 + 51 + b * 16 || bank->cc[7] != 23 + b * 8
             || !Preset::read(starter.bytes())) return 17;
     }
+    ostfstudio::Smk25Rig rig;
+    auto customPad = rig.presets[7].control(1, 15);
+    customPad.channel = 2; customPad.number = 120;
+    if (!rig.presets[7].edit(1,15,customPad) || !rig.rebuild() || rig.address(false,2,120) != 15 * 24 + 15 ||
+        rig.address(false,16,67) >= 0 || rig.address(true,16,31) != 15 * 24 + 23) return 23;
+    customPad.channel = 9; customPad.number = 36;
+    if (!rig.presets[7].edit(1,15,customPad) || rig.rebuild()) return 24;
     Preset::Image image;
     image.fill(0xee); // Opaque bytes must survive edits.
     auto knob = 30 + 8 * 6;
