@@ -2949,18 +2949,11 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
 
     // Use the exact same tick-to-pixel mapping as the notes, including when the piano roll is zoomed.
     const auto drawCursor = [&](int bottom) {
-        if (cursorTick_ < 0) return;
-        auto x = tickX(cursorTick_);
-        if (cursorTick_ == project_->playbackEndTick() && visible.end == project_->bars.endBar)
-            x = static_cast<float>(area.getRight() - 1);
-        if (x < area.getX() || x >= area.getRight()) return;
-        // Centre the stroke on the same raster column as the ruler's playhead.
-        x = static_cast<float>(std::min(juce::roundToInt(x), area.getRight() - 1)) + .5f;
+        const int column = pianoRuler_.playheadColumn();
+        if (column < 0) return;
+        const int x = pianoRuler_.getX() + column;
         g.setColour(juce::Colour(hardwareAmber));
-        g.drawLine(x, static_cast<float>(ruler.getY()), x, static_cast<float>(bottom), 2);
-        juce::Path head;
-        head.addTriangle(x - 4, float(ruler.getY()), x + 4, float(ruler.getY()), x, float(ruler.getY() + 6));
-        g.fillPath(head);
+        g.fillRect(x, ruler.getBottom(), 2, std::max(0, bottom - ruler.getBottom()));
     };
     if (lane.getHeight() < 20) { drawCursor(area.getBottom()); return; }
     g.setColour(juce::Colour(0xff192735));

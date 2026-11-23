@@ -10,6 +10,16 @@ public:
     std::function<double()> playheadBar;
     std::function<void(double)> locate, pan;
 
+    // Return a component-local pixel so rulers and their grids use the same rounding origin.
+    int playheadColumn() const {
+        if (!visibleBars || !playheadBar || getWidth() <= headerWidth) return -1;
+        const auto bars = visibleBars();
+        const auto cursor = playheadBar();
+        if (bars.isEmpty() || cursor < bars.getStart() || cursor > bars.getEnd()) return -1;
+        return std::min(getWidth() - 1, headerWidth + juce::roundToInt(
+            (cursor - bars.getStart()) * (getWidth() - headerWidth) / bars.getLength()));
+    }
+
     void paint(juce::Graphics& g) override {
         g.fillAll(juce::Colour(0xff2e363e));
         g.setFont(juce::FontOptions(11.0f));
@@ -31,9 +41,7 @@ public:
             g.drawText(juce::String(bar), row.withLeft(x).withWidth(std::min(46, row.getRight() - x)).withTrimmedLeft(3),
                        juce::Justification::centredLeft);
         }
-        const auto cursor = playheadBar();
-        if (cursor >= bars.getStart() && cursor <= bars.getEnd()) {
-            const int x = std::min(xAt(cursor), row.getRight() - 1);
+        if (const int x = playheadColumn(); x >= 0) {
             juce::Path marker;
             marker.addTriangle(float(x - 4), 0, float(x + 4), 0, float(x), 6);
             g.setColour(juce::Colour(0xffefb45c));
