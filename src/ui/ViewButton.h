@@ -6,11 +6,6 @@ class ViewButton final : public juce::Button {
 public:
     enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones, samples, scissors, join, chordFit, scaleFit };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
-    std::function<void(juce::String)> onHint;
-    void mouseEnter(const juce::MouseEvent& e) override { Button::mouseEnter(e); if (onHint) onHint(getTooltip()); }
-    void mouseExit(const juce::MouseEvent& e) override { Button::mouseExit(e); if (onHint) onHint({}); }
-    void focusGained(FocusChangeType t) override { Button::focusGained(t); if (onHint) onHint(getTooltip()); }
-    void focusLost(FocusChangeType t) override { Button::focusLost(t); if (onHint) onHint({}); }
 
     void paintButton(juce::Graphics& g, bool hover, bool down) override {
         const auto on = getToggleState();

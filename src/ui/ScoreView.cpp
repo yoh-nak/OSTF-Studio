@@ -83,6 +83,7 @@ class ScoreView::Panel final : public juce::Component {
         };
         counter.setJustificationType(juce::Justification::centred);
     }
+    bool showsLeadSheet() const { return lead; }
     void setSong(const OstfpPreview& project, std::optional<std::size_t> preferred, std::optional<bool> switchMode) {
         auto selected =
             index() >= 0 && index() < static_cast<int>(score.parts.size()) ? score.parts[index()].id : juce::String{};
@@ -329,6 +330,7 @@ void ScoreView::showScore(const OstfpPreview& p, bool lead, std::optional<std::s
     panel_->setSong(p, track, lead);
 }
 void ScoreView::refresh(const OstfpPreview& p) { panel_->setSong(p, {}, {}); }
+bool ScoreView::showsLeadSheet() const { return panel_->showsLeadSheet(); }
 void ScoreView::playbackPosition(juce::int64 t) { panel_->playbackPosition(t); }
 
 namespace {

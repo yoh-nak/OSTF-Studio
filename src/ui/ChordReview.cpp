@@ -287,60 +287,49 @@ juce::Rectangle<int> candidateCell(juce::Rectangle<int> area, int index, int cou
 bool fitsChoices(juce::Rectangle<int> box, int count) {
     return count > 0 && candidateArea(box).getWidth() >= count * 46 && box.getHeight() >= 36;
 }
+juce::Rectangle<int> actionBounds(juce::Rectangle<int> box) {
+    auto header = box.removeFromTop(box.getHeight() / 2).reduced(std::min(2, box.getWidth() / 8), 3);
+    const int width = header.getWidth() < 75 ? 22 : std::min(92, header.getWidth() / 2);
+    return header.removeFromRight(std::min(width, header.getWidth()));
+}
 } // namespace
 
 ChordReviewLane::ChordReviewLane() {
     setComponentID("chord-review");
     setTitle(TRANS("Chord review"));
-    addAndMakeVisible(intervals_);
-    intervals_.setTitle(TRANS("Choose chord interval"));
-    intervals_.onClick = [this] { showMenu(-1); };
-
-    addAndMakeVisible(decision_);
-    decision_.setComponentID("chord-decision");
-    decision_.setButtonText(TRANS("Decide chords") + "  " + juce::String::charToString(0x25be));
-    decision_.setTooltip(TRANS("Apply a chord, undo note edits, or keep the existing chord"));
-    decision_.onClick = [this] {
-        if (!rows_.empty()) decisionMenu().showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&decision_));
-    };
-    updateActions();
-}
-
-juce::PopupMenu ChordReviewLane::decisionMenu() {
-    juce::PopupMenu menu;
-    if (rows_.empty()) return menu;
     using Action = ostfstudio::ChordReviewAction;
-    auto addChoices = [&](juce::PopupMenu& target, bool all) {
-        auto action = [&](Action choice) {
-            return [safe = juce::Component::SafePointer<ChordReviewLane>(this), revision = revision_, selected = index_, all, choice] {
-                if (safe && safe->isEnabled() && safe->revision_ == revision && safe->index_ == selected && safe->decide)
-                    safe->decide(all, choice);
-            };
-        };
-        target.addItem(TRANS("Confirm"), action(Action::apply));
-        target.addItem(TRANS("Cancel chord"), action(Action::cancel));
-        target.addItem(TRANS("Keep"), action(Action::keep));
+    auto batch = [this](juce::TextButton& button, const char* id, juce::String label, juce::String tip, Action action) {
+        addAndMakeVisible(button);
+        button.setComponentID(id);
+        button.setButtonText(label);
+        button.setTooltip(tip);
+        button.setEnabled(false);
+        button.onClick = [this, action] { if (decide && !rows_.empty()) decide(true, action); };
     };
-    menu.addSectionHeader(names_[index_]);
-    addChoices(menu, false);
-    if (rows_.size() > 1) {
-        juce::PopupMenu all;
-        addChoices(all, true);
-        menu.addSeparator();
-        menu.addSubMenu(TRANS("All pending intervals") + " (" + juce::String(int(rows_.size())) + ")", all);
-    }
-    return menu;
+    batch(confirmAll_, "chord-confirm-all", TRANS("Confirm all"), TRANS("Apply all selected chords"), Action::apply);
+    batch(keepAll_, "chord-keep-all", TRANS("Keep all"), TRANS("Keep all current chords"), Action::keep);
+    batch(cancelAll_, "chord-cancel-all", TRANS("Cancel all"), TRANS("Undo note edits for all pending intervals"), Action::cancel);
+    confirmAll_.setColour(juce::TextButton::buttonColourId, confirmGold);
+    confirmAll_.setColour(juce::TextButton::textColourOffId, reviewBase);
 }
 
-void ChordReviewLane::updateActions() {
-    const bool pending = !rows_.empty();
-    decision_.setEnabled(pending);
-    decision_.setColour(juce::TextButton::buttonColourId, pending ? confirmGold : reviewSurface);
-    decision_.setColour(juce::TextButton::textColourOffId, pending ? reviewBase : reviewText);
-    intervals_.setVisible(pending);
-    if (pending)
-        intervals_.setButtonText(names_[index_] + "  " + juce::String::charToString(0x25be));
-    repaint();
+juce::PopupMenu ChordReviewLane::decisionMenu(int index) {
+    juce::PopupMenu menu;
+    if (!juce::isPositiveAndBelow(index, int(rows_.size()))) return menu;
+    using Action = ostfstudio::ChordReviewAction;
+    auto action = [&](Action choice) {
+        return [safe = juce::Component::SafePointer<ChordReviewLane>(this), revision = revision_, index, choice] {
+            if (safe && safe->isVisible() && safe->isEnabled() && safe->revision_ == revision && safe->decide) {
+                safe->index_ = index;
+                safe->decide(false, choice);
+            }
+        };
+    };
+    menu.addSectionHeader(names_[index]);
+    menu.addItem(TRANS("Confirm"), action(Action::apply));
+    menu.addItem(TRANS("Keep"), action(Action::keep));
+    menu.addItem(TRANS("Cancel chord"), action(Action::cancel));
+    return menu;
 }
 
 void ChordReviewLane::display(const ostfstudio::ChordDecisions& rows, const ostfstudio::OstfpPreview& song) {
@@ -364,10 +353,15 @@ void ChordReviewLane::display(const ostfstudio::ChordDecisions& rows, const ostf
         for (const auto& r : lane.regions) {
             if (!r.exactBars) continue;
             auto tick = [&](double bar) { return std::llround((bar - 1.0) * song.ticksPerBar); };
-            scoreChords_.push_back({{tick(r.exactBars->start), tick(r.exactBars->end)}, juce::String::fromUTF8(r.label)});
+            const ostfstudio::ReviewRange range(tick(r.exactBars->start), tick(r.exactBars->end));
+            const auto next = std::upper_bound(rows.begin(), rows.end(), range.getStart(),
+                [](auto start, const auto& row) { return start < row.range.getEnd(); });
+            scoreChords_.push_back({range, juce::String::fromUTF8(r.label), next == rows.end() || !next->range.intersects(range)});
         }
     }
-    updateActions();
+    for (auto* button : {&confirmAll_, &keepAll_, &cancelAll_}) button->setEnabled(!rows_.empty());
+    resized();
+    repaint();
 }
 
 juce::String ChordReviewLane::option(const ostfstudio::ChordDecision& row, int choice) const {
@@ -377,26 +371,17 @@ juce::String ChordReviewLane::option(const ostfstudio::ChordDecision& row, int c
 }
 
 void ChordReviewLane::showMenu(int index) {
-    if (rows_.empty()) return;
-    constexpr int stride = 5;
-    auto options = [&](int i) {
-        juce::PopupMenu sub;
-        const auto& row = rows_[size_t(i)];
-        const auto base = i * stride + 1;
-        for (int c = 0; c <= row.candidates.size(); ++c)
-            sub.addItem(base + c, option(row, c), true, row.choice == c);
-        if (row.sourceChord.isObject()) sub.addItem(base + 4, option(row, 4), true, row.choice == 4);
-        return sub;
-    };
+    const auto& row = rows_[size_t(index)];
     juce::PopupMenu menu;
-    if (index >= 0) menu = options(index);
-    else for (int i = 0; i < int(rows_.size()); ++i) menu.addSubMenu(names_[i], options(i));
+    menu.addSectionHeader(names_[index]);
+    for (int c = 0; c <= row.candidates.size(); ++c)
+        menu.addItem(c + 1, option(row, c), true, row.choice == c);
+    if (row.sourceChord.isObject()) menu.addItem(5, option(row, 4), true, row.choice == 4);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(),
-        [safe = juce::Component::SafePointer<ChordReviewLane>(this), revision = revision_](int id) {
-            if (!safe || id <= 0 || safe->revision_ != revision) return;
-            safe->index_ = (id - 1) / stride;
-            const auto action = (id - 1) % stride;
-            if (safe->choose) safe->choose(action);
+        [safe = juce::Component::SafePointer<ChordReviewLane>(this), revision = revision_, index](int id) {
+            if (!safe || !safe->isVisible() || !safe->isEnabled() || id <= 0 || safe->revision_ != revision) return;
+            safe->index_ = index;
+            if (safe->choose) safe->choose(id - 1);
         });
 }
 
@@ -428,7 +413,9 @@ void ChordReviewLane::paint(juce::Graphics& g) {
         auto box = boundsFor(chord.range);
         if (box.isEmpty()) continue;
         g.setColour(reviewSurface); g.fillRect(box.withTrimmedRight(1));
-        g.setColour(reviewMuted); g.drawText(chord.label, heading(box), juce::Justification::centredLeft);
+        auto label = heading(box);
+        if (chord.idle) label = label.withRight(actionBounds(box).getX());
+        g.setColour(reviewMuted); g.drawText(chord.label, label, juce::Justification::centredLeft);
         g.drawText(noCandidate, candidateArea(box), juce::Justification::centredLeft);
     }
     if (scoreChords_.empty() && timeline) {
@@ -449,7 +436,7 @@ void ChordReviewLane::paint(juce::Graphics& g) {
         const auto label = row.choice == 0 ? option(row, 0)
             : row.current + "  " + juce::String::charToString(0x2192) + "  " + option(row, row.choice);
         g.setFont(juce::FontOptions(13.f, juce::Font::bold));
-        g.drawText(label, heading(box), juce::Justification::centredLeft);
+        g.drawText(label, heading(box).withRight(actionBounds(box).getX()), juce::Justification::centredLeft);
         const auto area = candidateArea(box);
         const int count = row.candidates.size();
         if (!fitsChoices(box, count)) {
@@ -472,7 +459,7 @@ void ChordReviewLane::mouseDown(const juce::MouseEvent& e) {
         const auto box = intervalBounds(i);
         if (!box.contains(e.getPosition())) continue;
         index_ = i;
-        updateActions();
+        repaint();
         const int count = rows_[size_t(i)].candidates.size();
         if (!e.mods.isPopupMenu() && fitsChoices(box, count)) {
             for (int c = 0; c < count; ++c) {
@@ -491,14 +478,46 @@ void ChordReviewLane::resized() {
     const int gutter = timeline ? timeline().first.getX() : 320;
     auto controls = getLocalBounds().withWidth(std::clamp(gutter, 0, getWidth())).reduced(7, 3);
     auto header = controls.removeFromTop(controls.getHeight() / 2);
-    titleBounds_ = header.removeFromLeft(std::min(105, header.getWidth() / 2));
-    intervals_.setBounds(header.reduced(1));
-    decision_.setBounds(controls.removeFromLeft(std::min(controls.getWidth(), 155)).reduced(1));
+    titleBounds_ = header;
+    const int width = std::min(114, controls.getWidth() / 3);
+    for (auto* button : {&confirmAll_, &keepAll_, &cancelAll_})
+        button->setBounds(controls.removeFromLeft(width).reduced(1, 0));
+    int visible = 0;
+    auto place = [&](juce::Rectangle<int> box, int index, const juce::String& name) {
+        if (box.isEmpty()) return;
+        const auto bounds = actionBounds(box);
+        if (bounds.isEmpty()) return;
+        if (visible == decisions_.size())
+            addChildComponent(decisions_.add(new juce::TextButton()));
+        auto* button = decisions_[visible++];
+        const bool pending = index >= 0;
+        button->setBounds(bounds);
+        button->setVisible(true);
+        button->setEnabled(pending);
+        button->setComponentID(pending ? "chord-decision-" + juce::String(index) : "chord-idle-" + juce::String(visible));
+        button->setTitle(name + "  " + TRANS("Decide chord"));
+        button->setColour(juce::TextButton::buttonColourId, pending ? confirmGold : reviewSurface);
+        button->setColour(juce::TextButton::textColourOffId, pending ? reviewBase : reviewMuted);
+        button->setTooltip(TRANS("Apply a chord, undo note edits, or keep the existing chord"));
+        const auto caret = juce::String::charToString(0x25be);
+        button->setButtonText(bounds.getWidth() < 55 ? caret : TRANS("Decide chord") + " " + caret);
+        button->onClick = [this, index, button] {
+            if (index < 0) return;
+            index_ = index;
+            repaint();
+            decisionMenu(index).showMenuAsync(juce::PopupMenu::Options().withTargetComponent(button));
+        };
+    };
+    for (int i = 0; i < int(rows_.size()); ++i) place(intervalBounds(i), i, names_[i]);
+    for (const auto& chord : scoreChords_)
+        if (chord.idle) place(boundsFor(chord.range), -1, chord.label);
+    decisions_.removeLast(decisions_.size() - visible);
 }
 
 void MainComponent::updateChordReviewLane() {
-    const bool visible = workspaceMode_ == WorkspaceMode::arrangement && project_ &&
-        (!pendingReview_.empty() || (pianoGrid_.isVisible() && pianoGrid_.editable && pitchedSelection()));
+    const bool materialReview = !pendingReview_.empty() && pendingReview_.front().fromMaterial;
+    const bool visible = workspaceMode_ == WorkspaceMode::arrangement && project_ && !mixerSelected_ &&
+        (materialReview || (pianoGrid_.isVisible() && pianoGrid_.editable && pitchedSelection()));
     chordReview_.setVisible(visible);
     chordReview_.setEnabled(!recordTrack_);
     if (visible) chordReview_.display(pendingReview_, *project_);

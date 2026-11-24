@@ -55,12 +55,12 @@ struct PianoLayout {
     juce::Rectangle<int> heading, inspector, lane, divider, keys, ruler, chords, review, grid;
     PianoLayout(juce::Rectangle<int> area, int headerWidth, bool scrollbar, bool contextStrip,
                 double parameterFraction, int keyWidth = 52, int reviewHeight = 0) {
-        const bool compact = area.getHeight() < 130;
+        const bool compact = area.getHeight() - reviewHeight < 130;
         area.reduce(13, compact ? 2 : 8);
         heading = area.removeFromTop(compact ? 0 : 24);
         if (scrollbar) area.removeFromRight(14);
         inspector = area.removeFromLeft(headerWidth - keyWidth);
-        const int height = area.getHeight();
+        const int height = std::max(0, area.getHeight() - reviewHeight);
         const auto size = parameterFraction > 0 ? juce::roundToInt(height * std::clamp(parameterFraction, 0.08, 0.65))
                                                 : std::min(84, height / 3);
         lane = area.removeFromBottom(std::clamp(size, std::min(20, height / 3), std::max(height / 3, height - 70)))
@@ -435,19 +435,11 @@ MainComponent::MainComponent() {
     addAndMakeVisible(deck_);
     basics_.commit = [this](auto field, auto value, int choice) { editSongField(field, value, choice); };
     basics_.advanced = [this] { editSongInformation(); };
-    addChildComponent(toolbarHint_);
-    toolbarHint_.setInterceptsMouseClicks(false, false);
-    toolbarHint_.setFont(juce::FontOptions(14.f, juce::Font::bold));
-    toolbarHint_.setColour(juce::Label::textColourId, juce::Colour(0xff94e8dd));
     const auto addView = [this](ViewButton& button, const char* label, int command) {
         const auto name = juce::translate(label);
         button.setName(name);
         button.setTitle(name);
         button.setTooltip(name);
-        button.onHint = [this](const juce::String& hint) {
-            toolbarHint_.setText(hint, juce::dontSendNotification);
-            toolbarHint_.setVisible(hint.isNotEmpty());
-        };
         button.setToggleable(command == showArrangement || command == showLeadSheet || command == showPartScore
                              || command == showPiano || command == showMixer || command == showPlugins || command == showOutputs);
         addAndMakeVisible(button);
@@ -1509,6 +1501,7 @@ int MainComponent::getArrangementHeight(int workspaceHeight) const {
 
 void MainComponent::scrollBarMoved(juce::ScrollBar* bar, double) {
     clipLane_.repaint();
+    if (bar == &arrangementScroll_ && chordReview_.isVisible()) chordReview_.resized();
     chordReview_.repaint();
     if (bar == &verticalScroll_) resized();
     if (bar == &arrangementScroll_) tempoEditor_.repaint();
@@ -1566,6 +1559,7 @@ void MainComponent::updateHorizontalRange(bool reset) {
     scroll.setEnabled(visible < length);
     zoom.setEnabled(length > 1);
     zoom.updateText();
+    if (chordReview_.isVisible()) { chordReview_.resized(); chordReview_.repaint(); }
     tempoEditor_.repaint();
 }
 
@@ -2597,7 +2591,11 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, c
             }
         }
     }
-    if (scrolled) { repaint(); return; }
+    if (scrolled) {
+        if (chordReview_.isVisible()) chordReview_.resized();
+        repaint();
+        return;
+    }
     auto repaintCursor = [&](ArrangementRuler& ruler, int previous, int bottom) {
         if (!ruler.isVisible()) return;
         for (int col : {previous, ruler.playheadColumn()}) {
@@ -5845,7 +5843,6 @@ void MainComponent::undoPianoEdit(bool redo) {
 }
 
 void MainComponent::setWorkspaceMode(WorkspaceMode mode) {
-    if (mode != WorkspaceMode::arrangement && chordReviewBlocksSwitch()) return;
     if (mode != WorkspaceMode::arrangement && !project_) return;
     if (workspaceMode_ == mode) return;
     workspaceMode_ = mode;
@@ -6007,7 +6004,7 @@ void MainComponent::refreshEditor() {
     if (scoreView_) {
         if (reading) {
             const bool lead = workspaceMode_ == WorkspaceMode::leadSheet;
-            if (!scoreView_->isVisible() || lead != leadButton_.getToggleState())
+            if (!scoreView_->isVisible() || lead != scoreView_->showsLeadSheet())
                 scoreView_->showScore(*project_, lead, selectedTrack_);
             else
                 scoreView_->refresh(*project_);
@@ -6187,7 +6184,7 @@ void MainComponent::resized() {
     place(songInfoButton_); place(musicButton_);
     divider();
     place(splitTool_); place(joinTool_);
-    if (getWidth() < 964) { toolbarHint_.setBounds(row); row = viewBar.removeFromTop(32); }
+    if (getWidth() < 964) row = viewBar.removeFromTop(32);
     else divider();
     for (auto* button : {&melodyAdd_, &chorusAdd_, &pitchedAdd_, &drumsAdd_, &audioAdd_}) place(*button);
     divider();
@@ -6203,7 +6200,6 @@ void MainComponent::resized() {
         modelPicker_.setBounds(aiRow.removeFromRight(std::clamp(aiRow.getWidth() - 160, 112, 204)).reduced(2, 3));
     }
     aiButton_.setBounds(aiRow.removeFromRight(std::min(180, aiRow.getWidth())).reduced(2, 2));
-    if (getWidth() >= 964) toolbarHint_.setBounds(barHeight == 32 ? aiRow : row);
 
     deck_.setBounds(18, menuHeight + barHeight + 8, std::min(1590, getWidth() - 36),
                     TransportPanel::panelHeight(getWidth()));

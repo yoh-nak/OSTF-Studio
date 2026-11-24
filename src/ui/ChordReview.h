@@ -50,7 +50,7 @@ class ChordReviewLane : public juce::Component {
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void resized() override;
-    juce::PopupMenu decisionMenu();
+    juce::PopupMenu decisionMenu(int index);
     int preferredHeight(int) const { return 60; }
     std::function<std::pair<juce::Rectangle<int>,juce::Range<double>>()> timeline;
     std::function<void(int)> choose;
@@ -61,12 +61,12 @@ class ChordReviewLane : public juce::Component {
     unsigned revision_ = 0;
     ostfstudio::ChordDecisions rows_;
     juce::StringArray names_;
-    struct ScoreChord { ostfstudio::ReviewRange range; juce::String label; };
+    struct ScoreChord { ostfstudio::ReviewRange range; juce::String label; bool idle; };
     std::vector<ScoreChord> scoreChords_;
-    juce::TextButton intervals_, decision_;
+    juce::TextButton confirmAll_, keepAll_, cancelAll_;
+    juce::OwnedArray<juce::TextButton> decisions_;
     juce::Rectangle<int> titleBounds_;
     juce::Rectangle<int> boundsFor(ostfstudio::ReviewRange) const;
-    void updateActions();
     void showMenu(int index);
     juce::String option(const ostfstudio::ChordDecision&,int) const;
 };

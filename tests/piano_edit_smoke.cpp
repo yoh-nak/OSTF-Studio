@@ -250,7 +250,11 @@ int checkPianoEdits(const juce::File& fixture) {
     main.setVisible(true); main.setSize(1280, 900);
     if (!main.openDocument(fixture)) return 20;
     auto* grid = dynamic_cast<PianoNoteGrid*>(main.findChildWithID("piano-note-grid"));
-    if (!grid || !grid->editable || !grid->isVisible() || grid->getWidth() < 200 || grid->getHeight() < 20) return 21;
+    if (!grid || !grid->editable || !grid->isVisible() || grid->getWidth() < 200 || grid->getHeight() < 20) {
+        std::fprintf(stderr, "Initial piano roll: editable=%d, visible=%d, size=%d x %d\n",
+                     grid && grid->editable, grid && grid->isVisible(), grid ? grid->getWidth() : 0, grid ? grid->getHeight() : 0);
+        return 21;
+    }
     for (auto* child : main.getChildren()) if (auto* slider = dynamic_cast<juce::Slider*>(child))
         if (slider->getTitle() == TRANS("Timeline horizontal zoom")) slider->setValue(1, juce::sendNotificationSync);
     const auto initial = grid->notes.size();

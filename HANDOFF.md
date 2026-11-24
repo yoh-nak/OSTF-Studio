@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Per-chord decisions and reading views
+
+Branch `feature/per-chord-actions-reading-views`. Each pending chord has its own three-action menu anchored to its interval. The left gutter contains individual batch buttons for Confirm all, Keep all and Cancel all. The lead sheet, score and mixer can be opened while edits await review. Returning to the piano roll restores the same pending decisions. Toolbar icons use the standard hover tooltip.
+
+Windows x64 Release passed the track-view, notation, piano-edit, theory-guide, open-project and open-score tests in one run. Both JUCE-free core tests passed. The piano-edit test failed on an earlier run and passed on its own and on the final suite run. The track-view regression exercises a decision for a second chord, all three batch controls, and switching views with unresolved notes. macOS and manual GUI verification are outstanding.
+
 ## Shared instrument windows and arrangement handles
 
 Branch `feature/shared-part-monitor-track-drag`. Each shared instrument button opens the owner's native editor. Its adjacent arrow opens the routing menu. Selecting the current plug-in again on a routed part reuses the owner. Replacing the instrument from a member requires confirmation and preserves the member routes. In the arrangement, a dotted handle supports dragging a row above or below another row in its group. The lead is first among global note rows, and only backing vocals can reorder within that group. Source track IDs and MIDI destinations stay attached to the original tracks.

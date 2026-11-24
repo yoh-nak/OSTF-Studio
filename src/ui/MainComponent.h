@@ -346,7 +346,6 @@ private:
     std::vector<juce::Rectangle<int>> toolbarDividers_;
     ViewButton chordFitButton_{ViewButton::Icon::chordFit}, scaleFitButton_{ViewButton::Icon::scaleFit};
     ViewButton theoryButton_ {ViewButton::Icon::theory}, musicButton_ {ViewButton::Icon::songMusic};
-    juce::Label toolbarHint_;
     juce::TooltipWindow tooltips_ {nullptr, 350};
     bool editorVisible_ = true, mixerSelected_ = false;
     TransportPanel deck_;

@@ -469,6 +469,22 @@ int checkSamplePlacement(const juce::File& file) {
         lane.setBounds(0,0,184,44);lane.display(decisions,*main.project_);
         if(lane.intervalBounds(0).getX()!=40 || lane.intervalBounds(0).getWidth()!=48 ||
             lane.intervalBounds(1).getX()!=88 || lane.intervalBounds(1).getWidth()!=96) return 219;
+        lane.setVisible(true);
+        auto* second = lane.findChildWithID("chord-decision-1");
+        if (!second || !second->isVisible() || !lane.intervalBounds(1).contains(second->getBounds())
+            || lane.getComponentAt(second->getBounds().getCentre()) != second) return 232;
+        int decisionsMade = 0;
+        lane.decide = [&](bool all, ChordReviewAction action) {
+            if (!all && action == ChordReviewAction::keep && lane.selected() == 1) ++decisionsMade;
+        };
+        auto menu = lane.decisionMenu(1);
+        int actions = 0;
+        for (juce::PopupMenu::MenuItemIterator item(menu); item.next();) {
+            if (item.getItem().subMenu) return 233;
+            if (item.getItem().action) ++actions;
+            if (item.getItem().text == TRANS("Keep")) item.getItem().action();
+        }
+        if (actions != 3 || decisionsMade != 1) return 233;
         remove.clear(); insert.clear();
         ChordDecision middle{{120,360},"C",{"Dm"},{},1};
         if(chordDecisionEdits(score,{middle},remove,insert).failed() || remove.size()!=1 || insert.size()!=3
@@ -503,20 +519,19 @@ int checkSamplePlacement(const juce::File& file) {
             || main.pendingReview_.front().sourceChord["label"] != "Dm") return 201;
         main.selectTrack(0);
         if (main.selectedTrack_ != tracks) return 202;
-        auto* decision = dynamic_cast<juce::TextButton*>(main.chordReview_.findChildWithID("chord-decision"));
+        auto button = [&](const char* id) {
+            return dynamic_cast<juce::TextButton*>(main.chordReview_.findChildWithID(id));
+        };
+        auto* decision = button("chord-confirm-all");
         auto choose = [&](const char* label, bool all = false) {
-            auto menu = main.chordReview_.decisionMenu();
-            if (all && main.pendingReview_.size() > 1) {
-                for (juce::PopupMenu::MenuItemIterator it(menu); it.next();)
-                    if (it.getItem().subMenu) {
-                        auto sub = *it.getItem().subMenu;
-                        for (juce::PopupMenu::MenuItemIterator child(sub); child.next();)
-                            if (child.getItem().text == juce::translate(label) && child.getItem().action) {
-                                child.getItem().action(); return true;
-                            }
-                    }
-                return false;
+            if (all) {
+                auto* batch = button(juce::String(label) == "Confirm" ? "chord-confirm-all"
+                                   : juce::String(label) == "Keep" ? "chord-keep-all" : "chord-cancel-all");
+                if (!batch || !batch->isVisible() || !batch->isEnabled()) return false;
+                batch->onClick();
+                return true;
             }
+            auto menu = main.chordReview_.decisionMenu(main.chordReview_.selected());
             for (juce::PopupMenu::MenuItemIterator it(menu); it.next();)
                 if (it.getItem().text == juce::translate(label) && it.getItem().action) {
                     it.getItem().action(); return true;
@@ -525,6 +540,20 @@ int checkSamplePlacement(const juce::File& file) {
         };
         if (!decision || !decision->isEnabled()) return 223;
         const auto imported = main.project_->sourceScore;
+        const auto pendingCount = main.pendingReview_.size();
+        main.leadButton_.onClick();
+        if (!main.scoreView_ || !main.scoreView_->isVisible() || !main.scoreView_->showsLeadSheet()
+            || main.scoreView_->getBounds().isEmpty() || main.chordReview_.isVisible()) return 234;
+        main.scoreButton_.onClick();
+        if (!main.scoreView_->isVisible() || main.scoreView_->showsLeadSheet()) return 235;
+        main.mixerButton_.onClick();
+        if (!main.mixer_.isVisible() || main.scoreView_->isVisible() || main.chordReview_.isVisible()
+            || main.chordReviewHeight(main.getWidth()) != 0) return 236;
+        main.pianoButton_.onClick();
+        if (!main.chordReview_.isVisible() || main.pendingReview_.size() != pendingCount ||
+            main.project_->sourceScore != imported || main.selectedTrack_ != tracks) return 237;
+        for (auto id : {"chord-confirm-all", "chord-keep-all", "chord-cancel-all"})
+            if (!button(id) || button(id)->getRight() > main.chordReview_.timeline().first.getX()) return 238;
         if (!choose("Keep", true)) return 223;
         main.selectTrack(0);
         if (main.selectedTrack_ != 0 || !main.pendingReview_.empty()) return 203;
