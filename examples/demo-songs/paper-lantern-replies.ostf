@@ -18,7 +18,12 @@
       },
       "mode": "minor",
       "label": "A minor"
-    }
+    },
+    "primaryMelodyTrackId": "voice-track",
+    "melodyTrackIds": [
+      "voice-track"
+    ],
+    "primaryLyricDocumentId": "lantern-text"
   },
   "timeline": {
     "sections": [
@@ -1891,7 +1896,7 @@
   "tracks": [
     {
       "id": "voice-track",
-      "name": "Lead Vocal Guide",
+      "name": "Lead Vocal",
       "role": "vocal",
       "trackType": "melodic",
       "clips": [
@@ -21425,7 +21430,7 @@
               "type": "programChange",
               "start": 0,
               "channel": 8,
-              "program": 52
+              "program": 0
             }
           ]
         },
@@ -25733,8 +25738,8 @@
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
+              "pluginId": "ABCDEF019182FAEB4F7374664F736731",
+              "name": "OSTF Formant Singer",
               "vendor": "OSTF Studio"
             }
           },

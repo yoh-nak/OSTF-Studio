@@ -120,6 +120,20 @@ std::optional<RecordedMora> readMora(const juce::File& file, double offset, doub
 std::unique_ptr<VoiceBank> VoiceBank::load(const juce::File& directory, juce::String& error) {
     auto bank = std::make_unique<VoiceBank>();
     bank->folder = directory;
+    auto metadata = directory.getChildFile("character.txt");
+    if (!metadata.existsAsFile()) metadata = directory.getParentDirectory().getChildFile("character.txt");
+    if (metadata.existsAsFile()) for (const auto& line : juce::StringArray::fromLines(readAliases(metadata))) {
+        if (!line.containsChar('=')) continue;
+        const auto key = line.upToFirstOccurrenceOf("=",false,false).trim().toLowerCase();
+        const auto value = line.fromFirstOccurrenceOf("=",false,false).trim();
+        if (key == "name" && value.isNotEmpty()) bank->name = value;
+        if (key == "image" && value.isNotEmpty() && !juce::File::isAbsolutePath(value)) {
+            const auto root = metadata.getParentDirectory();
+            const auto image = root.getChildFile(value);
+            if (image.isAChildOf(root) && image.existsAsFile()) bank->portrait = image;
+        }
+    }
+    if (bank->name.isEmpty()) bank->name = directory.getFileName();
     size_t total = 0;
     bool tooLarge = false;
     auto add = [&](const juce::String& alias, const juce::File& file, double offset, double consonant, double cutoff) {

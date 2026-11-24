@@ -30,6 +30,11 @@ struct NoteEdit {
     PitchedNote note;
 };
 
+struct VocalNote {
+    juce::String text, pronunciation, technique;
+    double intensity = 0.5;
+};
+
 // The original score event retains its ID, articulation and note-scoped data during chord review.
 struct ReviewNoteOrigin {
     juce::String clipId;
@@ -202,6 +207,9 @@ struct OstfpPreview {
     juce::Result checkAudition(int shift, double rate) const;
     std::vector<ArrangementLane> globalLanes, trackLanes;
     std::vector<std::vector<PitchedNote>> pitchedNotes, drumNotes;
+    std::map<juce::String, VocalNote> vocalNotes;
+    juce::StringArray lyricTrackIds;
+    juce::Result editVocalNote(size_t track, const juce::String& noteId, const VocalNote&, juce::MemoryBlock& before);
     struct ProgramChange { juce::int64 tick; int program; std::optional<int> channel; juce::int64 order = 1; size_t ordinal = 0; };
     std::vector<std::vector<ProgramChange>> programChanges;
     std::vector<int> sourceMidiChannels;

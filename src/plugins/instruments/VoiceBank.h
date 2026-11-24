@@ -30,6 +30,8 @@ struct RecordedMora {
 
 struct VoiceBank {
     juce::File folder;
+    juce::String name;
+    juce::File portrait;
     std::map<int, RecordedMora> sounds;
     static std::unique_ptr<VoiceBank> load(const juce::File& directory, juce::String& error);
     const RecordedMora* find(Phone p) const {

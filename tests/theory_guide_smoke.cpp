@@ -324,8 +324,9 @@ int checkTheoryGuide(const juce::File& demo) {
         for (int x = grid->getX(); x < grid->getRight(); ++x)
             if (snapshot.getPixelAt(x,y).getARGB() == 0xff086250) ++chordPixels;
     if (!chordPixels) return 18;
+    const int accompanimentHeight = grid->getHeight();
     set("Scale fit", false);
-    if (grid->getHeight() != both || !find(*model, TRANS("Chord fit")).checked) return 19;
+    if (grid->getHeight() != accompanimentHeight || !find(*model, TRANS("Chord fit")).checked) return 19;
     set("Chord fit", false);
     // The pre-chorus keys clip covers four visible chords. Each must draw its own badges.
     const auto plain = main.createComponentSnapshot(main.getLocalBounds());
@@ -344,7 +345,7 @@ int checkTheoryGuide(const juce::File& demo) {
     }
     if (checked < 3) return 65;
     set("Chord fit", false); set("Scale fit", true);
-    if (grid->getHeight() != both || find(*model, TRANS("Chord fit")).checked) return 20;
+    if (grid->getHeight() != accompanimentHeight || find(*model, TRANS("Chord fit")).checked) return 20;
     set("Show Theory Guide", false);
     const PitchedNote c {0, 10, 60};
     for (int mode = 1; mode <= 4; ++mode) {
@@ -352,7 +353,7 @@ int checkTheoryGuide(const juce::File& demo) {
         const auto hint = grid->theoryHint(0, c);
         if (hint.contains("Cmaj7") != (mode != 1)
             || hint.contains("Ionian") != (mode == 3 || mode == 4)
-            || (mode == 1 ? grid->getHeight() <= normal : grid->getHeight() != both)) return 26;
+            || (mode == 1 ? grid->getHeight() <= accompanimentHeight : grid->getHeight() != accompanimentHeight)) return 26;
     }
     auto* guideButton = dynamic_cast<ViewButton*>(main.findChildWithID("theory-guide"));
     auto* musicButton = dynamic_cast<ViewButton*>(main.findChildWithID("song-settings"));

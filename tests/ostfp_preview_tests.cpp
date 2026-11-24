@@ -99,6 +99,14 @@ static int checkGallery(const juce::File& directory) {
             [](const auto& n) { return n.startTick == 180 && n.endTick == 240 && n.pitch == 62; });
         if (match == midi->pitchedNotes[0].end()) return 84;
         if (midi->restoreNoteScore(before).failed() || midi->trackLanes[0].regions[0].loopTicks != 120) return 85;
+        const auto vocalId = midi->pitchedNotes[0].front().id;
+        ostfstudio::VocalNote lyric{juce::String::fromUTF8("空"), juce::String::fromUTF8("そら"), "scoop", .4};
+        const auto result = midi->editVocalNote(0, vocalId, lyric, before);
+        if (result.failed() || !midi->lyricTrackIds.contains(midi->trackIds[0])
+            || midi->vocalNotes.at(vocalId).pronunciation != lyric.pronunciation) {
+            std::cerr << "First sung note: " << result.getErrorMessage() << '\n';
+            return 92;
+        }
     }
     struct Expectation { const char* file; int bars; int tracks; double bpm; };
     constexpr Expectation cases[] {
@@ -126,6 +134,32 @@ static int checkGallery(const juce::File& directory) {
         if (!matches) {
             std::cerr << expected.file << ": unexpected preview result: " << result.getErrorMessage() << '\n';
             return 1;
+        }
+        if (std::string_view(expected.file) == "paper-lantern-replies.ostfp") {
+            if (project->lyricTrackIds.size()!=2 || project->vocalNotes.size()!=204 || project->primaryMelodyTrack!=0) return 86;
+            for (auto kind : {ostfstudio::TimelineLane::displayLyrics, ostfstudio::TimelineLane::pronunciation}) {
+                const auto lane = std::find_if(project->globalLanes.begin(), project->globalLanes.end(),
+                    [kind](const auto& entry) { return entry.kind == kind; });
+                if (lane == project->globalLanes.end() || lane->regions.size() != 194
+                    || !lane->regions.front().exactBars || lane->regions.front().exactBars->start != 5.125) return 91;
+            }
+            const auto id = project->pitchedNotes[0].front().id;
+            const auto original = project->vocalNotes.at(id);
+            auto changed = original;
+            changed.text = juce::String::fromUTF8("灯");
+            changed.pronunciation = juce::String::fromUTF8("ひ");
+            changed.technique = "vibrato"; changed.intensity = .75;
+            juce::MemoryBlock before;
+            if (project->editVocalNote(0,id,changed,before).failed()) return 87;
+            const auto& current = project->vocalNotes.at(id);
+            if (current.text != changed.text || current.pronunciation != changed.pronunciation
+                || current.technique != changed.technique || current.intensity != .75) return 88;
+            juce::MemoryOutputStream out;
+            if (writeOstfpPreview(*project,*project->savedMix,out).failed()) return 89;
+            juce::MemoryInputStream saved(out.getData(),out.getDataSize(),false);
+            std::unique_ptr<ostfstudio::OstfpPreview> reloaded;
+            if (readOstfpPreview(saved,reloaded).failed() || reloaded->vocalNotes.at(id).pronunciation != changed.pronunciation
+                || project->restoreNoteScore(before).failed() || project->vocalNotes.at(id).text != original.text) return 90;
         }
         if (std::string_view(expected.file) == "copper-mile.ostfp") {
             const auto& env = project->panAutomation.at("lead");
@@ -213,7 +247,9 @@ static int checkGallery(const juce::File& directory) {
                         || plugin.isObject() != (track == owner) || fromScore->savedMix->instruments[track].isObject() != (track == owner)) return 1;
                     if (track != owner) continue;
                 }
-                if (std::string_view(expected.file) == "paper-lantern-replies.ostfp" && project->trackIds[int(track)] == "voice-track") expectedInstrument = "OSTF Formant Singer";
+                if (std::string_view(expected.file) == "paper-lantern-replies.ostfp" &&
+                    (project->trackIds[int(track)] == "voice-track" || project->trackIds[int(track)] == "backing"))
+                    expectedInstrument = "OSTF Formant Singer";
                 if (plugin["format"] != "vst3" || plugin["name"].toString() != expectedInstrument || events.empty()
                     || events.front().channel != project->sourceMidiChannels[track]
                     || project->savedMix->midiRoutes[track].channel != project->sourceMidiChannels[track]) return 1;
@@ -504,7 +540,7 @@ int main(int argc, char** argv) {
         if (project->editTracks(ostfstudio::TrackKind::pitched, {}, withPart, {}, ostfstudio::MixerTrackGroup::pitched, 17).wasOk())
             return 93;
     }
-    if (view.bars.endBar != 17 || view.globalLanes.size() != 6 || view.trackLanes.size() != 3) return 1;
+    if (view.bars.endBar != 17 || view.globalLanes.size() != 8 || view.trackLanes.size() != 3) return 1;
     if (std::string_view(view.globalLanes[0].regions[0].label) != "Intro"
         || view.globalLanes[1].regions.size() != 16
         || std::string_view(view.trackLanes[0].label) != "Lead Guitar"

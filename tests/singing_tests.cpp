@@ -24,7 +24,8 @@ static bool testRecordedVoice() {
     const auto wav = dir.getChildFile("a.wav"), oto = dir.getChildFile("oto.ini");
     struct Cleanup {
         juce::File wav, oto, folder;
-        ~Cleanup() { wav.deleteFile(); oto.deleteFile(); folder.deleteFile(); }
+        ~Cleanup() { wav.deleteFile(); oto.deleteFile(); folder.getChildFile("character.txt").deleteFile();
+            folder.getChildFile("portrait.bmp").deleteFile(); folder.deleteFile(); }
     } cleanup{wav, oto, dir};
     juce::AudioBuffer<float> raw(1, 12000);
     for (int n = 0; n < raw.getNumSamples(); ++n)
@@ -38,7 +39,14 @@ static bool testRecordedVoice() {
     // Shift-JIS 'ka' (82 A9). The alias, offset, consonant and negative cutoff all matter.
     const char line[] = "a.wav=\x82\xa9,20,60,-240,0,0\n";
     if (!oto.replaceWithData(line, sizeof(line) - 1)) return false;
+    const unsigned char bmp[58] = {
+        'B','M',58,0,0,0, 0,0,0,0, 54,0,0,0, 40,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,24,0,
+        0,0,0,0, 4,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 32,96,208,0
+    };
+    if (!dir.getChildFile("character.txt").replaceWithText("name=Test Voice\nimage=portrait.bmp")
+        || !dir.getChildFile("portrait.bmp").replaceWithData(bmp, sizeof bmp)) return false;
     bank = VoiceBank::load(dir, error);
+    if (!bank || bank->name != "Test Voice" || bank->portrait != dir.getChildFile("portrait.bmp")) return false;
     if (!bank || bank->find({0,vowelOnly}) || !bank->find({0,velar}) || bank->find({0,velar})->frames.size() > 5760) return false;
     juce::XmlElement xml("OSTFSinger");
     xml.setAttribute("voiceFolder", dir.getFullPathName());
@@ -46,6 +54,15 @@ static bool testRecordedVoice() {
     juce::AudioProcessor::copyXmlToBinary(xml, state);
     std::unique_ptr<juce::AudioProcessor> singer(createPluginFilter());
     singer->setStateInformation(state.getData(), int(state.getSize()));
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> editor(singer->createEditorAndMakeActive());
+        if (!editor) return false;
+        bool hasPortrait = false;
+        for (auto* child : editor->getChildren())
+            if (auto* portrait = dynamic_cast<juce::ImageComponent*>(child); portrait && portrait->isVisible())
+                hasPortrait = portrait->getImage().getPixelAt(0, 0) == juce::Colour(208,96,32);
+        if (!hasPortrait) return false;
+    }
     singer->prepareToPlay(48000, 256);
     singer->getStateInformation(state);
     auto saved = juce::AudioProcessor::getXmlFromBinary(state.getData(), int(state.getSize()));

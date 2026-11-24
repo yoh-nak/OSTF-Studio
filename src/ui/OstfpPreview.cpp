@@ -316,6 +316,24 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             }
         }
     }
+    std::map<juce::String, juce::var> lyricUnits;
+    const auto lyrics = score["lyrics"];
+    if (lyrics["units"].isArray())
+        for (const auto& unit : array(lyrics["units"])) lyricUnits.emplace(unit["id"].toString(), unit);
+    if (lyrics["alignments"].isArray())
+        for (const auto& alignment : array(lyrics["alignments"])) {
+            for (const auto& note : array(alignment["noteIds"])) {
+                auto& label = out->vocalNotes[note.toString()];
+                for (const auto& id : array(alignment["unitIds"])) {
+                    const auto unit = lyricUnits.find(id.toString());
+                    if (unit == lyricUnits.end()) continue;
+                    const auto text = unit->second["text"].toString();
+                    const auto reading = unit->second["pronunciation"].toString().trim();
+                    label.text += text;
+                    label.pronunciation += reading.isNotEmpty() ? reading : text;
+                }
+            }
+        }
     for (const auto& track : tracks) {
         addLane(out->trackLanes, track["name"].toString(), intervals(track["clips"], "id", true));
         out->trackKinds.push_back(track["trackType"] == "drum" ? TrackKind::drum : TrackKind::pitched);
@@ -390,6 +408,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
                 PitchedNote note {clipStart + local, clipStart + local + length, static_cast<int>(pitch), velocity,
                                   event["enabled"].isVoid() || static_cast<bool>(event["enabled"]), event["id"].toString(),
                                   event["pitchRole"].toString() == "fixedTrigger", clip["id"].toString(), slot};
+                if (pitched && out->vocalNotes.contains(note.id)) out->lyricTrackIds.addIfNotAlreadyThere(track["id"].toString());
                 if (!pitched) allHits.push_back(note);
                 if (pitch >= 0) (pitched ? notes : drums).push_back(note);
             }
@@ -423,6 +442,16 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             }
             const auto vocal = clip["vocalPerformances"];
             if (vocal.isArray()) for (const auto& voice : array(vocal)) {
+                if (voice["techniques"].isArray()) for (const auto& tech : array(voice["techniques"])) {
+                    const auto id = tech["targetNoteId"].toString();
+                    if (id.isEmpty()) continue;
+                    auto& label = out->vocalNotes[id];
+                    const auto kind = tech["kind"].toString();
+                    if (label.technique.isEmpty() || kind == "scoop" || kind == "vibrato") {
+                        label.technique = kind;
+                        label.intensity = double(tech.getProperty("intensity", 0.5));
+                    }
+                }
                 const auto voiceLabel = "Vocal / " + voice["voiceId"].toString() + " / ";
                 for (const auto* field : {"pitchCurves", "expressionCurves"}) {
                     const auto data = voice[field];
@@ -448,6 +477,20 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         for (auto& curve : curves)
             std::stable_sort(curve.points.begin(), curve.points.end(), [](const auto& a, const auto& b) { return a.tick < b.tick; });
         if (group == MixerTrackGroup::other && !notes.empty()) group = MixerTrackGroup::pitched;
+    }
+    if (!out->lyricTrackIds.isEmpty()) {
+        const auto firstVocal = static_cast<size_t>(out->trackIds.indexOf(out->lyricTrackIds[0]));
+        auto lead = out->primaryMelodyTrack.value_or(firstVocal);
+        if (!out->lyricTrackIds.contains(out->trackIds[int(lead)])) lead = firstVocal;
+        std::vector<ArrangementRegion> words, readings;
+        for (const auto& note : out->pitchedNotes[lead]) {
+            const auto found = out->vocalNotes.find(note.id);
+            if (found == out->vocalNotes.end() || found->second.text.isEmpty()) continue;
+            words.push_back(region(note.startTick, note.endTick, found->second.text));
+            readings.push_back(region(note.startTick, note.endTick, found->second.pronunciation));
+        }
+        addLane(out->globalLanes, "Display lyrics", std::move(words), TimelineLane::displayLyrics);
+        addLane(out->globalLanes, "Pronunciation", std::move(readings), TimelineLane::pronunciation);
     }
     if (!voicingNotes.empty() || retainVoicingRow) {
         out->chordVoicingTrack = out->trackLanes.size();
@@ -2111,6 +2154,126 @@ juce::Result OstfpPreview::editController(std::size_t track, const MidiControl& 
     reviseDocument(score, before, "studio-" + juce::Uuid().toString());
     return restoreNoteScore(editedScoreBytes(before, score, {"tracks", "document"}));
 } catch (const std::exception& e) { return juce::Result::fail(e.what()); }
+
+juce::Result OstfpPreview::editVocalNote(size_t track, const juce::String& id, const VocalNote& edit,
+                                         juce::MemoryBlock& before) try {
+    require(track < sourceTrackCount() && trackKinds[track] == TrackKind::pitched, "Select a melody note.");
+    const auto& notes = pitchedNotes[track];
+    const auto pos = std::find_if(notes.begin(), notes.end(), [&](const auto& n) { return n.id == id; });
+    require(pos != notes.end() && std::isfinite(edit.intensity) && edit.intensity >= 0 && edit.intensity <= 1,
+            "Invalid vocal note.");
+    const auto found = vocalNotes.find(id);
+    const VocalNote original = found == vocalNotes.end() ? VocalNote{} : found->second;
+    const auto reading = edit.pronunciation.trim().isEmpty() ? edit.text : edit.pronunciation.trim();
+    const bool wordsChanged = original.text != edit.text || original.pronunciation != reading;
+    const bool techniqueChanged = original.technique != edit.technique
+        || (edit.technique.isNotEmpty() && std::abs(edit.intensity - original.intensity) > 0.00001);
+    if (!wordsChanged && !techniqueChanged) return juce::Result::ok();
+    before = savedScore(*this);
+    auto score = parseObject(before);
+    if (!score["lyrics"].isObject()) score.getDynamicObject()->setProperty("lyrics", object({}));
+    auto lyrics = score["lyrics"];
+    for (const auto* key : {"documents","phrases","units","alignments"}) arrayProperty(lyrics, key);
+    auto lookup = [](juce::var list, const juce::var& key) -> juce::var {
+        if (list.isArray()) for (auto item : *list.getArray()) if (item["id"] == key) return item;
+        return {};
+    };
+    auto newId = [] { return "vocal-" + juce::Uuid().toString(); };
+    auto clip = lookup(score["tracks"][int(track)]["clips"], pos->clipId);
+    require(clip.isObject(), "Select a melody clip.");
+    juce::var alignment;
+    for (const auto& item : array(lyrics["alignments"])) {
+        if (!array(item["noteIds"]).contains(id)) continue;
+        require(!alignment.isObject(), "This note has several lyric alignments.");
+        alignment = item;
+    }
+    auto unit = alignment.isObject() ? lookup(lyrics["units"], alignment["unitIds"][0]) : juce::var{};
+    auto phrase = lookup(lyrics["phrases"], unit["phraseId"]);
+    auto documentId = phrase["documentId"].toString();
+    auto voice = lookup(lyrics["voices"], alignment["voiceId"]);
+    if (!voice.isObject() && lyrics["voices"].isArray()) for (const auto& candidate : array(lyrics["voices"])) {
+        if (candidate["trackId"].toString() == trackIds[int(track)]
+            && (documentId.isEmpty() || candidate["documentId"].toString() == documentId)) { voice = candidate; break; }
+    }
+    if (documentId.isEmpty()) documentId = voice["documentId"].toString();
+    if (documentId.isEmpty()) {
+        documentId = newId();
+        arrayProperty(lyrics, "documents").getArray()->add(object({{"id",documentId}}));
+    }
+    if (!voice.isObject()) {
+        voice = object({{"id", newId()}, {"trackId", trackIds[int(track)]}, {"documentId", documentId}});
+        arrayProperty(lyrics, "voices").getArray()->add(voice);
+    }
+    const auto performances = clip["vocalPerformances"];
+    juce::var performance;
+    if (performances.isArray()) for (auto item : array(performances))
+        if (item["voiceId"] == voice["id"]) { performance = item; break; }
+    if (wordsChanged) {
+        if (!alignment.isObject()) {
+            phrase = object({{"id",newId()}, {"documentId",documentId}, {"text",edit.text}});
+            arrayProperty(lyrics,"phrases").getArray()->add(phrase);
+            unit = object({{"id",newId()}, {"phraseId",phrase["id"]}, {"text",edit.text}});
+            arrayProperty(lyrics,"units").getArray()->add(unit);
+            alignment = object({{"id",newId()}, {"voiceId",voice["id"]}, {"unitIds",juce::Array<juce::var>{unit["id"]}},
+                                {"noteIds",juce::Array<juce::var>{id}}});
+            arrayProperty(lyrics,"alignments").getArray()->add(alignment);
+            if (performance["noteIds"].isArray()) performance["noteIds"].getArray()->addIfNotAlreadyThere(id);
+        } else {
+            const bool shared = std::count_if(array(lyrics["alignments"]).begin(), array(lyrics["alignments"]).end(),
+                [&](const auto& other) { return array(other["unitIds"]).contains(unit["id"]); }) > 1;
+            require(unit.isObject() && !shared && array(alignment["noteIds"]).size() == 1 && array(alignment["unitIds"]).size() == 1,
+                    "This lyric is shared by multiple notes or units.");
+            // Keep any spacing and punctuation in the authored phrase when the units line up.
+            if (phrase.isObject() && unit["text"] != edit.text) {
+                const auto line = phrase["text"].toString();
+                int cursor = 0, replaceAt = -1;
+                for (const auto& u : array(lyrics["units"])) {
+                    if (u["phraseId"] != phrase["id"]) continue;
+                    const auto word = u["text"].toString();
+                    const int start = line.indexOf(cursor,word);
+                    if (start < 0) { replaceAt = -1; break; }
+                    if (u["id"] == unit["id"]) replaceAt = start;
+                    cursor = start + word.length();
+                }
+                if (replaceAt >= 0) phrase.getDynamicObject()->setProperty("text",
+                    line.replaceSection(replaceAt,unit["text"].toString().length(),edit.text));
+            }
+            unit.getDynamicObject()->setProperty("text", edit.text);
+        }
+        if (reading != edit.text) unit.getDynamicObject()->setProperty("pronunciation", reading);
+        else unit.getDynamicObject()->removeProperty("pronunciation");
+    }
+    if (techniqueChanged) {
+        require(edit.technique.isEmpty() || edit.technique == "vibrato" || edit.technique == "scoop"
+                || edit.technique == original.technique, "Unsupported vocal technique.");
+        if (!performance.isObject()) {
+            performance = object({{"id",newId()}, {"voiceId",voice["id"]}});
+            arrayProperty(clip,"vocalPerformances").getArray()->add(performance);
+        }
+        if (!alignment.hasProperty("voiceId") && alignment.isObject())
+            alignment.getDynamicObject()->setProperty("voiceId", voice["id"]);
+        if (!alignment.isObject() && !performance["noteIds"].isArray()) {
+            auto owned = arrayProperty(performance, "noteIds");
+            for (const auto& a : array(lyrics["alignments"])) if (a["voiceId"] == voice["id"])
+                for (const auto& n : array(a["noteIds"])) if (lookup(clip["notes"],n).isObject()) owned.getArray()->addIfNotAlreadyThere(n);
+        }
+        if (performance["noteIds"].isArray()) performance["noteIds"].getArray()->addIfNotAlreadyThere(id);
+        auto list = arrayProperty(performance, "techniques");
+        auto* events = list.getArray();
+        int index = events->size();
+        while (--index >= 0 && !((*events)[index]["targetNoteId"] == id && (*events)[index]["kind"] == original.technique)) {}
+        if (edit.technique.isEmpty()) { if (index >= 0) events->remove(index); }
+        else {
+            auto event = index >= 0 ? (*events)[index] : object({{"id",newId()}, {"targetNoteId",id},
+                {"start",pos->startTick - integer(clip["start"])}, {"duration",pos->endTick-pos->startTick}});
+            event.getDynamicObject()->setProperty("kind",edit.technique);
+            event.getDynamicObject()->setProperty("intensity",edit.intensity);
+            if (index < 0) events->add(event);
+        }
+    }
+    reviseDocument(score, before, "studio-" + juce::Uuid().toString());
+    return restoreNoteScore(editedScoreBytes(before, score, {"tracks","lyrics","document"}));
+} catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
 juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEdit>& edits,
                                      juce::MemoryBlock& before, juce::StringArray& resultingIds) try {

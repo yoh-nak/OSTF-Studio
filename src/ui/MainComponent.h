@@ -16,6 +16,7 @@
 #include "ui/AudioClipEditor.h"
 #include "ui/TempoEditor.h"
 #include "ui/PianoInspector.h"
+#include "ui/VocalLane.h"
 #include "ui/PromptGuide.h"
 #include "ui/PerformanceEditor.h"
 #include "ui/DrumSteps.h"
@@ -211,11 +212,14 @@ private:
     void routeMidiPart(std::size_t track, std::optional<std::size_t> owner, int channel);
     friend int checkSamplePlacement(const juce::File&);
     friend class PluginFocusProbe;
+    friend class VocalTrackProbe;
     friend int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>, std::unique_ptr<juce::AudioPluginInstance>);
     void scanTrackPlugin(std::size_t index);
     void discoverTrackPlugin(std::size_t index);
     void loadTrackPlugin(std::size_t index, const juce::PluginDescription& description, bool restoring = false, juce::MemoryBlock state = {});
     void openTrackPluginEditor(std::size_t index);
+    void useTrackSinger(size_t index, bool automatic);
+    void editVocalNote(const ostfstudio::PitchedNote&);
     void linkAudio(std::size_t index);
     void setupOutputTracks();
     struct EffectSlot {
@@ -275,6 +279,7 @@ private:
     void undoPianoEdit(bool redo);
     void finishNoteEdit(bool playing);
     PianoNoteGrid pianoGrid_;
+    VocalLane vocalLane_{pianoGrid_};
     PianoInspector pianoInspector_ {pianoGrid_};
     bool blueTheme() const { return pianoInspector_.theme == pianoHarmony::Theme::studioBlue; }
     juce::Viewport pianoInspectorView_;
@@ -506,7 +511,7 @@ private:
     std::unique_ptr<juce::FileChooser> pluginChooser_;
     std::unique_ptr<ostfstudio::OstfpPreview> project_;
     juce::ApplicationProperties viewPreferences_;
-    unsigned timelineLaneMask_ = 0xff;
+    unsigned timelineLaneMask_ = 0x3ff;
     std::vector<ostfstudio::ArrangementLane> displayedGlobalLanes_;
     std::vector<juce::Rectangle<int>> trackRows_;
     juce::AudioPluginFormatManager pluginFormats_;

@@ -1,5 +1,9 @@
 # OSTF Studio development handoff
 
+## Vocal timeline and track playback
+
+`feature/vocal-piano-roll` adds written and pronounced lyric lanes, per-note delivery editing and a voicebank portrait. The first verse of Paper Lantern Replies enters in bar 5. Its lead and backing tracks use separate Formant Singer instances. The Windows app's `--vocal-track-smoke INPUT [OUTPUT.wav]` opens the score through Studio, checks both singers and the piano-roll lanes, edits and undoes a delivery parameter, and renders the lead on its own. Run it from a portable folder containing the bundled VST3s. The preview tests also cover package save and reopen after changing a reading.
+
 ## Plug-in editor focus
 
 Branch `fix/plugin-editor-focus`. Track instruments, track/output FX and Splice open in desktop windows associated with the Studio workspace. Their native peers are created on explicit open. The FX chain's Edit action exits its modal callout before showing the editor. Audio-device setup and Mackie port discovery can run with their settings windows off the desktop.

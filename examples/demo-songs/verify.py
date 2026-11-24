@@ -99,7 +99,7 @@ def verify(path, spec, schemas, catalog):
             gm, *chain = chain
             assigned_synths = {"arp": "OSTF FM Synth", "sub": "OSTF Analog Synth", "drums": "OSTF Drum Machine", "pad": "OSTF Wavetable Synth"}
             expected = assigned_synths.get(c["trackId"]) if path.stem == "first-light-vector" else None
-            assert gm["role"] == "instrument" and gm["plugin"]["name"] == (expected or ("OSTF Formant Singer" if path.stem == "paper-lantern-replies" and c["trackId"] == "voice-track" else "OSTF GM Sound Module"))
+            assert gm["role"] == "instrument" and gm["plugin"]["name"] == (expected or ("OSTF Formant Singer" if path.stem == "paper-lantern-replies" and c["trackId"] in ("voice-track", "backing") else "OSTF GM Sound Module"))
             if expected:
                 lane = next(t for t in score["tracks"] if t["id"] == c["trackId"])
                 changes = [(clip["start"] + e["start"], e["program"]) for clip in lane["clips"]

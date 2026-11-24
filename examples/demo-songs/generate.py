@@ -641,6 +641,9 @@ def full_lantern():
     ], [("nylon", "Nylon Guitar", "rhythm", "stabs"), ("strings", "Chamber Strings", "texture", "pad"),
         ("backing", "Backing Vocal Harmony", "vocal", "pad")])
     sing_lantern(song)
+    song["song"].update(primaryMelodyTrackId="voice-track", melodyTrackIds=["voice-track"],
+                        primaryLyricDocumentId="lantern-text")
+    song["tracks"][0]["name"] = "Lead Vocal"
     return song
 
 
@@ -912,8 +915,10 @@ def production_session(song, cues, shared_gm=False):
             programs[track_id] = program
     if song["song"]["title"] == "Paper Lantern Replies":
         bank = json.loads((DESTINATION.parents[1] / "src/plugins/instruments/catalog.json").read_text())
-        instruments["voice-track"] = next(i for i in bank if i["type"] == "Singer")
-        programs["voice-track"] = 0
+        singer = next(i for i in bank if i["type"] == "Singer")
+        for part in ("voice-track", "backing"):
+            instruments[part] = singer
+            programs[part] = 0
     def channel(identifier, kind, **fields):
         return {"id": identifier, "kind": kind, "audioChannels": 2, "gainDb": 0, "pan": 0,
                 "mute": False, "solo": False, "soloSafe": False, "deviceIds": [], **fields}

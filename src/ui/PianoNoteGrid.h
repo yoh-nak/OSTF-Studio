@@ -18,6 +18,7 @@ public:
     std::function<void(const std::vector<Edit>&)> commit;
     std::function<void(const std::vector<Edit>&)> previewEdit;
     std::function<void(const Note&)> inspectNote;
+    std::function<void(const Note&)> editLyrics;
     std::function<void(bool)> undoRedo;
     std::function<void()> selectionChanged, togglePencil;
     std::function<juce::String(juce::int64, const Note&)> theoryHint;
@@ -254,6 +255,8 @@ public:
     }
     void mouseDoubleClick(const juce::MouseEvent& e) override {
         if (TimelinePan::requested(e.mods)) return;
+        if (editable && !pencil && editLyrics && e.mods.isLeftButtonDown())
+            if (const auto* n = hitNote(e.position)) { editLyrics(*n); return; }
         if (pencil || !editable || rowCount() == 0 || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu() ||
             hitNote(e.position) || getHeight() < 1)
             return;

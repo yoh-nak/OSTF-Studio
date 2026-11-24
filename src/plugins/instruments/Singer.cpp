@@ -1,5 +1,6 @@
 #include "SingingScore.h"
 #include "VoiceBank.h"
+#include "../../core/VocalDelivery.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <cmath>
 
@@ -58,16 +59,19 @@ class Voice {
         if (phone.onset == closure) return 0;
         const double strength = phone.intensity / 127.0;
         double cents = 0;
-        if (phone.delivery == vibrato && time > .09)
-            cents = 65 * strength * std::min(1.0, (time - .09) / .14) * std::sin(juce::MathConstants<double>::twoPi * 5.4 * time);
-        if (phone.delivery == scoop && time < .12)
-            cents = -140 * strength * (1 - time / .12) * (1 - time / .12);
+        if (phone.delivery == vibrato) cents = vibratoCents(time,strength);
+        if (phone.delivery == scoop) cents = scoopCents(time,strength);
         const auto pitch = hz * bendRatio * (cents == 0 ? 1 : std::exp2(cents / 1200));
         const auto level = gain * envelope * expression;
         const float recording = recorded ? recorded->read(position, pitch * recorded->period / sr) : 0.f;
         if (recorded && !vowelSample) return float(level * recording);
-        phase += pitch / sr; phase -= std::floor(phase);
-        const double pulse = phase < .6 ? std::sin(phase / .6 * juce::MathConstants<double>::twoPi) : 0;
+        const double step = std::min(.45, pitch / sr);
+        phase += step; phase -= std::floor(phase);
+        // A band-limited glottal edge excites the higher formants as well as the fundamental.
+        double edge = 2 * phase - 1;
+        if (phase < step) { const double t = phase/step; edge -= 2*t-t*t-1; }
+        else if (phase > 1-step) { const double t = (phase-1)/step; edge -= t*t+2*t+1; }
+        const double pulse = .82*edge + .18*std::sin(phase*juce::MathConstants<double>::twoPi);
         noise = noise * 1664525u + 1013904223u;
         const double white = double(noise) / 2147483648.0 - 1.0;
         const double hiss = white - previousNoise;
@@ -119,11 +123,14 @@ class Editor final : public juce::AudioProcessorEditor {
     juce::TextButton importVoice{"Load voice folder..."}, factory{"Use built-in voice"};
     juce::ComboBox parts;
     juce::Label status, voiceStatus;
+    juce::ImageComponent portrait;
     std::unique_ptr<juce::FileChooser> chooser;
     void refresh();
 };
 class Singer final : public juce::AudioProcessor {
   public:
+    const bool studioHost = juce::File::getSpecialLocation(juce::File::hostApplicationPath)
+        .getFileNameWithoutExtension().equalsIgnoreCase("OSTF Studio");
     Singer() : AudioProcessor(BusesProperties().withOutput("Voice", juce::AudioChannelSet::stereo(), true)) {}
     const juce::String getName() const override { return "OSTF Formant Singer"; }
     bool acceptsMidi() const override { return true; }
@@ -194,9 +201,13 @@ class Singer final : public juce::AudioProcessor {
     }
     juce::String voiceName() const {
         const juce::SpinLock::ScopedLockType guard(lock);
-        if (bank) return bank->folder.getFileName() + "  /  " + juce::String(int(bank->sounds.size())) + " recorded morae";
+        if (bank) return bank->name + "  /  " + juce::String(int(bank->sounds.size())) + " recorded morae";
         if (requestedVoice != juce::File{}) return "Voice folder unavailable: " + requestedVoice.getFileName() + "  /  using built-in voice";
         return "Built-in Japanese formant voice";
+    }
+    juce::File voicePortrait() const {
+        const juce::SpinLock::ScopedLockType guard(lock);
+        return bank ? bank->portrait : juce::File{};
     }
     void getStateInformation(juce::MemoryBlock& b) override {
         juce::XmlElement xml("OSTFSinger");
@@ -214,7 +225,7 @@ class Singer final : public juce::AudioProcessor {
             juce::String error;
             setVoice(juce::File::isAbsolutePath(path) ? juce::File(path) : juce::File{}, error, true);
             auto source = xml->getAllSubText();
-            if (source.isNotEmpty())
+            if (source.isNotEmpty() && !studioHost)
                 load(source, xml->getIntAttribute("part", -1));
             else {
                 const juce::SpinLock::ScopedLockType guard(lock);
@@ -333,9 +344,34 @@ class Singer final : public juce::AudioProcessor {
     std::array<float, 16> expression{};
     std::array<std::array<Phone, 128>, 16> articulation{};
 };
+juce::Image loadPortrait(const juce::File& file) {
+    if (!file.existsAsFile() || file.getSize() > 8*1024*1024) return {};
+    if (!file.hasFileExtension("bmp")) return juce::ImageFileFormat::loadFrom(file);
+    // UTAU banks often supply an uncompressed Windows bitmap.
+    juce::MemoryBlock bytes;
+    if (!file.loadFileAsData(bytes) || bytes.getSize() < 54) return {};
+    const auto* p = static_cast<const juce::uint8*>(bytes.getData());
+    const auto u32 = [&](int at) { return juce::ByteOrder::littleEndianInt(p+at); };
+    const int w = int(u32(18)), h = int(u32(22)), bits = juce::ByteOrder::littleEndianShort(p+28);
+    if (p[0]!='B' || p[1]!='M' || u32(14)<40 || u32(30)!=0 || (bits!=24 && bits!=32)
+        || w<=0 || w>2048 || h==0 || h < -2048 || h>2048) return {};
+    const int stride = (w*(bits/8)+3)&~3, height = std::abs(h);
+    const size_t offset = u32(10);
+    if (offset < 54 || offset > bytes.getSize() || size_t(height)*stride > bytes.getSize()-offset) return {};
+    juce::Image img(juce::Image::RGB,w,height,false);
+    juce::Image::BitmapData dest(img,juce::Image::BitmapData::writeOnly);
+    for (int y=0;y<height;++y) {
+        auto* src = p+offset+size_t(h>0 ? height-1-y : y)*stride;
+        for (int x=0;x<w;++x,src+=bits/8) dest.setPixelColour(x,y,juce::Colour(src[2],src[1],src[0]));
+    }
+    return img;
+}
 Editor::Editor(Singer& s) : AudioProcessorEditor(s), singer(s) {
-    addAndMakeVisible(open);
-    addAndMakeVisible(parts);
+    addChildComponent(open);
+    addChildComponent(parts);
+    open.setVisible(!singer.studioHost);
+    parts.setVisible(!singer.studioHost);
+    addChildComponent(portrait);
     addAndMakeVisible(status);
     addAndMakeVisible(importVoice);
     addAndMakeVisible(factory);
@@ -368,7 +404,7 @@ Editor::Editor(Singer& s) : AudioProcessorEditor(s), singer(s) {
             });
     };
     factory.onClick = [this] { juce::String error; singer.setVoice({}, error); refresh(); };
-    setSize(525, 172);
+    setSize(560, singer.studioHost ? 145 : 180);
 }
 void Editor::refresh() {
     int index;
@@ -377,14 +413,20 @@ void Editor::refresh() {
     parts.addItem("Studio track / MIDI input", 1);
     parts.addItemList(names, 2);
     parts.setSelectedId(index + 2, juce::dontSendNotification);
-    status.setText("Formant voice  /  OSTF lyrics and notes", juce::dontSendNotification);
+    status.setText(singer.studioHost ? "Studio track  /  singing the track's notes and lyrics" :
+        "MIDI input or OSTF score playback", juce::dontSendNotification);
     voiceStatus.setText(singer.voiceName(), juce::dontSendNotification);
+    auto image = loadPortrait(singer.voicePortrait());
+    portrait.setImage(image, juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize);
+    portrait.setVisible(image.isValid());
+    resized();
 }
 void Editor::resized() {
     auto r = getLocalBounds().reduced(12);
+    if (portrait.isVisible()) { portrait.setBounds(r.removeFromLeft(94)); r.removeFromLeft(8); }
     status.setBounds(r.removeFromTop(32));
     r.removeFromTop(8);
-    auto row = r.removeFromTop(32);
+    auto row = r.removeFromTop(singer.studioHost ? 0 : 32);
     open.setBounds(row.removeFromLeft(115));
     row.removeFromLeft(6);
     parts.setBounds(row);

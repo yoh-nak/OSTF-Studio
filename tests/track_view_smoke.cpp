@@ -269,6 +269,83 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     return 0;
 }
 
+class VocalTrackProbe final : public juce::Timer {
+public:
+    VocalTrackProbe(const juce::File& song, const juce::File& wav, std::function<void(int)> done)
+        : output(wav), finish(std::move(done)) {
+        studio.setSize(1500,1000);
+        opened = studio.openDocument(song);
+        startTimer(50);
+    }
+private:
+    int verify() {
+        auto& project = *studio.project_;
+        const int lead = project.trackIds.indexOf("voice-track");
+        const int backing = project.trackIds.indexOf("backing");
+        if (lead < 0 || backing < 0 || project.primaryMelodyTrack != size_t(lead)
+            || studio.selectedTrack_ != size_t(lead) || !studio.vocalLane_.isVisible()) return 3;
+        for (const auto i : {lead,backing}) {
+            const auto& strip = *studio.trackControls_[i];
+            if (!strip.playableInstrument || !strip.instance || strip.instance->getName() != "OSTF Formant Singer") return 4;
+        }
+        studio.vocalLane_.entrance.onClick();
+        if (studio.cursorTick_ != project.pitchedNotes[lead].front().startTick || studio.cursorTick_/project.ticksPerBar != 4) return 5;
+        const auto& note = project.pitchedNotes[lead].front();
+        auto kind = studio.performanceLaneNames_.indexOf("Vibrato depth");
+        if (kind < 0) return 6;
+        studio.performanceLane_.setSelectedId(kind+1,juce::sendNotificationSync);
+        if (!studio.controllerEditor_.isVisible()) return 7;
+        const auto id = note.id;
+        studio.editPerformancePoint(id,note.startTick,.82);
+        if (project.vocalNotes.at(id).technique != "vibrato" || std::abs(project.vocalNotes.at(id).intensity-.82)>.0001) return 8;
+        studio.undoPianoEdit(false);
+        std::vector<PreviewTransport::TrackSetup> routes(project.trackLanes.size());
+        routes[lead].instrument = studio.trackControls_[lead]->instance.get();
+        routes[lead].midiChannel = studio.trackControls_[lead]->midiChannel;
+        PreviewTransport playback;
+        playback.setChannelMix(lead,{},true,0);
+        playback.setOutputMix({});
+        constexpr int rate = 48000, block = 512;
+        if (playback.preparePlayback(project,routes,{},rate,block).failed()) return 9;
+        const auto start = project.pitchedNotes[lead].front().startTick;
+        playback.seekToTick(start);
+        std::unique_ptr<juce::AudioFormatWriter> writer;
+        if (output != juce::File{}) {
+            if (output.exists()) return 10;
+            std::unique_ptr<juce::OutputStream> out = output.createOutputStream();
+            if (!out) return 10;
+            writer = juce::WavAudioFormat{}.createWriterFor(out,juce::AudioFormatWriterOptions{}
+                .withSampleRate(rate).withNumChannels(2).withBitsPerSample(16));
+            if (!writer) return 10;
+        }
+        double energy = 0;
+        juce::AudioBuffer<float> audio(2,block);
+        const auto frames = juce::roundToInt(rate*(project.clock.secondsAt(start+4*project.ticksPerBar)-project.clock.secondsAt(start)));
+        for (int pos=0;pos<frames;pos+=block) {
+            const int count = std::min(block,frames-pos);
+            playback.renderBlock(audio.getArrayOfWritePointers(),2,count);
+            energy += count*std::pow(audio.getRMSLevel(0,0,count),2);
+            if (writer && !writer->writeFromAudioSampleBuffer(audio,0,count)) return 10;
+        }
+        return energy > frames*.000001 ? 0 : 11;
+    }
+    void timerCallback() override {
+        if (opened && !studio.canEditTracks() && ++polls < 600) return;
+        stopTimer();
+        const int result = !opened ? 1 : !studio.canEditTracks() ? 2 : verify();
+        if (result) std::cerr << "Vocal track check " << result << '\n';
+        finish(result);
+    }
+    MainComponent studio;
+    juce::File output;
+    std::function<void(int)> finish;
+    bool opened = false;
+    int polls = 0;
+};
+std::unique_ptr<juce::Timer> startVocalTrackCheck(const juce::File& song,const juce::File& wav,std::function<void(int)> done) {
+    return std::make_unique<VocalTrackProbe>(song,wav,std::move(done));
+}
+
 class PluginFocusProbe final : public juce::Timer {
 public:
     PluginFocusProbe(const juce::File& bundle, std::function<void(int)> done)

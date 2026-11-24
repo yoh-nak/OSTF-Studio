@@ -230,6 +230,7 @@ int checkStudioInstruments(const juce::StringArray&);
 int checkTrackView(const juce::File&);
 std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)>);
 std::unique_ptr<juce::Timer> startPluginFocusCheck(const juce::File&, std::function<void(int)>);
+std::unique_ptr<juce::Timer> startVocalTrackCheck(const juce::File&, const juce::File&, std::function<void(int)>);
 int checkPianoEdits(const juce::File&);
 int checkTheoryGuide(const juce::File&);
 int checkNotation(const juce::File&, const juce::File&);
@@ -243,6 +244,11 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
+        if ((args.size() == 2 || args.size() == 3) && args[0] == "--vocal-track-smoke") {
+            windowCheck_ = startVocalTrackCheck(juce::File(args[1]),args.size()==3 ? juce::File(args[2]) : juce::File{},
+                [this](int result) { setApplicationReturnValue(result); quit(); });
+            return;
+        }
         const bool spliceCheck = args.size() == 1 && (args[0] == "--splice-window-smoke" || args[0] == "--splice-pane-smoke");
         if (spliceCheck || (args.size() == 2 && args[0] == "--plugin-focus-smoke")) {
             auto finished = [this](int result) {

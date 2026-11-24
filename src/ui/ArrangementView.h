@@ -4,7 +4,7 @@
 #include <span>
 
 namespace ostfstudio {
-enum class TimelineLane { none, section, chord, voicing, key, scale, meter, tempo };
+enum class TimelineLane { none, section, chord, voicing, key, scale, meter, tempo, displayLyrics, pronunciation };
 // Presentation data. The source owns all labels and regions while the view is in use.
 struct ArrangementRegion {
     BarSpan bars;
