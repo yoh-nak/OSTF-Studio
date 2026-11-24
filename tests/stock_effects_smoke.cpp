@@ -74,6 +74,85 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
 }
 }
 
+int checkStudioInstruments(const juce::StringArray& args) {
+    juce::AudioPluginFormatManager formats;
+    formats.addFormat(std::make_unique<juce::VST3PluginFormat>());
+    juce::FileInputStream input{juce::File(args[2])};
+    std::unique_ptr<ostfstudio::OstfpPreview> song;
+    if (ostfstudio::readOstfpPreview(input, song).failed() || !song->savedMix) return 1;
+    const auto& mix = *song->savedMix;
+    const std::array<juce::String,4> ids {"arp","sub","drums","pad"};
+    std::vector<Instance> instances;
+    std::vector<PreviewTransport::TrackSetup> tracks(song->trackLanes.size());
+    for (size_t i = 0; i < ids.size(); ++i) {
+        const int track = song->trackIds.indexOf(ids[i]);
+        if (track < 0) return 2;
+        const auto& def = ostfstudio::stockInstruments[i];
+        auto synth = load(formats,juce::File(args[1]).getChildFile(juce::String(def.name) + ".vst3"));
+        if (!synth || !PreviewTransport::supportsInstrument(*synth)
+            || !matchesVst3Instrument(mix.instruments[track],synth->getPluginDescription())) return 3;
+        const int ch = mix.midiRoutes[track].channel;
+        const int key = ids[i] == "drums" ? 36 : 60;
+        synth->setRateAndBufferSizeDetails(48000,2048);
+        synth->prepareToPlay(48000,2048);
+        const auto render = [&](int program) {
+            juce::MidiBuffer midi;
+            juce::AudioBuffer<float> audio(2,2048);
+            audio.clear();
+            midi.addEvent(juce::MidiMessage::allSoundOff(ch),0);
+            if (program >= 0) midi.addEvent(juce::MidiMessage::programChange(ch,program),0);
+            midi.addEvent(juce::MidiMessage::noteOn(ch,key,.88f),16);
+            synth->processBlock(audio,midi);
+            return audio;
+        };
+        std::array<juce::AudioBuffer<float>,4> patches;
+        for (int p = 0; p < 4; ++p) {
+            patches[p] = render(p);
+            if (patches[p].getMagnitude(0,16) != 0 || patches[p].getMagnitude(16,2032) < .0003f) return 4;
+            for (int j = 0; j < p; ++j) {
+                double diff = 0;
+                for (int n = 0; n < 2048; ++n) diff += std::abs(patches[p].getSample(0,n)-patches[j].getSample(0,n));
+                if (!std::isfinite(diff) || diff < .05) return 5;
+            }
+        }
+        juce::MemoryBlock saved;
+        synth->getStateInformation(saved);
+        (void)render(0);
+        synth->setStateInformation(saved.getData(),int(saved.getSize()));
+        const auto recalled = render(-1);
+        for (int n = 0; n < 2048; ++n)
+            if (std::abs(recalled.getSample(0,n)-patches[3].getSample(0,n)) > .0001f) return 6;
+        synth->releaseResources();
+        tracks[track] = {{}, synth.get(), ch};
+        instances.push_back(std::move(synth));
+    }
+    PreviewTransport transport;
+    transport.setOutputMix(mix.routing);
+    for (const auto& id : ids) {
+        const int track = song->trackIds.indexOf(id);
+        transport.setChannelMix(track, mix.tracks[track], true, 0);
+    }
+    if (transport.preparePlayback(*song,tracks,{},48000,256).failed()) return 7;
+    // Daybreak starts with the authored program changes on all four channels.
+    transport.seekToTick(48 * 4 * song->ppq);
+    std::array<float,4> peaks {};
+    juce::AudioBuffer<float> block(2,256);
+    for (int b = 0; b < 600; ++b) {
+        transport.renderBlock(block.getArrayOfWritePointers(),2,256);
+        const auto meters = transport.takeMeters();
+        for (size_t i = 0; i < ids.size(); ++i)
+            peaks[i] = std::max(peaks[i], meters.tracks[song->trackIds.indexOf(ids[i])][0]);
+    }
+    transport.stop();
+    for (size_t i = 0; i < peaks.size(); ++i) {
+        if (!std::isfinite(peaks[i]) || peaks[i] <= .0001f) {
+            std::cerr << "Silent or invalid demo stem: " << ids[i] << " peak " << peaks[i] << '\n';
+            return 8;
+        }
+    }
+    return 0;
+}
+
 int checkStockEffects(const juce::StringArray& args) {
     juce::AudioPluginFormatManager formats;
     formats.addFormat(std::make_unique<juce::VST3PluginFormat>());

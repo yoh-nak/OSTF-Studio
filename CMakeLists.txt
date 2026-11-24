@@ -76,7 +76,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     string(JSON effect_count LENGTH "${effects}")
     math(EXPR last_effect "${effect_count}-1")
     # Share the JUCE module objects across the stock effect wrappers.
-    add_library(ostf_effect_dsp STATIC src/plugins/effects/StudioEffect.cpp)
+    add_library(ostf_effect_dsp STATIC src/plugins/effects/StudioEffect.cpp src/plugins/instruments/StudioInstrument.cpp)
     set_target_properties(ostf_effect_dsp PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
     target_compile_definitions(ostf_effect_dsp PUBLIC JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
     target_link_libraries(ostf_effect_dsp PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_recommended_config_flags)
@@ -229,6 +229,9 @@ if (OSTF_STUDIO_BUILD_GUI)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tinysoundfont-saw.sf2"
             "$<TARGET_FILE_DIR:OSTFArranger_VST3>/../..")
         set_tests_properties(ostf_studio_gm_plugin PROPERTIES TIMEOUT 20)
+        add_test(NAME ostf_studio_instruments COMMAND OSTFStudio --studio-instruments-smoke
+            "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/first-light-vector.ostfp")
+        set_tests_properties(ostf_studio_instruments PROPERTIES TIMEOUT 90)
         add_test(NAME ostf_studio_stock_effects COMMAND OSTFStudio --stock-effects-smoke
             "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../.."
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/blue-hour-waltz.ostfp")

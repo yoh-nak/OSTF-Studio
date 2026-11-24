@@ -40,8 +40,9 @@ public:
                 for (int i : {2,10,18}) { g.drawEllipse(x+i-2,y+(i==10?1:10),4,4,1.6f); }
                 line(3,10,9,5); line(11,5,17,10); line(3,16,17,16); break;
             case Icon::songMusic:
-                line(3,16,8,1); line(8,1,12,1); line(12,1,17,16); line(3,16,17,16);
-                line(10,13,17,4); g.fillEllipse(x+15,y+2,4,4); break;
+                g.fillEllipse(x+1, y+11, 7, 5); line(7,13,7,3); line(7,3,11,5);
+                line(16,2,16,15); line(13,5,16,2); line(16,2,19,5);
+                line(13,12,16,15); line(16,15,19,12); break;
             case Icon::information:
                 g.drawEllipse(x+2, y, 16, 16, 1.6f);
                 g.fillEllipse(x+9, y+3, 2, 2); line(10,7,10,13); break;

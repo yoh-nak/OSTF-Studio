@@ -19,4 +19,6 @@ struct StockEffect {
 };
 inline constexpr StockEffect stockEffects[] {
 @stock_names@};
+inline constexpr StockEffect stockInstruments[] {
+@instrument_names@};
 }

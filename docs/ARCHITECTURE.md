@@ -1,5 +1,11 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## Factory instruments and the sample browser
+
+Four separately identifiable VST3 instruments share a polyphonic rendering engine. FM uses phase modulation, analog uses band-limited saw oscillators, the drum machine models pitched and noise transients, and wavetable synthesis interpolates harmonic-limited tables. The processor takes MIDI events at sample offsets and captures the active preset per voice. Its VST3 state holds preset, tone and output level. First Light Vector stores program changes in the score and instrument class references in the production session.
+
+The right pane uses the JUCE directory browser for local audio. Drag payloads capture the selected file path, and internal and operating-system drops share track placement, replacement confirmation and asset limits. Performance numeric entry uses the same score edit, undo and playback paths as drawn points.
+
 ## Score interchange
 
 MusicXML partwise documents and compressed MXL containers feed the same in-memory score import and validated OSTF save path. Local PDF recognition passes the Audiveris MXL output directly to this reader. Full-song MusicXML exports the source notation parts, with harmony on the first part. ChordPro exports chord symbols with aligned lyrics. These are score interchange views of the current project.

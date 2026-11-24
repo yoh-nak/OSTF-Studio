@@ -252,6 +252,7 @@ private:
     PerformanceEditor controllerEditor_{pianoGrid_};
     std::map<juce::String,ostfstudio::MidiControl> controllerKeys_;
     void refreshControllerLane();
+    void enterPerformanceValue();
     void editPerformancePoint(juce::String,juce::int64,std::optional<double>);
     void updateDrumLoop();
     juce::Range<juce::int64> activeLoop_;
@@ -295,6 +296,7 @@ private:
                audioAdd_ {ViewButton::Icon::audio}, busAdd_ {ViewButton::Icon::bus}, returnAdd_ {ViewButton::Icon::send},
                uiSmaller_ {ViewButton::Icon::zoomOut}, uiLarger_ {ViewButton::Icon::zoomIn};
     int interfaceScale_ = 100;
+    std::vector<juce::Rectangle<int>> toolbarDividers_;
     ViewButton theoryButton_ {ViewButton::Icon::theory}, musicButton_ {ViewButton::Icon::songMusic};
     juce::Label toolbarHint_;
     juce::TooltipWindow tooltips_ {nullptr, 350};
@@ -330,6 +332,7 @@ private:
     juce::int64 cursorTick_ = -1;
     juce::ComboBox trackPicker_;
     juce::ComboBox performanceLane_;
+    juce::TextButton enterPerformance_ {TRANS("Enter value...")};
     juce::Slider arrangementZoom_, groupHeight_;
     struct HeightMenuStyle : juce::LookAndFeel_V4 {
         juce::Font getComboBoxFont(juce::ComboBox&) override { return juce::FontOptions(16.f); }

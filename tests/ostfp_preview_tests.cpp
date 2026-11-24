@@ -147,7 +147,16 @@ static int checkGallery(const juce::File& directory) {
                     continue;
                 }
                 const auto& events = project->programChanges[track];
-                if (plugin["format"] != "vst3" || plugin["name"] != "OSTF GM Sound Module" || events.empty()
+                juce::String expectedInstrument = "OSTF GM Sound Module";
+                if (std::string_view(expected.file) == "first-light-vector.ostfp") {
+                    const auto id = project->trackIds[int(track)];
+                    if (id == "arp") expectedInstrument = "OSTF FM Synth";
+                    if (id == "sub") expectedInstrument = "OSTF Analog Synth";
+                    if (id == "drums") expectedInstrument = "OSTF Drum Machine";
+                    if (id == "pad") expectedInstrument = "OSTF Wavetable Synth";
+                    if (expectedInstrument != "OSTF GM Sound Module" && (events.size() != 2 || events.back().program != 2)) return 1;
+                }
+                if (plugin["format"] != "vst3" || plugin["name"].toString() != expectedInstrument || events.empty()
                     || events.front().channel != project->sourceMidiChannels[track]
                     || project->savedMix->midiRoutes[track].channel != project->sourceMidiChannels[track]) return 1;
             }

@@ -5006,7 +5006,7 @@
               "type": "programChange",
               "start": 0,
               "channel": 2,
-              "program": 81
+              "program": 1
             }
           ]
         },
@@ -9512,6 +9512,15 @@
               "pitch": 83,
               "velocity": 64
             }
+          ],
+          "midiEvents": [
+            {
+              "id": "arp-daybreak-program",
+              "type": "programChange",
+              "start": 0,
+              "channel": 2,
+              "program": 2
+            }
           ]
         },
         {
@@ -12468,7 +12477,7 @@
               "type": "programChange",
               "start": 0,
               "channel": 3,
-              "program": 38
+              "program": 1
             }
           ]
         },
@@ -13381,6 +13390,15 @@
               "duration": 380,
               "pitch": 40,
               "velocity": 84
+            }
+          ],
+          "midiEvents": [
+            {
+              "id": "sub-daybreak-program",
+              "type": "programChange",
+              "start": 0,
+              "channel": 3,
+              "program": 2
             }
           ]
         },
@@ -14784,7 +14802,7 @@
               "type": "programChange",
               "start": 0,
               "channel": 10,
-              "program": 0
+              "program": 1
             }
           ]
         },
@@ -18352,6 +18370,15 @@
               "soundSlotId": "tom",
               "velocity": 87
             }
+          ],
+          "midiEvents": [
+            {
+              "id": "drums-daybreak-program",
+              "type": "programChange",
+              "start": 0,
+              "channel": 10,
+              "program": 2
+            }
           ]
         },
         {
@@ -20895,7 +20922,7 @@
               "type": "programChange",
               "start": 0,
               "channel": 5,
-              "program": 89
+              "program": 0
             }
           ]
         },
@@ -21458,6 +21485,15 @@
               "duration": 3680,
               "pitch": 76,
               "velocity": 66
+            }
+          ],
+          "midiEvents": [
+            {
+              "id": "pad-daybreak-program",
+              "type": "programChange",
+              "start": 0,
+              "channel": 5,
+              "program": 2
             }
           ]
         },
@@ -25031,7 +25067,8 @@
             "soloSafe": false,
             "deviceIds": [
               "instrument-5",
-              "track-5-chorus"
+              "track-5-chorus",
+              "track-5-analyzer"
             ],
             "trackId": "pad",
             "outputChannelId": "bus-2",
@@ -25283,8 +25320,8 @@
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
+              "pluginId": "ABCDEF019182FAEB4F7374664F666D31",
+              "name": "OSTF FM Synth",
               "vendor": "OSTF Studio"
             }
           },
@@ -25309,8 +25346,8 @@
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
+              "pluginId": "ABCDEF019182FAEB4F7374664F616E31",
+              "name": "OSTF Analog Synth",
               "vendor": "OSTF Studio"
             }
           },
@@ -25348,8 +25385,8 @@
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
+              "pluginId": "ABCDEF019182FAEB4F7374664F647231",
+              "name": "OSTF Drum Machine",
               "vendor": "OSTF Studio"
             }
           },
@@ -25361,8 +25398,8 @@
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
+              "pluginId": "ABCDEF019182FAEB4F7374664F777431",
+              "name": "OSTF Wavetable Synth",
               "vendor": "OSTF Studio"
             }
           },
@@ -25377,6 +25414,19 @@
               "pluginId": "ABCDEF019182FAEB4F7374664F663032",
               "vendor": "OSTF Studio",
               "name": "OSTF Chorus"
+            }
+          },
+          {
+            "id": "track-5-analyzer",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663130",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Wave Analyzer"
             }
           },
           {

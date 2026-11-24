@@ -71,7 +71,14 @@ def verify(path, spec, schemas, catalog):
         chain = [devices[k] for k in c["deviceIds"]]
         if c["kind"] == "track" and c["id"] not in audio_strips:
             gm, *chain = chain
-            assert gm["role"] == "instrument" and gm["plugin"]["name"] == "OSTF GM Sound Module"
+            assigned_synths = {"arp": "OSTF FM Synth", "sub": "OSTF Analog Synth", "drums": "OSTF Drum Machine", "pad": "OSTF Wavetable Synth"}
+            expected = assigned_synths.get(c["trackId"]) if path.stem == "first-light-vector" else None
+            assert gm["role"] == "instrument" and gm["plugin"]["name"] == (expected or "OSTF GM Sound Module")
+            if expected:
+                lane = next(t for t in score["tracks"] if t["id"] == c["trackId"])
+                changes = [(clip["start"] + e["start"], e["program"]) for clip in lane["clips"]
+                           for e in clip.get("midiEvents", []) if e["type"] == "programChange"]
+                assert len(changes) == 2 and changes[1] == (48 * 4 * score["ppq"], 2)
         for d in chain:
             ref = d["plugin"]
             assert d["role"] == "effect" and d["enabled"] and not d["bypass"]

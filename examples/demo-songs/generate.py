@@ -899,6 +899,13 @@ def production_session(song, cues):
     }
     if song["song"]["title"] == "Blue Hour Waltz":
         programs.update(keys=0, guitar=26, bass=32)
+    instruments = {}
+    if song["song"]["title"] == "First Light Vector":
+        bank = {i["type"]: i for i in json.loads((DESTINATION.parents[1] / "src/plugins/instruments/catalog.json").read_text())}
+        for track_id, engine, program in (("arp", "FM", 1), ("sub", "Analog", 1),
+                ("drums", "Drums", 1), ("pad", "Wavetable", 0)):
+            instruments[track_id] = bank[engine]
+            programs[track_id] = program
     def channel(identifier, kind, **fields):
         return {"id": identifier, "kind": kind, "audioChannels": 2, "gainDb": 0, "pan": 0,
                 "mute": False, "solo": False, "soloSafe": False, "deviceIds": [], **fields}
@@ -960,11 +967,18 @@ def production_session(song, cues):
         clip = lane["clips"][0]
         clip.setdefault("midiEvents", []).insert(0, {"id": f"{lane['id']}-program", "type": "programChange",
             "start": 0, "channel": midi_channel, "program": programs[lane["id"]]})
+        instrument = instruments.get(lane["id"], {"code": "Ogm1", "name": "OSTF GM Sound Module"})
+        if lane["id"] in instruments:
+            # Put the change on the first clip in the Daybreak section (bar 49).
+            at = 48 * 4 * PPQ
+            dest = next(c for c in lane["clips"] if c["start"] <= at < c["start"] + c["duration"])
+            dest.setdefault("midiEvents", []).append({"id": f"{lane['id']}-daybreak-program", "type": "programChange",
+                "start": at - dest["start"], "channel": midi_channel, "program": 2})
         device = f"instrument-{index}"
         devices.append({"id": device, "role": "instrument", "enabled": True, "bypass": False,
             "onUnavailable": "reportAndPreserve", "plugin": {
-                "format": "vst3", "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-                "name": "OSTF GM Sound Module", "vendor": "OSTF Studio",
+                "format": "vst3", "pluginId": "ABCDEF019182FAEB4F737466" + instrument["code"].encode("ascii").hex().upper(),
+                "name": instrument["name"], "vendor": "OSTF Studio",
             }})
         level, pan, output, send, inserts = parts[lane["id"]]
         strip = channel(f"track-{index}", "track", trackId=lane["id"], outputChannelId=output,
@@ -973,6 +987,8 @@ def production_session(song, cues):
             strip["sends"] = [{"id": f"send-{index}-room", "targetChannelId": "return-1", "gainDb": send,
                                "preFader": False, "enabled": True}]
         insert(strip, *inserts)
+        if lane["id"] == "pad" and lane["id"] in instruments:
+            insert(strip, "Analyzer")
         channels.append(strip)
     production = {"channels": channels, "devices": devices}
     for identifier, name, asset, start, length, bus in cues:

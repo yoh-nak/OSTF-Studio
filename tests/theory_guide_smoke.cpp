@@ -321,6 +321,9 @@ int checkTheoryGuide(const juce::File& demo) {
     auto* guideButton = dynamic_cast<ViewButton*>(main.findChildWithID("theory-guide"));
     auto* musicButton = dynamic_cast<ViewButton*>(main.findChildWithID("song-settings"));
     if (!guideButton || !musicButton || guideButton->getTooltip().isEmpty() || musicButton->getBounds().isEmpty()) return 39;
+    if (find(*model, TRANS("Song defaults..."), 0).id != 0
+        || !find(*model, TRANS("Transpose or change tempo of score..."), 0).id
+        || musicButton->getTooltip() != TRANS("Transpose and tempo")) return 49;
     guideButton->onClick();
     if (!guideButton->getToggleState() || !find(*model, TRANS("Show Theory Guide")).checked) return 40;
     // Drag C to C-sharp over the opening Cmaj7. Inspect the actual readout before release and after committing.

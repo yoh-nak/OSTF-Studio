@@ -219,6 +219,7 @@ private:
 }
 
 int checkStockEffects(const juce::StringArray&);
+int checkStudioInstruments(const juce::StringArray&);
 int checkTrackView(const juce::File&);
 std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)>);
 int checkPianoEdits(const juce::File&);
@@ -267,6 +268,13 @@ public:
                 const juce::File fixture(args[1]);
                 if (args[0] == "--theory-guide-smoke") setApplicationReturnValue(checkTheoryGuide(fixture));
                 else setApplicationReturnValue(args[0] == "--track-view-smoke" ? checkTrackView(fixture) : checkPianoEdits(fixture));
+                quit();
+            });
+            return;
+        }
+        if (args.size() == 3 && args[0] == "--studio-instruments-smoke") {
+            juce::MessageManager::callAsync([this,args] {
+                setApplicationReturnValue(checkStudioInstruments(args));
                 quit();
             });
             return;

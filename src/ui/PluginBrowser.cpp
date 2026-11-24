@@ -79,6 +79,21 @@ PluginBrowser::PluginBrowser() {
     cache_ = directory.getChildFile("vst3-cache.xml");
     if (const auto xml = juce::XmlDocument::parse(cache_)) plugins_.recreateFromXml(*xml);
     registerBundledPlugins();
+    pluginTab_.setComponentID("browser-plugins");
+    sampleTab_.setComponentID("browser-samples");
+    addAndMakeVisible(pluginTab_);
+    addAndMakeVisible(sampleTab_);
+    addChildComponent(folder_);
+    pluginTab_.onClick = [this] { showSamples(false); };
+    sampleTab_.onClick = [this] { showSamples(true); };
+    pluginTab_.setToggleState(true, juce::dontSendNotification);
+    folder_.onClick = [this] {
+        folderChooser_ = std::make_unique<juce::FileChooser>(TRANS("Select sample folder..."), samples_->getRoot());
+        folderChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+            [safe = juce::Component::SafePointer<PluginBrowser>(this)](const juce::FileChooser& chooser) {
+                if (safe && chooser.getResult().isDirectory()) safe->samples_->setRoot(chooser.getResult());
+            });
+    };
     addAndMakeVisible(scanButton_);
     addAndMakeVisible(scanOneButton_);
     addAndMakeVisible(filter_);
@@ -103,13 +118,49 @@ PluginBrowser::PluginBrowser() {
 
 PluginBrowser::~PluginBrowser() {
     stopTimer();
+    if (samples_) samples_->removeListener(this);
     tree_.setRootItem(nullptr);
     if (scanProcess_ && scanProcess_->isRunning()) scanProcess_->kill();
     if (scanStatus_ != juce::File{}) scanStatus_.deleteFile();
 }
 
+void PluginBrowser::showSamples(bool show) {
+    if (show && !samples_) {
+        using Browser = juce::FileBrowserComponent;
+        samples_ = std::make_unique<Browser>(Browser::openMode | Browser::canSelectFiles | Browser::useTreeView
+            | Browser::filenameBoxIsReadOnly, juce::File::getSpecialLocation(juce::File::userMusicDirectory), &sampleFilter_, nullptr);
+        addChildComponent(*samples_);
+        samples_->addListener(this);
+        selectionChanged();
+    }
+    showingSamples_ = show;
+    sampleTab_.setToggleState(show, juce::dontSendNotification);
+    pluginTab_.setToggleState(!show, juce::dontSendNotification);
+    resized();
+}
+
+void PluginBrowser::selectionChanged() {
+    const auto file = samples_->getHighlightedFile();
+    if (auto* tree = dynamic_cast<juce::FileTreeComponent*>(samples_->getDisplayComponent()))
+        tree->setDragAndDropDescription(file.existsAsFile() && supportsSample(file)
+            ? "ostf-audio:" + file.getFullPathName() : juce::String{});
+}
+
 void PluginBrowser::resized() {
     auto area = getLocalBounds().reduced(6);
+    auto tabs = area.removeFromTop(28);
+    pluginTab_.setBounds(tabs.removeFromLeft(tabs.getWidth()/2).reduced(1,2));
+    sampleTab_.setBounds(tabs.reduced(1,2));
+    for (juce::Component* control : std::array<juce::Component*,5>{&scanButton_, &scanOneButton_, &filter_, &status_, &tree_})
+        control->setVisible(!showingSamples_);
+    progress_.setVisible(!showingSamples_ && scanProcess_ != nullptr);
+    folder_.setVisible(showingSamples_);
+    if (samples_) samples_->setVisible(showingSamples_);
+    if (showingSamples_) {
+        folder_.setBounds(area.removeFromTop(28).reduced(1,2));
+        samples_->setBounds(area);
+        return;
+    }
     auto buttons = area.removeFromTop(24);
     scanOneButton_.setBounds(buttons.removeFromRight(buttons.getWidth() / 2).reduced(2, 0));
     scanButton_.setBounds(buttons.reduced(2, 0));
@@ -292,6 +343,7 @@ int PluginBrowser::runScanWorker(const juce::String& token, const juce::String& 
 void PluginBrowser::registerBundledPlugins() {
     for (const auto* file : {"OSTF Arranger.vst3", "OSTF GM Sound Module.vst3"})
         registerBundledVst3(plugins_, file);
+    for (const auto& instrument : ostfstudio::stockInstruments) registerBundledVst3(plugins_, juce::String(instrument.name) + ".vst3");
     for (const auto& fx : ostfstudio::stockEffects) registerBundledVst3(plugins_, juce::String(fx.name) + ".vst3");
 }
 

@@ -1,6 +1,6 @@
 # OSTF Studio デモ曲ギャラリー
 
-OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、対応する `.ostfp` は同じデータとマニフェストを含むプロジェクトです。OSTFPのProduction Sessionに、各演奏トラックの通常のVST3 InstrumentとしてOSTF GM Sound Moduleを記録しています。MIDIチャンネルはOSTF Coreの track.midi、音色番号は各トラックのProgram Changeイベントに入っています。GM音源と試聴バンクはアプリの配布パッケージに含まれます。 [OSTF 5.0.0の仕様とSchema](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.0/tree/d8ce48ca6c873a5a24a94bcc80d847bf33135b46)
+OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、対応する `.ostfp` は同じデータとマニフェストを含むプロジェクトです。OSTFPのProduction Sessionに、各演奏トラックのVST3音源を記録しています。MIDIチャンネルはOSTF Coreの track.midi、音色番号は各トラックのProgram Changeイベントに入っています。GM音源と試聴バンクはアプリの配布パッケージに含まれます。 [OSTF 5.0.0の仕様とSchema](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.0/tree/d8ce48ca6c873a5a24a94bcc80d847bf33135b46)
 
 | 曲 | 尺・トラック数 | 曲の構成と確認できるデータ |
 |---|---:|---|
@@ -34,7 +34,7 @@ OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、�
 
 ### ミックスを聴き比べる
 
-各演奏トラックの音源は OSTF GM Sound Module 1台です。FX は音源の後に並び、一覧の上から順に音声を処理します。各曲で音量とパンを設定し、ドラムやベースを **Bus A**、伴奏を **Bus B** にまとめています。両バスと **Return 1** は Master に戻ります。
+各演奏トラックに音源を1台割り当てています。First Light Vector では、Prism Arpeggio は FM、Offbeat Sub はアナログ、Drums はドラムマシン、Wide Halo Pad はウェーブテーブル音源を使います。49小節目で各音源が PC 2 に切り替わります。ほかの演奏パートは OSTF GM Sound Module を使います。FX は音源の後に並び、一覧の上から順に音声を処理します。各曲で音量とパンを設定し、ドラムやベースを **Bus A**、伴奏を **Bus B** にまとめています。両バスと **Return 1** は Master に戻ります。
 
 | 曲 | 開いて確認する箇所 |
 |---|---|

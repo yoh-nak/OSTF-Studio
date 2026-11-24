@@ -111,6 +111,14 @@ At the bottom of the arrangement, choose a track type beside **Height** and drag
 
 OSTF Core stores chord voicing snapshots under `harmony.chords[].voicing` and performed notes under `tracks[].clips[].notes`. The **Chord Voicing** row displays note names and derives preview notes over each chord span. It has a mixer channel with its own instrument slot. Its channel settings are stored in the Studio extension without adding a Core source track. This derived row is the only global voicing row. A performed part such as **Keys Voicing** appears under **Arrangement Tracks**, even when its role is `voicing`. Tracks with the `melody`, `lead`, `vocal` or `vocals` role still appear above **Arrangement Tracks**. All these note rows open the piano roll and expose mute, solo, volume and pan.
 
+### Factory synthesizers and audio samples
+
+In **File → Demo songs → First Light Vector**, Prism Arpeggio plays the FM synth, Offbeat Sub the analog synth, Drums the drum machine, and Wide Halo Pad the wavetable synth. Each VST3 has four factory presets numbered PC 0–3. Select **Program Change** in a MIDI track's performance lane and use **Enter value…** to set the tick and program number. At bar 49 all four tracks switch to PC 2. Open the pad's Wave Analyzer insert to see the change in its spectrum.
+
+Open **Plug-in Browser → Audio files** and choose a local sample folder. Drag a WAV, AIFF, FLAC or MP3 onto an audio track at the desired time. Studio offers to replace the clip on occupied tracks. Compressed audio and AIFF are decoded to PCM WAV for project playback. The current import limit is 16 MiB per asset, mono or stereo.
+
+The information button opens song details. The adjacent note-and-arrows button opens the score and audition transpose/tempo commands. The performance lane's numeric entry accepts note velocity, program, controller, aftertouch, signed pitch bend and mixer pan values. Select one or more notes first when entering velocity.
+
 ### Shared instruments and OSTF GM Sound Module
 
 Load **OSTF GM Sound Module** on one arrangement track. The module displays all 16 MIDI channels and their GM names, with channel 10 reserved for percussion. Select a channel to change its program, volume, pan, expression, tuning, pitch-bend range, sustain, mute or solo. Incoming Program Change and the supported MIDI controls update the panel. The module saves these part settings in its VST3 state.

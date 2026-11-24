@@ -1,0 +1,22 @@
+[
+  {
+    "type": "FM",
+    "name": "OSTF FM Synth",
+    "code": "Ofm1"
+  },
+  {
+    "type": "Analog",
+    "name": "OSTF Analog Synth",
+    "code": "Oan1"
+  },
+  {
+    "type": "Drums",
+    "name": "OSTF Drum Machine",
+    "code": "Odr1"
+  },
+  {
+    "type": "Wavetable",
+    "name": "OSTF Wavetable Synth",
+    "code": "Owt1"
+  }
+]

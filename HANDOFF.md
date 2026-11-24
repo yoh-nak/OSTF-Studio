@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Local samples, performance entry and factory instruments
+
+Branch `feature/instruments-browser-midi-entry`. The information icon opens metadata, the note-and-arrows menu offers score and audition transforms, and divider lines group the toolbar commands. In the right browser choose **Audio files**, select a folder and drag a file to an audio track. WAV stays linked during editing. AIFF, FLAC and MP3 are decoded to 24-bit WAV for the project. The current one-region-per-audio-track rule prompts before replacement. In a performance lane, **Enter value…** accepts an exact tick and value. Velocity applies to the selected notes. Pitch bend uses −8192 to 8191, and mixer pan uses −100 to 100 percent.
+
+First Light Vector uses four locally synthesized VST3 instruments with four presets each. The embedded demo and standalone package switch all four parts to PC 2 at bar 49. The catalog in `src/plugins/instruments` drives wrapper metadata and factory registration. Release packages include the four wrappers alongside the existing twelve.
+
+Windows x64 Release compiled. The hosted instrument test distinguished all sixteen program renders, verified preset-state recall, matched the demo's class IDs and rendered all four tracks after a seek to bar 49. The toolbar, piano and browser tests passed, including internal WAV placement and AIFF-to-WAV sample fidelity. All seven gallery packages passed the pinned official schema/package checks. Core-only CTest passed 2/2. The full Windows suite passed 26/27. The existing Link transport test intermittently reported playing after an immediate start/stop (4 failures in 12 standalone runs). macOS execution and listening on physical outputs are unverified.
+
 ## PDF recognition, shared instruments and the warp demo
 
 The Windows import panel finds the Audiveris per-user installation under LocalAppData/Programs. When the executable is missing it offers the official installation instructions and retries the selected PDF after setup. The Windows x64 Release import ran with Audiveris 5.11.0 plus English OCR data. On the eight-bar Lantern Walk sample the 23 pitches, starts and durations matched the source MusicXML. Recognition took the subtitle as title, supplied 120 BPM (source 96), and recognised the last four of eight chords. The unedited result is in `examples/score-interchange/lantern-walk-from-pdf.ostf`.

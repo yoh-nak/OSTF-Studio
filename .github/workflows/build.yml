@@ -117,7 +117,7 @@ jobs:
           if ((Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF Arranger.vst3')) -or
               -not (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'OSTF Studio/Previous VST3/OSTF Arranger.vst3')) -or
               -not (Test-Path -LiteralPath $other.FullName)) { throw 'Unexpected legacy VST3 migration' }
-          $names = @('OSTF Arranger', 'OSTF GM Sound Module') + @((Get-Content src/plugins/effects/catalog.json -Raw | ConvertFrom-Json).name)
+          $names = @('OSTF Arranger', 'OSTF GM Sound Module') + @((Get-Content src/plugins/effects/catalog.json -Raw | ConvertFrom-Json).name) + @((Get-Content src/plugins/instruments/catalog.json -Raw | ConvertFrom-Json).name)
           foreach ($name in $names) {
             $path = Join-Path $env:CommonProgramFiles "VST3/OSTF Studio/$name.vst3/Contents/x86_64-win/$name.vst3"
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Shared VST3 is missing: $path" }
@@ -149,7 +149,7 @@ jobs:
             lipo "$bundle/Contents/MacOS/$name" -verify_arch arm64
             test -s "$bundle/Contents/Resources/Licenses/GPL-3.0.txt"
             ditto "$bundle" "$pkgroot/Library/Audio/Plug-Ins/VST3/$name.vst3"
-          done < <(jq -r '.[].name' src/plugins/effects/catalog.json)
+          done < <(jq -r '.[].name' src/plugins/effects/catalog.json src/plugins/instruments/catalog.json)
           cp third_party/tinysoundfont/LICENSE.txt "$staging/TinySoundFont-License.txt"
           components=$(mktemp -d)/components.plist
           pkgbuild --analyze --root "$pkgroot" "$components"
@@ -170,7 +170,7 @@ jobs:
           sudo installer -pkg "$staging/Install OSTF Studio and VST3.pkg" -target /
           while IFS= read -r name; do
             lipo "/Library/Audio/Plug-Ins/VST3/$name.vst3/Contents/MacOS/$name" -verify_arch arm64
-          done < <(jq -r '["OSTF Arranger", "OSTF GM Sound Module", .[].name][]' src/plugins/effects/catalog.json)
+          done < <(jq -sr '["OSTF Arranger", "OSTF GM Sound Module", (.[][] | .name)][]' src/plugins/effects/catalog.json src/plugins/instruments/catalog.json)
           hdiutil create -volname 'OSTF Studio' -srcfolder "$staging" -format UDZO "$dmg"
           hdiutil verify "$dmg"
       - name: Package corresponding source and build inputs

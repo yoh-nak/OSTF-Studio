@@ -304,7 +304,23 @@ int checkTrackView(const juce::File& fixture) {
     const auto sample = fixture.getParentDirectory().getParentDirectory().getParentDirectory()
         .getChildFile("examples/demo-songs/assets/glass-lantern-chimes.wav");
     const auto drop = audioEditor->getBounds().getCentre();
-    main.filesDropped({sample.getFullPathName()}, drop.x, drop.y);
+    auto* pane = descendant<PluginBrowser>(main);
+    if (!pane && !click("Plug-in Browser")) return 140;
+    pane = descendant<PluginBrowser>(main);
+    if (!pane) return 140;
+    auto* assets = dynamic_cast<juce::Button*>(pane->findChildWithID("browser-samples"));
+    auto* plugins = dynamic_cast<juce::Button*>(pane->findChildWithID("browser-plugins"));
+    if (!assets || !plugins) return 141;
+    assets->onClick();
+    auto* files = descendant<juce::FileBrowserComponent>(*pane);
+    if (!files || !files->isVisible() || !files->getDisplayComponent()) return 142;
+    files->setRoot(sample.getParentDirectory());
+    const juce::DragAndDropTarget::SourceDetails dragging("ostf-audio:" + sample.getFullPathName(),files,drop);
+    auto* dropTarget = dynamic_cast<juce::DragAndDropTarget*>(static_cast<juce::Component*>(&main));
+    if (!dropTarget || !dropTarget->isInterestedInDragSource(dragging)) return 143;
+    dropTarget->itemDropped(dragging);
+    plugins->onClick();
+    if (files->isVisible() || !plugins->getToggleState()) return 144;
     const auto* imported = audioEditor->sourceClip();
     if (!imported || imported->localFile != sample || imported->durationTicks <= 0) return 54;
     for (auto* child : audioEditor->getChildren())
@@ -597,5 +613,25 @@ int checkTrackView(const juce::File& fixture) {
         }
     guide->exitModalState(0);
     if (!listsPlayback || !listsRuler) return 42;
+    // A dropped AIFF must become a self-contained WAV asset with the same samples.
+    juce::TemporaryFile aiffFile(".aiff");
+    std::unique_ptr<juce::OutputStream> stream = aiffFile.getFile().createOutputStream();
+    juce::AiffAudioFormat aiff;
+    auto writer = aiff.createWriterFor(stream,juce::AudioFormatWriterOptions{}.withSampleRate(44100)
+        .withNumChannels(1).withBitsPerSample(16));
+    juce::AudioBuffer<float> source(1,128);
+    source.clear();
+    source.setSample(0,32,.5f);
+    if (!writer || !writer->writeFromAudioSampleBuffer(source,0,128)) return 145;
+    writer.reset();
+    if (!click("Add audio track")) return 146;
+    const auto position = audioEditor->getBounds().getCentre();
+    main.filesDropped({aiffFile.getFile().getFullPathName()},position.x,position.y);
+    const auto* decoded = audioEditor->sourceClip();
+    if (!decoded || decoded->embedded.isEmpty() || !decoded->path.endsWith(".wav")) return 147;
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(new juce::MemoryInputStream(decoded->embedded,false),true));
+    if (!reader || reader->sampleRate != 44100 || reader->lengthInSamples != 128 || reader->numChannels != 1
+        || !reader->read(&source,0,128,0,true,false) || std::abs(source.getSample(0,32)-.5f) > .0001f) return 148;
     return 0;
 }

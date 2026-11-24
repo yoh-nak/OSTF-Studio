@@ -3,19 +3,30 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
-class PluginBrowser final : public juce::Component, private juce::Timer {
+class PluginBrowser final : public juce::Component, private juce::Timer, private juce::FileBrowserListener {
 public:
     PluginBrowser();
     ~PluginBrowser() override;
     void resized() override;
     bool hasScanCache() const { return cache_.existsAsFile(); }
     void scan();
+    static bool supportsSample(const juce::File& file) { return file.hasFileExtension("wav;aif;aiff;flac;mp3"); }
     std::optional<juce::PluginDescription> find(const juce::String& identifier) const;
     juce::Array<juce::PluginDescription> types() const { return plugins_.getTypes(); }
     static int runScanWorker(const juce::String& token, const juce::String& target = {});
 
 private:
     void timerCallback() override;
+    void showSamples(bool show);
+    void selectionChanged() override;
+    void fileClicked(const juce::File&, const juce::MouseEvent&) override {}
+    void fileDoubleClicked(const juce::File&) override {}
+    void browserRootChanged(const juce::File&) override { selectionChanged(); }
+    juce::TextButton pluginTab_ {TRANS("Plug-ins")}, sampleTab_ {TRANS("Audio files")}, folder_ {TRANS("Select sample folder...")};
+    juce::WildcardFileFilter sampleFilter_ {"*.wav;*.aif;*.aiff;*.flac;*.mp3", "*", TRANS("Audio samples")};
+    std::unique_ptr<juce::FileBrowserComponent> samples_;
+    std::unique_ptr<juce::FileChooser> folderChooser_;
+    bool showingSamples_ = false;
     void refreshTree();
     void registerBundledPlugins();
     void choosePlugin();

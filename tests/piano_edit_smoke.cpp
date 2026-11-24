@@ -53,7 +53,9 @@ int modelChecks(const juce::File& fixture) {
             || !take["notes"][0].hasProperty(index == 0 ? "pitch" : "soundSlotId")) return 94;
     }
     const MidiControl bend{"pitchBend"}, cc{"controlChange", 11}, pressure{"channelPressure"}, poly{"polyPressure", 60};
-    for (auto key : {bend, cc, pressure, poly}) {
+    const std::array controlLanes {bend, cc, pressure, poly, MidiControl{"programChange"}, MidiControl{"controlChange",0},
+                                   MidiControl{"controlChange",32}, MidiControl{"controlChange",119}};
+    for (const auto& key : controlLanes) {
         if (song->editController(0, key, {}, 70, key.maximum(), before).failed()) return 61;
         const auto& curves = song->performanceCurves.at(0);
         const auto lane = std::find_if(curves.begin(), curves.end(), [&](const auto& c){return c.label == key.label();});
@@ -90,7 +92,7 @@ int modelChecks(const juce::File& fixture) {
         if ((package ? readOstfpPreview(reopen, song) : readOstfPreview(reopen, song)).failed()) return 13;
         if (!song->savedMix || !song->savedMix->cycleEnabled || song->savedMix->recordCycle != mix.recordCycle) return 95;
         if (!song->panAutomation.contains(owner) || std::abs(song->panAutomation.at(owner).valueAt(60,.5)) > .00001) return 66;
-        for (auto key : {bend,cc,pressure,poly}) {
+        for (const auto& key : controlLanes) {
             const auto& curves = song->performanceCurves.at(0);
             const auto lane = std::find_if(curves.begin(),curves.end(),[&](const auto& c){return c.label == key.label();});
             if (lane == curves.end() || std::none_of(lane->points.begin(),lane->points.end(),[&](const auto& p){
@@ -387,10 +389,15 @@ int checkPianoEdits(const juce::File& fixture) {
             return 56;
     auto* picker = dynamic_cast<juce::ComboBox*>(main.findChildWithID("performance-picker"));
     auto* editor = dynamic_cast<PerformanceEditor*>(main.findChildWithID("performance-editor"));
-    if (!picker || !editor) return 70;
+    auto* enter = dynamic_cast<juce::Button*>(main.findChildWithID("performance-value-entry"));
+    if (!picker || !editor || !enter || !enter->isVisible()) return 70;
     for (int i=0; i<picker->getNumItems(); ++i) if (picker->getItemText(i)=="CC 11")
         picker->setSelectedItemIndex(i,juce::sendNotificationSync);
     if (!editor->isVisible() || editor->getBounds().isEmpty() || velocity->isVisible()) return 71;
+    enter->onClick();
+    auto* valueDialog = dynamic_cast<juce::AlertWindow*>(juce::Component::getCurrentlyModalComponent());
+    if (!valueDialog || !valueDialog->getTextEditor("tick") || !valueDialog->getTextEditor("value")) return 117;
+    valueDialog->exitModalState(0);
     const auto initialPoints=editor->points.size();
     const juce::Point<float> at{float(editor->getWidth()/2),8};
     editor->mouseDown(pointer(*editor,at,at)); editor->mouseUp(pointer(*editor,at,at));

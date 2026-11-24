@@ -18,6 +18,7 @@ $GmBundle = (Get-Item -LiteralPath $GmBundle -ErrorAction Stop).FullName
 $ArrangerBundle = (Get-Item -LiteralPath $ArrangerBundle -ErrorAction Stop).FullName
 $EffectsDir = (Get-Item -LiteralPath $EffectsDir -ErrorAction Stop).FullName
 $catalog = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../src/plugins/effects/catalog.json') -Raw | ConvertFrom-Json
+$catalog += Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../src/plugins/instruments/catalog.json') -Raw | ConvertFrom-Json
 $fxBundles = @(foreach ($effect in $catalog) {
     $bundle = Join-Path $EffectsDir ($effect.name + '.vst3')
     $null = Get-Item -LiteralPath (Join-Path $bundle ("Contents/x86_64-win/" + $effect.name + ".vst3")) -ErrorAction Stop
