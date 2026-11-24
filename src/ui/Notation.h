@@ -9,15 +9,17 @@ struct ScoreNote {
     juce::int64 at, length;
     int pitch, voice, string = 0, fret = -1;
     bool tiedFrom, tiedTo;
+    juce::String noteId;
 };
 struct ScorePart {
     juce::String id, name;
     StaffStyle preferred = StaffStyle::treble;
     std::vector<PitchedNote> notes;
+    int midiChannel = 0;
 };
 struct SheetMark {
     juce::int64 at, end;
-    juce::String text, voice, pronunciation;
+    juce::String text, voice, pronunciation, trackId, noteId;
 };
 enum class LyricDisplay { text, pronunciation, both };
 struct SheetOptions {
@@ -32,6 +34,8 @@ struct NotationScore {
     juce::int64 ppq = 0, barTicks = 0;
     std::vector<SheetMark> sections, chords, scales, lyrics, tempos, keys;
     std::vector<ScorePart> parts;
+    std::vector<MeterPoint> meters;
+    juce::StringArray unalignedPhrases;
 };
 using MeasureNotes = std::vector<std::vector<ScoreNote>>;
 NotationScore notationScore(const OstfpPreview&);
@@ -42,5 +46,7 @@ void drawReadingGrid(juce::Graphics&, juce::Rectangle<int>, const NotationScore&
                      bool lead, int firstBar, int columns, int rows, const SheetOptions&, juce::int64 playingTick);
 juce::Result writeSheetPdf(juce::OutputStream&, const NotationScore&, int part, StaffStyle, const MeasureNotes&,
                            bool lead, const SheetOptions& = {});
+juce::Result writeSongXml(juce::OutputStream&, const NotationScore&);
+juce::Result writeChordPro(juce::OutputStream&, const NotationScore&);
 juce::Result writePartXml(juce::OutputStream&, const NotationScore&, int part, StaffStyle, const MeasureNotes&);
 } // namespace ostfstudio

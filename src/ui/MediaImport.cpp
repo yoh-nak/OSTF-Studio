@@ -1,4 +1,5 @@
 #include "ui/MediaImport.h"
+#include "ui/ScoreImportData.h"
 #include "ui/LocalStemAnalysis.h"
 #include "ui/AudioScoreNotes.h"
 #include "ui/GlobalTimelineEdit.h"
@@ -9,28 +10,7 @@
 
 namespace ostfstudio {
 namespace {
-using Tick = juce::int64;
-using List = juce::Array<juce::var>;
-juce::var obj(std::initializer_list<std::pair<juce::Identifier, juce::var>> fields) {
-    auto o = std::make_unique<juce::DynamicObject>();
-    for (const auto& [key, v] : fields)
-        o->setProperty(key, v);
-    return juce::var(o.release());
-}
-struct Part {
-    juce::String name;
-    int channel = 1;
-    List notes;
-    juce::String role;
-};
-struct ImportSong {
-    int ppq = 480, beats = 4, beatType = 4, count = 0;
-    Tick length = 1;
-    std::map<Tick, double> tempos{{0, 120.0}};
-    std::map<Tick, std::pair<int, int>> meters{{0, {4, 4}}};
-    std::set<int> drums;
-    std::vector<Part> parts;
-};
+using namespace scoreimport;
 juce::Result fail(const char* reason) { return juce::Result::fail(juce::translate(reason)); }
 
 // Compare pitch-class energy in short Hann-windowed blocks with major/minor triads.
@@ -291,7 +271,7 @@ juce::Result buildImportScore(const juce::File& source, ImportSong& song, const 
         obj({{"format", "OSTF"},
              {"version", "5.0.0"},
              {"ppq", song.ppq},
-             {"song", obj({{"title", source.getFileNameWithoutExtension()}})},
+             {"song", obj({{"title", song.title.isNotEmpty() ? song.title : source.getFileNameWithoutExtension()}})},
              {"timeline", obj({{"duration", duration},
                                {"sections", List{obj({{"id", "section-1"},
                                                       {"name", source.getFileNameWithoutExtension()},
@@ -302,8 +282,14 @@ juce::Result buildImportScore(const juce::File& source, ImportSong& song, const 
              {"harmony", obj({{"chords", chordEvents}, {"scales", List{}}})},
              {"tracks", tracks},
              {"soundSlots", slots},
-             {"lyrics", obj({{"documents", List{}}, {"phrases", List{}}, {"units", List{}}, {"alignments", List{}}})},
+             {"lyrics", obj({{"documents", song.documents}, {"phrases", song.phrases}, {"units", song.units}, {"alignments", song.alignments}})},
              {"resources", List{}}});
+    List keyChanges;
+    for (const auto& [at,key] : song.keys) {
+        if (at == 0) score["song"].getDynamicObject()->setProperty("key",key);
+        else if (at < duration) keyChanges.add(obj({{"id","key-" + juce::String(at)},{"at",at},{"key",key}}));
+    }
+    if (!keyChanges.isEmpty()) score["timeline"].getDynamicObject()->setProperty("keyChanges",keyChanges);
     const auto json = juce::JSON::toString(score, true);
     juce::MemoryInputStream input(json.toRawUTF8(), json.getNumBytesAsUTF8(), false);
     return readOstfPreview(input, project);
@@ -478,25 +464,21 @@ juce::Result analyseNoteEvidence(ImportSong& song, List& chords, const AnalysisP
     return juce::Result::ok();
 }
 
-juce::Result analysePdf(const juce::File& file, ImportSong& song, const AnalysisConnection& ai) {
+juce::Result analysePdf(const juce::File& file, ImportSong& song, List& chords, const AnalysisConnection& ai) {
     AnalysisWorkspace work;
     if (auto r = work.dir.createDirectory(); r.failed()) return r;
     auto apps = juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory);
     if (!ai) {
         auto omr = analysisTool("Audiveris", {apps.getChildFile("Audiveris/Audiveris.exe").getFullPathName(),
                                                "/Applications/Audiveris.app/Contents/MacOS/Audiveris"});
-        auto ms = analysisTool("MuseScore4", {apps.getChildFile("MuseScore 4/bin/MuseScore4.exe").getFullPathName(),
-                                               "/Applications/MuseScore 4.app/Contents/MacOS/mscore"});
-        if (!omr.existsAsFile() || !ms.existsAsFile()) return fail("Local PDF analysis requires Audiveris and MuseScore 4.");
+        if (!omr.existsAsFile()) return fail("Local PDF analysis requires Audiveris.");
         const auto pdf = work.dir.getChildFile("score.pdf");
         if (!file.copyFileTo(pdf)) return fail("Could not read the selected PDF.");
         if (auto r = runAnalysisTool({omr.getFullPathName(), "-batch", "-transcribe", "-export", "-output",
                                       work.dir.getFullPathName(), "--", pdf.getFullPathName()}, 900000); r.failed()) return r;
         auto scores = work.dir.findChildFiles(juce::File::findFiles, true, "*.mxl");
         if (scores.size() != 1) return fail("Select a PDF containing one recognised score.");
-        auto midi = work.dir.getChildFile("score.mid");
-        if (auto r = runAnalysisTool({ms.getFullPathName(), "-o", midi.getFullPathName(), scores[0].getFullPathName()}, 180000); r.failed()) return r;
-        return readMidi(midi, song);
+        return scoreimport::readMusicXml(scores[0], song, chords);
     }
 
     constexpr auto schema = R"({"type":"object","additionalProperties":false,"required":["length","bpm","beats","unit","notes"],"properties":{"length":{"type":"integer"},"bpm":{"type":"integer"},"beats":{"type":"integer"},"unit":{"type":"integer"},"notes":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["channel","name","pitch","start","duration","velocity"],"properties":{"channel":{"type":"integer"},"name":{"type":"string"},"pitch":{"type":"integer"},"start":{"type":"integer"},"duration":{"type":"integer"},"velocity":{"type":"integer"}}}}}})";
@@ -547,10 +529,18 @@ juce::Result analysePdf(const juce::File& file, ImportSong& song, const Analysis
 juce::String scoreImportFileFilter() {
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
-    return "*.pdf;*.mid;*.midi;" + formats.getWildcardForAllFormats();
+    return "*.musicxml;*.xml;*.mxl;*.pdf;*.mid;*.midi;" + formats.getWildcardForAllFormats();
 }
 
 juce::Result analyseScoreImport(const juce::File& file, std::unique_ptr<OstfpPreview>& output, juce::String& info, AnalysisConnection ai) {
+    if (file.hasFileExtension("musicxml;xml;mxl")) {
+        ImportSong song;
+        List chords;
+        if (auto r = scoreimport::readMusicXml(file, song, chords); r.failed()) return r;
+        auto r = buildImportScore(file, song, chords, output);
+        if (r.wasOk()) info = "MusicXML  /  " + juce::String(song.parts.size()) + " " + TRANS("tracks") + "  /  " + juce::String(song.count) + " " + TRANS("notes");
+        return r;
+    }
     if (ai && !ai->connected()) return fail("Reconnect ChatGPT before starting AI analysis.");
     if (file.hasFileExtension("mid;midi;pdf")) {
         const bool pdf = file.hasFileExtension("pdf");
@@ -558,7 +548,7 @@ juce::Result analyseScoreImport(const juce::File& file, std::unique_ptr<OstfpPre
         ImportSong song;
         List chords;
         if (!pdf && file.getSize() > 16 * 1024 * 1024) return fail("Choose a source file of up to 16 MiB.");
-        if (auto r = pdf ? analysePdf(file, song, ai) : readMidi(file, song); r.failed()) return r;
+        if (auto r = pdf ? analysePdf(file, song, chords, ai) : readMidi(file, song); r.failed()) return r;
         if (ai) if (auto r = analyseNoteEvidence(song, chords, *ai); r.failed()) return r;
         auto r = buildImportScore(file, song, chords, output);
         if (r.wasOk()) info = (ai ? ai->name() : TRANS("Local analysis")) + "  ·  " + juce::String(song.count) + " " + TRANS("notes");

@@ -353,7 +353,7 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
         viewport.setViewedComponent(&rows, false);
         heading.setFont(juce::FontOptions(19.f, juce::Font::bold));
         heading.setText(TRANS("Score analysis"), juce::dontSendNotification);
-        summary.setText(TRANS("Select audio, MIDI or a PDF score to analyse its musical parts."), juce::dontSendNotification);
+        summary.setText(TRANS("Select an audio, MIDI, PDF or MusicXML file."), juce::dontSendNotification);
         openSong.setEnabled(false);
         chooseFile.onClick = [this] { choose(); };
         openSong.onClick = [this] {
@@ -367,7 +367,7 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
                         safe->openSong.setEnabled(false);
                         safe->open(std::move(safe->project));
                         safe->heading.setText(TRANS("Score analysis"), juce::dontSendNotification);
-                        safe->summary.setText(TRANS("Select audio, MIDI or a PDF score to analyse its musical parts."), juce::dontSendNotification);
+                        safe->summary.setText(TRANS("Select an audio, MIDI, PDF or MusicXML file."), juce::dontSendNotification);
                     }
                 }));
         };
@@ -436,7 +436,7 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
         resized();
     }
     void choose() {
-        chooser = std::make_unique<juce::FileChooser>(TRANS("Analyse audio, MIDI or PDF"), juce::File{}, scoreImportFileFilter());
+        chooser = std::make_unique<juce::FileChooser>(TRANS("Import audio, MIDI, PDF or MusicXML"), juce::File{}, scoreImportFileFilter());
         chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
             [safe = juce::Component::SafePointer<ImportPanel>(this)](const auto& fc) {
                 const auto source = fc.getResult();
@@ -469,7 +469,7 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
     juce::TextButton cancel{TRANS("Cancel")};
     juce::Label disclosure;
     OpenImportedSong open;
-    juce::TextButton chooseFile{TRANS("Analyse audio, MIDI or PDF")}, openSong{TRANS("Open score here as a new unsaved song")};
+    juce::TextButton chooseFile{TRANS("Import audio, MIDI, PDF or MusicXML")}, openSong{TRANS("Open score here as a new unsaved song")};
     juce::Label summary, heading;
     juce::Component rows;
     juce::Viewport viewport;

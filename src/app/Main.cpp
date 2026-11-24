@@ -200,7 +200,7 @@ private:
 
 int checkStockEffects(const juce::StringArray&);
 int checkTrackView(const juce::File&);
-std::unique_ptr<juce::Timer> startSplicePaneCheck(std::function<void(int)>);
+std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)>);
 int checkPianoEdits(const juce::File&);
 int checkTheoryGuide(const juce::File&);
 int checkNotation(const juce::File&, const juce::File&);
@@ -214,8 +214,8 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
-        if (args.size() == 1 && args[0] == "--splice-pane-smoke") {
-            spliceCheck_ = startSplicePaneCheck([this](int result) {
+        if (args.size() == 1 && (args[0] == "--splice-window-smoke" || args[0] == "--splice-pane-smoke")) {
+            spliceCheck_ = startSpliceWindowCheck([this](int result) {
                 setApplicationReturnValue(result);
                 quit();
             });

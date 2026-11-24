@@ -1,6 +1,8 @@
 #include "ui/Notation.h"
+#include "ui/MusicXmlKey.h"
 #include <algorithm>
 #include <map>
+#include <set>
 
 namespace ostfstudio {
 using Tick = juce::int64;
@@ -77,6 +79,7 @@ NotationScore notationScore(const OstfpPreview& project) {
     NotationScore s;
     s.title = project.title;
     s.ppq = project.ppq;
+    s.meters = project.meters;
     s.barTicks = project.ticksPerBar;
     s.bars = project.bars.endBar - project.bars.firstBar;
     const auto doc = juce::JSON::parse(project.sourceScore.toString());
@@ -105,11 +108,13 @@ NotationScore notationScore(const OstfpPreview& project) {
         if (scale.isNotEmpty())
             s.scales.push_back({0, s.bars * s.barTicks, scale});
     }
+    std::map<juce::String, juce::String> noteTracks;
     std::map<juce::String, std::pair<Tick, Tick>> noteTimes;
     for (const auto& track : items(doc["tracks"]))
         for (const auto& clip : items(track["clips"]))
             for (const auto& n : items(clip["notes"])) {
                 const Tick start = static_cast<Tick>(clip["start"]) + static_cast<Tick>(n["start"]);
+                noteTracks[n["id"].toString()] = track["id"].toString();
                 noteTimes[n["id"].toString()] = {start, start + static_cast<Tick>(n["duration"])};
             }
     std::map<juce::String, SheetMark> alignments;
@@ -121,6 +126,10 @@ NotationScore notationScore(const OstfpPreview& project) {
                 const auto it = noteTimes.find(note.toString());
                 if (it == noteTimes.end())
                     continue;
+                if (value.at < 0 || it->second.first < value.at) {
+                    value.trackId = noteTracks[note.toString()];
+                    value.noteId = note.toString();
+                }
                 value.at = value.at < 0 ? it->second.first : std::min(value.at, it->second.first);
                 value.end = std::max(value.end, it->second.second);
             }
@@ -137,6 +146,9 @@ NotationScore notationScore(const OstfpPreview& project) {
         if (mark.at >= 0 && mark.text.isNotEmpty())
             s.lyrics.push_back(std::move(mark));
     }
+    if (s.lyrics.empty())
+        for (const auto& phrase : items(doc["lyrics"]["phrases"]))
+            if (auto text = phrase["text"].toString().trim(); text.isNotEmpty()) s.unalignedPhrases.add(text);
     std::stable_sort(s.lyrics.begin(), s.lyrics.end(), [](const auto& a, const auto& b) { return a.at < b.at; });
     for (const auto& tempo : items(timeline["tempoChanges"]))
         s.tempos.push_back({static_cast<Tick>(tempo["at"]), 0, tempo["bpm"].toString()});
@@ -158,6 +170,7 @@ NotationScore notationScore(const OstfpPreview& project) {
             p.preferred = StaffStyle::bass;
         else if (p.name.containsIgnoreCase("piano") || i == project.chordVoicingTrack)
             p.preferred = StaffStyle::grand;
+        if (i < project.sourceMidiChannels.size()) p.midiChannel = project.sourceMidiChannels[i];
         p.notes = project.pitchedNotes[i];
         const auto& drums = project.drumNotes[i];
         p.notes.insert(p.notes.end(), drums.begin(), drums.end());
@@ -170,8 +183,8 @@ NotationScore notationScore(const OstfpPreview& project) {
     return s;
 }
 
-MeasureNotes partMeasures(const NotationScore& s, int index, StaffStyle style) {
-    MeasureNotes result(s.bars);
+static MeasureNotes splitMeasures(const NotationScore& s, int index, StaffStyle style, const std::vector<Tick>& starts) {
+    MeasureNotes result(starts.size() - 1);
     if (index < 0 || index >= static_cast<int>(s.parts.size()) || s.barTicks <= 0)
         return result;
     std::vector<Tick> voices;
@@ -194,88 +207,115 @@ MeasureNotes partMeasures(const NotationScore& s, int index, StaffStyle style) {
                 break;
             }
         }
-        for (auto pos = n.startTick; pos < n.endTick && pos < s.barTicks * s.bars;) {
-            const int bar = static_cast<int>(pos / s.barTicks);
-            const auto end = std::min(n.endTick, (bar + 1) * s.barTicks);
+        for (auto pos = n.startTick; pos < n.endTick && pos < starts.back();) {
+            const auto bar = std::upper_bound(starts.begin(), starts.end(), pos) - starts.begin() - 1;
+            const auto end = std::min(n.endTick, starts[bar + 1]);
             result[bar].push_back(
-                {pos % s.barTicks, end - pos, n.pitch, voice, string, fret, pos != n.startTick, end != n.endTick});
+                {pos - starts[bar], end - pos, n.pitch, voice, string, fret, pos != n.startTick, end != n.endTick, n.id});
             pos = end;
         }
     }
     return result;
 }
 
+MeasureNotes partMeasures(const NotationScore &s, int index, StaffStyle style) {
+    std::vector<Tick> starts;
+    for (int i = 0; i <= s.bars; ++i)
+        starts.push_back(i * s.barTicks);
+    return splitMeasures(s, index, style, starts);
+}
+
 namespace {
-juce::XmlElement* field(juce::XmlElement& e, const char* tag, const juce::String& value) {
-    auto* child = e.createNewChildElement(tag);
+juce::XmlElement *field(juce::XmlElement &e, const char *tag, const juce::String &value) {
+    auto *child = e.createNewChildElement(tag);
     child->addTextElement(value);
     return child;
 }
-void clef(juce::XmlElement& attr, const char* sign, int line, int number = 0) {
-    auto* el = attr.createNewChildElement("clef");
+void clef(juce::XmlElement &attr, const char *sign, int line, int number = 0) {
+    auto *el = attr.createNewChildElement("clef");
     if (number)
         el->setAttribute("number", number);
     field(*el, "sign", sign);
     field(*el, "line", juce::String(line));
 }
-void rest(juce::XmlElement& measure, Tick ticks, int voice) {
+void rest(juce::XmlElement &measure, Tick ticks, int voice) {
     if (ticks <= 0)
         return;
-    auto* n = measure.createNewChildElement("note");
+    auto *n = measure.createNewChildElement("note");
     n->createNewChildElement("rest");
     field(*n, "duration", juce::String(ticks));
     field(*n, "voice", juce::String(voice));
 }
-} // namespace
-juce::Result writePartXml(juce::OutputStream& stream, const NotationScore& s, int index, StaffStyle style,
-                          const MeasureNotes& bars) {
-    if (index < 0 || index >= static_cast<int>(s.parts.size()))
-        return juce::Result::fail("Select a note track");
-    juce::XmlElement root("score-partwise");
-    root.setAttribute("version", "4.0");
-    field(*root.createNewChildElement("work"), "work-title", s.title);
-    auto* desc = root.createNewChildElement("part-list")->createNewChildElement("score-part");
-    desc->setAttribute("id", "P1");
+void addPart(juce::XmlElement &root, juce::XmlElement &list, const NotationScore &s, int index, StaffStyle style,
+             const MeasureNotes &bars, const std::vector<Tick> &starts, bool conductor, const juce::String &id) {
+    auto *desc = list.createNewChildElement("score-part");
+    desc->setAttribute("id", id);
     field(*desc, "part-name", s.parts[index].name);
     const bool drum = style == StaffStyle::percussion;
     std::map<int, juce::String> ids;
     if (drum) {
-        for (const auto& n : s.parts[index].notes)
-            ids[n.pitch] = "I" + juce::String(n.pitch);
-        for (const auto& [pitch, id] : ids) {
-            auto* inst = desc->createNewChildElement("score-instrument");
+        for (const auto &n : s.parts[index].notes)
+            ids[n.pitch] = id + "-I" + juce::String(n.pitch);
+        for (const auto &[pitch, id] : ids) {
+            auto *inst = desc->createNewChildElement("score-instrument");
             inst->setAttribute("id", id);
             field(*inst, "instrument-name", "GM " + juce::String(pitch));
         }
-        for (const auto& [pitch, id] : ids) {
-            auto* midi = desc->createNewChildElement("midi-instrument");
+        for (const auto &[pitch, id] : ids) {
+            auto *midi = desc->createNewChildElement("midi-instrument");
             midi->setAttribute("id", id);
             field(*midi, "midi-channel", "10");
             field(*midi, "midi-unpitched", juce::String(pitch + 1));
         }
     }
-    auto* part = root.createNewChildElement("part");
-    part->setAttribute("id", "P1");
+    if (!drum && s.parts[index].midiChannel > 0 && s.parts[index].midiChannel <= 16) {
+        const auto instrument = id + "-instrument";
+        auto *definition = desc->createNewChildElement("score-instrument");
+        definition->setAttribute("id", instrument);
+        field(*definition, "instrument-name", s.parts[index].name);
+        auto *midi = desc->createNewChildElement("midi-instrument");
+        midi->setAttribute("id", instrument);
+        field(*midi, "midi-channel", juce::String(s.parts[index].midiChannel));
+    }
+    auto *part = root.createNewChildElement("part");
+    part->setAttribute("id", id);
+    std::set<Tick> lyricTimes;
     for (int b = 0; b < static_cast<int>(bars.size()); ++b) {
-        auto* m = part->createNewChildElement("measure");
+        auto *m = part->createNewChildElement("measure");
         m->setAttribute("number", b + 1);
-        if (b == 0) {
-            auto* a = m->createNewChildElement("attributes");
+        const Tick measureStart = starts[b], length = starts[b + 1] - measureStart;
+        const auto meter = activeMeter(s.meters, double(measureStart), {0, s.beats, s.beatType});
+        auto key = b == 0 ? s.key : juce::String{};
+        for (const auto &mark : s.keys)
+            if (mark.at == measureStart)
+                key = mark.text;
+        if (b == 0 || meter.tick == measureStart || key.isNotEmpty()) {
+            auto *a = m->createNewChildElement("attributes");
             field(*a, "divisions", juce::String(s.ppq));
-            auto* time = a->createNewChildElement("time");
-            field(*time, "beats", juce::String(s.beats));
-            field(*time, "beat-type", juce::String(s.beatType));
-            const auto& strings = tuning(style);
+            const auto mode = key.fromLastOccurrenceOf(" ", false, false);
+            if (mode == "major" || mode == "minor") {
+                const auto tonic = key.upToFirstOccurrenceOf(" ", false, false);
+                const auto &names = musicxml::tonics(mode == "minor");
+                if (auto it = std::find_if(names.begin(), names.end(), [&](const char* name) { return tonic == name; }); it != names.end()) {
+                    auto *signature = a->createNewChildElement("key");
+                    field(*signature, "fifths", juce::String(static_cast<int>(it - names.begin()) - 7));
+                    field(*signature, "mode", mode);
+                }
+            }
+            auto *time = a->createNewChildElement("time");
+            field(*time, "beats", juce::String(meter.numerator));
+            field(*time, "beat-type", juce::String(meter.denominator));
+            const auto &strings = tuning(style);
             if (style == StaffStyle::grand) {
                 field(*a, "staves", "2");
                 clef(*a, "G", 2, 1);
                 clef(*a, "F", 4, 2);
             } else if (!strings.empty()) {
                 clef(*a, "TAB", static_cast<int>(strings.size()) - 1);
-                auto* details = a->createNewChildElement("staff-details");
+                auto *details = a->createNewChildElement("staff-details");
                 field(*details, "staff-lines", juce::String(static_cast<int>(strings.size())));
                 for (int i = 0; i < static_cast<int>(strings.size()); ++i) {
-                    auto* t = details->createNewChildElement("staff-tuning");
+                    auto *t = details->createNewChildElement("staff-tuning");
                     t->setAttribute("line", i + 1);
                     const int p = strings[strings.size() - 1 - i];
                     field(*t, "tuning-step", steps[p % 12]);
@@ -291,42 +331,88 @@ juce::Result writePartXml(juce::OutputStream& stream, const NotationScore& s, in
                 clef(*a, "G", 2);
         }
         std::map<int, std::vector<ScoreNote>> voices;
-        const Tick measureStart = b * s.barTicks;
-        for (const auto& tempo : s.tempos)
-            if (tempo.at >= measureStart && tempo.at < measureStart + s.barTicks) {
-                auto* direction = m->createNewChildElement("direction");
-                auto* mark = direction->createNewChildElement("direction-type")->createNewChildElement("metronome");
+        if (conductor) {
+            for (const auto &chord : s.chords) {
+                if (chord.at < measureStart || chord.at >= starts[b + 1])
+                    continue;
+                auto label = chord.text.trim();
+                if (!juce::String("ABCDEFG").contains(label.substring(0, 1)) || label.isEmpty())
+                    continue;
+                auto *harmony = m->createNewChildElement("harmony");
+                auto pitchName = [](juce::XmlElement &parent, const juce::String &name, const juce::String &note) {
+                    auto *pitch = parent.createNewChildElement(name);
+                    field(*pitch, (name + "-step").toRawUTF8(), note.substring(0, 1));
+                    const auto accidental = note.substring(1).initialSectionContainingOnly("#b");
+                    int alteration = 0;
+                    for (auto c : accidental)
+                        alteration += c == '#' ? 1 : -1;
+                    if (alteration)
+                        field(*pitch, (name + "-alter").toRawUTF8(), juce::String(alteration));
+                    return 1 + accidental.length();
+                };
+                const auto used = pitchName(*harmony, "root", label);
+                const auto suffix = label.substring(used).upToFirstOccurrenceOf("/", false, false);
+                static const std::map<juce::String, juce::String> kinds{{"", "major"},
+                                                                        {"m", "minor"},
+                                                                        {"7", "dominant"},
+                                                                        {"maj7", "major-seventh"},
+                                                                        {"m7", "minor-seventh"},
+                                                                        {"dim", "diminished"},
+                                                                        {"dim7", "diminished-seventh"},
+                                                                        {"m7b5", "half-diminished"},
+                                                                        {"aug", "augmented"},
+                                                                        {"sus4", "suspended-fourth"},
+                                                                        {"sus2", "suspended-second"},
+                                                                        {"6", "major-sixth"},
+                                                                        {"m6", "minor-sixth"},
+                                                                        {"9", "dominant-ninth"},
+                                                                        {"maj9", "major-ninth"},
+                                                                        {"m9", "minor-ninth"}};
+                auto it = kinds.find(suffix);
+                auto *kind = field(*harmony, "kind", it == kinds.end() ? "other" : it->second);
+                if (suffix.isNotEmpty())
+                    kind->setAttribute("text", suffix);
+                if (label.containsChar('/'))
+                    pitchName(*harmony, "bass", label.fromLastOccurrenceOf("/", false, false));
+                if (chord.at > measureStart)
+                    field(*harmony, "offset", juce::String(chord.at - measureStart));
+            }
+        }
+        for (const auto &tempo : s.tempos)
+            if (tempo.at >= measureStart && tempo.at < measureStart + length) {
+                auto *direction = m->createNewChildElement("direction");
+                auto *mark = direction->createNewChildElement("direction-type")->createNewChildElement("metronome");
                 field(*mark, "beat-unit", "quarter");
                 field(*mark, "per-minute", tempo.text);
                 if (tempo.at != measureStart)
                     field(*direction, "offset", juce::String(tempo.at - measureStart));
                 direction->createNewChildElement("sound")->setAttribute("tempo", tempo.text);
             }
-        for (const auto& section : s.sections)
+        for (const auto &section : s.sections)
             if (section.at == measureStart) {
-                auto* direction = m->createNewChildElement("direction");
+                auto *direction = m->createNewChildElement("direction");
                 field(*direction->createNewChildElement("direction-type"), "rehearsal", section.text);
             }
-        for (const auto& n : bars[b])
+        for (const auto &n : bars[b])
             voices[n.voice].push_back(n);
         if (voices.empty())
-            rest(*m, s.barTicks, 1);
+            rest(*m, length, 1);
         bool rewind = false;
-        for (const auto& [voice, events] : voices) {
+        for (const auto &[voice, events] : voices) {
             if (rewind)
-                field(*m->createNewChildElement("backup"), "duration", juce::String(s.barTicks));
+                field(*m->createNewChildElement("backup"), "duration", juce::String(length));
             Tick at = 0;
-            for (const auto& e : events) {
+            for (const auto &e : events) {
                 rest(*m, e.at - at, voice);
-                auto* n = m->createNewChildElement("note");
+                auto *n = m->createNewChildElement("note");
                 const int p = drum ? drumPosition(e.pitch) : e.pitch;
-                auto* tone = n->createNewChildElement(drum ? "unpitched" : "pitch");
+                auto *tone = n->createNewChildElement(drum ? "unpitched" : "pitch");
                 field(*tone, drum ? "display-step" : "step", steps[p % 12]);
                 if (!drum && alter[p % 12])
                     field(*tone, "alter", "1");
                 field(*tone, drum ? "display-octave" : "octave", juce::String(octave(p)));
                 field(*n, "duration", juce::String(e.length));
-                auto ties = [&](juce::XmlElement& parent, const char* tag) {
+                auto ties = [&](juce::XmlElement &parent, const char *tag) {
                     if (e.tiedFrom)
                         parent.createNewChildElement(tag)->setAttribute("type", "stop");
                     if (e.tiedTo)
@@ -341,25 +427,116 @@ juce::Result writePartXml(juce::OutputStream& stream, const NotationScore& s, in
                 if (style == StaffStyle::grand)
                     field(*n, "staff", e.pitch < 60 ? "2" : "1");
                 if (e.tiedFrom || e.tiedTo || e.string) {
-                    auto* notation = n->createNewChildElement("notations");
+                    auto *notation = n->createNewChildElement("notations");
                     ties(*notation, "tied");
                     if (e.string) {
-                        auto* tech = notation->createNewChildElement("technical");
+                        auto *tech = notation->createNewChildElement("technical");
                         field(*tech, "string", juce::String(e.string));
                         field(*tech, "fret", juce::String(e.fret));
                     }
                 }
+                if (!e.tiedFrom) {
+                    const bool firstAtOnset = lyricTimes.insert(measureStart + e.at).second;
+                    for (const auto &lyric : s.lyrics) {
+                        if (lyric.at == measureStart + e.at &&
+                            (lyric.noteId.isEmpty() ? firstAtOnset : lyric.noteId == e.noteId) &&
+                            (lyric.trackId.isEmpty() ? conductor : lyric.trackId == s.parts[index].id))
+                            field(*n->createNewChildElement("lyric"), "text", lyric.text);
+                    }
+                }
                 at = e.at + e.length;
             }
-            rest(*m, s.barTicks - at, voice);
+            rest(*m, length - at, voice);
             rewind = true;
         }
+    }
+}
+
+juce::Result exportXml(juce::OutputStream &stream, const NotationScore &s, int single, StaffStyle style,
+                       const MeasureNotes *prepared) {
+    if (s.parts.empty() || s.ppq <= 0 || s.barTicks <= 0 || s.bars < 1)
+        return juce::Result::fail("Select a note track");
+    juce::XmlElement root("score-partwise");
+    root.setAttribute("version", "4.0");
+    field(*root.createNewChildElement("work"), "work-title", s.title);
+    auto *list = root.createNewChildElement("part-list");
+    std::vector<Tick> starts{0};
+    const Tick end = s.barTicks * s.bars;
+    while (starts.back() < end) {
+        const auto at = starts.back();
+        const auto meter = activeMeter(s.meters, double(at), {0, s.beats, s.beatType});
+        auto next = at + (prepared ? s.barTicks
+                                   : std::max<Tick>(1, 4 * s.ppq * meter.numerator / std::max(1, meter.denominator)));
+        if (!prepared) {
+            const auto it = std::upper_bound(s.meters.begin(), s.meters.end(), at,
+                                             [](Tick t, const MeterPoint &m) { return t < m.tick; });
+            if (it != s.meters.end())
+                next = std::min(next, it->tick);
+        }
+        starts.push_back(std::min(next, end));
+    }
+    int count = 0;
+    for (int i = 0; i < static_cast<int>(s.parts.size()); ++i) {
+        if (single >= 0 && i != single)
+            continue;
+        if (single < 0 && s.parts[i].id == "/chord-voicing" && s.parts.size() > 1)
+            continue;
+        const auto staff = prepared ? style : s.parts[i].preferred;
+        const auto id = "P" + juce::String(++count);
+        if (prepared)
+            addPart(root, *list, s, i, staff, *prepared, starts, true, id);
+        else
+            addPart(root, *list, s, i, staff, splitMeasures(s, i, staff, starts), starts, count == 1, id);
     }
     const auto xml = root.toString();
     return stream.write(xml.toRawUTF8(), xml.getNumBytesAsUTF8()) ? juce::Result::ok()
                                                                   : juce::Result::fail("MusicXML write failed");
 }
 
+} // namespace
+
+juce::Result writePartXml(juce::OutputStream &out, const NotationScore &s, int part, StaffStyle style,
+                          const MeasureNotes &bars) {
+    if (part < 0 || part >= static_cast<int>(s.parts.size()) || bars.size() != static_cast<size_t>(s.bars))
+        return juce::Result::fail("Select a note track");
+    return exportXml(out, s, part, style, &bars);
+}
+
+juce::Result writeSongXml(juce::OutputStream &out, const NotationScore &s) {
+    return exportXml(out, s, -1, StaffStyle::treble, nullptr);
+}
+
+juce::Result writeChordPro(juce::OutputStream &out, const NotationScore &s) {
+    if (s.chords.empty() && s.lyrics.empty() && s.unalignedPhrases.isEmpty())
+        return juce::Result::fail("The song has no chords or lyrics to export.");
+    auto clean = [](juce::String text) { return text.replaceCharacters("\r\n{}[]", "      ").trim(); };
+    juce::String text = "{title: " + clean(s.title) + "}\n";
+    if (s.key.isNotEmpty())
+        text += "{key: " + clean(s.key).replace(" major", "").replace(" minor", "m") + "}\n";
+    text += "{time: " + juce::String(s.beats) + "/" + juce::String(s.beatType) + "}\n";
+    if (!s.tempos.empty())
+        text += "{tempo: " + clean(s.tempos.front().text) + "}\n";
+    std::map<Tick, juce::String> lines, sections;
+    for (const auto &chord : s.chords)
+        lines[chord.at] += "[" + clean(chord.text) + "]";
+    for (const auto &lyric : s.lyrics)
+        lines[lyric.at] += clean(lyric.text) + " ";
+    for (const auto &section : s.sections) {
+        sections[section.at] = clean(section.text);
+        lines.try_emplace(section.at);
+    }
+    Tick previousBar = -1;
+    for (const auto& [at, value] : lines) {
+        auto bar = at / std::max<Tick>(1,s.barTicks);
+        if (bar != previousBar || sections.count(at)) text += "\n";
+        if (auto it = sections.find(at); it != sections.end()) text += "{comment: " + it->second + "}\n";
+        text += value;
+        previousBar = bar;
+    }
+    text += "\n";
+    for (const auto& phrase : s.unalignedPhrases) text += clean(phrase) + "\n";
+    return out.write(text.toRawUTF8(),text.getNumBytesAsUTF8()) ? juce::Result::ok() : juce::Result::fail("ChordPro write failed");
+}
 namespace {
 constexpr float paperWidth = 595, paperHeight = 842;
 const juce::Colour ink(0xff192728), soft(0xff50625f), accent(0xff276356);

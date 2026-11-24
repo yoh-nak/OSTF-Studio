@@ -1,3 +1,4 @@
+#include "ui/Notation.h"
 #include "ui/MainComponent.h"
 #include "ui/GlobalTimelineEdit.h"
 #include "ui/ExternalAudioEdit.h"
@@ -99,7 +100,7 @@ int browserWidthFor(int available, int preferred) {
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal };
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal, exportMusicXml, exportChordPro };
 constexpr struct { const char* name; const char* first; const char* second; const char* third; } studioModes[] {
     {"AI Arrangement Studio", "Keep just piano and bass in the verse. Suggest an eight-bar build into the chorus.",
                               "Suggest two bass lines with different rhythms over these chords.",
@@ -683,17 +684,18 @@ MainComponent::MainComponent() {
         const auto full = workspaceBounds(getLocalBounds(), topBasicsHeight());
         const int width = browserWidthFor(full.getWidth(), full.getRight() - left - columnGripWidth);
         if (pluginBrowser_ && width != pluginBrowser_->getWidth()) {
-            const bool splice = pluginBrowser_->showingSplice();
-            (splice ? preferredSpliceWidth_ : preferredBrowserWidth_) = width;
-            viewPreferences_.getUserSettings()->setValue(splice ? "splicePaneWidth" : "pluginBrowserWidth", width);
+            preferredBrowserWidth_ = width;
+            viewPreferences_.getUserSettings()->setValue("pluginBrowserWidth", width);
             resized();
             repaint();
         }
     };
     pianoDivider_.resizeAt = [this](int y) {
         const auto workspace = getWorkspace();
-        arrangementFraction_ = std::clamp(double(y - workspace.getY()) / std::max(1, workspace.getHeight()), 0.18, 0.82);
-        if (auto* prefs = viewPreferences_.getUserSettings()) prefs->setValue("arrangementFraction", arrangementFraction_);
+        const bool mixer = mixerButton_.getToggleState();
+        auto& fraction = mixer ? mixerSplitFraction_ : arrangementFraction_;
+        fraction = std::clamp(double(y - workspace.getY()) / std::max(1, workspace.getHeight()), 0.18, 0.82);
+        if (auto* prefs = viewPreferences_.getUserSettings()) prefs->setValue(mixer ? "mixerSplitFraction" : "arrangementFraction", fraction);
         resized();
         repaint();
     };
@@ -716,9 +718,9 @@ MainComponent::MainComponent() {
     const auto* settings = viewPreferences_.getUserSettings();
     if (settings) {
         preferredBrowserWidth_ = settings->getIntValue("pluginBrowserWidth", 230);
-        preferredSpliceWidth_ = settings->getIntValue("splicePaneWidth", 800);
     }
     if (settings) preferredHeaderWidth_ = std::clamp(settings->getIntValue("trackHeaderWidth", 487), 400, 760);
+    if (settings) mixerSplitFraction_ = std::clamp(settings->getDoubleValue("mixerSplitFraction", .5), .18, .82);
     if (settings) arrangementFraction_ = std::clamp(settings->getDoubleValue("arrangementFraction", .6), .18, .82);
     const int colourMode = settings ? settings->getIntValue("pianoColourMode", chordNotes) : chordNotes;
     pianoColours_.setSelectedId(std::clamp(colourMode, int(plainNotes), int(chordAndScaleNotes)), juce::dontSendNotification);
@@ -1174,6 +1176,9 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             midi.addItem(exportMidi1, TRANS("Format 1 - separate tracks"));
             menu.addSubMenu(TRANS("Save as MIDI (SMF)"), midi, project_ != nullptr);
             menu.addSeparator();
+            menu.addItem(exportMusicXml, TRANS("Export MusicXML..."), project_ != nullptr);
+            menu.addItem(exportChordPro, TRANS("Export ChordPro..."), project_ != nullptr);
+            menu.addSeparator();
             menu.addItem(importMedia, TRANS("Import and transcription"));
             break;
         }
@@ -1212,7 +1217,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             break;
         }
         case 5:
-            menu.addItem(externalSplice, TRANS("Open Splice Sounds in right pane"));
+            menu.addItem(externalSplice, TRANS("Open Splice Sounds"));
             menu.addItem(externalMelodyne, "Melodyne...", !recordTrack_);
             menu.addSeparator();
             menu.addItem(externalLink, "Ableton Link", !recordTrack_, link_ != nullptr);
@@ -1350,6 +1355,8 @@ void MainComponent::menuItemSelected(int item, int) {
             importWindow_->toFront(true);
             break;
         case saveProject: saveDocument(SaveFormat::package); break;
+        case exportMusicXml: saveDocument(SaveFormat::musicXml); break;
+        case exportChordPro: saveDocument(SaveFormat::chordPro); break;
         case exportMidi0: saveDocument(SaveFormat::midi0); break;
         case exportMidi1: saveDocument(SaveFormat::midi1); break;
         case languageSystem:
@@ -1418,8 +1425,6 @@ void MainComponent::menuItemSelected(int item, int) {
 PluginBrowser& MainComponent::ensurePluginBrowser() {
     if (!pluginBrowser_) {
         pluginBrowser_ = std::make_unique<PluginBrowser>();
-        pluginBrowser_->onSplice = [this] { openSplice(); };
-        pluginBrowser_->onPageChanged = [this] { updateSplicePlayback(); resized(); };
         addChildComponent(*pluginBrowser_);
     }
     return *pluginBrowser_;
@@ -1431,14 +1436,13 @@ void MainComponent::togglePluginBrowser() {
     if (shown && !browser.hasScanCache()) browser.scan();
     pluginBrowserButton_.setToggleState(shown, juce::dontSendNotification);
     pluginBrowser_->setVisible(shown);
-    updateSplicePlayback();
     resized();
     repaint();
 }
 
 juce::Rectangle<int> MainComponent::getWorkspace() const {
     auto bounds = workspaceBounds(getLocalBounds(), topBasicsHeight());
-    if (pluginBrowserButton_.getToggleState()) bounds.removeFromRight(browserWidthFor(bounds.getWidth(), pluginBrowser_ && pluginBrowser_->showingSplice() ? preferredSpliceWidth_ : preferredBrowserWidth_) + columnGripWidth);
+    if (pluginBrowserButton_.getToggleState()) bounds.removeFromRight(browserWidthFor(bounds.getWidth(), preferredBrowserWidth_) + columnGripWidth);
     return bounds;
 }
 
@@ -1448,7 +1452,7 @@ int MainComponent::getArrangementHeight(int workspaceHeight) const {
     const bool compactClips = workspaceHeight < 320 && clipLane_.isVisible();
     const int minimum = std::min(workspaceHeight, (compactClips ? 2 : 26) + navigationRows * timelineNavigationHeight
                                               + timelineRowHeight() + TrackRowSize::minimum);
-    const double fraction = mixerButton_.getToggleState() ? 0.5 : arrangementFraction_;
+    const double fraction = mixerButton_.getToggleState() ? mixerSplitFraction_ : arrangementFraction_;
     return std::clamp(juce::roundToInt(workspaceHeight * fraction), minimum, std::max(minimum, workspaceHeight - (clipLane_.isVisible() ? 160 : 136)));
 }
 
@@ -2017,7 +2021,7 @@ MainComponent::~MainComponent() {
     aiConnectionWorker_.removeAllJobs(true, -1);
     if (spliceAuditionActive_ && deviceSettings_) deviceSettings_->devices().removeAudioCallback(&splicePlayer_);
     splicePlayer_.setProcessor(nullptr);
-    if (pluginBrowser_) pluginBrowser_->showSpliceEditor({});
+    spliceWindow_.reset();
     attachPadInput(false);
     stopTimer();
     transport_.stop();
@@ -2659,24 +2663,27 @@ void MainComponent::saveDocument(SaveFormat format) {
     if (!project_) return;
     const bool midi = format == SaveFormat::midi0 || format == SaveFormat::midi1;
     const bool package = format == SaveFormat::package;
-    const juce::String extension = midi ? "mid" : package ? "ostfp" : "ostf";
+    const bool xml = format == SaveFormat::musicXml;
+    const bool chords = format == SaveFormat::chordPro;
+    const bool exporting = xml || chords || midi;
+    const juce::String extension = xml ? "musicxml" : chords ? "chordpro" : midi ? "mid" : package ? "ostfp" : "ostf";
     auto title = juce::File::createLegalFileName(project_->title).trim();
     if (title.isEmpty()) title = "Untitled";
-    const bool upgrading = !midi && legacySourceFile_ != juce::File{};
+    const bool upgrading = !exporting && legacySourceFile_ != juce::File{};
     const auto start = upgrading
         ? legacySourceFile_.getSiblingFile(legacySourceFile_.getFileNameWithoutExtension() + "-5.0.0." + extension)
         : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(title + "." + extension);
-    const auto dialogTitle = juce::translate(midi ? "Save as MIDI (SMF)" : package ? "Save as OSTFP" : "Save as OSTF")
+    const auto dialogTitle = juce::translate(xml ? "Export MusicXML..." : chords ? "Export ChordPro..." : midi ? "Save as MIDI (SMF)" : package ? "Save as OSTFP" : "Save as OSTF")
         + (upgrading ? " (OSTF " + project_->sourceVersion + " " + juce::String::charToString(0x2192) + " 5.0.0)" : juce::String{});
-    chooser_ = std::make_unique<juce::FileChooser>(dialogTitle, start, "*." + extension);
+    chooser_ = std::make_unique<juce::FileChooser>(dialogTitle, start, chords ? "*.chordpro;*.cho" : "*." + extension);
     chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                               | juce::FileBrowserComponent::warnAboutOverwriting,
-        [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, package, midi, format,
+        [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, package, midi, xml, chords, exporting, format,
          extension](const juce::FileChooser& chooser) {
             if (!safe || safe->projectGeneration_ != generation) return;
             const auto file = chooser.getResult();
             if (file == juce::File{}) return;
-            if (!file.hasFileExtension(extension)) {
+            if (!file.hasFileExtension(chords ? "chordpro;cho" : extension)) {
                 safe->statusLabel_.setText(TRANS("Choose a .") + extension + TRANS(" filename"), juce::dontSendNotification);
                 return;
             }
@@ -2685,7 +2692,10 @@ void MainComponent::saveDocument(SaveFormat format) {
             auto result = juce::Result::fail(TRANS("Could not open a temporary file for saving"));
             {
                 juce::FileOutputStream output(temporary.getFile());
-                if (output.openedOk() && midi) {
+                if (output.openedOk() && (xml || chords)) {
+                    const auto score = ostfstudio::notationScore(*safe->project_);
+                    result = xml ? ostfstudio::writeSongXml(output, score) : ostfstudio::writeChordPro(output, score);
+                } else if (output.openedOk() && midi) {
                     std::vector<int> channels;
                     for (const auto& track : safe->trackControls_) channels.push_back(track->midiChannel);
                     result = ostfstudio::writeSongMidi(*safe->project_, format == SaveFormat::midi0
@@ -2727,7 +2737,7 @@ void MainComponent::saveDocument(SaveFormat format) {
             }
             if (result.wasOk() && !temporary.overwriteTargetFileWithTemporary())
                 result = juce::Result::fail(TRANS("Could not replace the destination file"));
-            if (result.wasOk() && !midi) {
+            if (result.wasOk() && !exporting) {
                 safe->savedScore_ = safe->project_->sourceScore;
                 safe->stockEffectChanges_.reset();
                 safe->sessionEdited_ = false;
@@ -4243,16 +4253,20 @@ void MainComponent::editLinkTempo() {
 }
 
 void MainComponent::openSplice() {
+    if (spliceWindow_) {
+        spliceWindow_->setVisible(true);
+        spliceWindow_->toFront(true);
+        updateSplicePlayback();
+        return;
+    }
+    if (spliceLoading_) return;
     auto& browser = ensurePluginBrowser();
-    if (!pluginBrowserButton_.getToggleState()) togglePluginBrowser();
-    browser.selectSplice(true);
-    if (spliceInstance_ || spliceLoading_) return;
     for (const auto& type : browser.types()) {
         if (type.pluginFormatName != "VST3" || !type.name.trim().equalsIgnoreCase("Splice Sounds")) continue;
         if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
         auto* device = deviceSettings_->devices().getCurrentAudioDevice();
         spliceLoading_ = true;
-        browser.showSpliceMessage(TRANS("Loading Splice Sounds..."));
+        statusLabel_.setText(TRANS("Loading Splice Sounds..."), juce::dontSendNotification);
         pluginFormats_.createPluginInstanceAsync(type, device ? device->getCurrentSampleRate() : 44100.,
             device ? device->getCurrentBufferSizeSamples() : 512,
             [safe = juce::Component::SafePointer<MainComponent>(this)](std::unique_ptr<juce::AudioPluginInstance> instance, const juce::String& error) {
@@ -4260,21 +4274,30 @@ void MainComponent::openSplice() {
                 safe->spliceLoading_ = false;
                 std::unique_ptr<juce::AudioProcessorEditor> editor(instance ? instance->createEditorAndMakeActive() : nullptr);
                 if (!editor) {
-                    safe->ensurePluginBrowser().showSpliceMessage(TRANS("Could not open Splice Sounds") + " " + error);
+                    safe->statusLabel_.setText(TRANS("Could not open Splice Sounds") + " " + error, juce::dontSendNotification);
                     return;
                 }
                 safe->spliceInstance_ = std::move(instance);
                 safe->splicePlayer_.setProcessor(safe->spliceInstance_.get());
-                safe->ensurePluginBrowser().showSpliceEditor(std::move(editor));
+                auto window = std::make_unique<PluginWindow>("Splice Sounds");
+                const auto resizable = editor->isResizable();
+                window->setResizable(resizable, false);
+                window->setContentOwned(editor.release(), true);
+                window->centreAroundComponent(safe.getComponent(), window->getWidth(), window->getHeight());
+                window->onClosed = [safe] { if (safe) safe->updateSplicePlayback(); };
+                safe->spliceWindow_ = std::move(window);
+                safe->spliceWindow_->setVisible(true);
+                safe->spliceWindow_->toFront(true);
+                safe->statusLabel_.setText("Splice Sounds", juce::dontSendNotification);
                 safe->updateSplicePlayback();
             });
         return;
     }
-    browser.showSpliceMessage(TRANS("Install the Splice Sounds instrument from Splice, then scan your VST3 plugins."));
+    statusLabel_.setText(TRANS("Install the Splice Sounds instrument from Splice, then scan your VST3 plugins."), juce::dontSendNotification);
 }
 
 void MainComponent::updateSplicePlayback() {
-    const bool active = spliceInstance_ && pluginBrowser_ && pluginBrowser_->isVisible() && pluginBrowser_->showingSplice();
+    const bool active = spliceWindow_ && spliceWindow_->isVisible();
     if (active == spliceAuditionActive_) return;
     if (active) deviceSettings_->devices().addAudioCallback(&splicePlayer_);
     else deviceSettings_->devices().removeAudioCallback(&splicePlayer_);
@@ -5206,7 +5229,8 @@ void MainComponent::refreshEditor() {
     refreshGroupHeight();
     arrangementScroll_.setVisible(arranging && project_ != nullptr);
     pianoInspectorView_.setVisible(piano && pianoGrid_.editable && !steps);
-    pianoDivider_.setVisible(editing);
+    pianoDivider_.setVisible(arranging && project_ && editorVisible_);
+    pianoDivider_.setTooltip(showMixer ? TRANS("Drag to resize the arrangement and mixer.") : TRANS("Drag to resize the arrangement and piano roll."));
     parameterDivider_.setVisible(piano && !steps);
     pitchZoom_.setVisible(piano && !drum);
     columnDivider_.setVisible(piano || audio);
@@ -5333,6 +5357,8 @@ void MainComponent::resized() {
                                                       .withWidth(columnGripWidth));
         arrangementColumnDivider_.toFront(false);
         importTrackDrop_.setBounds(arrangement.withTop(std::max(arrangement.getY(), arrangement.getBottom() - 36)).reduced(4, 2));
+        ruler_.headerBackground = verticalScroll_.getCurrentRangeStart() < 0.5
+            ? juce::Colours::transparentBlack : juce::Colour(finish().panel);
         ruler_.setBounds(rowOverlay_.getLocalBounds().removeFromTop(timelineRowHeight()));
         ruler_.toFront(false);
         const juce::Font headingFont(juce::FontOptions(15.f, juce::Font::bold));

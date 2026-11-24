@@ -397,12 +397,70 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
            project->pitchedNotes[1].size() == 2;
 }
 } // namespace
+static bool checkInterchange(const juce::File& demo, const juce::File& dir) {
+    const auto source = demo.getParentDirectory().getSiblingFile("score-interchange").getChildFile("lantern-walk.musicxml");
+    const auto xml = dir.getChildFile("song.musicxml");
+    const auto scoreFile = dir.getChildFile("lantern.ostf");
+    juce::String info;
+    std::unique_ptr<OstfpPreview> project;
+    const auto load = [&](const juce::File& f) {
+        auto r = analyseScoreImport(f,project,info);
+        if (r.failed()) std::cerr << f.getFileName() << ": " << r.getErrorMessage() << "\n";
+        return r.wasOk() && project;
+    };
+    if (!load(source) || project->title != "Lantern Walk" || project->pitchedNotes[0].size() != 23) return false;
+    const auto expected = project->pitchedNotes[0];
+    auto sameMelody = [&] {
+        if (project->sourceTrackCount() != 1 || project->pitchedNotes[0].size() != expected.size()) return false;
+        for (size_t i=0; i<expected.size(); ++i) {
+            const auto& n = project->pitchedNotes[0][i];
+            if (n.pitch != expected[i].pitch || n.startTick != expected[i].startTick || n.endTick != expected[i].endTick) return false;
+        }
+        return true;
+    };
+    auto song = notationScore(*project);
+    juce::MemoryOutputStream chords;
+    if (song.key != "C major" || song.chords.size() != 8 || song.tempos.front().text.getDoubleValue() != 96 ||
+        writeChordPro(chords,song).failed() || !chords.toString().contains("[Am]") || !chords.toString().contains("[G7]") ||
+        !save(xml,[&](auto& out){return writeSongXml(out,song);}) || !load(xml) || !sameMelody() ||
+        notationScore(*project).key != "C major" || notationScore(*project).chords.size() != 8 || saveMediaImport(*project,scoreFile).failed()) return false;
+    juce::FileInputStream score(scoreFile);
+    if (readOstfPreview(score,project).failed() || !sameMelody()) return false;
+    const auto packed = dir.getChildFile("nested.mxl");
+    juce::ZipFile::Builder zip;
+    const juce::String manifest = "<container><rootfiles><rootfile full-path=\"scores/main.xml\"/></rootfiles></container>";
+    zip.addEntry(std::make_unique<juce::MemoryInputStream>(manifest.toRawUTF8(),manifest.getNumBytesAsUTF8(),true),9,"META-INF/container.xml", {});
+    zip.addEntry(source.createInputStream(),9,"scores/main.xml",{});
+    if (!save(packed,[&](auto& out){return zip.writeToStream(out,nullptr) ? juce::Result::ok() : juce::Result::fail("zip");}) ||
+        !load(packed) || !sameMelody()) return false;
+    // Exercise a tied voice and a simultaneous second voice with text on the first note.
+    const auto voices = dir.getChildFile("voices.musicxml");
+    const juce::String piece = R"(<score-partwise><part-list><score-part id="P1"><part-name>Voices</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><tie type="start"/><voice>1</voice><lyric><text>Sing</text></lyric></note><backup><duration>4</duration></backup><note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>2</voice></note></measure><measure number="2"><note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><tie type="stop"/><voice>1</voice></note></measure></part></score-partwise>)";
+    if (!voices.replaceWithText(piece) || !load(voices) || project->pitchedNotes[0].size() != 2) return false;
+    auto poly = notationScore(*project);
+    if (poly.lyrics.size() != 1 || poly.lyrics[0].text != "Sing" ||
+        !std::any_of(poly.parts[0].notes.begin(),poly.parts[0].notes.end(),[&](const auto& n){return n.pitch==60 && n.endTick==8*poly.ppq;})) return false;
+    if (!voices.replaceWithText("<score-partwise/>") || analyseScoreImport(voices,project,info).wasOk()) return false;
+    const auto realPdf = juce::SystemStats::getEnvironmentVariable("OSTF_PDF_IMPORT_FIXTURE",{});
+    if (realPdf.isNotEmpty() && (!load(juce::File(realPdf)) || !sameMelody() || saveMediaImport(*project,dir.getChildFile("recognised.ostf")).failed())) return false;
+    return true;
+}
+
 int checkNotation(const juce::File& fixture, const juce::File& dir) {
     std::unique_ptr<OstfpPreview> p;
     juce::FileInputStream input(fixture);
     if (dir.createDirectory().failed() || readOstfpPreview(input, p).failed())
         return 1;
+    if (!checkInterchange(fixture,dir)) return 48;
     auto s = notationScore(*p);
+    const auto ensemble = dir.getChildFile("ensemble.musicxml");
+    std::unique_ptr<OstfpPreview> ensembleImport;
+    juce::String ensembleInfo;
+    if (!save(ensemble, [&](auto& out) { return writeSongXml(out,s); }) ||
+        analyseScoreImport(ensemble, ensembleImport, ensembleInfo).failed() || !ensembleImport ||
+        notationScore(*ensembleImport).lyrics.empty() ||
+        ensembleImport->sourceTrackCount() != std::count_if(p->trackKinds.begin(),p->trackKinds.begin()+p->sourceTrackCount(),
+            [](auto kind){return kind != TrackKind::audio;})) return 49;
     if (s.lyrics.empty() || s.sections.empty() || s.chords.empty() || s.parts.empty() ||
         sheetPages(s, true, StaffStyle::treble) < 2)
         return 2;

@@ -141,7 +141,7 @@ private:
     bool openPreview(juce::InputStream& input, const juce::String& filename, bool plainScore = false, const juce::File& sourceFolder = {});
     void editSongInformation();
     void updateDocumentLabel();
-    enum class SaveFormat { score, package, midi0, midi1 };
+    enum class SaveFormat { score, package, midi0, midi1, musicXml, chordPro };
     void saveDocument(SaveFormat);
     juce::PopupMenu timelineMenu() const;
     void selectTrack(std::size_t index);
@@ -242,8 +242,8 @@ private:
     double parameterFraction_ = 0;
     int parameterBottom_ = 0, parameterHeight_ = 0;
     int preferredHeaderWidth_ = 487, trackHeaderWidth = 487, trackNameWidth = 172;
-    int preferredBrowserWidth_ = 230, preferredSpliceWidth_ = 800;
-    double arrangementFraction_ = 0.6;
+    int preferredBrowserWidth_ = 230;
+    double arrangementFraction_ = 0.6, mixerSplitFraction_ = 0.5;
     PianoVelocityLane pianoVelocity_ {pianoGrid_};
     juce::ComboBox pianoSnap_, pianoColours_, drumMode_;
     DrumSteps drumSteps_;
@@ -397,6 +397,7 @@ private:
     bool spliceLoading_ = false;
     std::unique_ptr<juce::AudioPluginInstance> spliceInstance_;
     juce::AudioProcessorPlayer splicePlayer_;
+    std::unique_ptr<juce::DocumentWindow> spliceWindow_;
     bool spliceAuditionActive_ = false;
     EditorClipLane clipLane_;
     void refreshClipLane();

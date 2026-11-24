@@ -6,6 +6,7 @@
 
 class ArrangementRuler final : public juce::Component, public juce::SettableTooltipClient {
 public:
+    juce::Colour headerBackground{0xff2e363e};
     int headerWidth = 0, labelInset = 0;
     std::function<juce::Range<double>()> visibleBars;
     std::function<double()> playheadBar;
@@ -26,10 +27,13 @@ public:
     }
 
     void paint(juce::Graphics& g) override {
-        g.fillAll(juce::Colour(0xff2e363e));
+        g.setColour(headerBackground);
+        g.fillRect(getLocalBounds().withWidth(headerWidth));
+        g.setColour(juce::Colour(0xff2e363e));
+        g.fillRect(getLocalBounds().withTrimmedLeft(headerWidth));
         const juce::Font rulerFont(juce::FontOptions(std::clamp(float(getHeight() - 3), 12.f, 15.f), juce::Font::bold));
         g.setFont(rulerFont);
-        g.setColour(juce::Colour(0xffc7d2dc));
+        g.setColour(juce::Colour(alignHeaderRight ? 0xffe1e9ef : 0xffc7d2dc));
         g.drawText(TRANS("BARS"), getLocalBounds().removeFromLeft(headerWidth).withTrimmedLeft(labelInset).reduced(5, 0), alignHeaderRight ? juce::Justification::centredRight : juce::Justification::centredLeft);
         auto row = getLocalBounds().withTrimmedLeft(headerWidth).withTrimmedBottom(3);
         if (row.isEmpty() || !visibleBars) return;

@@ -33,8 +33,8 @@ T* findControl(juce::Component& root, const juce::String& title) {
 }
 
 // Optional integration check using the user's installed VST3 and its real native editor.
-// Exercise the same menu item twice, including a trip back to the ordinary plug-in list.
-std::unique_ptr<juce::Timer> startSplicePaneCheck(std::function<void(int)> finished) {
+// Exercise the same menu item twice, closing and reopening the independent window.
+std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)> finished) {
     class Probe final : public juce::Timer {
     public:
         explicit Probe(std::function<void(int)> done) : finish(std::move(done)) {
@@ -46,7 +46,11 @@ std::unique_ptr<juce::Timer> startSplicePaneCheck(std::function<void(int)> finis
             if (menus) {
                 const auto menu = menus->getMenuForIndex(5, {});
                 for (juce::PopupMenu::MenuItemIterator it(menu); it.next();)
-                    if (it.getItem().text == TRANS("Open Splice Sounds in right pane")) command = it.getItem().itemID;
+                    if (it.getItem().text == TRANS("Open Splice Sounds")) command = it.getItem().itemID;
+                if (auto* pane = descendant<PluginBrowser>(studio)) {
+                    browserBounds = pane->getBounds();
+                    browserVisible = pane->isVisible();
+                }
                 if (command) menus->menuItemSelected(command, 5);
             }
             startTimer(100);
@@ -57,8 +61,14 @@ std::unique_ptr<juce::Timer> startSplicePaneCheck(std::function<void(int)> finis
             PluginBrowser* pane = nullptr;
             for (auto* child : studio.getChildren())
                 if (auto* p = dynamic_cast<PluginBrowser*>(child)) pane = p;
-            if (!pane || !pane->isShowing() || !pane->showingSplice() || pane->getX() <= 0) return 2;
-            auto* editor = descendant<juce::AudioProcessorEditor>(*pane);
+            if (!pane || pane->isVisible() != browserVisible || (browserVisible && pane->getBounds() != browserBounds)) return 2;
+            juce::DocumentWindow* window = nullptr;
+            auto& desktop = juce::Desktop::getInstance();
+            for (int i = 0; i < desktop.getNumComponents(); ++i) {
+                auto* component = desktop.getComponent(i);
+                if (component->getName() == "Splice Sounds") window = dynamic_cast<juce::DocumentWindow*>(component);
+            }
+            auto* editor = window ? descendant<juce::AudioProcessorEditor>(*window) : nullptr;
             if (!editor) {
                 const auto types = pane->types();
                 const bool installed = std::any_of(types.begin(), types.end(), [](const auto& t) {
@@ -67,20 +77,18 @@ std::unique_ptr<juce::Timer> startSplicePaneCheck(std::function<void(int)> finis
                 return installed ? -1 : 77;
             }
             if (!editor->processor.getName().equalsIgnoreCase("Splice Sounds")
-                || !editor->isShowing() || editor->getPeer() != studio.getPeer()
+                || !editor->isShowing() || editor->getPeer() == studio.getPeer()
                 || editor->getWidth() <= 0 || editor->getHeight() <= 0) return 3;
-            auto* view = editor->findParentComponentOfClass<juce::Viewport>();
-            if (!view || view->getViewedComponent() != editor || view->getViewArea().isEmpty()) return 4;
 #if JUCE_WINDOWS
             auto* native = descendant<juce::HWNDComponent>(*editor);
             if (!native) return -1;
             auto host = static_cast<HWND>(native->getHWND());
-            if (!host || !IsChild(static_cast<HWND>(studio.getPeer()->getNativeHandle()), host)
+            if (!host || !IsChild(static_cast<HWND>(window->getPeer()->getNativeHandle()), host)
                 || !GetWindow(host, GW_CHILD)) return -1;
 #endif
             if (!firstEditor) {
                 firstEditor = editor;
-                pane->selectSplice(false);
+                window->closeButtonPressed();
                 if (editor->isShowing()) return 5;
                 menus->menuItemSelected(command, 5);
                 return -1;
@@ -93,6 +101,8 @@ std::unique_ptr<juce::Timer> startSplicePaneCheck(std::function<void(int)> finis
             stopTimer();
             finish(result < 0 ? 7 : result);
         }
+        bool browserVisible = false;
+        juce::Rectangle<int> browserBounds;
         MainComponent studio;
         std::function<void(int)> finish;
         juce::MenuBarModel* menus = nullptr;
@@ -158,7 +168,7 @@ int checkTrackView(const juce::File& fixture) {
     const auto external = model.getMenuForIndex(5, {});
     juce::StringArray actions;
     for (juce::PopupMenu::MenuItemIterator it(external); it.next();) actions.add(it.getItem().text);
-    if (!actions.contains(TRANS("Open Splice Sounds in right pane")) || !actions.contains("Melodyne...") || !actions.contains("Ableton Link")) return 121;
+    if (!actions.contains(TRANS("Open Splice Sounds")) || !actions.contains("Melodyne...") || !actions.contains("Ableton Link")) return 121;
     auto* examples = findControl<juce::TextEditor>(main, TRANS("Example prompts"));
     auto* connection = main.findChildWithID("chatgpt-connection");
     if (!examples || !examples->isReadOnly() || !connection || !connection->isVisible()) return 122;
@@ -422,6 +432,23 @@ int checkTrackView(const juce::File& fixture) {
         if (tracks->getNumItems() != count+1 || tracks->getText()!=juce::String::fromUTF8(source->trackLanes[index].label)) return 100;
     }
     if (!main.openDocument(fixture)) return 1;
+    {
+        auto* divider = dynamic_cast<EditorDivider*>(main.findChildWithID("piano-divider"));
+        auto menu = model.getMenuForIndex(1, {});
+        int mixerId = 0, pianoId = 0;
+        for (juce::PopupMenu::MenuItemIterator it(menu); it.next();) {
+            if (it.getItem().text == TRANS("Mixer")) mixerId = it.getItem().itemID;
+            if (it.getItem().text == TRANS("Piano Roll")) pianoId = it.getItem().itemID;
+        }
+        if (!divider || !mixerId || !pianoId) return 135;
+        model.menuItemSelected(mixerId,1);
+        if (!divider->isVisible() || !divider->resizeAt) return 136;
+        const int y = divider->getY();
+        divider->resizeAt(y + (y > main.getHeight()/2 ? -46 : 46));
+        if (std::abs(divider->getY() - y) < 20) return 137;
+        divider->resizeAt(y);
+        model.menuItemSelected(pianoId,1);
+    }
     auto* guitar = findControl<TrackRowSize>(main, "Lead Guitar track height");
     auto* bass = findControl<TrackRowSize>(main, "Bass track height");
     auto* master = findControl<TrackRowSize>(main, "Master track height");
