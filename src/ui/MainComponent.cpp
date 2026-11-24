@@ -63,12 +63,13 @@ struct PianoLayout {
         const int height = std::max(0, area.getHeight() - reviewHeight);
         const auto size = parameterFraction > 0 ? juce::roundToInt(height * std::clamp(parameterFraction, 0.08, 0.65))
                                                 : std::min(84, height / 3);
-        lane = area.removeFromBottom(std::clamp(size, std::min(20, height / 3), std::max(height / 3, height - 70)))
-                   .withTrimmedLeft(keyWidth);
-        divider = area.removeFromBottom(std::min(7, area.getHeight() / 8)).withTrimmedLeft(keyWidth);
+        const int laneHeight = std::clamp(size, std::min(20, height / 3), std::max(height / 3, height - 70));
+        const bool collapseLane = reviewHeight > 0 && laneHeight < 20;
+        lane = area.removeFromBottom(collapseLane ? 0 : laneHeight).withTrimmedLeft(keyWidth);
+        divider = area.removeFromBottom(std::min(collapseLane ? 3 : 7, area.getHeight() / 8)).withTrimmedLeft(keyWidth);
         keys = area.removeFromLeft(keyWidth);
         ruler = area.removeFromTop(compact ? 16 : 21);
-        chords = area.removeFromTop(contextStrip ? (compact ? 13 : 21) : 0);
+        chords = area.removeFromTop(contextStrip && !(compact && reviewHeight > 0) ? (compact ? 13 : 21) : 0);
         review = area.removeFromTop(std::min(reviewHeight, area.getHeight()));
         if (review.getHeight() > 0) inspector.setTop(review.getBottom());
         keys.removeFromTop(ruler.getHeight() + chords.getHeight() + review.getHeight());
@@ -100,6 +101,10 @@ int browserWidthFor(int available, int preferred) {
     const int minimum = std::min(170, available / 3);
     const int maximum = std::max(minimum, std::min(available / 2, available - 460 - columnGripWidth));
     return std::clamp(preferred, minimum, maximum);
+}
+
+bool stackTimelineNavigation(int innerWidth, int workspaceHeight) {
+    return innerWidth < (workspaceHeight < 320 ? 500 : 765);
 }
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
@@ -1489,9 +1494,9 @@ juce::Rectangle<int> MainComponent::getWorkspace() const {
 }
 
 int MainComponent::getArrangementHeight(int workspaceHeight) const {
-    const int available = std::max(0, workspaceHeight - chordReviewHeight(getWorkspace().getWidth()));
+    const int available = std::max(0, workspaceHeight - chordReviewHeight());
     if (!editorVisible_) return available;
-    const int navigationRows = getWorkspace().getWidth() - 26 < 765 ? 2 : 1;
+    const int navigationRows = stackTimelineNavigation(getWorkspace().getWidth() - 26, workspaceHeight) ? 2 : 1;
     const bool compactClips = available < 320 && clipLane_.isVisible();
     const int minimum = std::min(available, (compactClips ? 2 : 26) + navigationRows * timelineNavigationHeight
                                               + timelineRowHeight() + TrackRowSize::minimum);
@@ -6221,14 +6226,15 @@ void MainComponent::resized() {
         if (scoreView_) scoreView_->setBounds(editor);
         return;
     }
-    const int reviewHeight = chordReviewHeight(editor.getWidth());
+    const int reviewHeight = chordReviewHeight();
     const auto arrangerHeight = getArrangementHeight(editor.getHeight());
     chordReview_.setBounds(editor.withY(editor.getY()+arrangerHeight+(editorVisible_ ? 8 : 0)).withHeight(reviewHeight));
     auto arrangement = editor.withHeight(arrangerHeight).reduced(13);
     if (project_) {
-        const bool stacked = arrangement.getWidth() < 765;
+        const bool stacked = stackTimelineNavigation(arrangement.getWidth(), editor.getHeight());
         auto navigation = arrangement.removeFromBottom(timelineNavigationHeight * (stacked ? 2 : 1));
-        auto heights = (stacked ? navigation.removeFromTop(timelineNavigationHeight) : navigation.removeFromLeft(362)).reduced(0, 2);
+        auto heights = (stacked ? navigation.removeFromTop(timelineNavigationHeight)
+                                : navigation.removeFromLeft(std::min(362, navigation.getWidth() / 2))).reduced(0, 2);
         heightLabel_.setBounds(heights.removeFromLeft(48));
         heightScope_.setBounds(heights.removeFromLeft(182));
         groupHeight_.setBounds(heights.removeFromLeft(128));
@@ -6438,7 +6444,7 @@ void MainComponent::resized() {
     pianoDivider_.setBounds(editor.withY(editor.getY() + arrangerHeight).withHeight(8));
     const int inlineReview = editorVisible_ && pianoGrid_.isVisible() ? reviewHeight : 0;
     editor.removeFromTop(arrangerHeight + 8 + reviewHeight - inlineReview);
-    const int clipHeight = clipLane_.isVisible() ? std::min(24, editor.getHeight() / 5) : 0;
+    const int clipHeight = clipLane_.isVisible() ? std::min(inlineReview && editor.getHeight() < 180 ? 14 : 24, editor.getHeight() / 5) : 0;
     const PianoLayout pianoLayout(editor.withTrimmedTop(30 + clipHeight), trackHeaderWidth, verticalScroll_.isVisible(),
                                   !pendingReview_.empty() || (pitchedSelection() && pianoColours_.getSelectedId() != plainNotes),
                                   parameterFraction_, drumSteps_.isVisible() ? DrumSteps::labelWidth : 52,inlineReview);
@@ -6507,7 +6513,7 @@ void MainComponent::paint(juce::Graphics& g) {
         return;
     }
 
-    const int reviewHeight = chordReviewHeight(area.getWidth());
+    const int reviewHeight = chordReviewHeight();
     auto arrangementArea = area.removeFromTop(getArrangementHeight(area.getHeight()));
     area.removeFromTop(8 + (editorVisible_ && pianoGrid_.isVisible() ? 0 : reviewHeight));
     drawArrangement(g, arrangementArea, currentArrangement());
@@ -6966,7 +6972,7 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     g.fillRoundedRectangle(area.toFloat(), 10.0f);
     if (drumSteps_.isVisible()) return;
     const PianoLayout layout(area.withTrimmedTop(clipLane_.isVisible() ? clipLane_.getHeight() : 0), trackHeaderWidth, verticalScroll_.isVisible(),
-                             !pendingReview_.empty() || (pitchedSelection() && pianoColours_.getSelectedId() != plainNotes), parameterFraction_,52,chordReviewHeight(area.getWidth()));
+                             !pendingReview_.empty() || (pitchedSelection() && pianoColours_.getSelectedId() != plainNotes), parameterFraction_,52,chordReviewHeight());
     const auto mode = pianoColours_.getSelectedId();
     const bool fit = theory_ && pitchedSelection() && mode != plainNotes;
     const bool scaleMode = mode == scaleNotes;

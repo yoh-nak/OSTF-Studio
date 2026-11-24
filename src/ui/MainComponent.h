@@ -136,7 +136,7 @@ private:
     bool chordReviewBlocksSwitch();
     void resolveChordReview(bool all, ostfstudio::ChordReviewAction);
     void reviewDroppedChords(const ostfstudio::OstfpPreview&, int index, juce::int64 tick);
-    int chordReviewHeight(int width) const { return chordReview_.isVisible() ? chordReview_.preferredHeight(width) : 0; }
+    int chordReviewHeight() const { return chordReview_.isVisible() ? chordReview_.preferredHeight(getWorkspace().getHeight()) : 0; }
     enum class ClipTool { select, split, join };
     ClipTool clipTool_ = ClipTool::select;
     bool joinKeepsRight_ = false;

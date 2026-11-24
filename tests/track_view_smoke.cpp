@@ -548,12 +548,16 @@ int checkSamplePlacement(const juce::File& file) {
         if (!main.scoreView_->isVisible() || main.scoreView_->showsLeadSheet()) return 235;
         main.mixerButton_.onClick();
         if (!main.mixer_.isVisible() || main.scoreView_->isVisible() || main.chordReview_.isVisible()
-            || main.chordReviewHeight(main.getWidth()) != 0) return 236;
+            || main.chordReviewHeight() != 0) return 236;
         main.pianoButton_.onClick();
         if (!main.chordReview_.isVisible() || main.pendingReview_.size() != pendingCount ||
             main.project_->sourceScore != imported || main.selectedTrack_ != tracks) return 237;
         for (auto id : {"chord-confirm-all", "chord-keep-all", "chord-cancel-all"})
             if (!button(id) || button(id)->getRight() > main.chordReview_.timeline().first.getX()) return 238;
+        main.setSize(680, 550);
+        if (main.pianoGrid_.getHeight() < 10 || main.chordReview_.getHeight() < 36
+            || decision->getHeight() < 16 || main.chordReview_.getBottom() > main.pianoGrid_.getY()) return 239;
+        main.setSize(1650, 1400);
         if (!choose("Keep", true)) return 223;
         main.selectTrack(0);
         if (main.selectedTrack_ != 0 || !main.pendingReview_.empty()) return 203;

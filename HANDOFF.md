@@ -4,7 +4,7 @@
 
 Branch `feature/per-chord-actions-reading-views`. Each pending chord has its own three-action menu anchored to its interval. The left gutter contains individual batch buttons for Confirm all, Keep all and Cancel all. The lead sheet, score and mixer can be opened while edits await review. Returning to the piano roll restores the same pending decisions. Toolbar icons use the standard hover tooltip.
 
-Windows x64 Release passed the track-view, notation, piano-edit, theory-guide, open-project and open-score tests in one run. Both JUCE-free core tests passed. The piano-edit test failed on an earlier run and passed on its own and on the final suite run. The track-view regression exercises a decision for a second chord, all three batch controls, and switching views with unresolved notes. macOS and manual GUI verification are outstanding.
+Windows x64 Release passed the transport, track-view, notation, piano-edit, theory-guide, open-project and open-score tests in one run. Both JUCE-free core tests passed. The track-view regression exercises a decision for a second chord, all three batch controls, and switching views with unresolved notes. It also checks button and grid geometry at the minimum 680 × 550 window size. At that size the compact layout reserves a two-row review lane, combines timeline navigation on one row when it fits, and returns space from the performance lane to the notes when the lane is too short to edit. The transport screenshot verified the compact layout and visible playhead. macOS and manual interaction remain unverified.
 
 ## Shared instrument windows and arrangement handles
 

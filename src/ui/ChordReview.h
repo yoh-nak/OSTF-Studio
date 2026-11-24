@@ -51,7 +51,7 @@ class ChordReviewLane : public juce::Component {
     void mouseDown(const juce::MouseEvent&) override;
     void resized() override;
     juce::PopupMenu decisionMenu(int index);
-    int preferredHeight(int) const { return 60; }
+    int preferredHeight(int workspaceHeight) const { return workspaceHeight < 320 ? 42 : 60; }
     std::function<std::pair<juce::Rectangle<int>,juce::Range<double>>()> timeline;
     std::function<void(int)> choose;
     std::function<void(bool all, ostfstudio::ChordReviewAction)> decide;
