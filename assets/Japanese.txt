@@ -151,6 +151,7 @@ countries: jp
 "Bus A" = "バス A"
 "Bus B" = "バス B"
 "Return " = "リターン "
+"+ Bus" = "＋ バス"
 "+ Return" = "＋ リターン"
 "Out: Master" = "出力：マスター"
 "Out: Bus A" = "出力：バス A"

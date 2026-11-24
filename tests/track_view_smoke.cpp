@@ -1023,6 +1023,27 @@ int checkTrackView(const juce::File& fixture) {
         receiver->itemDropped(details);
         if (tracks->getNumItems() != count+1 || tracks->getText()!=juce::String::fromUTF8(source->trackLanes[index].label)) return 100;
     }
+    {
+        if (!click("Mixer")) return 251;
+        auto* mixer = descendant<MixerPanel>(main);
+        if (!mixer || !mixer->isVisible()) return 251;
+        auto* addBus = findControl<juce::TextButton>(*mixer, TRANS("Add bus track"));
+        auto* addReturn = findControl<juce::TextButton>(*mixer, TRANS("Add return track"));
+        auto* output = findControl<juce::ComboBox>(*mixer, tracks->getItemText(0) + " output");
+        if (!addBus || !addReturn || !output || addBus->getRight() > addReturn->getX()
+            || main.getComponentAt(main.getLocalPoint(addBus, addBus->getLocalBounds().getCentre())) != addBus) return 251;
+        const auto returns = mixer->returnCount();
+        for (auto bus = mixer->routing().busCount; bus < ostfstudio::maxMixerBuses; ++bus) {
+            if (!addBus->isEnabled()) return 252;
+            addBus->onClick();
+            if (mixer->routing().busCount != bus + 1 || mixer->returnCount() != returns
+                || !findControl<juce::TextButton>(*mixer, MixerPanel::busName(bus) + " mute")) return 252;
+            output->setSelectedId(int(bus) + 2, juce::sendNotificationSync);
+            if (output->getText() != TRANS("Out: ") + MixerPanel::busName(bus)
+                || mixer->channel(size_t(tracks->getItemId(0) - 1)).outputBus != int(bus)) return 253;
+        }
+        if (addBus->isEnabled() || !addReturn->isEnabled() || !click("Piano Roll")) return 254;
+    }
     if (!main.openDocument(fixture)) return 1;
     {
         auto* divider = dynamic_cast<EditorDivider*>(main.findChildWithID("piano-divider"));
@@ -1091,6 +1112,24 @@ int checkTrackView(const juce::File& fixture) {
     main.mouseDown(gesture(&main, trackPoint, trackPoint));
     if (tempo->isVisible() || !tracks->isVisible()) return 79;
     if (!reachable(*guitar)) return 3;
+    auto& overlay = *guitar->getParentComponent();
+    const std::array<juce::Button*, 4> headerButtons{
+        findControl<juce::TextButton>(overlay, "Lead Guitar mute"),
+        findControl<juce::TextButton>(overlay, "Lead Guitar solo"),
+        findControl<juce::TextButton>(overlay, "Lead Guitar record arm"),
+        findControl<ViewButton>(overlay, "Lead Guitar Cue")
+    };
+    for (const int rowHeight : {TrackRowSize::normal, TrackRowSize::minimum, guitar->height()}) {
+        guitar->assignHeight(rowHeight);
+        guitar->changed();
+        int previousRight = 0;
+        for (auto* button : headerButtons) {
+            if (!button || !button->isVisible() || button->getX() < previousRight
+                || main.getComponentAt(main.getLocalPoint(button, button->getLocalBounds().getCentre())) != button)
+                return 250;
+            previousRight = button->getRight();
+        }
+    }
     const int bassY = bass->getY();
     const int fitHeight = bassY - guitar->getY() - bass->height();
     if (fitHeight != 0 && fitHeight != 16 && fitHeight != 32) return 72;

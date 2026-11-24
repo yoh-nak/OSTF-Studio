@@ -1011,7 +1011,7 @@ MainComponent::MainComponent() {
         }
         updateTransportMix();
     };
-    mixer_.requestReturn = [this] { editOutput(true); };
+    mixer_.requestAddOutput = [this](bool isReturn) { editOutput(isReturn); };
     mixer_.rowMenu = [this](bool output, std::size_t index) { showRowMenu(output, index); };
     statusLabel_.setColour(juce::Label::textColourId, juce::Colour(muted));
     statusLabel_.setFont(juce::FontOptions(13.0f));
@@ -2984,6 +2984,7 @@ void MainComponent::refreshTrackActions() {
     for (auto* button : {&melodyAdd_, &chorusAdd_, &pitchedAdd_, &drumsAdd_, &audioAdd_}) button->setEnabled(room);
     busAdd_.setEnabled(ready && mixer_.routing().busCount < ostfstudio::maxMixerBuses);
     returnAdd_.setEnabled(ready && mixer_.returnCount() < ostfstudio::maxMixerReturns);
+    mixer_.setAddOutputAvailability(busAdd_.isEnabled(), returnAdd_.isEnabled());
     uiSmaller_.setEnabled(interfaceScale_ > minInterfaceScale);
     uiLarger_.setEnabled(interfaceScale_ < maxInterfaceScale);
     const auto percent = " (" + juce::String(interfaceScale_) + "%)";
@@ -6388,8 +6389,8 @@ void MainComponent::resized() {
             strip.input.setEnabled(!recordTrack_);
             if (!visible) continue;
             auto inputControls = [&](juce::Rectangle<int>& row) {
-                strip.cue.setBounds(row.removeFromLeft(26).reduced(1, 0));
                 if (canArm) strip.arm.setBounds(row.removeFromLeft(26).reduced(1, 0));
+                strip.cue.setBounds(row.removeFromLeft(26).reduced(1, 0));
                 if (midi) {
                     strip.inputLamp.setBounds(row.removeFromLeft(14));
                 }

@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Track header and mixer controls
+
+Branch `feature/track-header-button-order` places Record Arm immediately before headphone Cue in all three arrangement row layouts. The mixer has adjacent **+ Bus** and **+ Return** buttons. The track-view regression checks hit targets at all three heights, adds buses from the mixer, routes a track to each new bus and checks the eight-bus limit independently of returns.
+
+The Windows Release suite passed all 30 tests. macOS has not been tested for this change.
+
 ## Two-voice harmonizer
 
 On `feature/harmonizer-effect`, insert **OSTF Harmonizer** in a track's FX chain. The two fixed chromatic intervals each span −12 to +12 semitones. The default adds a perfect fifth and an octave above the input. A/B blend sets the relative voice levels and Wet sets their combined level against the time-aligned original. Both mono and stereo layouts report the pitch shifter's latency to the host.

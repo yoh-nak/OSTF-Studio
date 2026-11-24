@@ -13,6 +13,7 @@ public:
     MixerPanel();
     void addReturn();
     void addBus();
+    void setAddOutputAvailability(bool canAddBus, bool canAddReturn);
     juce::String outputName(std::size_t slot) const;
     void renameOutput(std::size_t slot, const juce::String& name);
     static juce::String busName(std::size_t index);
@@ -41,7 +42,7 @@ public:
     void restore(const ostfstudio::SessionMix& mix);
     std::function<void(std::size_t)> channelChanged;
     std::function<void()> routingChanged;
-    std::function<void()> requestReturn;
+    std::function<void(bool isReturn)> requestAddOutput;
     std::function<void(bool, std::size_t)> rowMenu;
 
 private:
@@ -69,6 +70,7 @@ private:
     void refreshAudibility();
 
     juce::Label caption_ {"", ""};
+    juce::TextButton addBusButton_ {TRANS("+ Bus")};
     juce::TextButton addReturnButton_ {TRANS("+ Return")};
     juce::Component rack_;
     juce::Viewport viewport_;

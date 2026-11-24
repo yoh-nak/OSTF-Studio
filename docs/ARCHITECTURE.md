@@ -83,7 +83,7 @@ The piano chord strip shares the note grid's time axis. During a pitch or timing
 - DAW runtime = audio device, hosting, transport, timeline, editors, clipboard, AI integration.
 - OS-local settings = hardware device IDs, auth, user-specific settings, plugins scanning paths.
 
-Toolbar and track-header actions share the score editing, mixer routing and plug-in hosting paths. The mixer supports eight buses and eight returns with stable saved output slots. Removing a bus redirects its tracks to Master. Removing a return clears its sends. Interface scale is stored in the local view preferences.
+Toolbar and track-header actions share the score editing, mixer routing and plug-in hosting paths. The mixer's **+ Bus** and **+ Return** buttons use the same output-editing command and availability checks as the main toolbar. The mixer supports eight buses and eight returns with stable saved output slots. Removing a bus redirects its tracks to Master. Removing a return clears its sends. Interface scale is stored in the local view preferences.
 
 ## Project lifecycle
 

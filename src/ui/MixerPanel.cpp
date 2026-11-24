@@ -132,6 +132,7 @@ void MixerPanel::Strip::paint(juce::Graphics& g) {
 
 MixerPanel::MixerPanel() {
     addAndMakeVisible(caption_);
+    addAndMakeVisible(addBusButton_);
     addAndMakeVisible(addReturnButton_);
     addAndMakeVisible(viewport_);
     addAndMakeVisible(outputViewport_);
@@ -139,7 +140,15 @@ MixerPanel::MixerPanel() {
     viewport_.setScrollBarsShown(true, true);
     outputViewport_.setViewedComponent(&outputRack_, false);
     outputViewport_.setScrollBarsShown(true, true);
-    addReturnButton_.onClick = [this] { if (requestReturn) requestReturn(); };
+    addBusButton_.setTitle(TRANS("Add bus track"));
+    addReturnButton_.setTitle(TRANS("Add return track"));
+    addBusButton_.onClick = [this] { if (requestAddOutput) requestAddOutput(false); };
+    addReturnButton_.onClick = [this] { if (requestAddOutput) requestAddOutput(true); };
+}
+
+void MixerPanel::setAddOutputAvailability(bool canAddBus, bool canAddReturn) {
+    addBusButton_.setEnabled(canAddBus);
+    addReturnButton_.setEnabled(canAddReturn);
 }
 
 void MixerPanel::renameTrack(std::size_t index, const juce::String& name) {
@@ -286,7 +295,6 @@ void MixerPanel::addReturn() {
     };
     outputRack_.addAndMakeVisible(*strip);
     returns_.push_back(std::move(strip));
-    addReturnButton_.setEnabled(routing_.returnCount < ostfstudio::maxMixerReturns);
     updateReturnOptions();
     resized();
 }
@@ -379,7 +387,6 @@ void MixerPanel::restore(const ostfstudio::SessionMix& mix) {
         routing_.returnCount = mix.routing.returnCount;
         updateReturnOptions();
     }
-    addReturnButton_.setEnabled(mix.routing.returnCount < ostfstudio::maxMixerReturns);
     while (routing_.returnCount < std::min(mix.routing.returnCount, ostfstudio::maxMixerReturns)) addReturn();
     outputNames_ = mix.outputNames;
     for (std::size_t slot = 0; slot < outputNames_.size(); ++slot)
@@ -421,6 +428,7 @@ void MixerPanel::resized() {
     auto area = getLocalBounds().reduced(6, 0);
     auto toolbar = area.removeFromTop(24);
     addReturnButton_.setBounds(toolbar.removeFromRight(94).reduced(1));
+    addBusButton_.setBounds(toolbar.removeFromRight(94).reduced(1));
     caption_.setBounds(toolbar);
     const auto outputCount = static_cast<int>(buses_.size() + returns_.size()) + 2;
     const auto groupWidth = juce::jmin(stripWidth * outputCount, area.getWidth() * 3 / 5);
