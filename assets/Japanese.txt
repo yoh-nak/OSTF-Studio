@@ -1028,6 +1028,8 @@ countries: jp
 "Use Import for a multitrack MIDI file." = "複数トラックのMIDIファイルは「取り込み・採譜」から開けます。"
 "Add MIDI track sharing this instrument" = "この音源を共有するMIDIトラックを追加"
 "Shared instrument" = "共有音源"
+"Sharing" = "共有"
+"View or disconnect shared MIDI parts" = "共有先の確認・共有の解除"
 
 "Transpose and tempo" = "移調・テンポ"
 "Media library" = "素材ライブラリ"

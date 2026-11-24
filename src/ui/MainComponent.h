@@ -210,7 +210,7 @@ private:
     void addSharedPart(std::size_t index);
     void routeMidiPart(std::size_t track, std::optional<std::size_t> owner, int channel);
     friend int checkSamplePlacement(const juce::File&);
-    friend int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>);
+    friend int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>, std::unique_ptr<juce::AudioPluginInstance>);
     void scanTrackPlugin(std::size_t index);
     void discoverTrackPlugin(std::size_t index);
     void loadTrackPlugin(std::size_t index, const juce::PluginDescription& description, bool restoring = false, juce::MemoryBlock state = {});

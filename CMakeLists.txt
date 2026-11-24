@@ -175,6 +175,15 @@ if (OSTF_STUDIO_BUILD_GUI)
     add_subdirectory(src/plugins/effects)
     configure_file(src/plugins/effects/StockEffects.h.in generated/StockEffects.h @ONLY)
 
+    add_executable(ostf_gm_channel_activity_tests tests/gm_channel_activity_tests.cpp src/ui/PreviewTransport.cpp
+        src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
+    target_include_directories(ostf_gm_channel_activity_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    target_link_libraries(ostf_gm_channel_activity_tests PRIVATE OSTFGMSoundModule ostf_effect_dsp ostf_link
+        ostf_score_validation ostf_studio_core juce::juce_audio_devices juce::juce_audio_formats
+        juce::juce_cryptography juce::juce_recommended_config_flags)
+    add_test(NAME ostf_gm_channel_activity_tests COMMAND ostf_gm_channel_activity_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostfp")
+
     add_executable(ostf_studio_chatgpt_tests tests/chatgpt_connection_tests.cpp src/ui/AnalysisService.cpp)
     target_include_directories(ostf_studio_chatgpt_tests PRIVATE src)
     target_compile_definitions(ostf_studio_chatgpt_tests PRIVATE JUCE_USE_CURL=0)
@@ -229,7 +238,7 @@ if (OSTF_STUDIO_BUILD_GUI)
             "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../.."
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tinysoundfont-saw.sf2"
             "$<TARGET_FILE_DIR:OSTFArranger_VST3>/../..")
-        set_tests_properties(ostf_studio_gm_plugin PROPERTIES TIMEOUT 20)
+        set_tests_properties(ostf_studio_gm_plugin PROPERTIES TIMEOUT 45)
         add_test(NAME ostf_studio_instruments COMMAND OSTFStudio --studio-instruments-smoke
             "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/first-light-vector.ostfp")
         set_tests_properties(ostf_studio_instruments PROPERTIES TIMEOUT 90)

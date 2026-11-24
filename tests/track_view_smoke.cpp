@@ -36,7 +36,47 @@ T* findControl(juce::Component& root, const juce::String& title) {
 }
 }
 
-int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument) {
+int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument, std::unique_ptr<juce::AudioPluginInstance> second) {
+    {
+        juce::MemoryInputStream input(BinaryData::neonplatforms_ostfp, BinaryData::neonplatforms_ostfpSize, false);
+        std::unique_ptr<ostfstudio::OstfpPreview> song;
+        if (ostfstudio::readOstfpPreview(input, song).failed() || !song->savedMix) return 211;
+        const auto& mix = *song->savedMix;
+        std::vector<PreviewTransport::TrackSetup> routes(song->trackLanes.size());
+        const int guitar = song->trackIds.indexOf("hook"), bass = song->trackIds.indexOf("bass");
+        if (guitar < 0 || bass < 0) return 212;
+        PreviewTransport playback;
+        for (size_t i = 0; i < song->sourceTrackCount(); ++i) {
+            const auto& r = mix.midiRoutes[i];
+            auto* module = int(i) == guitar ? instrument.get() : int(i) == bass ? second.get() : nullptr;
+            if (mix.instruments[i].isObject() != (module != nullptr)) return 213;
+            routes[i] = {r.destination, module, r.channel};
+            playback.setChannelMix(i, mix.tracks[i], true, 0);
+        }
+        playback.setOutputMix(mix.routing);
+        if (playback.preparePlayback(*song, routes, {}, 44100, 512).failed()) return 214;
+        playback.seekToTick(16LL * 4 * song->ppq);
+        juce::AudioBuffer<float> block(2,512);
+        for (int i = 0; i < 24; ++i) playback.renderBlock(block.getArrayOfWritePointers(), 2, 512);
+        const auto meters = playback.takeMeters();
+        if (meters.tracks[guitar][0] < .001f || meters.tracks[bass][0] < .001f) return 215;
+        for (const auto owner : {guitar, bass}) {
+            juce::MemoryBlock state, component;
+            routes[owner].instrument->getStateInformation(state);
+            auto wrapper = juce::AudioProcessor::getXmlFromBinary(state.getData(), int(state.getSize()));
+            const auto* child = wrapper ? wrapper->getChildByName("IComponent") : nullptr;
+            if (!child || !component.fromBase64Encoding(child->getAllSubText())) return 216;
+            auto xml = juce::AudioProcessor::getXmlFromBinary(component.getData(), int(component.getSize()));
+            std::array<int,16> programs{};
+            for (size_t i = 0; i < song->sourceTrackCount(); ++i) {
+                if (routes[i].outputTrack.value_or(i) != size_t(owner)) continue;
+                if (song->programChanges[i].empty()) return 217;
+                programs[routes[i].midiChannel - 1] = song->programChanges[i].front().program;
+            }
+            for (int ch = 0; ch < 16; ++ch)
+                if (!xml || xml->getIntAttribute("p" + juce::String(ch), -1) != programs[ch]) return 218;
+        }
+    }
     {
         juce::MemoryInputStream input(BinaryData::bluehourwaltzsharedgm_ostfp, BinaryData::bluehourwaltzsharedgm_ostfpSize, false);
         std::unique_ptr<ostfstudio::OstfpPreview> shared;
@@ -206,6 +246,25 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     drag(5,4,false);
     drag(0,6,true);
     if (order != studio.displayedTrackOrder()) return 206;
+    studio.trackControls_[1]->instance = std::move(second);
+    studio.trackControls_[1]->playableInstrument = true;
+    studio.routeMidiPart(5, 1, 5);
+    if (studio.trackControls_[5]->outputTrack != 1) return 222;
+    studio.trackControls_[2]->plugin.onClick();
+    studio.trackControls_[5]->plugin.onClick();
+    if (!studio.trackControls_[0]->editor) return 219;
+    if (!studio.trackControls_[1]->editor) return 224;
+    if (studio.trackControls_[5]->editor) return 225;
+    if (!studio.trackControls_[1]->editor->getName().contains("#2")
+        || !studio.trackControls_[5]->plugin.getButtonText().contains("GM #2")) return 223;
+    const auto firstBounds = studio.trackControls_[0]->editor->getScreenBounds();
+    const auto secondBounds = studio.trackControls_[1]->editor->getScreenBounds();
+    const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect(firstBounds);
+    if (display && display->userArea.getWidth() >= firstBounds.getWidth() + secondBounds.getWidth() + 8
+        && firstBounds.intersects(secondBounds)) return 221;
+    studio.detachSharedPart(5);
+    if (studio.trackControls_[5]->outputTrack || studio.hasSharedParts(1) || !studio.hasSharedParts(0)
+        || studio.trackControls_[2]->outputTrack != 0 || studio.project_->sourceTrackCount() != 7) return 220;
     return 0;
 }
 

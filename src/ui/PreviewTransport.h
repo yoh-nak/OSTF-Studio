@@ -27,7 +27,7 @@ public:
     };
     struct TrackSetup {
         std::optional<std::size_t> outputTrack;
-        juce::AudioPluginInstance* instrument = nullptr; // Owned and rendered by this track.
+        juce::AudioProcessor* instrument = nullptr; // Owned and rendered by this track.
         int midiChannel = 1;
         std::shared_ptr<MidiDestination> external;
     };
@@ -105,7 +105,7 @@ private:
     std::array<ostfstudio::PeakMailbox, outputCount> outputMeters_;
     ostfstudio::PeakMailbox cueMeter_;
     struct InstrumentTrack {
-        juce::AudioPluginInstance* instance = nullptr;
+        juce::AudioProcessor* instance = nullptr;
         std::shared_ptr<MidiDestination> external;
         std::array<bool,16> externalChannels{}, sentChannels{};
         juce::MidiBuffer timeline;

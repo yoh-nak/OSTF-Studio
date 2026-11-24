@@ -2786,9 +2786,10 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
         for (std::size_t i = 0; i < std::min(trackControls_.size(), saved->midiRoutes.size()); ++i) {
             trackControls_[i]->midiChannel = saved->midiRoutes[i].channel;
             trackControls_[i]->outputTrack = saved->midiRoutes[i].destination;
-            updatePresetLabel(i);
         }
         restoreInstrumentAssignments(*saved);
+        for (std::size_t i = 0; i < std::min(trackControls_.size(), saved->midiRoutes.size()); ++i)
+            updatePresetLabel(i);
         for (std::size_t i = 0; i < outputControls_.size(); ++i) {
             auto ids = saved->outputEffects[i];
             if (ids.isEmpty() && saved->insertIds[i].isNotEmpty())
@@ -3578,7 +3579,8 @@ void MainComponent::rebuildTrackControls() {
             else showTrackPluginMenu(i);
         };
         controls->routingMenu.setTitle(name + " / " + TRANS("Instrument routing"));
-        controls->routingMenu.setTooltip(TRANS("Instrument destination and channel"));
+        controls->routingMenu.setButtonText(TRANS("Sharing") + " " + juce::String::charToString(0x25be));
+        controls->routingMenu.setTooltip(TRANS("View or disconnect shared MIDI parts"));
         controls->routingMenu.onClick = [this, i] { showTrackPluginMenu(i); };
         rowOverlay_.addChildComponent(controls->routingMenu);
         controls->mix.setTooltip(TRANS("Track volume, pan, sends and routing"));
@@ -3738,10 +3740,29 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
     constexpr int reuseId = 600;
     const auto owner = control.outputTrack.value_or(index);
     const int nextChannel = nextSharedChannel(owner);
+    constexpr int detachId = 500;
+    if (control.outputTrack || hasSharedParts(index)) {
+        menu.addSectionHeader(TRANS("Shared instrument") + " #" + juce::String(int(owner + 1)) + "  "
+                              + juce::String::fromUTF8(project_->trackLanes[owner].label));
+        if (control.outputTrack) {
+            menu.addItem(detachId + int(index), TRANS("Stop sharing this instrument"), !recordTrack_ && !control.loading);
+        } else {
+            juce::PopupMenu parts;
+            for (size_t i = 0; i < trackControls_.size(); ++i) {
+                const auto& part = *trackControls_[i];
+                if (part.outputTrack == index)
+                    parts.addItem(detachId + int(i), "Ch " + juce::String(part.midiChannel) + "  " + juce::String::fromUTF8(project_->trackLanes[i].label), !part.loading);
+            }
+            menu.addSubMenu(TRANS("Stop sharing with track"), parts, !recordTrack_);
+            menu.addItem(11, TRANS("Disconnect all parts and keep tracks"), !recordTrack_);
+        }
+        menu.addSeparator();
+    }
     if (nextChannel || control.outputTrack || control.playableInstrument) {
         auto label = TRANS("Add MIDI track sharing this instrument");
         if (nextChannel) label += " / Ch " + juce::String(nextChannel);
-        menu.addSectionHeader("#" + juce::String(int(owner + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[owner].label));
+        if (!control.outputTrack && !hasSharedParts(index))
+            menu.addSectionHeader("#" + juce::String(int(owner + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[owner].label));
         menu.addItem(10, label, nextChannel != 0 && project_->sourceTrackCount() < project_->maxTracks);
         juce::PopupMenu existing;
         for (size_t i = 0; i < project_->sourceTrackCount(); ++i) {
@@ -3751,18 +3772,6 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
         }
         if (existing.getNumItems()) menu.addSubMenu(TRANS("Use an existing track") + " / Ch " + juce::String(nextChannel), existing, nextChannel != 0);
         menu.addSeparator();
-    }
-    constexpr int detachId = 500;
-    if (control.outputTrack) menu.addItem(detachId + int(index), TRANS("Stop sharing this instrument"), !recordTrack_);
-    else if (hasSharedParts(index)) {
-        juce::PopupMenu parts;
-        for (size_t i = 0; i < trackControls_.size(); ++i) {
-            const auto& part = *trackControls_[i];
-            if (part.outputTrack == index)
-                parts.addItem(detachId + int(i), "Ch " + juce::String(part.midiChannel) + "  " + juce::String::fromUTF8(project_->trackLanes[i].label));
-        }
-        menu.addSubMenu(TRANS("Stop sharing with track"), parts, !recordTrack_);
-        menu.addItem(11, TRANS("Disconnect all parts and keep tracks"), !recordTrack_);
     }
     menu.addItem(12, TRANS("Review unused MIDI parts..."), canEditTracks() && !recordTrack_);
     juce::PopupMenu channels;
@@ -4214,7 +4223,8 @@ juce::String MainComponent::instrumentWindowTitle(size_t owner) const {
     for (size_t i = 0; i < project_->sourceTrackCount(); ++i)
         if (trackControls_[i]->outputTrack.value_or(i) == owner)
             parts.add(juce::String::fromUTF8(project_->trackLanes[i].label) + " (Ch " + juce::String(trackControls_[i]->midiChannel) + ")");
-    return strip.instance->getName() + " / " + parts.joinIntoString(" + ");
+    const auto group = hasSharedParts(owner) ? " #" + juce::String(int(owner + 1)) : juce::String{};
+    return strip.instance->getName() + group + " / " + parts.joinIntoString(" + ");
 }
 
 void MainComponent::openTrackPluginEditor(std::size_t index) {
@@ -4239,6 +4249,31 @@ void MainComponent::openTrackPluginEditor(std::size_t index) {
         else body = std::move(editor);
         window->setContentOwned(body.release(), true);
         window->centreWithSize(window->getWidth(), window->getHeight());
+        if (hasSharedParts(index)) {
+            for (size_t i = 0; i < trackControls_.size(); ++i) {
+                auto* other = trackControls_[i]->editor.get();
+                if (!other || !other->isVisible() || !hasSharedParts(i)) continue;
+                const auto existing = other->getScreenBounds();
+                const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect(existing);
+                if (!display) continue;
+                const auto area = display->userArea;
+                constexpr int gap = 8;
+                int x = existing.getRight() + gap;
+                if (x + window->getWidth() > area.getRight()) {
+                    x = existing.getX() - gap - window->getWidth();
+                    if (x < area.getX() && existing.getWidth() + gap + window->getWidth() <= area.getWidth()) {
+                        x = area.getRight() - window->getWidth();
+                        other->setTopLeftPosition(x - gap - existing.getWidth(), existing.getY());
+                    } else if (x < area.getX()) {
+                        const auto offset = window->getBounds().withPosition(existing.getPosition().translated(32, 32));
+                        window->setTopLeftPosition(offset.constrainedWithin(area).getPosition());
+                        break;
+                    }
+                }
+                window->setTopLeftPosition(x, juce::jlimit(area.getY(), juce::jmax(area.getY(), area.getBottom() - window->getHeight()), existing.getY()));
+                break;
+            }
+        }
         window->onClosed = [this, index] { updatePresetLabel(index); };
         pluginEditor = std::move(window);
     }
@@ -4297,10 +4332,16 @@ void MainComponent::offerInstrumentProgram(std::size_t owner, int channel, int p
 void MainComponent::updatePresetLabel(std::size_t index) {
     auto& strip = *trackControls_[index];
     juce::String label;
-    if (strip.outputTrack && *strip.outputTrack < project_->trackLanes.size()) {
+    const auto owner = strip.outputTrack.value_or(index);
+    const auto sharedButtonText = [&] {
+        const auto& host = *trackControls_[owner];
+        const auto name = host.instance ? host.instance->getName() : host.instrumentAssignment["name"].toString();
+        return (name == "OSTF GM Sound Module" ? juce::String("GM #") : juce::String("#"))
+            + juce::String(int(owner + 1)) + "  Ch " + juce::String(strip.midiChannel);
+    };
+    if (strip.outputTrack && owner < trackControls_.size() && owner < project_->trackLanes.size()) {
         label = "#" + juce::String(int(*strip.outputTrack + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[*strip.outputTrack].label) + " / Ch " + juce::String(strip.midiChannel);
-        strip.plugin.setButtonText("Ch " + juce::String(strip.midiChannel) + " " + juce::String::charToString(0x2192)
-                                  + " #" + juce::String(int(*strip.outputTrack + 1)));
+        strip.plugin.setButtonText(sharedButtonText());
         strip.plugin.setTooltip(TRANS("Open shared instrument") + " / " + label);
         strip.plugin.getProperties().set("sharedPart", true);
     } else if (strip.plugin.getProperties().remove("sharedPart")) {
@@ -4312,7 +4353,7 @@ void MainComponent::updatePresetLabel(std::size_t index) {
     if (!strip.outputTrack && strip.instance) {
         auto* instance = strip.instance.get();
         if (hasSharedParts(index)) {
-            strip.plugin.setButtonText(TRANS("Shared instrument") + " / Ch " + juce::String(strip.midiChannel));
+            strip.plugin.setButtonText(sharedButtonText());
             strip.plugin.setTooltip(instrumentWindowTitle(index));
         } else {
             strip.plugin.setButtonText(instance->getName());
@@ -6326,7 +6367,7 @@ void MainComponent::resized() {
             const bool shared = strip.outputTrack.has_value() || hasSharedParts(i);
             strip.routingMenu.setVisible(visible && shared && !strip.size.compact());
             auto placeInstrument = [&](juce::Rectangle<int> bounds) {
-                if (shared) strip.routingMenu.setBounds(bounds.removeFromRight(19));
+                if (shared) strip.routingMenu.setBounds(bounds.removeFromRight(juce::jmin(58, bounds.getWidth() * 2 / 5)));
                 strip.plugin.setBounds(bounds);
             };
             for (auto* control : std::array<juce::Component*, 5>{&strip.mute, &strip.solo, &strip.effects.button,

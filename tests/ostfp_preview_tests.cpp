@@ -173,7 +173,8 @@ static int checkGallery(const juce::File& directory) {
                 if (strip.outputBus >= 0) ++members.at(static_cast<std::size_t>(strip.outputBus));
                 if (strip.returnSends[0] > 0 && strip.returnSends[0] < 1) ++roomSends;
             }
-            if (members[0] < 2 || members[1] < 2 || roomSends < 2
+            const bool twoGmDemo = std::string_view(expected.file) == "neon-platforms.ostfp";
+            if ((twoGmDemo ? members != std::array{1, 1} : (members[0] < 2 || members[1] < 2)) || roomSends < 2
                 || std::none_of(authored.trackEffects.begin(), authored.trackEffects.end(),
                                 [](const auto& chain) { return chain.size() >= 2; })) return 1;
             for (std::size_t track = 0; track < project->sourceTrackCount(); ++track) {
@@ -202,10 +203,15 @@ static int checkGallery(const juce::File& directory) {
                     if (id == "pad") expectedInstrument = "OSTF Wavetable Synth";
                     if (expectedInstrument != "OSTF GM Sound Module" && (events.size() != 2 || events.back().program != 2)) return 1;
                 }
-                if (std::string_view(expected.file) == "neon-platforms.ostfp" && project->trackIds[int(track)] == "keys") {
-                    if (plugin.isObject() || authored.midiRoutes[track].destination != size_t(project->trackIds.indexOf("hook"))
-                        || authored.midiRoutes[track].channel != 2 || events.empty()) return 1;
-                    continue;
+                if (twoGmDemo) {
+                    const auto id = project->trackIds[int(track)];
+                    const auto owner = size_t(project->trackIds.indexOf(id == "bass" || id == "drums" || id == "comp" ? "bass" : "hook"));
+                    const auto& route = authored.midiRoutes[track];
+                    const auto& plain = fromScore->savedMix->midiRoutes[track];
+                    if (route.destination.value_or(track) != owner || route.channel != project->sourceMidiChannels[track]
+                        || plain.destination != route.destination || plain.channel != route.channel || events.empty()
+                        || plugin.isObject() != (track == owner) || fromScore->savedMix->instruments[track].isObject() != (track == owner)) return 1;
+                    if (track != owner) continue;
                 }
                 if (std::string_view(expected.file) == "paper-lantern-replies.ostfp" && project->trackIds[int(track)] == "voice-track") expectedInstrument = "OSTF Formant Singer";
                 if (plugin["format"] != "vst3" || plugin["name"].toString() != expectedInstrument || events.empty()

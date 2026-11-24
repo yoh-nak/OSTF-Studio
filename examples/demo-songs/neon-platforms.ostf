@@ -10243,6 +10243,22 @@
               "start": 0,
               "channel": 3,
               "program": 33
+            },
+            {
+              "id": "bass-cc7",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 3,
+              "controller": 7,
+              "value": 71
+            },
+            {
+              "id": "bass-cc10",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 3,
+              "controller": 10,
+              "value": 64
             }
           ]
         },
@@ -13095,6 +13111,22 @@
               "start": 0,
               "channel": 10,
               "program": 0
+            },
+            {
+              "id": "drums-cc7",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 10,
+              "controller": 7,
+              "value": 67
+            },
+            {
+              "id": "drums-cc10",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 10,
+              "controller": 10,
+              "value": 64
             }
           ]
         },
@@ -17729,6 +17761,22 @@
               "start": 0,
               "channel": 5,
               "program": 89
+            },
+            {
+              "id": "pad-cc7",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 5,
+              "controller": 7,
+              "value": 45
+            },
+            {
+              "id": "pad-cc10",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 5,
+              "controller": 10,
+              "value": 84
             }
           ]
         },
@@ -19134,6 +19182,22 @@
               "start": 0,
               "channel": 6,
               "program": 28
+            },
+            {
+              "id": "comp-cc7",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 6,
+              "controller": 7,
+              "value": 53
+            },
+            {
+              "id": "comp-cc10",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 6,
+              "controller": 10,
+              "value": 40
             }
           ]
         },
@@ -21499,6 +21563,22 @@
               "start": 0,
               "channel": 7,
               "program": 61
+            },
+            {
+              "id": "brass-cc7",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 7,
+              "controller": 7,
+              "value": 56
+            },
+            {
+              "id": "brass-cc10",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 7,
+              "controller": 10,
+              "value": 78
             }
           ]
         },
@@ -21818,6 +21898,22 @@
               "start": 0,
               "channel": 8,
               "program": 48
+            },
+            {
+              "id": "strings-cc7",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 8,
+              "controller": 7,
+              "value": 47
+            },
+            {
+              "id": "strings-cc10",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 8,
+              "controller": 10,
+              "value": 79
             }
           ]
         },
@@ -22413,7 +22509,7 @@
               "track-1-buscompressor"
             ],
             "trackId": "hook",
-            "outputChannelId": "master",
+            "outputChannelId": "bus-2",
             "sends": [
               {
                 "id": "send-1-room",
@@ -22441,7 +22537,7 @@
             "id": "track-3",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -6,
+            "gainDb": -2,
             "pan": 0,
             "mute": false,
             "solo": false,
@@ -22451,25 +22547,10 @@
               "track-3-compressor"
             ],
             "trackId": "bass",
-            "outputChannelId": "bus-1"
-          },
-          {
-            "id": "track-4",
-            "kind": "track",
-            "audioChannels": 2,
-            "gainDb": -7,
-            "pan": 0,
-            "mute": false,
-            "solo": false,
-            "soloSafe": false,
-            "deviceIds": [
-              "instrument-4"
-            ],
-            "trackId": "drums",
             "outputChannelId": "bus-1",
             "sends": [
               {
-                "id": "send-4-room",
+                "id": "send-3-room",
                 "targetChannelId": "return-1",
                 "gainDb": -22,
                 "preFader": false,
@@ -22478,103 +22559,69 @@
             ]
           },
           {
-            "id": "track-5",
+            "id": "track-4",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -14,
-            "pan": 0.32,
+            "gainDb": 0,
+            "pan": 0,
             "mute": false,
             "solo": false,
             "soloSafe": false,
-            "deviceIds": [
-              "instrument-5",
-              "track-5-chorus"
-            ],
+            "deviceIds": [],
+            "trackId": "drums",
+            "outputChannelId": "master"
+          },
+          {
+            "id": "track-5",
+            "kind": "track",
+            "audioChannels": 2,
+            "gainDb": 0,
+            "pan": 0,
+            "mute": false,
+            "solo": false,
+            "soloSafe": false,
+            "deviceIds": [],
             "trackId": "pad",
-            "outputChannelId": "bus-2",
-            "sends": [
-              {
-                "id": "send-5-room",
-                "targetChannelId": "return-1",
-                "gainDb": -12,
-                "preFader": false,
-                "enabled": true
-              }
-            ]
+            "outputChannelId": "master"
           },
           {
             "id": "track-6",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -11,
-            "pan": -0.38,
+            "gainDb": 0,
+            "pan": 0,
             "mute": false,
             "solo": false,
             "soloSafe": false,
-            "deviceIds": [
-              "instrument-6",
-              "track-6-chorus"
-            ],
+            "deviceIds": [],
             "trackId": "comp",
-            "outputChannelId": "bus-2",
-            "sends": [
-              {
-                "id": "send-6-room",
-                "targetChannelId": "return-1",
-                "gainDb": -17,
-                "preFader": false,
-                "enabled": true
-              }
-            ]
+            "outputChannelId": "master"
           },
           {
             "id": "track-7",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -10,
-            "pan": 0.22,
+            "gainDb": 0,
+            "pan": 0,
             "mute": false,
             "solo": false,
             "soloSafe": false,
-            "deviceIds": [
-              "instrument-7",
-              "track-7-eq"
-            ],
+            "deviceIds": [],
             "trackId": "brass",
-            "outputChannelId": "bus-2",
-            "sends": [
-              {
-                "id": "send-7-room",
-                "targetChannelId": "return-1",
-                "gainDb": -15,
-                "preFader": false,
-                "enabled": true
-              }
-            ]
+            "outputChannelId": "master"
           },
           {
             "id": "track-8",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -13,
-            "pan": 0.24,
+            "gainDb": 0,
+            "pan": 0,
             "mute": false,
             "solo": false,
             "soloSafe": false,
-            "deviceIds": [
-              "instrument-8"
-            ],
+            "deviceIds": [],
             "trackId": "strings",
-            "outputChannelId": "bus-2",
-            "sends": [
-              {
-                "id": "send-8-room",
-                "targetChannelId": "return-1",
-                "gainDb": -12,
-                "preFader": false,
-                "enabled": true
-              }
-            ]
+            "outputChannelId": "master"
           }
         ],
         "devices": [
@@ -22694,110 +22741,6 @@
               "vendor": "OSTF Studio",
               "name": "OSTF Compressor"
             }
-          },
-          {
-            "id": "instrument-4",
-            "role": "instrument",
-            "enabled": true,
-            "bypass": false,
-            "onUnavailable": "reportAndPreserve",
-            "plugin": {
-              "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
-              "vendor": "OSTF Studio"
-            }
-          },
-          {
-            "id": "instrument-5",
-            "role": "instrument",
-            "enabled": true,
-            "bypass": false,
-            "onUnavailable": "reportAndPreserve",
-            "plugin": {
-              "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
-              "vendor": "OSTF Studio"
-            }
-          },
-          {
-            "id": "track-5-chorus",
-            "role": "effect",
-            "enabled": true,
-            "bypass": false,
-            "onUnavailable": "reportAndPreserve",
-            "plugin": {
-              "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663032",
-              "vendor": "OSTF Studio",
-              "name": "OSTF Chorus"
-            }
-          },
-          {
-            "id": "instrument-6",
-            "role": "instrument",
-            "enabled": true,
-            "bypass": false,
-            "onUnavailable": "reportAndPreserve",
-            "plugin": {
-              "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
-              "vendor": "OSTF Studio"
-            }
-          },
-          {
-            "id": "track-6-chorus",
-            "role": "effect",
-            "enabled": true,
-            "bypass": false,
-            "onUnavailable": "reportAndPreserve",
-            "plugin": {
-              "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663032",
-              "vendor": "OSTF Studio",
-              "name": "OSTF Chorus"
-            }
-          },
-          {
-            "id": "instrument-7",
-            "role": "instrument",
-            "enabled": true,
-            "bypass": false,
-            "onUnavailable": "reportAndPreserve",
-            "plugin": {
-              "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
-              "vendor": "OSTF Studio"
-            }
-          },
-          {
-            "id": "track-7-eq",
-            "role": "effect",
-            "enabled": true,
-            "bypass": false,
-            "onUnavailable": "reportAndPreserve",
-            "plugin": {
-              "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
-              "vendor": "OSTF Studio",
-              "name": "OSTF EQ"
-            }
-          },
-          {
-            "id": "instrument-8",
-            "role": "instrument",
-            "enabled": true,
-            "bypass": false,
-            "onUnavailable": "reportAndPreserve",
-            "plugin": {
-              "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
-              "vendor": "OSTF Studio"
-            }
           }
         ],
         "hostExtensions": [
@@ -22813,6 +22756,35 @@
                 {
                   "trackId": "keys",
                   "midiChannel": 2,
+                  "destinationTrackId": "hook"
+                },
+                {
+                  "trackId": "bass",
+                  "midiChannel": 3
+                },
+                {
+                  "trackId": "drums",
+                  "midiChannel": 10,
+                  "destinationTrackId": "bass"
+                },
+                {
+                  "trackId": "pad",
+                  "midiChannel": 5,
+                  "destinationTrackId": "hook"
+                },
+                {
+                  "trackId": "comp",
+                  "midiChannel": 6,
+                  "destinationTrackId": "bass"
+                },
+                {
+                  "trackId": "brass",
+                  "midiChannel": 7,
+                  "destinationTrackId": "hook"
+                },
+                {
+                  "trackId": "strings",
+                  "midiChannel": 8,
                   "destinationTrackId": "hook"
                 }
               ]

@@ -78,14 +78,23 @@ def verify(path, spec, schemas, catalog):
             assert any(e["type"] == "programChange" and e["channel"] == r["midiChannel"]
                        for c in t["clips"] for e in c.get("midiEvents", []))
         return {d["plugin"]["name"] for d in devices.values() if d["role"] == "effect"}
+    neon = path.stem == "neon-platforms"
+    if neon:
+        parts = {"hook": ("hook", 1), "keys": ("hook", 2), "pad": ("hook", 5), "brass": ("hook", 7),
+                 "strings": ("hook", 8), "bass": ("bass", 3), "drums": ("bass", 10), "comp": ("bass", 6)}
+        routes = session["hostExtensions"][0]["data"]["tracks"]
+        assert len(routes) == len(parts)
+        assert {r["trackId"]: (r.get("destinationTrackId", r["trackId"]), r["midiChannel"]) for r in routes} == parts
+        gm_ids = [d["plugin"]["pluginId"] for d in devices.values() if d["role"] == "instrument"]
+        assert len(gm_ids) == 2 and len(set(gm_ids)) == 1
+        for t in score["tracks"]:
+            assert t["midi"]["channel"] == parts[t["id"]][1]
     used = set()
     for c in channels.values():
         chain = [devices[k] for k in c["deviceIds"]]
         if c["kind"] == "track" and c["id"] not in audio_strips:
-            if path.stem == "neon-platforms" and c["trackId"] == "keys":
-                routes = {r["trackId"]: r for r in session["hostExtensions"][0]["data"]["tracks"]}
-                assert not chain and routes["keys"]["destinationTrackId"] == "hook"
-                assert routes["keys"]["midiChannel"] == 2 and routes["hook"]["midiChannel"] == 1
+            if neon and parts[c["trackId"]][0] != c["trackId"]:
+                assert not chain
                 continue
             gm, *chain = chain
             assigned_synths = {"arp": "OSTF FM Synth", "sub": "OSTF Analog Synth", "drums": "OSTF Drum Machine", "pad": "OSTF Wavetable Synth"}
@@ -120,13 +129,18 @@ def verify(path, spec, schemas, catalog):
     example = next(c for c in tracks if c["trackId"] == example_track)
     assert [devices[k]["plugin"]["name"] for k in example["deviceIds"][1:]] == ordered_fx
     for bus in ("bus-1", "bus-2"):
-        assert sum(c["outputChannelId"] == bus for c in tracks) >= 2 and channels[bus]["outputChannelId"] == "master"
+        bus_tracks = [c["trackId"] for c in tracks if c["outputChannelId"] == bus]
+        assert channels[bus]["outputChannelId"] == "master"
+        if neon:
+            assert bus_tracks == ["bass" if bus == "bus-1" else "hook"]
+        else:
+            assert len(bus_tracks) >= 2
     room = channels["return-1"]
     assert devices[room["deviceIds"][0]]["plugin"]["name"] == "OSTF Reverb" and room["outputChannelId"] == "master"
     sends = [s for c in tracks for s in c.get("sends", [])]
     assert len(sends) >= 2 and all(s["enabled"] and not s["preFader"] and s["targetChannelId"] == room["id"]
                                    and s["gainDb"] < 0 for s in sends)
-    print(f"{path.stem}: {len(tracks)} tracks ({count} audio), {len(assigned) - len(tracks) + count} inserts, {len(sends)} sends")
+    print(f"{path.stem}: {len(tracks)} tracks ({count} audio), {sum(d['role'] == 'effect' for d in devices.values())} inserts, {len(sends)} sends")
     return used
 
 

@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Two GM instances in Neon Platforms
+
+On `feature/two-gm-demo-routing`, the gallery's first song stores eight MIDI parts on two independent GM devices. Open the guitar and bass instrument buttons at bar 17 to compare their editors. Guitar (#1) takes channels 1, 2, 5, 7 and 8. Bass (#3) takes channels 3, 6 and 10. Both the standalone score and the packaged project carry the routes. The Sharing dropdown starts with the relevant detach actions and preserves musical tracks.
+
+Windows Release tests rendered the chorus through the transport into two GM processors and inspected both editors' 16 meter columns. The hosted VST3 test checked independent program states, audio on both stereo returns, editor ownership and isolated detach. The first full run passed 29 of 30 tests. The unrelated Link transport test then passed three consecutive isolated runs. Both core tests and the demo schema verifier passed. Hardware listening and macOS remain unverified.
+
 ## Per-chord decisions and reading views
 
 Branch `feature/per-chord-actions-reading-views`. Each pending chord has its own three-action menu anchored to its interval. The left gutter contains individual batch buttons for Confirm all, Keep all and Cancel all. The lead sheet, score and mixer can be opened while edits await review. Returning to the piano roll restores the same pending decisions. Toolbar icons use the standard hover tooltip.

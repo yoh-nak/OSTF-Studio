@@ -42,7 +42,7 @@ OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、�
 |---|---|
 | Paper Lantern Replies | リードボーカルの FX は **EQ → Compressor**。リードから Return 1 へ −13 dB、バックコーラスから −11 dB で送ります。ボーカルガイドの音色で違いを確認できます。 |
 | Blue Hour Waltz | 冒頭のピアノの出力は Bus B、ルームへのセンドは −14 dB。ピアノをソロにして再生し、Bus B をミュートすると残響だけ、Return 1 をミュートすると直接音だけを確認できます。 |
-| Neon Platforms | ギターフックの **Guitar Amp → EQ**、リズムバスのコンプレッサー、マスターのリミッターを確認できます。 |
+| Neon Platforms | 17小節目からのサビで2台の共有GMを比較できます。GM #1 はギター Ch 1、エレピ Ch 2、パッド Ch 5、ブラス Ch 7、弦 Ch 8 を受け、EQ → Bus Compressor → Harmony バスに出力します。GM #3 はベース Ch 3、ドラム Ch 10、リズムギター Ch 6 を受け、Rhythm バスに出力します。 |
 | Relay Circuit | サブベースの **Distortion → EQ** とシンセのモジュレーションを確認できます。サブベースには残響を送りません。 |
 | Offset Bridges | リードの **Distortion → Guitar Amp** を含む変拍子のファイル検証用デモです。 |
 

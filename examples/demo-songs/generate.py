@@ -965,7 +965,12 @@ def production_session(song, cues, shared_gm=False):
                 channel("return-1", "bus", name="Room", gainDb=-3, outputChannelId="master")]
     for strip, kind in zip(channels, ("Limiter", "Compressor", "EQ", "Reverb")):
         insert(strip, kind)
-    shared_owner = "keys" if shared_gm else "hook" if song["song"]["title"] == "Neon Platforms" else None
+    shared_destinations = {}
+    if shared_gm:
+        shared_destinations = {lane["id"]: "keys" for lane in song["tracks"]}
+    elif song["song"]["title"] == "Neon Platforms":
+        shared_destinations = {"hook": "hook", "keys": "hook", "pad": "hook", "brass": "hook", "strings": "hook",
+                               "bass": "bass", "drums": "bass", "comp": "bass"}
     shared_routes = []
     for index, lane in enumerate(song["tracks"], start=1):
         midi_channel = 10 if lane["trackType"] == "drum" else index
@@ -981,7 +986,8 @@ def production_session(song, cues, shared_gm=False):
             dest.setdefault("midiEvents", []).append({"id": f"{lane['id']}-daybreak-program", "type": "programChange",
                 "start": at - dest["start"], "channel": midi_channel, "program": 2})
         level, pan, output, send, inserts = parts[lane["id"]]
-        if shared_owner and (shared_gm or lane["id"] in ("hook", "keys")):
+        shared_owner = shared_destinations.get(lane["id"])
+        if shared_owner:
             route = {"trackId": lane["id"], "midiChannel": midi_channel}
             if lane["id"] != shared_owner:
                 route["destinationTrackId"] = shared_owner
@@ -993,8 +999,11 @@ def production_session(song, cues, shared_gm=False):
                 channels.append(channel(f"track-{index}", "track", trackId=lane["id"], outputChannelId="master"))
                 continue
             level, pan, output = -2, 0, "master"
-            if not shared_gm:
+            if not shared_gm and shared_owner == "hook":
+                output = "bus-2"
                 inserts = ["EQ", "BusCompressor"]
+            elif not shared_gm and shared_owner == "bass":
+                output, send = "bus-1", -22
         device = f"instrument-{index}"
         devices.append({"id": device, "role": "instrument", "enabled": True, "bypass": False,
             "onUnavailable": "reportAndPreserve", "plugin": {
