@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Shared instrument windows and arrangement handles
+
+Branch `feature/shared-part-monitor-track-drag`. Each shared instrument button opens the owner's native editor. Its adjacent arrow opens the routing menu. Selecting the current plug-in again on a routed part reuses the owner. Replacing the instrument from a member requires confirmation and preserves the member routes. In the arrangement, a dotted handle supports dragging a row above or below another row in its group. The lead is first among global note rows, and only backing vocals can reorder within that group. Source track IDs and MIDI destinations stay attached to the original tracks.
+
+Windows x64 Release passed the hosted GM, native channel-meter, track view, OSTFP, open-score and open-project checks, plus both JUCE-free core tests. The GM regression compares simultaneous piano and bass playback through the real VST3 against the sum of their isolated waveforms. It also opens one window from multiple member buttons and repeats the instrument assignment. The track test drags across multiple rows and attempts drops onto protected rows. A separate transport smoke run failed its piano playhead screenshot check (exit 14) on both this build and the preceding portable build. macOS, physical audio hardware and third-party instruments have not been tested for this change.
+
 ## Chord decisions and per-interval clip fit
 
 Branch `feature/persistent-chord-review-lane`. The pitched piano roll keeps its chord review lane visible. Only intervals touched by a note edit require a decision. The gold **Decide chords** menu applies Confirm, Cancel or Keep to the selected interval or all pending intervals. Cancel restores the affected notes with their original IDs and attributes, including notes spanning or moving between intervals. Keep preserves the edited notes and the destination harmony. Undoing a cancellation restores the pending review.

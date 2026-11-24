@@ -92,6 +92,33 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
             playback.stop();
             if (partPeak < .0001f) return 77;
         }
+        // Render two notes starting on the same sample through the restored GM owner.
+        // Each isolated waveform must be present in the simultaneous render.
+        for (auto& notes : shared->pitchedNotes) notes.clear();
+        for (auto& notes : shared->drumNotes) notes.clear();
+        const int bass = shared->trackIds.indexOf("bass");
+        if (bass < 0) return 207;
+        auto renderPair = [&](bool keysOn, bool bassOn, juce::AudioBuffer<float>& samples) {
+            shared->pitchedNotes[owner].clear();
+            shared->pitchedNotes[bass].clear();
+            if (keysOn) shared->pitchedNotes[owner].push_back({0, shared->ppq, 72, 90});
+            if (bassOn) shared->pitchedNotes[bass].push_back({0, shared->ppq, 40, 90});
+            if (playback.preparePlayback(*shared, routes, {}, 44100, 512).failed()) return false;
+            for (int offset = 0; offset < samples.getNumSamples(); offset += 512) {
+                playback.renderBlock(block.getArrayOfWritePointers(), 2, 512);
+                for (int ch = 0; ch < 2; ++ch) samples.copyFrom(ch, offset, block, ch, 0, 512);
+            }
+            playback.stop();
+            return true;
+        };
+        juce::AudioBuffer<float> keysOnly(2,4096), bassOnly(2,4096), together(2,4096);
+        if (!renderPair(true,false,keysOnly) || !renderPair(false,true,bassOnly) || !renderPair(true,true,together)) return 208;
+        if (keysOnly.getMagnitude(0,4096) < .001f || bassOnly.getMagnitude(0,4096) < .001f) return 209;
+        for (int ch = 0; ch < 2; ++ch) {
+            together.addFrom(ch, 0, keysOnly, ch, 0, 4096, -1.f);
+            together.addFrom(ch, 0, bassOnly, ch, 0, 4096, -1.f);
+        }
+        if (together.getMagnitude(0,4096) > .0001f) return 210;
     }
     MainComponent studio;
     studio.newProject();
@@ -121,11 +148,14 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     studio.addSharedPart(2);
     if (studio.project_->sourceTrackCount() != 4 || studio.project_->trackKinds[3] != ostfstudio::TrackKind::drum
         || studio.trackControls_[3]->midiChannel != 10 || studio.trackControls_[3]->outputTrack != 0) return 74;
-    studio.openTrackPluginEditor(2);
+    studio.trackControls_[2]->plugin.onClick();
     const auto* sharedWindow = studio.trackControls_[0]->editor.get();
-    studio.openTrackPluginEditor(3);
+    studio.trackControls_[3]->plugin.onClick();
     if (!sharedWindow || studio.trackControls_[0]->editor.get() != sharedWindow || studio.trackControls_[2]->editor || studio.trackControls_[3]->editor) return 197;
-    studio.openTrackPluginEditor(0);
+    studio.loadTrackPlugin(2, original->getPluginDescription());
+    if (studio.trackControls_[2]->loading || studio.trackControls_[2]->instance || studio.trackControls_[2]->outputTrack != 0) return 202;
+    studio.trackControls_[0]->plugin.onClick();
+    if (studio.trackControls_[0]->editor.get() != sharedWindow || studio.trackControls_[0]->instance.get() != original) return 203;
     juce::AudioProcessorParameter* partProgram = nullptr;
     for (auto* param : original->getParameters())
         if (param->getName(64) == "MIDI Program Ch 2") partProgram = param;
@@ -152,6 +182,30 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     studio.moveTrackRow(1,-1);
     order=studio.displayedTrackOrder();
     if (!before(4,6) || !before(6,5) || !before(1,0) || studio.trackControls_[2]->outputTrack != 0) return 199;
+    if (order.front() != 4 || !studio.trackOrderHandle(4).isEmpty()) return 204;
+    studio.setSize(1600, 1400);
+    studio.editorVisible_ = false;
+    studio.resized();
+    auto drag = [&](size_t source, size_t target, bool after) {
+        const auto from = studio.trackOrderHandle(source).getCentre().toFloat();
+        auto row = studio.trackRows_[target];
+        const juce::Point<float> to(from.x, float(after ? row.getBottom() - 2 : row.getY() + 2));
+        const auto now = juce::Time::getCurrentTime();
+        auto event = [&](juce::Point<float> p) {
+            return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), p,
+                juce::ModifierKeys::leftButtonModifier, 1.f, 0, 0, 0, 0, &studio, &studio, now, from, now, 1, p != from);
+        };
+        studio.mouseDown(event(from));
+        studio.mouseDrag(event(to));
+        studio.mouseUp(event(to));
+    };
+    drag(5, 6, false);
+    drag(1, 3, true);
+    order = studio.displayedTrackOrder();
+    if (!before(5,6) || !before(3,1) || studio.trackControls_[2]->outputTrack != 0) return 205;
+    drag(5,4,false);
+    drag(0,6,true);
+    if (order != studio.displayedTrackOrder()) return 206;
     return 0;
 }
 

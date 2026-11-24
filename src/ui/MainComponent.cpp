@@ -1653,45 +1653,64 @@ std::vector<std::size_t> MainComponent::displayedTrackOrder() const {
     std::vector<std::size_t> order;
     if (!project_) return order;
     for (std::size_t i = 0; i < project_->trackLanes.size(); ++i)
-        if (project_->isGlobalNoteTrack(i) &&
-            (project_->chordVoicingTrack != i || (timelineLaneMask_ & laneBit(TimelineLane::voicing)) != 0))
+        if (project_->chordVoicingTrack != i || (timelineLaneMask_ & laneBit(TimelineLane::voicing)) != 0)
             order.push_back(i);
-    std::stable_sort(order.begin(), order.end(), [this](const auto a, const auto b) {
-        if (project_->chordVoicingTrack == a) return project_->chordVoicingTrack != b;
-        if (project_->chordVoicingTrack == b) return false;
-        return project_->mixerGroups[a] < project_->mixerGroups[b];
-    });
-    for (std::size_t i = 0; i < project_->trackLanes.size(); ++i)
-        if (!project_->isGlobalNoteTrack(i)) order.push_back(i);
     const auto rank = [this](size_t i) {
-        if (project_->chordVoicingTrack == i) return std::pair{0, 0};
-        if (project_->primaryMelodyTrack == i) return std::pair{1, 0};
+        if (project_->primaryMelodyTrack == i) return std::pair{0, 0};
+        if (project_->chordVoicingTrack == i) return std::pair{1, 0};
+        if (!canReorderTrack(i)) return std::pair{2, 0};
         const auto position = arrangementOrder_.indexOf(project_->trackIds[int(i)]);
-        return std::pair{!project_->isGlobalNoteTrack(i) ? 4 : project_->mixerGroups[i] == ostfstudio::MixerTrackGroup::vocal ? 3 : 2, position < 0 ? arrangementOrder_.size() : position};
+        return std::pair{project_->isGlobalNoteTrack(i) ? 3 : 4, position < 0 ? arrangementOrder_.size() : position};
     };
     std::stable_sort(order.begin(), order.end(), [&](auto a, auto b) { return rank(a) < rank(b); });
     return order;
 }
 
+bool MainComponent::canReorderTrack(size_t i) const {
+    return project_ && i < project_->sourceTrackCount() && project_->primaryMelodyTrack != i &&
+        (!project_->isGlobalNoteTrack(i) || project_->mixerGroups[i] == ostfstudio::MixerTrackGroup::vocal);
+}
+
+bool MainComponent::canReorderTogether(size_t source, size_t target) const {
+    return source != target && canReorderTrack(source) && canReorderTrack(target) &&
+        project_->isGlobalNoteTrack(source) == project_->isGlobalNoteTrack(target);
+}
+
+juce::Rectangle<int> MainComponent::trackOrderHandle(size_t i) const {
+    if (!canReorderTrack(i) || i >= trackRows_.size() || trackRows_[i].isEmpty()) return {};
+    auto header = trackRows_[i].withWidth(trackNameWidth);
+    return header.removeFromTop(24).removeFromRight(18);
+}
+
 std::optional<size_t> MainComponent::adjacentMovableTrack(size_t index, int direction) const {
-    if (!project_ || index >= project_->sourceTrackCount() || project_->primaryMelodyTrack == index) return {};
+    if (!canReorderTrack(index)) return {};
     const auto order = displayedTrackOrder();
     const auto it = std::find(order.begin(), order.end(), index);
     if (it == order.end() || (direction < 0 ? it == order.begin() : std::next(it) == order.end())) return {};
     const auto other = *(it + direction);
-    if (other >= project_->sourceTrackCount() || project_->primaryMelodyTrack == other || project_->isGlobalNoteTrack(index) != project_->isGlobalNoteTrack(other)) return {};
-    if (project_->isGlobalNoteTrack(index) && (project_->mixerGroups[index] != ostfstudio::MixerTrackGroup::vocal || project_->mixerGroups[other] != ostfstudio::MixerTrackGroup::vocal)) return {};
+    if (!canReorderTogether(index, other)) return {};
     return other;
 }
 
 void MainComponent::moveTrackRow(size_t index, int direction) {
-    if (const auto other = adjacentMovableTrack(index, direction)) {
-        auto order = displayedTrackOrder();
-        std::iter_swap(std::find(order.begin(), order.end(), index), std::find(order.begin(), order.end(), *other));
-        arrangementOrder_.clear();
-        for (auto i : order) if (i < project_->sourceTrackCount()) arrangementOrder_.add(project_->trackIds[int(i)]);
-        markSessionEdited(); resized(); repaint();
-    }
+    if (const auto other = adjacentMovableTrack(index, direction))
+        placeTrackRow(index, *other, direction > 0);
+}
+
+void MainComponent::placeTrackRow(size_t source, size_t target, bool after) {
+    if (!canReorderTogether(source, target)) return;
+    auto order = displayedTrackOrder();
+    auto from = std::find(order.begin(), order.end(), source);
+    auto to = std::find(order.begin(), order.end(), target) + int(after);
+    if (from == to || from + 1 == to) return;
+    if (from < to) std::rotate(from, from + 1, to);
+    else std::rotate(to, from, from + 1);
+    arrangementOrder_.clear();
+    for (auto i : order)
+        if (i < project_->sourceTrackCount()) arrangementOrder_.add(project_->trackIds[int(i)]);
+    markSessionEdited();
+    resized();
+    repaint();
 }
 
 bool MainComponent::isInterestedInDragSource(const SourceDetails& details) {
@@ -2697,6 +2716,8 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     melodyneCopies_.clear();
     clipLane_.selected.reset();
     project_ = std::move(next);
+    reorderSource_.reset();
+    reorderTarget_.reset();
     arrangementOrder_ = project_ && project_->savedMix ? project_->savedMix->trackOrder : juce::StringArray{};
     auditionShift_ = 0;
     auditionRate_ = 1;
@@ -3239,6 +3260,8 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
     workspaceMode_ = WorkspaceMode::arrangement;
     auto previous = std::move(trackControls_);
     project_ = std::move(updated);
+    reorderSource_.reset();
+    reorderTarget_.reset();
     scaleReference_ = -1;
     theory_.reset();
     refreshTheory();
@@ -3309,6 +3332,7 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         trackControls_[dest]->midiChannel = sharedPart->channel;
         trackControls_[dest]->outputTrack = sharedPart->destination;
         updatePresetLabel(dest);
+        if (sharedPart->destination) updatePresetLabel(*sharedPart->destination);
         markSessionEdited();
     }
     if (duplicate) {
@@ -3545,7 +3569,15 @@ void MainComponent::rebuildTrackControls() {
         controls->plugin.setTooltip(TRANS("Assign a local plug-in to ") + name);
         controls->plugin.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff25221e));
         controls->plugin.setColour(juce::TextButton::textColourOffId, juce::Colour(hardwareAmber));
-        controls->plugin.onClick = [this, i] { showTrackPluginMenu(i); };
+        controls->plugin.onClick = [this, i] {
+            const auto owner = trackControls_[i]->outputTrack.value_or(i);
+            if (trackControls_[owner]->instance && (owner != i || hasSharedParts(i))) openTrackPluginEditor(i);
+            else showTrackPluginMenu(i);
+        };
+        controls->routingMenu.setTitle(name + " / " + TRANS("Instrument routing"));
+        controls->routingMenu.setTooltip(TRANS("Instrument destination and channel"));
+        controls->routingMenu.onClick = [this, i] { showTrackPluginMenu(i); };
+        rowOverlay_.addChildComponent(controls->routingMenu);
         controls->mix.setTooltip(TRANS("Track volume, pan, sends and routing"));
         controls->mix.onClick = [this, i] { showTrackMix(i); };
         controls->preset.setFont(juce::FontOptions(10.0f));
@@ -3653,6 +3685,9 @@ void MainComponent::routeMidiPart(std::size_t index, std::optional<std::size_t> 
             trackControls_[host]->editor->setName(instrumentWindowTitle(host));
     refreshMidiRoutes();
     updatePresetLabel(index);
+    updatePresetLabel(previousOwner);
+    if (owner) updatePresetLabel(*owner);
+    resized();
     if (!owner && !part.instance && part.instrumentAssignment.isObject()) restoreLocalInstrument(index, ensurePluginBrowser().types());
 }
 
@@ -3799,6 +3834,9 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
                 if (self->trackControls_[index]->midiChannel != selection - channelId) self->markSessionEdited();
                 self->trackControls_[index]->midiChannel = selection - channelId;
                 self->updatePresetLabel(index);
+                const auto host = self->trackControls_[index]->outputTrack.value_or(index);
+                if (auto& window = self->trackControls_[host]->editor)
+                    window->setName(self->instrumentWindowTitle(host));
             }
             if (selection >= 1000 && selection < sharedId) {
                 self->stopTransport();
@@ -4063,6 +4101,7 @@ void MainComponent::discoverTrackPlugin(std::size_t index) {
     strip.loading = false;
     refreshTrackActions();
     strip.plugin.setButtonText(strip.instance ? strip.instance->getName() : TRANS("Instrument"));
+    updatePresetLabel(index);
     if (found.isEmpty()) {
         statusLabel_.setText(TRANS("No VST3 component found in ") + strip.candidatePath.getFileName(), juce::dontSendNotification);
         return;
@@ -4096,6 +4135,31 @@ void MainComponent::loadTrackPlugin(std::size_t index, const juce::PluginDescrip
         appendEffect(false, index, description);
         return;
     }
+    const auto owner = strip.outputTrack.value_or(index);
+    if (strip.outputTrack && restoring) return;
+    if (!restoring && (owner != index || hasSharedParts(owner))) {
+        const auto& host = *trackControls_[owner];
+        if (host.loading) return;
+        if (host.instance) {
+            const auto current = host.instance->getPluginDescription();
+            if (current.pluginFormatName == description.pluginFormatName && current.uniqueId == description.uniqueId &&
+                current.manufacturerName == description.manufacturerName && current.name == description.name) {
+                updatePresetLabel(index);
+                openTrackPluginEditor(owner);
+                return;
+            }
+        }
+        if (owner != index) {
+            juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, TRANS("Replace the shared instrument?"),
+                TRANS("All tracks routed to this instrument will use") + " " + description.name,
+                TRANS("Replace"), TRANS("Cancel"), this, juce::ModalCallbackFunction::create(
+                    [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, index, owner, description](int yes) {
+                        if (yes && safe && safe->projectGeneration_ == generation && safe->trackControls_[index]->outputTrack == owner)
+                            safe->loadTrackPlugin(owner, description);
+                    }));
+            return;
+        }
+    }
     strip.loading = true;
     refreshTrackActions();
     strip.plugin.setButtonText(TRANS("Loading..."));
@@ -4120,7 +4184,6 @@ void MainComponent::loadTrackPlugin(std::size_t index, const juce::PluginDescrip
                     if (!state.isEmpty()) instance->setStateInformation(state.getData(), static_cast<int>(state.getSize()));
                     target.playableInstrument = PreviewTransport::supportsInstrument(*instance);
                     target.pluginPath = juce::File(description.fileOrIdentifier);
-                    if (!restoring) target.outputTrack.reset();
                     target.instance = std::move(instance);
                     target.inactiveInstrument.reset();
                     target.inactiveInstrumentState.reset();
@@ -4136,6 +4199,7 @@ void MainComponent::loadTrackPlugin(std::size_t index, const juce::PluginDescrip
                     }
                     target.plugin.setButtonText(target.instance->getName());
                     self->updatePresetLabel(index);
+                    self->resized();
                     if (!restoring) self->openTrackPluginEditor(index);
                 });
         });
@@ -4232,8 +4296,9 @@ void MainComponent::updatePresetLabel(std::size_t index) {
     juce::String label;
     if (strip.outputTrack && *strip.outputTrack < project_->trackLanes.size()) {
         label = "#" + juce::String(int(*strip.outputTrack + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[*strip.outputTrack].label) + " / Ch " + juce::String(strip.midiChannel);
-        strip.plugin.setButtonText("Ch " + juce::String(strip.midiChannel) + "  " + juce::String::charToString(0x2192));
-        strip.plugin.setTooltip(TRANS("Shared instrument") + ": " + label);
+        strip.plugin.setButtonText("Ch " + juce::String(strip.midiChannel) + " " + juce::String::charToString(0x2192)
+                                  + " #" + juce::String(int(*strip.outputTrack + 1)));
+        strip.plugin.setTooltip(TRANS("Open shared instrument") + " / " + label);
         strip.plugin.getProperties().set("sharedPart", true);
     } else if (strip.plugin.getProperties().remove("sharedPart")) {
         const auto fallback = strip.instrumentAssignment.isObject()
@@ -4243,6 +4308,13 @@ void MainComponent::updatePresetLabel(std::size_t index) {
     }
     if (!strip.outputTrack && strip.instance) {
         auto* instance = strip.instance.get();
+        if (hasSharedParts(index)) {
+            strip.plugin.setButtonText(TRANS("Shared instrument") + " / Ch " + juce::String(strip.midiChannel));
+            strip.plugin.setTooltip(instrumentWindowTitle(index));
+        } else {
+            strip.plugin.setButtonText(instance->getName());
+            strip.plugin.setTooltip(TRANS("Assign a local plug-in to this track"));
+        }
         if (const auto program = instance->getCurrentProgram(); program >= 0 && program < instance->getNumPrograms()) {
             label = instance->getProgramName(program);
         }
@@ -5132,6 +5204,8 @@ void MainComponent::globalCommand(int command) {
 }
 
 void MainComponent::mouseDown(const juce::MouseEvent& event) {
+    reorderSource_.reset();
+    reorderTarget_.reset();
     if (rowOverlay_.isVisible() && viewportPan_.begin(*this, event, rowOverlay_.getBounds().withTrimmedLeft(trackHeaderWidth))) return;
     resizingAudio_.reset();
     resizingMidi_.reset();
@@ -5201,6 +5275,10 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
     }
     for (std::size_t i = 0; i < trackRows_.size(); ++i) {
         if (trackRows_[i].contains(event.getPosition())) {
+            if (event.mods.isLeftButtonDown() && trackOrderHandle(i).contains(event.getPosition())) {
+                reorderSource_ = i;
+                return;
+            }
             if (event.mods.isLeftButtonDown() && trackRows_[i].withWidth(trackNameWidth).contains(event.getPosition())
                 && canExportTrack(i))
                 pendingMidiDrag_ = i;
@@ -5270,14 +5348,31 @@ void MainComponent::mouseDoubleClick(const juce::MouseEvent& event) {
     }
     if (!rowOverlay_.getBounds().withWidth(trackNameWidth).contains(p))
         return;
-    if (auto track = pluginDropTrack(p))
-        renameTrack(*track);
+    if (auto track = pluginDropTrack(p)) {
+        if (!trackOrderHandle(*track).contains(p)) renameTrack(*track);
+    }
     else if (auto out = outputDropTrack(p))
         renameTrack(*out, true);
 }
 
 void MainComponent::mouseDrag(const juce::MouseEvent& event) {
     if (viewportPan_.move(event)) return;
+    if (reorderSource_) {
+        if (event.getDistanceFromDragStart() < 4) return;
+        const auto pos = event.getPosition();
+        const auto viewport = rowOverlay_.getBounds().withTrimmedTop(timelineRowHeight());
+        if (viewport.contains(pos) && verticalScroll_.isVisible()) {
+            if (pos.y < viewport.getY() + 18) verticalScroll_.moveScrollbarInSteps(-1);
+            else if (pos.y >= viewport.getBottom() - 18) verticalScroll_.moveScrollbarInSteps(1);
+        }
+        reorderTarget_.reset();
+        if (auto target = pluginDropTrack(pos); target && canReorderTogether(*reorderSource_, *target)) {
+            reorderTarget_ = target;
+            reorderAfter_ = pos.y >= trackRows_[*target].getCentreY();
+        }
+        repaint();
+        return;
+    }
     if (draggingMidi_) {
         const auto track = pluginDropTrack(event.getPosition());
         dragPreview_.reset();
@@ -5318,6 +5413,16 @@ void MainComponent::mouseDrag(const juce::MouseEvent& event) {
 
 void MainComponent::mouseUp(const juce::MouseEvent& event) {
     if (viewportPan_.end(*this)) return;
+    if (reorderSource_) {
+        const auto source = *reorderSource_;
+        reorderSource_.reset();
+        reorderTarget_.reset();
+        if (event.mouseWasDraggedSinceMouseDown())
+            if (auto target = pluginDropTrack(event.getPosition()))
+                placeTrackRow(source, *target, event.y >= trackRows_[*target].getCentreY());
+        repaint();
+        return;
+    }
     if (resizingMidi_) { dragMidiResize(1. + double(arrangementTickAt(event.x, true)) / project_->ticksPerBar, true); return; }
     if (draggingMidi_) {
         auto moving = *draggingMidi_;
@@ -5513,6 +5618,7 @@ juce::String MainComponent::getTooltip() {
         }
     }
     for (std::size_t i = 0; i < trackRows_.size(); ++i) {
+        if (trackOrderHandle(i).contains(p)) return TRANS("Drag to reorder tracks within this group");
         if (trackRows_[i].withWidth(trackNameWidth).contains(p) && !trackRows_[i].isEmpty())
             return juce::String::fromUTF8(project_->trackLanes[i].label) + "  /  " +
                 (project_->trackKinds[i] == ostfstudio::TrackKind::drum ? TRANS("Drum / percussion") :
@@ -6215,6 +6321,12 @@ void MainComponent::resized() {
         for (std::size_t i = 0; i < trackControls_.size(); ++i) {
             const bool visible = !trackRows_[i].isEmpty();
             auto& strip = *trackControls_[i];
+            const bool shared = strip.outputTrack.has_value() || hasSharedParts(i);
+            strip.routingMenu.setVisible(visible && shared && !strip.size.compact());
+            auto placeInstrument = [&](juce::Rectangle<int> bounds) {
+                if (shared) strip.routingMenu.setBounds(bounds.removeFromRight(19));
+                strip.plugin.setBounds(bounds);
+            };
             for (auto* control : std::array<juce::Component*, 5>{&strip.mute, &strip.solo, &strip.effects.button,
                     &strip.size, &strip.meter}) control->setVisible(visible);
             for (auto* control : std::array<juce::Component*, 5>{&strip.volume, &strip.pan, &strip.mix,
@@ -6259,7 +6371,7 @@ void MainComponent::resized() {
                 strip.solo.setBounds(top.removeFromLeft(29).reduced(2, 1));
                 inputControls(top);
                 strip.effects.button.setBounds(top.removeFromRight(50).reduced(2, 1));
-                strip.plugin.setBounds(top.reduced(2, 1));
+                placeInstrument(top.reduced(2, 1));
                 auto middle = header.removeFromTop(24);
                 middle.removeFromLeft(trackNameWidth);
                 strip.volume.setBounds(middle.removeFromLeft(128).reduced(3, 0));
@@ -6289,7 +6401,7 @@ void MainComponent::resized() {
             strip.solo.setBounds(top.removeFromLeft(27).reduced(1, 0));
             inputControls(top);
             strip.effects.button.setBounds(top.removeFromRight(44).reduced(1, 0));
-            strip.plugin.setBounds(top.reduced(2, 0));
+            placeInstrument(top.reduced(2, 0));
             strip.volume.setBounds(row.removeFromLeft(85).reduced(2, 0));
             strip.pan.setBounds(row.removeFromLeft(69).reduced(2, 0));
             strip.mix.setBounds(row.removeFromRight(44).reduced(1, 0));
@@ -6440,7 +6552,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             return colour.interpolatedWith(juce::Colour(finish().panel), .42f);
         return colour;
     };
-    auto drawRow = [&](const juce::String& label, int y, std::optional<ViewButton::Icon> icon = {}, bool global = false) {
+    auto drawRow = [&](const juce::String& label, int y, std::optional<ViewButton::Icon> icon = {}, bool global = false, int handleWidth = 0) {
         g.setColour(juce::Colour(0xffe1e9ef));
         g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
         const int labelHeight = project_ && rowHeight >= TrackRowSize::normal - TrackRowSize::grip
@@ -6452,7 +6564,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         }
         const int inset = icon ? 26 : 5;
         g.drawText(label,
-                         juce::Rectangle<int>(labels.getX() + inset, y, (global ? labels.getWidth() : std::min(trackNameWidth, labels.getWidth())) - inset - 5, labelHeight),
+                         juce::Rectangle<int>(labels.getX() + inset, y, (global ? labels.getWidth() : std::min(trackNameWidth, labels.getWidth())) - inset - 5 - handleWidth, labelHeight),
                          global ? juce::Justification::centredRight : juce::Justification::centredLeft, true);
         const auto row = juce::Rectangle<int>(area.getX(), y, area.getWidth(), rowHeight);
         g.setColour(juce::Colour(0xff233443));
@@ -6489,7 +6601,14 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
     }
 
     auto drawLane = [&](const ostfstudio::ArrangementLane& lane, int y, juce::Colour colour, std::optional<ViewButton::Icon> icon = {}, std::optional<size_t> track = {}) {
-        const auto row = drawRow(lane.kind == TimelineLane::none ? juce::String::fromUTF8(lane.label) : juce::translate(lane.label), y, icon, lane.kind != TimelineLane::none);
+        const auto grip = track ? trackOrderHandle(*track) : juce::Rectangle<int>{};
+        const auto row = drawRow(lane.kind == TimelineLane::none ? juce::String::fromUTF8(lane.label) : juce::translate(lane.label), y, icon, lane.kind != TimelineLane::none, grip.getWidth());
+        if (!grip.isEmpty()) {
+            g.setColour(juce::Colour(muted));
+            for (int dy : {-4, 0, 4})
+                for (int dx : {-2, 2})
+                    g.fillRect(grip.getCentreX() + dx - 1, grip.getCentreY() + dy - 1, 2, 2);
+        }
         g.setColour(juce::Colour(0xff3a4e5e));
         for (int bar = firstBar; bar < visible.end; bar += tickStep) {
             g.drawVerticalLine(positionX(bar, row), static_cast<float>(row.getY()), static_cast<float>(row.getBottom()));
@@ -6738,6 +6857,11 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             }
             y = row.getBottom() + TrackRowSize::grip;
         }
+    }
+    if (reorderTarget_ && *reorderTarget_ < trackRows_.size()) {
+        const auto row = trackRows_[*reorderTarget_];
+        g.setColour(juce::Colour(hardwareAmber));
+        g.fillRect(row.getX(), reorderAfter_ ? row.getBottom() - 3 : row.getY(), row.getWidth(), 3);
     }
     if (project_ && selectedTrack_ && clipLane_.selected) {
         auto selected = clipAt(*selectedTrack_, std::llround((*clipLane_.selected - 1.) * project_->ticksPerBar));

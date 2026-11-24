@@ -4,6 +4,8 @@
 
 The session stores display order as a list of stable source track IDs in its Studio host extension. Sorting occurs within the fixed timeline groups. A reorder therefore leaves MIDI destinations, audio routing, automation and source clips attached to their original tracks. Opening a shared part resolves its instrument owner before looking up an editor. The owner alone renders the merged channel-specific MIDI streams.
 
+The drag handle and the header menu use the same placement rules. The primary melody precedes the generated voicing and other global note rows. Only backing vocals move within the global group. Each shared member opens the owner's editor from its instrument button, with routing on the adjacent arrow. Loading the current instrument from the browser or file picker reuses the shared instance. Replacing it from a member requires confirmation and targets the owner.
+
 The mixing processors share parameter/state infrastructure and expose separate catalog identities for automation and project recall. The formant singer uses the same note-to-lyric alignment reader for Studio playback and file playback. Studio supplies timed articulation and note events through its plugin host. In file mode the VST3 embeds the selected score in plugin state and evaluates syllables against the host's musical position. The first voice handles a single imported melody at a time and provides five vowel formants, simple consonant attacks and a default vowel for unaligned notes.
 
 ## Arrangement tools and chord decisions

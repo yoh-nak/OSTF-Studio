@@ -1078,4 +1078,8 @@ countries: jp
 "Resolve the pending chord proposals before switching tracks." = "未確定の区間で「確定」「取消」「維持」を選んでから、トラックを切り替えてください。"
 "Move track up" = "トラックを上へ移動"
 "Move track down" = "トラックを下へ移動"
+"Drag to reorder tracks within this group" = "ドラッグしてグループ内のトラックを並べ替え"
+"Instrument routing" = "音源のルーティング"
+"Replace the shared instrument?" = "共有音源を入れ替えますか？"
+"All tracks routed to this instrument will use" = "この音源を共有する全トラックの変更先"
 "Invalid chord selection." = "コード候補を選び直してください。"

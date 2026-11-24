@@ -150,6 +150,12 @@ private:
     ostfstudio::ArrangementView currentArrangement() const;
     juce::StringArray arrangementOrder_;
     std::vector<std::size_t> displayedTrackOrder() const;
+    bool canReorderTrack(size_t) const;
+    bool canReorderTogether(size_t, size_t) const;
+    juce::Rectangle<int> trackOrderHandle(size_t) const;
+    void placeTrackRow(size_t source, size_t target, bool after);
+    std::optional<size_t> reorderSource_, reorderTarget_;
+    bool reorderAfter_ = false;
     std::optional<size_t> adjacentMovableTrack(size_t, int) const;
     void moveTrackRow(size_t, int);
     juce::String instrumentWindowTitle(size_t) const;
@@ -312,6 +318,7 @@ private:
         juce::TextButton solo {"S"};
         juce::Slider volume, pan;
         juce::TextButton plugin {TRANS("Instrument")};
+        juce::TextButton routingMenu {juce::String::charToString(0x25be)};
         juce::TextButton mix {TRANS("Mix")};
         EffectChain effects;
         juce::Label preset;
