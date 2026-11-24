@@ -121,6 +121,10 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     studio.addSharedPart(2);
     if (studio.project_->sourceTrackCount() != 4 || studio.project_->trackKinds[3] != ostfstudio::TrackKind::drum
         || studio.trackControls_[3]->midiChannel != 10 || studio.trackControls_[3]->outputTrack != 0) return 74;
+    studio.openTrackPluginEditor(2);
+    const auto* sharedWindow = studio.trackControls_[0]->editor.get();
+    studio.openTrackPluginEditor(3);
+    if (!sharedWindow || studio.trackControls_[0]->editor.get() != sharedWindow || studio.trackControls_[2]->editor || studio.trackControls_[3]->editor) return 197;
     studio.openTrackPluginEditor(0);
     juce::AudioProcessorParameter* partProgram = nullptr;
     for (auto* param : original->getParameters())
@@ -137,6 +141,17 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     if (!tracks || tracks->getNumItems() != 1 || !tracks->getItemText(0).startsWith("#3 ")) return 195;
     prompt->exitModalState(0);
     if (!studio.project_->programChanges[2].empty()) return 196;
+    using Group = ostfstudio::MixerTrackGroup;
+    studio.editTracks(ostfstudio::TrackKind::pitched, {}, {}, Group::melody);
+    studio.editTracks(ostfstudio::TrackKind::pitched, {}, {}, Group::vocal);
+    studio.editTracks(ostfstudio::TrackKind::pitched, {}, {}, Group::vocal);
+    auto order = studio.displayedTrackOrder();
+    auto before = [&](size_t a, size_t b) { return std::find(order.begin(),order.end(),a)<std::find(order.begin(),order.end(),b); };
+    if (!before(4,5) || !before(5,6) || studio.adjacentMovableTrack(4,1) || studio.adjacentMovableTrack(5,-1)) return 198;
+    studio.moveTrackRow(6,-1);
+    studio.moveTrackRow(1,-1);
+    order=studio.displayedTrackOrder();
+    if (!before(4,6) || !before(6,5) || !before(1,0) || studio.trackControls_[2]->outputTrack != 0) return 199;
     return 0;
 }
 
@@ -344,6 +359,19 @@ int checkSamplePlacement(const juce::File& file) {
             || insert[0]["id"]==insert[1]["id"]) return 210;
         const std::vector<PitchedNote> notes{{0,480,62,90},{0,480,65,90},{0,480,69,90}};
         if(rankChords(notes,{0,480})[0]!="Dm" || !rankChords(notes,{480,960}).isEmpty()) return 211;
+        OstfpPreview overlap;
+        const auto json=juce::JSON::toString(score);
+        overlap.sourceScore=juce::MemoryBlock(json.toRawUTF8(),json.getNumBytesAsUTF8());
+        overlap.durationTicks=1440; overlap.ticksPerBar=1440;
+        overlap.pitchedNotes={{{0,1440,60},{0,480,64},{0,480,67},{480,1440,65},{480,1440,69}}};
+        const auto decisions=analyseChordRanges(overlap,0,{{0,1440}});
+        if(decisions.size()!=2 || decisions[0].range!=ReviewRange(0,480) || decisions[1].range!=ReviewRange(480,1440)
+            || decisions[0].candidates[0]!="C" || decisions[1].candidates[0]!="F") return 218;
+        ChordReviewLane lane;
+        lane.timeline=[] {return std::pair{juce::Rectangle<int>(40,0,144,42),juce::Range<double>(0,1440)};};
+        lane.setBounds(0,0,184,44);lane.display(decisions,*main.project_);
+        if(lane.intervalBounds(0).getX()!=40 || lane.intervalBounds(0).getWidth()!=48 ||
+            lane.intervalBounds(1).getX()!=88 || lane.intervalBounds(1).getWidth()!=96) return 219;
         remove.clear(); insert.clear();
         ChordDecision middle{{120,360},"C",{"Dm"},{},1};
         if(chordDecisionEdits(score,{middle},remove,insert).failed() || remove.size()!=1 || insert.size()!=3
@@ -383,12 +411,12 @@ int checkSamplePlacement(const juce::File& file) {
         auto note = main.project_->pitchedNotes[tracks].front();
         note.pitch += 1;
         main.applyNoteGesture({{ostfstudio::NoteEdit::change,note}});
-        if (main.pendingReview_.empty() || main.pendingReview_.front().candidates.size()!=3) return 204;
+        if (main.pendingReview_.empty() || main.pendingReview_.at(size_t(main.chordReview_.selected())).candidates.size()!=3) return 204;
         main.undoPianoEdit(false);
         if (!main.pendingReview_.empty()) return 205;
         main.undoPianoEdit(true);
         if (main.pendingReview_.empty()) return 206;
-        auto& firstDecision=main.pendingReview_.front();
+        auto& firstDecision=main.pendingReview_.at(size_t(main.chordReview_.selected()));
         firstDecision.choice = firstDecision.candidates[0] == firstDecision.current ? 2 : 1;
         const auto expected=firstDecision.candidates[firstDecision.choice-1];
         const auto at=firstDecision.range.getStart();
@@ -396,7 +424,11 @@ int checkSamplePlacement(const juce::File& file) {
         main.resolveChordReview(false,false);
         const auto updated=juce::JSON::parse(main.project_->sourceScore.toString());
         if(main.pendingReview_.size()!=remaining || ostfstudio::globalEventAt(updated,ostfstudio::TimelineLane::chord,at)["label"]!=expected) return 214;
-        if (!main.pendingReview_.empty()) main.resolveChordReview(true,false);
+        if (!main.pendingReview_.empty()) {
+            main.selectTrack(0);
+            if(main.selectedTrack_ != tracks) return 217;
+            main.resolveChordReview(true,false);
+        }
         if (!main.pendingReview_.empty()) return 207;
     }
     return 0;
@@ -674,9 +706,9 @@ int checkTrackView(const juce::File& fixture) {
         if (it.getItem().text == TRANS("Duplicate track") && it.getItem().isEnabled)
             model.menuItemSelected(it.getItem().itemID, 2);
     if (tracks->getNumItems() != 6 || !tracks->getText().startsWith(selected)) return 35;
-    auto enableFitLanes = [&model] {
+    auto enableClipFit = [&model] {
         juce::Array<int> toggled;
-        for (const auto* caption : {"Show Theory Guide", "Chord tone fit", "Scale fit"}) {
+        for (const auto* caption : {"Chord fit", "Scale fit"}) {
             auto viewMenu = model.getMenuForIndex(1, {});
             for (juce::PopupMenu::MenuItemIterator it(viewMenu, true); it.next();)
                 if (it.getItem().text == juce::translate(caption) && !it.getItem().isTicked) {
@@ -687,7 +719,7 @@ int checkTrackView(const juce::File& fixture) {
         }
         return toggled;
     };
-    const auto audioToggles = enableFitLanes();
+    const auto audioToggles = enableClipFit();
     auto* firstAudio = findControl<TrackRowSize>(main, selected + " " + TRANS("track height"));
     auto* copiedAudio = findControl<TrackRowSize>(main, tracks->getText() + " " + TRANS("track height"));
     if (!firstAudio || !copiedAudio || copiedAudio->getY() - firstAudio->getY() != copiedAudio->height()) return 108;
@@ -873,12 +905,12 @@ int checkTrackView(const juce::File& fixture) {
     height->setValue(35, juce::sendNotificationSync);
     if (!guitar->compact() || !drums->compact() || !master->compact() || !bass->compact()) return 29;
 
-    // Measure the space between two neighbouring pitched tracks with both fit rows visible.
-    const auto toggled = enableFitLanes();
+    // Fit badges must not add space between neighbouring pitched tracks.
+    const auto toggled = enableClipFit();
     if (!choose(TRANS("Arrangement tracks"))) return 73;
     for (int h : {100, 155, 42}) {
         height->setValue(h, juce::sendNotificationSync);
-        if (guitar->height() != h || bass->height() != h || bass->getY() - guitar->getY() - h != 32) return 74;
+        if (guitar->height() != h || bass->height() != h || bass->getY() - guitar->getY() != h) return 74;
     }
     for (int i = toggled.size(); --i >= 0;) model.menuItemSelected(toggled[i], 1);
 

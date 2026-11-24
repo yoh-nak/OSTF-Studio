@@ -72,6 +72,7 @@ struct PanEnvelope {
 };
 using PanAutomation = std::map<juce::String, PanEnvelope>;
 struct SessionMix {
+    juce::StringArray trackOrder;
     struct MidiRoute { int channel = 1; std::optional<std::size_t> destination; };
     std::vector<ChannelMix> tracks;
     std::vector<MidiRoute> midiRoutes;
@@ -199,7 +200,7 @@ struct OstfpPreview {
     std::vector<MixerTrackGroup> mixerGroups;
     std::vector<TrackKind> trackKinds;
     int chordVoicings = 0;
-    std::optional<std::size_t> chordVoicingTrack;
+    std::optional<std::size_t> chordVoicingTrack, primaryMelodyTrack;
     std::size_t sourceTrackCount() const { return chordVoicingTrack.value_or(trackLanes.size()); }
     bool isGlobalNoteTrack(std::size_t index) const {
         const auto group = mixerGroups[index];

@@ -256,7 +256,8 @@ int TheoryGuide::scaleForNote(const TrackCell& cell, const PitchedNote& note) co
     return index;
 }
 
-std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, const std::vector<PitchedNote>& notes, int reference) const {
+std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, const std::vector<PitchedNote>& notes, int reference, ClipFits* clips) const {
+    if (clips) clips->clear();
     std::vector<TrackCell> result(cells.size());
     const auto id = track < trackIds.size() ? trackIds[track] : juce::String{};
     std::set<juce::String> noteIds, clipIds;
@@ -287,12 +288,23 @@ std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, cons
     }
     for (const auto& n : notes) {
         if (!n.enabled || n.fixedTrigger) continue;
+        auto* sourceClip = clips && n.clipId.isNotEmpty() ? &(*clips)[n.clipId] : nullptr;
         for (auto i = firstCell(double(n.startTick)); i < cells.size() && cells[i].start < n.endTick; ++i) {
             const auto& c = cells[i];
+            auto* clip = sourceClip;
+            if (!clip && clips && track >= trackIds.size() && c.chord >= 0) clip = &(*clips)[chords[size_t(c.chord)].id];
             const auto length = std::min(n.endTick, c.end) - std::max(n.startTick, c.start);
-            if (const int mask = chordMask(c)) result[i].chord.add(contains(mask, n.pitch), length);
+            if (const int mask = chordMask(c)) {
+                const bool inside = contains(mask, n.pitch);
+                result[i].chord.add(inside, length);
+                if (clip) clip->chord.add(inside, length);
+            }
             const auto scale = scaleForNote(result[i], n);
-            if (scale >= 0 && scales[scale].mask) result[i].scale.add(contains(scales[scale].mask, n.pitch), length);
+            if (scale >= 0 && scales[scale].mask) {
+                const bool inside = contains(scales[scale].mask, n.pitch);
+                result[i].scale.add(inside, length);
+                if (clip) clip->scale.add(inside, length);
+            }
         }
     }
     // A scale or key boundary can split a cell inside a chord. The chord lane

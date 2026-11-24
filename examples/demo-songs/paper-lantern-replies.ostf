@@ -2132,7 +2132,7 @@
               "type": "programChange",
               "start": 0,
               "channel": 1,
-              "program": 53
+              "program": 0
             },
             {
               "id": "vocal-part-2-line-1-note-1-cc",
@@ -25223,8 +25223,8 @@
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
+              "pluginId": "ABCDEF019182FAEB4F7374664F736731",
+              "name": "OSTF Formant Singer",
               "vendor": "OSTF Studio"
             }
           },

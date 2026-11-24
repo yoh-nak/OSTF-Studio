@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <utility>
+#include "../plugins/instruments/SingingScore.h"
 
 PreviewTransport::~PreviewTransport() { stop(); }
 
@@ -12,6 +13,7 @@ namespace {
 // Reconstruct the state immediately before the first sample of the new block.
 // Events on that sample are still delivered normally from the timeline.
 juce::MidiBuffer midiAtSeek(const juce::MidiBuffer& timeline, int sample) {
+    std::map<std::pair<int,int>,juce::MidiMessage> phones;
     std::array<int, 16> programs;
     programs.fill(-1);
     std::array<std::array<int,2>,16> selectedBank{}, pendingBank{};
@@ -22,6 +24,12 @@ juce::MidiBuffer midiAtSeek(const juce::MidiBuffer& timeline, int sample) {
     for (auto event : timeline) {
         if (event.samplePosition > sample) break;
         const auto msg = event.getMessage();
+        if (msg.isSysEx()) {
+            if (event.samplePosition < sample && ostfstudio::singing::isPhone(msg)) {
+                const auto* d=msg.getSysExData(); phones[{d[4],d[5]}]=msg;
+            }
+            continue;
+        }
         const auto channel = msg.getChannel() - 1;
         if (event.samplePosition < sample && msg.isProgramChange()) {
             programs[channel] = msg.getProgramChangeNumber();
@@ -56,6 +64,7 @@ juce::MidiBuffer midiAtSeek(const juce::MidiBuffer& timeline, int sample) {
             result.addEvent(juce::MidiMessage::programChange(ch + 1, programs[ch]), 0);
         }
         if (pendingBank[ch] != selectedBank[ch]) sendBank(pendingBank[ch]);
+        for (const auto& [key, msg] : phones) if (key.first == ch && sounding[ch][key.second]) result.addEvent(msg,0);
         for (int pitch = 0; pitch < 128; ++pitch)
             if (const auto velocity = sounding[ch][pitch])
                 result.addEvent(juce::MidiMessage::noteOn(ch + 1, pitch, velocity), 0);
@@ -287,6 +296,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
 
 juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview& project, std::span<const TrackSetup> tracks,
                                                 int semitones, Timelines& timelines, bool patchesOnly) const {
+    std::optional<ostfstudio::singing::Lyrics> lyrics;
     int noteCount = 0;
     std::array<bool, maxTracks> sharedHosts{};
     for (const auto& route : tracks)
@@ -335,6 +345,20 @@ juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview&
             return true;
         };
         const int shift = track < project.trackKinds.size() && project.trackKinds[track] != ostfstudio::TrackKind::pitched ? 0 : semitones;
+        if (tracks[outputTrack].instrument && tracks[outputTrack].instrument->getName() == "OSTF Formant Singer") {
+            if (!lyrics) lyrics = ostfstudio::singing::lyricsFor(juce::JSON::parse(project.sourceScore.toString()));
+            for (const auto& n : project.pitchedNotes[track]) if (n.enabled) {
+                const int key=n.pitch+(n.fixedTrigger?0:shift);
+                if (key<0 || key>127) continue;
+                const auto entry=lyrics->find(n.id);
+                if (entry == lyrics->end()) {
+                    midi->addEvent(ostfstudio::singing::phoneMessage(setup.midiChannel,key,{}),juce::roundToInt(clock_.secondsAt(n.startTick)*sampleRate_));
+                } else for (size_t p=0;p<entry->second.size();++p) {
+                    auto tick = n.startTick+(n.endTick-n.startTick)*static_cast<juce::int64>(p)/static_cast<juce::int64>(entry->second.size());
+                    midi->addEvent(ostfstudio::singing::phoneMessage(setup.midiChannel,key,entry->second[p]),juce::roundToInt(clock_.secondsAt(tick)*sampleRate_));
+                }
+            }
+        }
         for (const auto& note : project.pitchedNotes[track])
             if (note.enabled && !addNote(note.startTick, note.endTick, note.pitch + (note.fixedTrigger ? 0 : shift), note.velocity.value_or(92), setup.midiChannel))
                 return juce::Result::fail("Preview transport supports up to 20,000 notes.");

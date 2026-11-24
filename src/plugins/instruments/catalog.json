@@ -18,5 +18,6 @@
     "type": "Wavetable",
     "name": "OSTF Wavetable Synth",
     "code": "Owt1"
-  }
+  },
+  {"type":"Singer","name":"OSTF Formant Singer","code":"Osg1"}
 ]

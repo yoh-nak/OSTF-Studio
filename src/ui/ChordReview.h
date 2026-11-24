@@ -27,15 +27,22 @@ class ChordReviewLane : public juce::Component {
   public:
     ChordReviewLane();
     void display(const ostfstudio::ChordDecisions&, const ostfstudio::OstfpPreview&);
-    int selected() const { return ranges_.getSelectedId() - 1; }
+    int selected() const { return index_; }
+    juce::Rectangle<int> intervalBounds(int index) const;
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
     void resized() override;
-    int preferredHeight(int width) const { return width < 820 ? 62 : 34; }
-    std::function<void()> navigate;
+    int preferredHeight(int) const { return 44; }
+    std::function<std::pair<juce::Rectangle<int>,juce::Range<double>>()> timeline;
     std::function<void(int)> choose;
     std::function<void(bool all, bool keep)> confirm;
 
   private:
-    juce::ComboBox ranges_;
-    std::array<juce::TextButton, 5> choices_;
-    juce::TextButton accept_, all_;
+    int index_ = 0;
+    unsigned revision_ = 0;
+    ostfstudio::ChordDecisions rows_;
+    juce::StringArray names_;
+    juce::TextButton intervals_, all_;
+    void showMenu(int index);
+    juce::String option(const ostfstudio::ChordDecision&,int) const;
 };

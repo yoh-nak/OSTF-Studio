@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## Mixing, shared instruments and vocal playback
+
+Branch `feature/stock-rigs-vocal-shared-arrangement`. The effects catalog contains independent VST3 identities for the mixing processors and guitar/bass rigs. `OSTF Formant Singer` renders aligned lyric units locally using formant synthesis. The Studio transport delivers articulation with the pitched track timeline and restores it on seek. The file player stores its OSTF source and selected part in plugin state and follows host PPQ. Its initial dictionary covers five vowels, limited consonants and kana. File playback takes one melodic line per part. Expressive vocal curves, native SVP conversion and third-party DAW/device validation remain open.
+
+The Neon Platforms demo stores a guitar-owned GM instance and routes its piano part there on channel 2. Arrange-order changes use stable source track IDs in Studio session data. Track reordering does not renumber mixer channels.
+
+The chord review is now aligned with the piano-roll time axis. The first note edit opens each score chord for review, with untouched chords set to Keep. Individual confirmation leaves other intervals pending. The former per-track fit rows are replaced by per-clip chord and scale readouts.
+
+Windows x64 Release and all 34 VST3 bundles built locally. The final CTest suite passed 29 of 30 in a single run. The notation test timed out in that run and passed on its own in 26 seconds. Both JUCE-free core tests passed. The demo verifier checked the updated projects against the supplied OSTF 5.0 schemas. Regression coverage includes cross-boundary note ranking and review-cell widths, track switching and height, shared instruments and hosted singer vowel changes. macOS, listening on physical hardware and third-party DAW playback were not verified.
+
 ## Timeline tools and chord review
 
 Branch `feature/timeline-tools-chord-review`. The scissors and join icons dispatch arrangement clip commands and global boundary edits. The global-lane context menu persists which side supplies a joined value. The chord review strip shows affected intervals after pitched-note edits and OSTF or OSTFP drops. Users can apply a ranked candidate, retain the destination chord, or use an imported chord with its voicing. The source and destination tempo maps determine the imported ranges. Resolve pending decisions before switching tracks. Note edits and score-changing decisions carry review snapshots in local undo history.

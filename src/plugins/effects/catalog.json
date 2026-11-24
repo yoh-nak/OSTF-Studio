@@ -9,5 +9,21 @@
   {"type":"Distortion", "name":"OSTF Distortion",  "code":"Of08", "category":"Distortion"},
   {"type":"Amp",        "name":"OSTF Guitar Amp",  "code":"Of09", "category":"Distortion"},
   {"type":"Analyzer",   "name":"OSTF Wave Analyzer", "code":"Of10", "category":"Analyzer"},
-  {"type":"StemSeparator", "name":"OSTF Stem Separator", "code":"Of11", "category":"Tools"}
+  {"type":"StemSeparator", "name":"OSTF Stem Separator", "code":"Of11", "category":"Tools"},
+  {"type":"EightBandEQ","name":"OSTF 8-Band EQ","code":"Of12","category":"EQ"},
+  {"type":"DynamicEQ","name":"OSTF Dynamic EQ","code":"Of13","category":"EQ"},
+  {"type":"MultibandCompressor","name":"OSTF Multiband Compressor","code":"Of14","category":"Dynamics"},
+  {"type":"BusCompressor","name":"OSTF Bus Compressor","code":"Of15","category":"Dynamics"},
+  {"type":"MultibandBusCompressor","name":"OSTF Multiband Bus Compressor","code":"Of16","category":"Dynamics"},
+  {"type":"Gate","name":"OSTF Gate","code":"Of17","category":"Dynamics"},
+  {"type":"Delay","name":"OSTF Delay","code":"Of18","category":"Delay"},
+  {"type":"DeEsser","name":"OSTF De-Esser","code":"Of19","category":"Dynamics"},
+  {"type":"Filter","name":"OSTF Filter","code":"Of20","category":"Filter"},
+  {"type":"HighPass","name":"OSTF High-Pass Filter","code":"Of21","category":"Filter"},
+  {"type":"LowPass","name":"OSTF Low-Pass Filter","code":"Of22","category":"Filter"},
+  {"type":"GraphicEQ","name":"OSTF Graphic EQ","code":"Of23","category":"EQ"},
+  {"type":"ParametricEQ","name":"OSTF Parametric EQ","code":"Of24","category":"EQ"},
+  {"type":"ElectricRig","name":"OSTF Electric Guitar Rig","code":"Of25","category":"Distortion"},
+  {"type":"AcousticRig","name":"OSTF Acoustic Guitar Rig","code":"Of26","category":"Filter"},
+  {"type":"BassRig","name":"OSTF Bass Rig","code":"Of27","category":"Distortion"}
 ]

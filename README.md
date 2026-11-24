@@ -1,5 +1,11 @@
 # OSTF Studio
 
+The mixing collection adds 8-band, dynamic, graphic and parametric EQ, multimode and high/low-pass filters, gate, delay, de-esser, three compressor configurations and dedicated electric-guitar, acoustic-guitar and bass rigs. Each is a separate VST3. Paper Lantern Replies uses **OSTF Formant Singer**, an offline five-vowel voice driven by OSTF lyric units and pitched notes. In another host, open an `.ostf` inside the instrument, select a part and play the host transport. Its file player follows one melodic line. Use MusicXML for score/lyric exchange with Synthesizer V Studio 2 Pro.
+
+Neon Platforms routes Electric Guitar Hook and Electric Piano Comp to channels 1 and 2 of one GM module. Either instrument button opens the same editor. In the arrangement, right-click a track header to move it up or down within its group. The primary melody stays above the backing vocals.
+
+After editing pitched notes, review the chords directly above the piano keys at their timeline positions. Notes spanning a boundary contribute to each chord for the duration of their overlap. Click a narrow interval for its choices or use the interval list. Confirm individual intervals or the whole track before opening another track. Clip headers display separate duration-weighted chord and scale fit badges. Both are enabled by default and have independent toolbar and View menu switches.
+
 **English** · [日本語](README.ja.md)
 
 **Media library** opens a folder of audio, MIDI and OSTF material. Drag a MIDI file into the arrangement to convert the selected part to editable OSTF notes and MIDI events. Drag an OSTF or OSTFP file to place a part, or use File → Open to restore its complete session.
@@ -38,7 +44,7 @@ Audio loops show a seam at each repeat. Editing a warp marker in one repetition 
 
 ## Recording in the lower editor (development build)
 
-For a pitched or drum track, use **IN** to choose the MIDI input port and channel. Play a note to check the green input lamp. The audio output meter shows the level produced by the instrument. Press **R** on the destination track and then the transport record button. Only one track is armed at a time. The lower editor’s **Record** button also arms its track. Audio tracks display the waveform without fit lanes.
+For a pitched or drum track, use **IN** to choose the MIDI input port and channel. Play a note to check the green input lamp. The audio output meter shows the level produced by the instrument. Press **R** on the destination track and then the transport record button. Only one track is armed at a time. The lower editor’s **Record** button also arms its track. Audio tracks display their waveform.
 
 Open a pitched, drum or audio track. Click the editor ruler to park the cursor. Shift-drag on the piano or waveform ruler to select a cycle, or enable **Loop range** and drag. The step view uses its existing bar-range control. **Record** starts at the cursor. **Stop recording** finalizes the clip and closes the editor. Click the metronome face to toggle the click. Use its arrow to set the recording count-in to Off or 1–8 bars. The song-end button beside fast-forward locates the end of the project. MIDI passes overdub into one clip. Audio uses the first one or two enabled input channels and records a single WAV. On each pass, newly captured audio replaces that part of the current take. Replacing an existing clip requires confirmation. The per-clip WAV size limit is 16 MiB.
 
@@ -74,7 +80,7 @@ Use **File → Open** to open a standalone OSTF 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.
 
 The horizontal **Song defaults** strip beside or below the transport provides quick edits. **Details** opens the complete song information, credits and musical settings even in a narrow window. Select the **BPM** lane to open the tempo editor below the arrangement. Click to set a tempo or drag between two positions to draw an acceleration or slowdown. All colour themes use the same degree and note-underline palette. Local key and scale events apply in their own ranges. **Transpose or change tempo of score** shifts pitched notes and harmony and scales every tempo change. Use **Undo score edit** to revert. **Playback and display overrides** lets you audition another key or speed before committing to an edit. Opening a song resets the audition settings. Recorded audio plays at its native pitch and speed.
 
-The Theory Guide toolbar button toggles the arrangement analysis. Arrangement tracks start at 100 px. Each visible chord-fit or scale-fit row adds a fixed 16 px and keeps that height when the track is resized. Track headers distinguish pitched instruments, drums and audio with keyboard, drum and waveform icons. The piano roll shows chord names under the bar ruler. Select or drag a pitched note with harmony colouring enabled to read its chord and scale percentages. A sustained note is evaluated over the time it spends on each side of a harmony change.
+The Theory Guide toolbar button toggles the arrangement analysis. Arrangement tracks start at 100 px. Chord and scale badges share the clip header, so toggling them preserves track heights. Track headers distinguish pitched instruments, drums and audio with keyboard, drum and waveform icons. The piano roll shows chord names under the bar ruler. Select or drag a pitched note with harmony colouring enabled to read its chord and scale percentages. A sustained note is evaluated over the time it spends on each side of a harmony change.
 
 The transport shows the active section, tempo, meter, key, scale and chord alongside bar/beat/tick and 30 fps timecode. **Home** returns to the beginning. **Rewind** and **Forward** move one bar per click and repeat when held. Stop parks the playhead and Play resumes there. At the end of the song, Play starts again from the beginning.
 
@@ -172,7 +178,7 @@ In Studio, drag **OSTF Studio → OSTF Arranger** from the Plug-in Browser to th
 
 The scissors and join tools in the toolbar act on the arrangement clip you click. Click the active tool again to return to selection. In a global lane, splitting preserves both values and joining combines adjacent intervals. Right-click the lane to choose which value survives. Section and meter cuts snap to a bar line.
 
-After a pitched-note edit, the chord review lane lists the affected intervals and up to three candidates in descending order of fit. Choose a chord or keep the current value, then confirm one interval or all of them. Track selection becomes available once each interval has a decision. Dropping an OSTF or OSTFP part also shows its source chords against the score at the chosen destination. Keeping the score chords retains the placed part.
+After a pitched-note edit, the review lane aligns each chord with the piano roll and offers up to three candidates in descending order of fit. Unaffected chords initially retain the current value. Choose a chord or keep the current value, then confirm one interval or all of them. Track selection becomes available once each interval has a decision. Dropping an OSTF or OSTFP part also shows its source chords against the score at the chosen destination. Keeping the score chords retains the placed part.
 
 Arrangement clips show the number of stored notes. In **Piano Roll**, the performance selector shows authored velocity and, when present, individual CCs, channel/polyphonic aftertouch and vocal pitch and expression curves by voice. **Paper Lantern Replies** has example CC11, channel pressure, pitch and dynamics on **Lead Vocal Guide**. CC, pitch bend and aftertouch can be edited in the lower lane. Vocal curves are read-only. Velocity drives pitched-note preview playback and MIDI export. An unspecified source velocity stays unspecified in the read model.
 

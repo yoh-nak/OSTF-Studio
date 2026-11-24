@@ -4,7 +4,7 @@
 
 class ViewButton final : public juce::Button {
 public:
-    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones, samples, scissors, join };
+    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones, samples, scissors, join, chordFit, scaleFit };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
     std::function<void(juce::String)> onHint;
     void mouseEnter(const juce::MouseEvent& e) override { Button::mouseEnter(e); if (onHint) onHint(getTooltip()); }
@@ -28,6 +28,12 @@ public:
     static void drawIcon(juce::Graphics& g, Icon icon, float x, float y) {
         const auto line = [&](int x1, int y1, int x2, int y2) { g.drawLine(x+x1, y+y1, x+x2, y+y2, 1.6f); };
         switch (icon) {
+            case Icon::chordFit:
+                for (int i : {3,8,13}) { g.fillEllipse(x+4,y+i,5,3); }
+                line(9,2,9,14); line(12,12,14,15); line(14,15,19,6); break;
+            case Icon::scaleFit:
+                for (int i=0;i<4;++i) g.fillRect(x+1+i*3,y+13-i*3,3.f,3.f);
+                line(12,12,14,15); line(14,15,19,6); break;
             case Icon::scissors:
                 g.drawEllipse(x+1,y+10,6,6,1.6f); g.drawEllipse(x+10,y+10,6,6,1.6f);
                 line(5,11,16,1); line(12,11,2,1); break;

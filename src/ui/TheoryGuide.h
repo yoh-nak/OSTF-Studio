@@ -28,6 +28,8 @@ public:
         void add(bool matches, Tick ticks) { total += double(ticks); if (matches) inside += double(ticks); }
         int percent() const { return total == 0 ? -1 : juce::roundToInt(100 * inside / total); }
     };
+    struct ClipFit { Fit chord, scale; };
+    using ClipFits = std::map<juce::String, ClipFit>;
     struct TrackCell {
         Fit chord, scale;
         std::size_t chordBegin = 0, chordEnd = 0;
@@ -47,7 +49,7 @@ public:
         return static_cast<std::size_t>(std::partition_point(cells.begin(), cells.end(),
             [tick](const Cell& cell) { return double(cell.end) <= tick; }) - cells.begin());
     }
-    std::vector<TrackCell> analyse(std::size_t track, const std::vector<PitchedNote>& notes, int reference = -1) const;
+    std::vector<TrackCell> analyse(std::size_t track, const std::vector<PitchedNote>& notes, int reference = -1, ClipFits* clips = nullptr) const;
     int scaleForNote(const TrackCell&, const PitchedNote&) const;
     enum class Tone { unknown, root, guide, fifth, chord, tension, avoid, scale, outside };
     static Tone tone(int pitch, const Chord* chord, int scaleMask);

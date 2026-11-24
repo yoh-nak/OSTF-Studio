@@ -21,13 +21,18 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
         || fx.chainId() != "VST3|OSTF Studio|" + desc.name + "|" + juce::String(desc.uniqueId)) return false;
     instance.setRateAndBufferSizeDetails(48000, 256);
     instance.prepareToPlay(48000, 256);
+    // The multiband EQs intentionally load flat. Boost a mid band before measuring processing.
+    if (desc.name == "OSTF 8-Band EQ" || desc.name == "OSTF Parametric EQ" || desc.name == "OSTF Graphic EQ") {
+        const int gainIndex = desc.name == "OSTF Graphic EQ" ? 5 : desc.name == "OSTF Parametric EQ" ? 4 : 10;
+        instance.getParameters()[gainIndex]->setValueNotifyingHost(.82f);
+    }
     juce::AudioBuffer<float> buffer(2, 256);
     juce::MidiBuffer midi;
     double difference = 0, tail = 0;
     float peak = 0;
     for (int block = 0; block < 160; ++block) {
         for (int i = 0; i < 256; ++i) {
-            const float x = block < 90 ? static_cast<float>(1.2 * std::sin(.117 * (block * 256 + i))) : 0.f;
+            const float x = block < 90 ? static_cast<float>((desc.name == "OSTF Gate" && block < 35 ? .008 : 1.2) * std::sin((desc.name == "OSTF De-Esser" ? .88 : .117) * (block * 256 + i))) : 0.f;
             buffer.setSample(0, i, x); buffer.setSample(1, i, x * 0.7f);
         }
         const juce::AudioBuffer<float> dry(buffer);
@@ -150,6 +155,43 @@ int checkStudioInstruments(const juce::StringArray& args) {
             std::cerr << "Silent or invalid demo stem: " << ids[i] << " peak " << peaks[i] << '\n';
             return 8;
         }
+    }
+    auto singer = load(formats, juce::File(args[1]).getChildFile("OSTF Formant Singer.vst3"));
+    auto vocalFile = juce::File(args[2]).getSiblingFile("paper-lantern-replies.ostfp");
+    std::unique_ptr<ostfstudio::OstfpPreview> vocal;
+    juce::FileInputStream vocalInput(vocalFile);
+    if (!singer || ostfstudio::readOstfpPreview(vocalInput,vocal).failed()) return 9;
+    const int voice = vocal->trackIds.indexOf("voice-track");
+    if (voice<0 || vocal->pitchedNotes[voice].empty() || !vocal->savedMix ||
+        !matchesVst3Instrument(vocal->savedMix->instruments[voice],singer->getPluginDescription())) return 10;
+    std::vector<PreviewTransport::TrackSetup> vocalRoutes(vocal->trackLanes.size());
+    vocalRoutes[voice].instrument=singer.get();
+    auto renderVowel = [&](const juce::String& vowel) {
+        auto score = juce::JSON::parse(vocal->sourceScore.toString());
+        for (auto& unit : *score["lyrics"]["units"].getArray()) unit.getDynamicObject()->setProperty("text",vowel);
+        const auto json = juce::JSON::toString(score);
+        vocal->sourceScore = juce::MemoryBlock(json.toRawUTF8(),json.getNumBytesAsUTF8());
+        PreviewTransport preview;
+        preview.setChannelMix(voice,{},true,0);
+        preview.setOutputMix({});
+        juce::AudioBuffer<float> result(2,2048);
+        result.clear();
+        const auto ready = preview.preparePlayback(*vocal,vocalRoutes,{},48000,2048);
+        if (ready.failed()) std::cerr << ready.getErrorMessage() << '\n';
+        if (ready.wasOk()) {
+            preview.seekToTick(vocal->pitchedNotes[voice].front().startTick + 40);
+            preview.renderBlock(result.getArrayOfWritePointers(),2,result.getNumSamples());
+            preview.stop();
+        }
+        return result;
+    };
+    const auto aa=renderVowel("a"), ii=renderVowel("i");
+    double delta=0;
+    for (int n=0;n<aa.getNumSamples();++n) delta+=std::abs(aa.getSample(0,n)-ii.getSample(0,n));
+    const auto aLevel = aa.getMagnitude(0,0,2048), iLevel = ii.getMagnitude(0,0,2048);
+    if (aLevel < .001f || iLevel < .001f || !(delta > 1)) {
+        std::cerr << "Hosted singer vowel peaks " << aLevel << ", " << iLevel << ", difference " << delta << '\n';
+        return 11;
     }
     return 0;
 }

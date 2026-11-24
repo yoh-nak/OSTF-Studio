@@ -21,7 +21,11 @@ int modelChecks() {
         || guide.functions[0].function != "Subdominant" || guide.functions[1].function != "Dominant"
         || guide.functions[2].function != "Tonic" || guide.functions[3].degree.isNotEmpty()) return 1;
     std::vector<PitchedNote> notes {{16, 24, 65}, {24, 28, 64}, {20, 30, 60, {}, false}, {20, 30, 60, {}, true, "switch", true}};
-    const auto fit = guide.analyse(0, notes), other = guide.analyse(1, notes);
+    notes[0].clipId="sustain"; notes[1].clipId="answer"; notes[2].clipId="muted";
+    TheoryGuide::ClipFits badges;
+    const auto fit = guide.analyse(0, notes, -1, &badges), other = guide.analyse(1, notes);
+    if (badges.size()!=2 || badges.at("sustain").chord.total!=8 || badges.at("sustain").chord.percent()!=50 ||
+        badges.at("answer").chord.total!=4 || badges.at("answer").chord.percent()!=100) return 51;
     const auto v = guide.firstCell(16), tonic = guide.firstCell(20), solo = guide.firstCell(22);
     if (fit[v].chord.percent() != 100 || fit[tonic].chord.percent() != 50 || fit[tonic].chord.total != 8
         || fit[tonic].scale.percent() != 100 || fit[v].scale.percent() != 100 || fit[solo].backgroundScale != -2
@@ -222,7 +226,7 @@ int checkTheoryGuide(const juce::File& demo) {
         if (cmd.id && cmd.checked != enabled) model->menuItemSelected(cmd.id, 1);
         return cmd.id != 0;
     };
-    const auto show = find(*model, TRANS("Show Theory Guide")), chord = find(*model, TRANS("Chord tone fit")),
+    const auto show = find(*model, TRANS("Show Theory Guide")), chord = find(*model, TRANS("Chord fit")),
                scale = find(*model, TRANS("Scale fit"));
     const auto blue = find(*model, TRANS("Studio Blue"), 4), harmonic = find(*model, TRANS("Harmonic colours"), 4);
     const auto graphite = find(*model, TRANS("Graphite"), 4), aubergine = find(*model, TRANS("Aubergine"), 4);
@@ -246,7 +250,7 @@ int checkTheoryGuide(const juce::File& demo) {
         model->menuItemSelected(active->id, 4);
         colours->setSelectedId(savedMode, juce::sendNotificationSync);
         set("Show Theory Guide", true);
-        set("Chord tone fit", chord.checked);
+        set("Chord fit", chord.checked);
         set("Scale fit", scale.checked);
         set("Show Theory Guide", show.checked);
     });
@@ -271,7 +275,7 @@ int checkTheoryGuide(const juce::File& demo) {
     if (!set("Show Theory Guide", false)) return 16;
     colours->setSelectedId(2, juce::sendNotificationSync);
     const int normal = grid->getHeight();
-    set("Show Theory Guide", true); set("Chord tone fit", true); set("Scale fit", true);
+    set("Show Theory Guide", true); set("Chord fit", true); set("Scale fit", true);
     const int both = grid->getHeight();
     if (both <= 0 || both != normal) return 17;
     colours->setSelectedId(4, juce::sendNotificationSync);
@@ -306,9 +310,9 @@ int checkTheoryGuide(const juce::File& demo) {
             if (snapshot.getPixelAt(x,y).getARGB() == 0xff086250) ++chordPixels;
     if (!chordPixels) return 18;
     set("Scale fit", false);
-    if (grid->getHeight() != both || !find(*model, TRANS("Chord tone fit")).checked) return 19;
-    set("Chord tone fit", false); set("Scale fit", true);
-    if (grid->getHeight() != both || find(*model, TRANS("Chord tone fit")).checked) return 20;
+    if (grid->getHeight() != both || !find(*model, TRANS("Chord fit")).checked) return 19;
+    set("Chord fit", false); set("Scale fit", true);
+    if (grid->getHeight() != both || find(*model, TRANS("Chord fit")).checked) return 20;
     set("Show Theory Guide", false);
     const PitchedNote c {0, 10, 60};
     for (int mode = 1; mode <= 4; ++mode) {

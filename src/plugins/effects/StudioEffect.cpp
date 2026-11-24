@@ -5,6 +5,8 @@
 #include <array>
 #include <cmath>
 
+juce::AudioProcessor* makeMixingEffect(const char* type, const char* name);
+
 namespace {
 enum class Kind { Reverb, Chorus, EQ, Compressor, Limiter, Phaser, Flanger, Distortion, Amp };
 struct Control { const char* name; float low, high, initial; };
@@ -308,6 +310,5 @@ private:
 
 juce::AudioProcessor* makeStudioEffect(const char* type, const char* name) {
     for (const auto& design : designs) if (std::string_view(type) == design.type) return new StudioEffect(design, name);
-    jassertfalse;
-    return nullptr;
+    return makeMixingEffect(type, name);
 }

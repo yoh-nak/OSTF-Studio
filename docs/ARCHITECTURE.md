@@ -1,6 +1,14 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## Shared instruments, track ordering and voice processing
+
+The session stores display order as a list of stable source track IDs in its Studio host extension. Sorting occurs within the fixed timeline groups. A reorder therefore leaves MIDI destinations, audio routing, automation and source clips attached to their original tracks. Opening a shared part resolves its instrument owner before looking up an editor. The owner alone renders the merged channel-specific MIDI streams.
+
+The mixing processors share parameter/state infrastructure and expose separate catalog identities for automation and project recall. The formant singer uses the same note-to-lyric alignment reader for Studio playback and file playback. Studio supplies timed articulation and note events through its plugin host. In file mode the VST3 embeds the selected score in plugin state and evaluates syllables against the host's musical position. The first voice handles a single imported melody at a time and provides five vowel formants, simple consonant attacks and a default vowel for unaligned notes.
+
 ## Arrangement tools and chord decisions
+
+Each pending chord has its own interval-sized control above the notes. The interval menu provides the same choices at small zoom levels. The host keeps a track locked until its pending intervals are empty. Fit analysis accumulates note overlap in ticks per clip and context, including applicable note- or clip-scoped scales. Both fit readouts have independent display preferences.
 
 The split and join toolbar tools dispatch to the same MIDI and audio commands as the arrangement context menu. Global spans and change points have distinct boundary rules. A split retains both sides of the value. A join uses the selected earlier or later value over the combined interval. The score validator checks references before a change is committed.
 
@@ -40,7 +48,7 @@ Record arm reuses the transport's live MIDI filter, destination and render chain
 
 ## Media analysis and external editors
 
-Source tracks have an exclusive record arm. Each MIDI track filters incoming channel messages by its selected port and channel before updating the input lamp. A recording snapshots the input filter for monitoring and capture. Port selections are stored locally by document and track ID. Audio track rows consume zero height for harmonic fit lanes.
+Source tracks have an exclusive record arm. Each MIDI track filters incoming channel messages by its selected port and channel before updating the input lamp. A recording snapshots the input filter for monitoring and capture. Port selections are stored locally by document and track ID.
 
 The Mode menu selects the arrangement, lyric or vocal guidance used for AI analysis and remembers it in local Studio preferences. A read-only prompt guide beside the global timeline headings cycles through three local examples for that mode at 15-second intervals and restarts the interval on manual navigation. The upper toolbar holds the ChatGPT connection control and, when connected, the model selector and catalog refresh action.
 
@@ -62,7 +70,7 @@ The import panel holds a draft in memory. Opening the draft loads it in the orig
 
 The song settings editor writes the authored key and scale to the song and edits the initial tempo and meter in the canonical timeline. Whole-score transposition and tempo scaling build a candidate score and validate it before replacing the active model. The score edit history also holds these operations. Audition transposition and tempo scaling belong to the open transport. MIDI playback and the transport display use the temporary values, while file and MIDI export use the authored score. WAV playback keeps its native sample rate.
 
-The piano chord strip shares the note grid's time axis. During a pitch or timing drag the editor analyses the selected track's prospective notes on the UI thread. The selected-note percentages weight its intersections with harmonic intervals by duration. Arrangement fit rows report the aggregate for that track. Committing or cancelling a drag discards the temporary analysis.
+The piano chord strip shares the note grid's time axis. During a pitch or timing drag the editor analyses the selected track's prospective notes on the UI thread. The selected-note percentages weight its intersections with harmonic intervals by duration. Arrangement clip headers report the aggregate for each pitched clip. Committing or cancelling a drag discards the temporary analysis.
 
 - OSTF = portable musical structure (score and musical intent), independently portable.
 - OSTFP = container for song + optional production/session/assets, default save project.

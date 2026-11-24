@@ -222,7 +222,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             }
             if (!values.isEmpty())
                 voicings.push_back({chordRegions[static_cast<std::size_t>(i)].bars, out->keepLabel(values.joinIntoString("  ")),
-                                    0, chordRegions[static_cast<std::size_t>(i)].exactBars});
+                                    0, chordRegions[static_cast<std::size_t>(i)].exactBars, false, nullptr, 0, out->keepLabel(entries[i]["id"].toString())});
         }
     }
     std::stable_sort(voicingNotes.begin(), voicingNotes.end(), [](const auto& a, const auto& b) { return a.startTick < b.startTick; });
@@ -320,10 +320,14 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         addLane(out->trackLanes, track["name"].toString(), intervals(track["clips"], "id", true));
         out->trackKinds.push_back(track["trackType"] == "drum" ? TrackKind::drum : TrackKind::pitched);
         const auto role = track["role"].toString();
+        const auto primary = score["song"]["primaryMelodyTrackId"].toString();
+        if ((!primary.isEmpty() && track["id"].toString() == primary) || (primary.isEmpty() && !out->primaryMelodyTrack && (role.equalsIgnoreCase("melody") || role.equalsIgnoreCase("lead"))))
+            out->primaryMelodyTrack = out->trackIds.size();
         auto& group = out->mixerGroups.emplace_back(
                                role.equalsIgnoreCase("vocal") || role.equalsIgnoreCase("vocals") ? MixerTrackGroup::vocal
                              : role.equalsIgnoreCase("melody") || role.equalsIgnoreCase("lead") ? MixerTrackGroup::melody
                              : MixerTrackGroup::other);
+        if (out->primaryMelodyTrack == static_cast<size_t>(out->trackIds.size())) group = MixerTrackGroup::melody;
         auto& notes = out->pitchedNotes.emplace_back();
         auto& drums = out->drumNotes.emplace_back();
         auto& programs = out->programChanges.emplace_back();
@@ -645,8 +649,10 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
         for (const auto& id : chain) fx.add(id);
         outputEffects.add(fx);
     }
+    juce::Array<juce::var> order;
+    for (const auto& id : mix.trackOrder) order.add(id);
     hostData.add(object({{"namespace", mixNamespace}, {"version", "1.0"},
-                        {"data", object({{"tracks", routes}, {"cueDb", mix.routing.cueDb}, {"inserts", inserts}, {"outputEffects", outputEffects}, {"stockEffectStates", states}, {"chordVoicingMix", voicingMix}, {"chordVoicingRoute", voicingRoute}})}}));
+                        {"data", object({{"tracks", routes}, {"trackOrder", order}, {"cueDb", mix.routing.cueDb}, {"inserts", inserts}, {"outputEffects", outputEffects}, {"stockEffectStates", states}, {"chordVoicingMix", voicingMix}, {"chordVoicingRoute", voicingRoute}})}}));
     if (!mix.recordCycle.isEmpty())
         hostData[0]["data"].getDynamicObject()->setProperty("recordCycle", object({
             {"start", mix.recordCycle.getStart()}, {"end", mix.recordCycle.getEnd()}, {"enabled", mix.cycleEnabled}}));
@@ -810,6 +816,8 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
             readEffects((*outputs)[i], mix.outputEffects[static_cast<std::size_t>(i)]);
     mix.trackEffects.resize(mix.tracks.size());
     mix.audioTracks.resize(mix.tracks.size());
+    if (const auto* ids = local["trackOrder"].getArray())
+        for (const auto& id : *ids) if (id.isString()) mix.trackOrder.addIfNotAlreadyThere(id.toString());
     mix.routing.cueDb = gain(local["cueDb"]);
     const auto routeData = local["tracks"];
     auto routes = routeData.isVoid() ? juce::Array<juce::var>{} : array(routeData);

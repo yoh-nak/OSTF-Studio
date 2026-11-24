@@ -147,7 +147,11 @@ private:
     juce::int64 selectedGlobalTick_ = 0, copiedPpq_ = 0;
     juce::var copiedEvent_;
     ostfstudio::ArrangementView currentArrangement() const;
+    juce::StringArray arrangementOrder_;
     std::vector<std::size_t> displayedTrackOrder() const;
+    std::optional<size_t> adjacentMovableTrack(size_t, int) const;
+    void moveTrackRow(size_t, int);
+    juce::String instrumentWindowTitle(size_t) const;
     juce::StringArray getMenuBarNames() override;
     juce::PopupMenu getMenuForIndex(int index, const juce::String&) override;
     void menuItemSelected(int item, int topLevelMenuIndex) override;
@@ -248,10 +252,12 @@ private:
     std::optional<ostfstudio::TempoMap> auditionClock_;
     void refreshTheory();
     void refreshTrackTheory(std::size_t track);
-    int theoryTrackHeight(std::size_t track) const;
+    std::vector<ostfstudio::TheoryGuide::ClipFits> clipFits_;
+    ostfstudio::TheoryGuide::ClipFits previewClipFits_;
+    const ostfstudio::TheoryGuide::ClipFit* clipFit(size_t, const char*) const;
+    juce::Rectangle<int> drawFitBadges(juce::Graphics&,juce::Rectangle<int>,const ostfstudio::TheoryGuide::ClipFit&) const;
     bool pitchedSelection() const;
-    void drawTheoryRows(juce::Graphics&, juce::Rectangle<int>, int labelWidth,
-                        std::optional<std::size_t> track) const;
+    void drawTheoryRows(juce::Graphics&, juce::Rectangle<int>, int labelWidth) const;
     bool theoryVisible_ = false, chordFitVisible_ = true, scaleFitVisible_ = true;
     int scaleReference_ = -1;
     std::unique_ptr<ostfstudio::TheoryGuide> theory_;
@@ -330,6 +336,7 @@ private:
                uiSmaller_ {ViewButton::Icon::zoomOut}, uiLarger_ {ViewButton::Icon::zoomIn};
     int interfaceScale_ = 100;
     std::vector<juce::Rectangle<int>> toolbarDividers_;
+    ViewButton chordFitButton_{ViewButton::Icon::chordFit}, scaleFitButton_{ViewButton::Icon::scaleFit};
     ViewButton theoryButton_ {ViewButton::Icon::theory}, musicButton_ {ViewButton::Icon::songMusic};
     juce::Label toolbarHint_;
     juce::TooltipWindow tooltips_ {nullptr, 350};

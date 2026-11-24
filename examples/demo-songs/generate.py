@@ -906,6 +906,10 @@ def production_session(song, cues, shared_gm=False):
                 ("drums", "Drums", 1), ("pad", "Wavetable", 0)):
             instruments[track_id] = bank[engine]
             programs[track_id] = program
+    if song["song"]["title"] == "Paper Lantern Replies":
+        bank = json.loads((DESTINATION.parents[1] / "src/plugins/instruments/catalog.json").read_text())
+        instruments["voice-track"] = next(i for i in bank if i["type"] == "Singer")
+        programs["voice-track"] = 0
     def channel(identifier, kind, **fields):
         return {"id": identifier, "kind": kind, "audioChannels": 2, "gainDb": 0, "pan": 0,
                 "mute": False, "solo": False, "soloSafe": False, "deviceIds": [], **fields}
@@ -961,6 +965,7 @@ def production_session(song, cues, shared_gm=False):
                 channel("return-1", "bus", name="Room", gainDb=-3, outputChannelId="master")]
     for strip, kind in zip(channels, ("Limiter", "Compressor", "EQ", "Reverb")):
         insert(strip, kind)
+    shared_owner = "keys" if shared_gm else "hook" if song["song"]["title"] == "Neon Platforms" else None
     shared_routes = []
     for index, lane in enumerate(song["tracks"], start=1):
         midi_channel = 10 if lane["trackType"] == "drum" else index
@@ -969,25 +974,27 @@ def production_session(song, cues, shared_gm=False):
         clip.setdefault("midiEvents", []).insert(0, {"id": f"{lane['id']}-program", "type": "programChange",
             "start": 0, "channel": midi_channel, "program": programs[lane["id"]]})
         instrument = instruments.get(lane["id"], {"code": "Ogm1", "name": "OSTF GM Sound Module"})
-        if lane["id"] in instruments:
+        if lane["id"] in instruments and song["song"]["title"] == "First Light Vector":
             # Put the change on the first clip in the Daybreak section (bar 49).
             at = 48 * 4 * PPQ
             dest = next(c for c in lane["clips"] if c["start"] <= at < c["start"] + c["duration"])
             dest.setdefault("midiEvents", []).append({"id": f"{lane['id']}-daybreak-program", "type": "programChange",
                 "start": at - dest["start"], "channel": midi_channel, "program": 2})
         level, pan, output, send, inserts = parts[lane["id"]]
-        if shared_gm:
+        if shared_owner and (shared_gm or lane["id"] in ("hook", "keys")):
             route = {"trackId": lane["id"], "midiChannel": midi_channel}
-            if lane["id"] != "keys":
-                route["destinationTrackId"] = "keys"
+            if lane["id"] != shared_owner:
+                route["destinationTrackId"] = shared_owner
             shared_routes.append(route)
             for cc, value in ((7, round(100 * 10 ** (level / 40))), (10, round(64 + 63 * pan))):
                 clip["midiEvents"].append({"id": f"{lane['id']}-cc{cc}", "type": "controlChange",
                     "start": 0, "channel": midi_channel, "controller": cc, "value": value})
-            if lane["id"] != "keys":
+            if lane["id"] != shared_owner:
                 channels.append(channel(f"track-{index}", "track", trackId=lane["id"], outputChannelId="master"))
                 continue
             level, pan, output = -2, 0, "master"
+            if not shared_gm:
+                inserts = ["EQ", "BusCompressor"]
         device = f"instrument-{index}"
         devices.append({"id": device, "role": "instrument", "enabled": True, "bypass": False,
             "onUnavailable": "reportAndPreserve", "plugin": {
@@ -1004,7 +1011,7 @@ def production_session(song, cues, shared_gm=False):
             insert(strip, "Analyzer")
         channels.append(strip)
     production = {"channels": channels, "devices": devices}
-    if shared_gm:
+    if shared_routes:
         production["hostExtensions"] = [{"namespace": "org.ostf.studio", "version": "1.0",
                                          "data": {"tracks": shared_routes}}]
     for identifier, name, asset, start, length, bus in cues:

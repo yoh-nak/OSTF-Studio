@@ -76,7 +76,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     string(JSON effect_count LENGTH "${effects}")
     math(EXPR last_effect "${effect_count}-1")
     # Share the JUCE module objects across the stock effect wrappers.
-    add_library(ostf_effect_dsp STATIC src/plugins/effects/StudioEffect.cpp src/plugins/instruments/StudioInstrument.cpp)
+    add_library(ostf_effect_dsp STATIC src/plugins/effects/StudioEffect.cpp src/plugins/effects/MixingEffects.cpp src/plugins/instruments/StudioInstrument.cpp)
     set_target_properties(ostf_effect_dsp PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
     target_compile_definitions(ostf_effect_dsp PUBLIC JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
     target_link_libraries(ostf_effect_dsp PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_recommended_config_flags)

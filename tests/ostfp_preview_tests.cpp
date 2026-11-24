@@ -202,6 +202,12 @@ static int checkGallery(const juce::File& directory) {
                     if (id == "pad") expectedInstrument = "OSTF Wavetable Synth";
                     if (expectedInstrument != "OSTF GM Sound Module" && (events.size() != 2 || events.back().program != 2)) return 1;
                 }
+                if (std::string_view(expected.file) == "neon-platforms.ostfp" && project->trackIds[int(track)] == "keys") {
+                    if (plugin.isObject() || authored.midiRoutes[track].destination != size_t(project->trackIds.indexOf("hook"))
+                        || authored.midiRoutes[track].channel != 2 || events.empty()) return 1;
+                    continue;
+                }
+                if (std::string_view(expected.file) == "paper-lantern-replies.ostfp" && project->trackIds[int(track)] == "voice-track") expectedInstrument = "OSTF Formant Singer";
                 if (plugin["format"] != "vst3" || plugin["name"].toString() != expectedInstrument || events.empty()
                     || events.front().channel != project->sourceMidiChannels[track]
                     || project->savedMix->midiRoutes[track].channel != project->sourceMidiChannels[track]) return 1;
@@ -213,6 +219,8 @@ static int checkGallery(const juce::File& directory) {
                     return region.exactBars && region.exactBars->end - region.exactBars->start > 1.0;
                 })) return 1;
             auto mix = authored;
+            mix.trackOrder.add(project->trackIds[1]);
+            mix.trackOrder.add(project->trackIds[0]);
             mix.tracks.resize(index + 1);
             mix.midiRoutes.resize(index + 1);
             mix.instruments = project->savedMix->instruments;
@@ -230,6 +238,7 @@ static int checkGallery(const juce::File& directory) {
             if (savedPlain.failed()) return 1;
             juce::MemoryInputStream plainInput(plain.getData(), plain.getDataSize(), false);
             if (ostfstudio::readOstfPreview(plainInput, fromScore).failed() || !fromScore->savedMix
+                || fromScore->savedMix->trackOrder != mix.trackOrder
                 || fromScore->savedMix->stockEffectStates != mix.stockEffectStates
                 || fromScore->savedMix->trackEffects != mix.trackEffects) return 1;
             juce::MemoryOutputStream saved;
@@ -241,6 +250,7 @@ static int checkGallery(const juce::File& directory) {
                 || reopened->savedMix->instruments.front()["pluginId"] != mix.instruments.front()["pluginId"]
                 || reopened->savedMix->tracks.size() != index + 1 || !reopened->savedMix->tracks[index].muted
                 || reopened->savedMix->tracks[index].pan != 0.35f
+                || reopened->savedMix->trackOrder != mix.trackOrder
                 || reopened->savedMix->outputNames != mix.outputNames
                 || reopened->savedMix->outputEffects != mix.outputEffects
                 || reopened->savedMix->stockEffectStates != mix.stockEffectStates) return 1;

@@ -82,10 +82,15 @@ def verify(path, spec, schemas, catalog):
     for c in channels.values():
         chain = [devices[k] for k in c["deviceIds"]]
         if c["kind"] == "track" and c["id"] not in audio_strips:
+            if path.stem == "neon-platforms" and c["trackId"] == "keys":
+                routes = {r["trackId"]: r for r in session["hostExtensions"][0]["data"]["tracks"]}
+                assert not chain and routes["keys"]["destinationTrackId"] == "hook"
+                assert routes["keys"]["midiChannel"] == 2 and routes["hook"]["midiChannel"] == 1
+                continue
             gm, *chain = chain
             assigned_synths = {"arp": "OSTF FM Synth", "sub": "OSTF Analog Synth", "drums": "OSTF Drum Machine", "pad": "OSTF Wavetable Synth"}
             expected = assigned_synths.get(c["trackId"]) if path.stem == "first-light-vector" else None
-            assert gm["role"] == "instrument" and gm["plugin"]["name"] == (expected or "OSTF GM Sound Module")
+            assert gm["role"] == "instrument" and gm["plugin"]["name"] == (expected or ("OSTF Formant Singer" if path.stem == "paper-lantern-replies" and c["trackId"] == "voice-track" else "OSTF GM Sound Module"))
             if expected:
                 lane = next(t for t in score["tracks"] if t["id"] == c["trackId"])
                 changes = [(clip["start"] + e["start"], e["program"]) for clip in lane["clips"]
@@ -106,7 +111,7 @@ def verify(path, spec, schemas, catalog):
     example_track, ordered_fx = {
         "paper-lantern-replies": ("voice-track", ["OSTF EQ", "OSTF Compressor"]),
         "blue-hour-waltz": ("horn", ["OSTF EQ", "OSTF Compressor"]),
-        "neon-platforms": ("hook", ["OSTF Guitar Amp", "OSTF EQ"]),
+        "neon-platforms": ("hook", ["OSTF EQ", "OSTF Bus Compressor"]),
         "relay-circuit": ("sub", ["OSTF Distortion", "OSTF EQ"]),
         "offset-bridges": ("lead", ["OSTF Distortion", "OSTF Guitar Amp"]),
         "copper-mile": ("lead", ["OSTF Distortion", "OSTF Guitar Amp"]),
@@ -141,4 +146,6 @@ if __name__ == "__main__":
     covered = set()
     for path in sorted(directory.glob("*.ostfp")):
         covered.update(verify(path, args.spec, schemas, catalog))
-    assert covered == catalog.keys(), "missing effect coverage"
+    # These song fixtures exercise the original production chains. All catalog effects also run in the VST3 render test.
+    original_inserts = {name for name, uid in catalog.items() if bytes.fromhex(uid[-8:]).decode("ascii") in {f"Of{i:02}" for i in range(1, 11)}}
+    assert original_inserts <= covered <= catalog.keys(), "missing demo insert coverage"

@@ -2704,6 +2704,22 @@
               "start": 0,
               "channel": 1,
               "program": 27
+            },
+            {
+              "id": "hook-cc7",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 1,
+              "controller": 7,
+              "value": 75
+            },
+            {
+              "id": "hook-cc10",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 1,
+              "controller": 10,
+              "value": 59
             }
           ]
         },
@@ -4494,6 +4510,22 @@
               "start": 0,
               "channel": 2,
               "program": 4
+            },
+            {
+              "id": "keys-cc7",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 2,
+              "controller": 7,
+              "value": 60
+            },
+            {
+              "id": "keys-cc10",
+              "type": "controlChange",
+              "start": 0,
+              "channel": 2,
+              "controller": 10,
+              "value": 48
             }
           ]
         },
@@ -22370,15 +22402,15 @@
             "id": "track-1",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -5,
-            "pan": -0.08,
+            "gainDb": -2,
+            "pan": 0,
             "mute": false,
             "solo": false,
             "soloSafe": false,
             "deviceIds": [
               "instrument-1",
-              "track-1-amp",
-              "track-1-eq"
+              "track-1-eq",
+              "track-1-buscompressor"
             ],
             "trackId": "hook",
             "outputChannelId": "master",
@@ -22396,26 +22428,14 @@
             "id": "track-2",
             "kind": "track",
             "audioChannels": 2,
-            "gainDb": -9,
-            "pan": -0.26,
+            "gainDb": 0,
+            "pan": 0,
             "mute": false,
             "solo": false,
             "soloSafe": false,
-            "deviceIds": [
-              "instrument-2",
-              "track-2-chorus"
-            ],
+            "deviceIds": [],
             "trackId": "keys",
-            "outputChannelId": "bus-2",
-            "sends": [
-              {
-                "id": "send-2-room",
-                "targetChannelId": "return-1",
-                "gainDb": -16,
-                "preFader": false,
-                "enabled": true
-              }
-            ]
+            "outputChannelId": "master"
           },
           {
             "id": "track-3",
@@ -22624,19 +22644,6 @@
             }
           },
           {
-            "id": "track-1-amp",
-            "role": "effect",
-            "enabled": true,
-            "bypass": false,
-            "onUnavailable": "reportAndPreserve",
-            "plugin": {
-              "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663039",
-              "vendor": "OSTF Studio",
-              "name": "OSTF Guitar Amp"
-            }
-          },
-          {
             "id": "track-1-eq",
             "role": "effect",
             "enabled": true,
@@ -22650,29 +22657,16 @@
             }
           },
           {
-            "id": "instrument-2",
-            "role": "instrument",
-            "enabled": true,
-            "bypass": false,
-            "onUnavailable": "reportAndPreserve",
-            "plugin": {
-              "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
-              "vendor": "OSTF Studio"
-            }
-          },
-          {
-            "id": "track-2-chorus",
+            "id": "track-1-buscompressor",
             "role": "effect",
             "enabled": true,
             "bypass": false,
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663032",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663135",
               "vendor": "OSTF Studio",
-              "name": "OSTF Chorus"
+              "name": "OSTF Bus Compressor"
             }
           },
           {
@@ -22803,6 +22797,25 @@
               "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
               "name": "OSTF GM Sound Module",
               "vendor": "OSTF Studio"
+            }
+          }
+        ],
+        "hostExtensions": [
+          {
+            "namespace": "org.ostf.studio",
+            "version": "1.0",
+            "data": {
+              "tracks": [
+                {
+                  "trackId": "hook",
+                  "midiChannel": 1
+                },
+                {
+                  "trackId": "keys",
+                  "midiChannel": 2,
+                  "destinationTrackId": "hook"
+                }
+              ]
             }
           }
         ]
