@@ -154,6 +154,9 @@ private:
     bool canReorderTrack(size_t) const;
     bool canReorderTogether(size_t, size_t) const;
     juce::Rectangle<int> trackOrderHandle(size_t) const;
+    int partLyricHeight(size_t) const;
+    juce::Rectangle<int> trackGroupBounds(size_t) const;
+    std::optional<size_t> reorderTargetAt(juce::Point<int>) const;
     void placeTrackRow(size_t source, size_t target, bool after);
     std::optional<size_t> reorderSource_, reorderTarget_;
     bool reorderAfter_ = false;
@@ -354,7 +357,8 @@ private:
     ViewButton chordFitButton_{ViewButton::Icon::chordFit}, scaleFitButton_{ViewButton::Icon::scaleFit};
     ViewButton theoryButton_ {ViewButton::Icon::theory}, musicButton_ {ViewButton::Icon::songMusic};
     juce::TooltipWindow tooltips_ {nullptr, 350};
-    bool editorVisible_ = true, mixerSelected_ = false;
+    bool trackEditorOpen_ = true, mixerSelected_ = false;
+    bool lowerPaneOpen() const { return trackEditorOpen_ || mixerSelected_; }
     TransportPanel deck_;
     SongBasicsPanel basics_;
     int topBasicsHeight() const;

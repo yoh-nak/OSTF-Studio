@@ -137,14 +137,20 @@ static int checkGallery(const juce::File& directory) {
         }
         if (std::string_view(expected.file) == "paper-lantern-replies.ostfp") {
             if (project->lyricTrackIds.size()!=2 || project->vocalNotes.size()!=204 || project->primaryMelodyTrack!=0) return 86;
+            const auto& leadLanes = project->partLyricLanes.at(0);
             for (auto kind : {ostfstudio::TimelineLane::displayLyrics, ostfstudio::TimelineLane::pronunciation}) {
-                const auto lane = std::find_if(project->globalLanes.begin(), project->globalLanes.end(),
+                const auto lane = std::find_if(leadLanes.begin(), leadLanes.end(),
                     [kind](const auto& entry) { return entry.kind == kind; });
                 const bool sheet = kind == ostfstudio::TimelineLane::displayLyrics;
-                if (lane == project->globalLanes.end() || lane->regions.size() != (sheet ? 32 : 194)
+                if (lane == leadLanes.end() || lane->regions.size() != (sheet ? 32 : 194)
                     || !lane->regions.front().exactBars || lane->regions.front().exactBars->start != (sheet ? 5.0 : 5.125)
                     || juce::String::fromUTF8(lane->regions.front().label) != juce::String::fromUTF8(sheet ? "雨の音が" : "あ")) return 91;
             }
+            const auto& backingLanes = project->partLyricLanes.at(project->trackIds.indexOf("backing"));
+            if (backingLanes.size() != 2 || backingLanes[0].kind != ostfstudio::TimelineLane::displayLyrics
+                || backingLanes[1].kind != ostfstudio::TimelineLane::pronunciation
+                || backingLanes[0].regions.size() != 10 || backingLanes[1].regions.size() != 10
+                || juce::String::fromUTF8(backingLanes[0].regions.front().label) != "Ah") return 92;
             const auto id = project->pitchedNotes[0].front().id;
             const auto original = project->vocalNotes.at(id);
             auto changed = original;
@@ -544,7 +550,8 @@ int main(int argc, char** argv) {
         if (project->editTracks(ostfstudio::TrackKind::pitched, {}, withPart, {}, ostfstudio::MixerTrackGroup::pitched, 17).wasOk())
             return 93;
     }
-    if (view.bars.endBar != 17 || view.globalLanes.size() != 8 || view.trackLanes.size() != 3) return 1;
+    if (view.bars.endBar != 17 || view.globalLanes.size() != 6 || view.trackLanes.size() != 3
+        || project->partLyricLanes.at(0).size() != 2) return 1;
     if (std::string_view(view.globalLanes[0].regions[0].label) != "Intro"
         || view.globalLanes[1].regions.size() != 16
         || std::string_view(view.trackLanes[0].label) != "Lead Guitar"

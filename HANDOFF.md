@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Piano roll restoration and vocal track order
+
+Branch `fix/vocal-track-groups`. The mixer temporarily occupies the lower pane. Closing it restores the previous track editor and its size, or the full-height arrangement if the editor was closed. Chord Voicing is fixed above the lead. Each vocal part owns a display-lyric lane, a pronunciation lane and its melody row. Backing vocal groups can be reordered by dragging the handle beside their track name or by using the header menu. Their row order is fixed, and arrangement tracks retain their own ordering. These changes use the existing score and session formats.
+
+The packaged Windows x64 host passed `--vocal-track-smoke` with Paper Lantern Replies. The check opens and closes the mixer with the piano roll initially open and initially closed, and verifies its track, bounds, visibility and toolbar state. The demo gallery checks the lead's 32 written phrases and 194 readings and the backing part's ten written phrases and ten readings. The GM plug-in host regression drags two backing vocal groups, checks their bounds, and switches their lyric lanes on and off. macOS has not been exercised for this change.
+
+Windows Release CTest passed 30 of 31 cases, including the GM host, track view and demo gallery. The independent Link transport check intermittently reports that playback is still active immediately after stop. Eight isolated executions returned six passes and two failures at that assertion. The verified Windows executable and portable ZIP are under `dist/windows-vocal-track-groups`.
+
 ## Japanese factory voice and lead-sheet lyrics
 
 Branch `fix/vocal-lyrics-and-chorus`. Paper Lantern Replies opens with two independent Formant Singer instances. Its lead enters in bar 5 and its backing vocal enters in bar 18. The demo's Japanese verses have timed written phrases and separate note-level readings. Studio uses the same written phrases in the arrangement, piano roll, lead sheet and ChordPro. The compact vocal header exposes the instrument. Overlaying the other singing parts in the piano roll affects display only.

@@ -216,6 +216,9 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     studio.editTracks(ostfstudio::TrackKind::pitched, {}, {}, Group::melody);
     studio.editTracks(ostfstudio::TrackKind::pitched, {}, {}, Group::vocal);
     studio.editTracks(ostfstudio::TrackKind::pitched, {}, {}, Group::vocal);
+    const auto writtenBit = 1u << unsigned(ostfstudio::TimelineLane::displayLyrics);
+    const auto readingBit = 1u << unsigned(ostfstudio::TimelineLane::pronunciation);
+    studio.timelineLaneMask_ |= writtenBit | readingBit;
     auto order = studio.displayedTrackOrder();
     auto before = [&](size_t a, size_t b) { return std::find(order.begin(),order.end(),a)<std::find(order.begin(),order.end(),b); };
     if (!before(4,5) || !before(5,6) || studio.adjacentMovableTrack(4,1) || studio.adjacentMovableTrack(5,-1)) return 198;
@@ -223,13 +226,13 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     studio.moveTrackRow(1,-1);
     order=studio.displayedTrackOrder();
     if (!before(4,6) || !before(6,5) || !before(1,0) || studio.trackControls_[2]->outputTrack != 0) return 199;
-    if (order.front() != 4 || !studio.trackOrderHandle(4).isEmpty()) return 204;
+    if (!studio.trackOrderHandle(4).isEmpty()) return 204;
     studio.setSize(1600, 1400);
-    studio.editorVisible_ = false;
+    studio.trackEditorOpen_ = false;
     studio.resized();
     auto drag = [&](size_t source, size_t target, bool after) {
         const auto from = studio.trackOrderHandle(source).getCentre().toFloat();
-        auto row = studio.trackRows_[target];
+        auto row = studio.trackGroupBounds(target);
         const juce::Point<float> to(from.x, float(after ? row.getBottom() - 2 : row.getY() + 2));
         const auto now = juce::Time::getCurrentTime();
         auto event = [&](juce::Point<float> p) {
@@ -244,6 +247,20 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     drag(1, 3, true);
     order = studio.displayedTrackOrder();
     if (!before(5,6) || !before(3,1) || studio.trackControls_[2]->outputTrack != 0) return 205;
+    const int lyricsHeight = studio.timelineRowHeight() * 2;
+    for (const auto part : {4, 5, 6})
+        if (studio.trackGroupBounds(part).getY() + lyricsHeight != studio.trackRows_[part].getY()) return 226;
+    if (studio.trackGroupBounds(5).getBottom() >= studio.trackGroupBounds(6).getY()
+        || studio.trackGroupBounds(4).getBottom() >= studio.trackGroupBounds(5).getY()) return 227;
+    for (const auto hidden : {writtenBit, readingBit, writtenBit | readingBit}) {
+        studio.timelineLaneMask_ &= ~hidden;
+        studio.resized();
+        const int height = hidden == (writtenBit | readingBit) ? 0 : lyricsHeight / 2;
+        if (studio.trackRows_[5].getY() - studio.trackGroupBounds(5).getY() != height
+            || studio.trackRows_[6].getY() - studio.trackGroupBounds(6).getY() != height) return 228;
+        studio.timelineLaneMask_ |= hidden;
+    }
+    studio.resized();
     drag(5,4,false);
     drag(0,6,true);
     if (order != studio.displayedTrackOrder()) return 206;
@@ -284,6 +301,22 @@ private:
         const int backing = project.trackIds.indexOf("backing");
         if (lead < 0 || backing < 0 || project.primaryMelodyTrack != size_t(lead)
             || studio.selectedTrack_ != size_t(lead) || !studio.vocalLane_.isVisible()) return 3;
+        if (!project.chordVoicingTrack || studio.displayedTrackOrder().front() != *project.chordVoicingTrack
+            || studio.displayedTrackOrder()[1] != size_t(lead)
+            || studio.trackRows_[*project.chordVoicingTrack].getBottom() >= studio.trackGroupBounds(lead).getY()
+            || studio.trackRows_[lead].getBottom() >= studio.trackGroupBounds(backing).getY()) return 16;
+        const auto pianoBounds = studio.pianoGrid_.getBounds();
+        studio.mixerButton_.onClick();
+        if (!studio.mixer_.isVisible() || studio.pianoGrid_.isVisible() || studio.pianoButton_.getToggleState()) return 17;
+        studio.mixerButton_.onClick();
+        if (studio.mixer_.isVisible() || !studio.pianoGrid_.isVisible() || !studio.pianoButton_.getToggleState()
+            || studio.pianoGrid_.getBounds() != pianoBounds || studio.selectedTrack_ != size_t(lead)) return 18;
+        studio.pianoButton_.onClick();
+        studio.mixerButton_.onClick();
+        if (!studio.mixer_.isVisible()) return 19;
+        studio.mixerButton_.onClick();
+        if (studio.mixer_.isVisible() || studio.pianoGrid_.isVisible() || studio.pianoButton_.getToggleState()) return 20;
+        studio.pianoButton_.onClick();
         for (const auto i : {lead,backing}) {
             const auto& strip = *studio.trackControls_[i];
             if (!strip.playableInstrument || !strip.instance || strip.instance->getName() != "OSTF Formant Singer") return 4;

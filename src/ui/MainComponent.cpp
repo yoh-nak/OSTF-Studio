@@ -1481,10 +1481,13 @@ void MainComponent::menuItemSelected(int item, int) {
         }
         case showPiano:
         case showMixer:
-            editorVisible_ = workspaceMode_ != WorkspaceMode::arrangement
-                          || !(item == showMixer ? mixerButton_ : pianoButton_).getToggleState();
+            if (item == showMixer) {
+                mixerSelected_ = workspaceMode_ != WorkspaceMode::arrangement || !mixerSelected_;
+            } else {
+                trackEditorOpen_ = workspaceMode_ != WorkspaceMode::arrangement || mixerSelected_ || !trackEditorOpen_;
+                mixerSelected_ = false;
+            }
             workspaceMode_ = WorkspaceMode::arrangement;
-            mixerSelected_ = editorVisible_ && item == showMixer;
             refreshEditor();
             break;
         case showDevices:
@@ -1571,7 +1574,7 @@ juce::Rectangle<int> MainComponent::getWorkspace() const {
 
 int MainComponent::getArrangementHeight(int workspaceHeight) const {
     const int available = std::max(0, workspaceHeight - chordReviewHeight());
-    if (!editorVisible_) return available;
+    if (!lowerPaneOpen()) return available;
     const int navigationRows = stackTimelineNavigation(getWorkspace().getWidth() - 26, workspaceHeight) ? 2 : 1;
     const bool compactClips = available < 320 && clipLane_.isVisible();
     const int minimum = std::min(available, (compactClips ? 2 : 26) + navigationRows * timelineNavigationHeight
@@ -1732,8 +1735,8 @@ std::vector<std::size_t> MainComponent::displayedTrackOrder() const {
         if (project_->chordVoicingTrack != i || (timelineLaneMask_ & laneBit(TimelineLane::voicing)) != 0)
             order.push_back(i);
     const auto rank = [this](size_t i) {
-        if (project_->primaryMelodyTrack == i) return std::pair{0, 0};
-        if (project_->chordVoicingTrack == i) return std::pair{1, 0};
+        if (project_->chordVoicingTrack == i) return std::pair{0, 0};
+        if (project_->primaryMelodyTrack == i) return std::pair{1, 0};
         if (!canReorderTrack(i)) return std::pair{2, 0};
         const auto position = arrangementOrder_.indexOf(project_->trackIds[int(i)]);
         return std::pair{project_->isGlobalNoteTrack(i) ? 3 : 4, position < 0 ? arrangementOrder_.size() : position};
@@ -1756,6 +1759,26 @@ juce::Rectangle<int> MainComponent::trackOrderHandle(size_t i) const {
     if (!canReorderTrack(i) || i >= trackRows_.size() || trackRows_[i].isEmpty()) return {};
     auto header = trackRows_[i].withWidth(trackNameWidth);
     return header.removeFromTop(24).removeFromRight(18);
+}
+
+int MainComponent::partLyricHeight(size_t i) const {
+    const auto part = project_->partLyricLanes.find(i);
+    if (part == project_->partLyricLanes.end()) return 0;
+    const auto count = std::count_if(part->second.begin(), part->second.end(),
+        [this](const auto& lane) { return (timelineLaneMask_ & laneBit(lane.kind)) != 0; });
+    return static_cast<int>(count) * timelineRowHeight();
+}
+
+juce::Rectangle<int> MainComponent::trackGroupBounds(size_t i) const {
+    const auto row = trackRows_[i];
+    return row.withTop(row.getY() - partLyricHeight(i));
+}
+
+std::optional<size_t> MainComponent::reorderTargetAt(juce::Point<int> position) const {
+    if (!rowOverlay_.getBounds().withTrimmedTop(timelineRowHeight()).contains(position)) return {};
+    for (size_t i = 0; i < trackRows_.size(); ++i)
+        if (canReorderTrack(i) && trackGroupBounds(i).contains(position)) return i;
+    return {};
 }
 
 std::optional<size_t> MainComponent::adjacentMovableTrack(size_t index, int direction) const {
@@ -2541,7 +2564,7 @@ void MainComponent::stopTransport() {
         recordTrack_.reset();
         transportActive_ = false;
         selectTrack(finishedTrack);
-        if (added) { editorVisible_ = false; refreshEditor(); }
+        if (added) { trackEditorOpen_ = mixerSelected_ = false; refreshEditor(); }
         statusLabel_.setText(added && audio ? TRANS("Audio clip recorded") : added ? juce::String(count) + TRANS(" MIDI notes captured")
                                    : (failure.isEmpty() ? TRANS("No MIDI notes captured") : juce::translate(failure)),
                              juce::dontSendNotification);
@@ -5407,7 +5430,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
         if (clipTool_ != ClipTool::select && event.mods.isLeftButtonDown() && !event.mods.isPopupMenu()
             && event.x >= rowOverlay_.getX() + trackHeaderWidth) { editGlobalBoundary(clipTool_ == ClipTool::split); return; }
         if (*lane == TimelineLane::tempo) {
-            editorVisible_ = true;
+            trackEditorOpen_ = true;
             mixerSelected_ = false;
             refreshEditor();
         } else if (wasTempo) refreshEditor();
@@ -5549,9 +5572,9 @@ void MainComponent::mouseDrag(const juce::MouseEvent& event) {
             else if (pos.y >= viewport.getBottom() - 18) verticalScroll_.moveScrollbarInSteps(1);
         }
         reorderTarget_.reset();
-        if (auto target = pluginDropTrack(pos); target && canReorderTogether(*reorderSource_, *target)) {
+        if (auto target = reorderTargetAt(pos); target && canReorderTogether(*reorderSource_, *target)) {
             reorderTarget_ = target;
-            reorderAfter_ = pos.y >= trackRows_[*target].getCentreY();
+            reorderAfter_ = pos.y >= trackGroupBounds(*target).getCentreY();
         }
         repaint();
         return;
@@ -5601,8 +5624,8 @@ void MainComponent::mouseUp(const juce::MouseEvent& event) {
         reorderSource_.reset();
         reorderTarget_.reset();
         if (event.mouseWasDraggedSinceMouseDown())
-            if (auto target = pluginDropTrack(event.getPosition()))
-                placeTrackRow(source, *target, event.y >= trackRows_[*target].getCentreY());
+            if (auto target = reorderTargetAt(event.getPosition()))
+                placeTrackRow(source, *target, event.y >= trackGroupBounds(*target).getCentreY());
         repaint();
         return;
     }
@@ -5649,7 +5672,7 @@ void MainComponent::selectTrack(std::size_t index) {
     if (recordTrack_ && *recordTrack_ != index) return;
     if (!project_ || index >= project_->trackLanes.size()) return;
     selectedGlobal_.reset();
-    editorVisible_ = true;
+    trackEditorOpen_ = true;
     if (selectedTrack_ != index) { clipLane_.selected.reset(); selectedAudioId_.clear(); }
     selectedTrack_ = index;
     trackPicker_.setSelectedId(static_cast<int>(index + 1), juce::dontSendNotification);
@@ -5673,10 +5696,8 @@ void MainComponent::refreshPianoNotes() {
     const auto track = *selectedTrack_;
     grid.notes = project_->pitchedNotes[track];
     if (track < project_->sourceTrackCount()) {
-        const auto docs = project_->trackLyricDocuments.find(project_->trackIds[int(track)]);
         for (const auto& phrase : project_->displayPhrases)
-            if (docs != project_->trackLyricDocuments.end() ? docs->second.contains(phrase.document)
-                : project_->primaryMelodyTrack == track && phrase.document == project_->displayDocument)
+            if (project_->partDisplaysDocument(track, phrase.document))
                 vocalLane_.phrases.push_back(phrase);
     }
     const auto& drums = project_->drumNotes[track];
@@ -6239,7 +6260,7 @@ void MainComponent::refreshEditor() {
     const bool showMixer = arranging && mixerSelected_;
     deck_.follow.setEnabled(arranging && project_ != nullptr);
     mixerButton_.setToggleState(showMixer, juce::dontSendNotification);
-    const bool editing = arranging && project_ && editorVisible_ && !showMixer;
+    const bool editing = arranging && project_ && trackEditorOpen_ && !showMixer;
     const bool tempo = editing && selectedGlobal_ == TimelineLane::tempo;
     tempoEditor_.setVisible(tempo);
     if (tempo) tempoEditor_.bind(project_.get());
@@ -6306,7 +6327,7 @@ void MainComponent::refreshEditor() {
     theoryButton_.setEnabled(arranging && project_ != nullptr);
     theoryButton_.setToggleState(theoryVisible_ && arranging, juce::dontSendNotification);
     lanesButton_.setEnabled(arranging);
-    trackPicker_.setVisible(arranging && project_ && editorVisible_ && !tempo);
+    trackPicker_.setVisible(arranging && project_ && lowerPaneOpen() && !tempo);
     trackPicker_.setEnabled(!recordTrack_ && project_ && !project_->trackLanes.empty());
     performanceLane_.setVisible(piano && selectedTrack_ && !steps);
     const auto previous = performanceLaneNames_[performanceLane_.getSelectedId() - 1];
@@ -6356,7 +6377,7 @@ void MainComponent::refreshEditor() {
     refreshGroupHeight();
     arrangementScroll_.setVisible(arranging && project_ != nullptr);
     pianoInspectorView_.setVisible(piano && pianoGrid_.editable && !steps);
-    pianoDivider_.setVisible(arranging && project_ && editorVisible_);
+    pianoDivider_.setVisible(arranging && project_ && lowerPaneOpen());
     pianoDivider_.setTooltip(showMixer ? TRANS("Drag to resize the arrangement and mixer.") : TRANS("Drag to resize the arrangement and piano roll."));
     parameterDivider_.setVisible(piano && !steps);
     pitchZoom_.setVisible(piano && !drum);
@@ -6453,7 +6474,7 @@ void MainComponent::resized() {
     }
     const int reviewHeight = chordReviewHeight();
     const auto arrangerHeight = getArrangementHeight(editor.getHeight());
-    chordReview_.setBounds(editor.withY(editor.getY()+arrangerHeight+(editorVisible_ ? 8 : 0)).withHeight(reviewHeight));
+    chordReview_.setBounds(editor.withY(editor.getY()+arrangerHeight+(lowerPaneOpen() ? 8 : 0)).withHeight(reviewHeight));
     auto arrangement = editor.withHeight(arrangerHeight).reduced(13);
     if (project_) {
         const bool stacked = stackTimelineNavigation(arrangement.getWidth(), editor.getHeight());
@@ -6486,7 +6507,7 @@ void MainComponent::resized() {
         int contentHeight = globalHeight + (outputs ? arrangementHeadingHeight : 0);
         if (std::any_of(order.begin(), order.end(), [this](auto i) { return !project_->isGlobalNoteTrack(i); }))
             contentHeight += arrangementHeadingHeight;
-        for (auto i : order) contentHeight += trackControls_[i]->size.height();
+        for (auto i : order) contentHeight += partLyricHeight(i) + trackControls_[i]->size.height();
         for (std::size_t i = 0; i < outputs; ++i) contentHeight += outputControls_[mixer_.routing().outputAt(i)].size.height();
         const auto viewportHeight = std::max(0, arrangement.getHeight());
         verticalScroll_.setRangeLimits(0, std::max(viewportHeight, contentHeight), juce::dontSendNotification);
@@ -6538,6 +6559,7 @@ void MainComponent::resized() {
                 y += arrangementHeadingHeight;
             }
             const int height = trackControls_[i]->size.height();
+            y += partLyricHeight(i);
             trackRows_[i] = {arrangement.getX(), y, arrangement.getWidth(), height - TrackRowSize::grip};
             y += height;
         }
@@ -6671,7 +6693,7 @@ void MainComponent::resized() {
         } else renameEditor_.setVisible(false);
     }
     pianoDivider_.setBounds(editor.withY(editor.getY() + arrangerHeight).withHeight(8));
-    const int inlineReview = editorVisible_ && pianoGrid_.isVisible() ? reviewHeight : 0;
+    const int inlineReview = pianoGrid_.isVisible() ? reviewHeight : 0;
     editor.removeFromTop(arrangerHeight + 8 + reviewHeight - inlineReview);
     const int clipHeight = clipLane_.isVisible() ? std::min(inlineReview && editor.getHeight() < 180 ? 14 : 24, editor.getHeight() / 5) : 0;
     const PianoLayout pianoLayout(editor.withTrimmedTop(30 + clipHeight), trackHeaderWidth, verticalScroll_.isVisible(),
@@ -6747,9 +6769,9 @@ void MainComponent::paint(juce::Graphics& g) {
 
     const int reviewHeight = chordReviewHeight();
     auto arrangementArea = area.removeFromTop(getArrangementHeight(area.getHeight()));
-    area.removeFromTop(8 + (editorVisible_ && pianoGrid_.isVisible() ? 0 : reviewHeight));
+    area.removeFromTop(8 + (pianoGrid_.isVisible() ? 0 : reviewHeight));
     drawArrangement(g, arrangementArea, currentArrangement());
-    if (!editorVisible_) return;
+    if (!lowerPaneOpen()) return;
     g.setGradientFill(juce::ColourGradient(juce::Colour(0xff303840), 0.0f, static_cast<float>(area.getY()),
                                           juce::Colour(panel), 0.0f, static_cast<float>(area.getBottom()), false));
     g.fillRoundedRectangle(area.toFloat(), 10.0f);
@@ -6836,7 +6858,8 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
 
     auto drawLane = [&](const ostfstudio::ArrangementLane& lane, int y, juce::Colour colour, std::optional<ViewButton::Icon> icon = {}, std::optional<size_t> track = {}) {
         const auto grip = track ? trackOrderHandle(*track) : juce::Rectangle<int>{};
-        const auto row = drawRow(lane.kind == TimelineLane::none ? juce::String::fromUTF8(lane.label) : juce::translate(lane.label), y, icon, lane.kind != TimelineLane::none, grip.getWidth());
+        const auto row = drawRow(lane.kind == TimelineLane::none ? juce::String::fromUTF8(lane.label) : juce::translate(lane.label),
+                                 y, icon, !track && lane.kind != TimelineLane::none, grip.getWidth());
         if (!grip.isEmpty()) {
             g.setColour(juce::Colour(muted));
             for (int dy : {-4, 0, 4})
@@ -6947,6 +6970,16 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
     auto drawTrack = [&](std::size_t i) {
         if (project_) {
             if (i >= trackRows_.size()) return;
+            if (const auto part = project_->partLyricLanes.find(i); part != project_->partLyricLanes.end()) {
+                auto lyricRow = trackGroupBounds(i).withHeight(globalLaneHeight);
+                rowHeight = globalLaneHeight - 4;
+                for (const auto& lane : part->second) {
+                    if ((timelineLaneMask_ & laneBit(lane.kind)) == 0) continue;
+                    if (lyricRow.intersects(g.getClipBounds()))
+                        drawLane(lane, lyricRow.getY(), juce::Colour(lane.kind == TimelineLane::displayLyrics ? 0xff2c6058 : 0xff314d72));
+                    lyricRow.translate(0, globalLaneHeight);
+                }
+            }
             y = trackRows_[i].getY();
             rowHeight = trackRows_[i].getHeight();
             if (!trackRows_[i].intersects(g.getClipBounds())) {
@@ -7093,7 +7126,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         }
     }
     if (reorderTarget_ && *reorderTarget_ < trackRows_.size()) {
-        const auto row = trackRows_[*reorderTarget_];
+        const auto row = trackGroupBounds(*reorderTarget_);
         g.setColour(juce::Colour(hardwareAmber));
         g.fillRect(row.getX(), reorderAfter_ ? row.getBottom() - 3 : row.getY(), row.getWidth(), 3);
     }
