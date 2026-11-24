@@ -70,6 +70,7 @@ public:
                                  double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1, bool monitorOnly = false, double linkTempo = 0);
     void renderBlock(float* const* output, int channels, int samples, const float* const* input = nullptr, int inputs = 0);
     ostfstudio::MeterFrame takeMeters() noexcept;
+    void setListenToCue(bool listen) noexcept { listenToCue_ = listen; }
     void setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb);
     void setOutputMix(const ostfstudio::MixerRouting& mix);
     bool isRunning() const { return running_.load(); }
@@ -86,7 +87,7 @@ private:
     bool pendingNotes_ = false;
     std::vector<TrackSetup> playbackRoutes_;
     int playbackShift_ = 0;
-    void renderInstruments(float* const* output, int channels, int count, int first, int end);
+    void renderInstruments(float* const* output, int channels, int count, int first, int end, bool listenToCue);
     void audioDeviceIOCallbackWithContext(const float* const*, int, float* const*, int, int,
                                            const juce::AudioIODeviceCallbackContext&) override;
     void audioDeviceAboutToStart(juce::AudioIODevice*) override;
@@ -118,6 +119,8 @@ private:
     juce::MidiBuffer pluginMidi_, patchMidi_;
     Inserts inserts_ {};
     std::array<juce::AudioBuffer<float>, outputCount> stems_;
+    juce::AudioBuffer<float> cueBus_;
+    std::atomic<bool> listenToCue_{false};
     std::array<std::atomic<float>, outputCount> outputGains_ {};
     std::atomic<bool> running_ {false};
     std::atomic<juce::int64> sample_ {0};

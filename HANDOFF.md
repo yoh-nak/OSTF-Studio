@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Cue monitoring
+
+Branch `fix/cue-monitor-routing`. Track headphone switches feed a stereo Cue bus independently of the number of device outputs. The Cue strip meters the sum after its fader. With four enabled outputs the second pair carries Cue. **Listen on 1-2** auditions the same bus on the primary pair, and a second click restores Master. The strip reports the active destination when the audio device opens or changes.
+
+The Windows `ostf_studio_stock_effects` regression checks the Cue samples and meters with a hosted GM instrument and the audio clip from Paper Lantern Replies. It covers two track sends, two to four device outputs, Cue gain, pan, disabled sends and switching back to Master. `ostf_studio_track_view` checks the mixer control and destination labels. Physical headphone routing and macOS playback still require device testing.
+
+The Windows Release suite passed 30 of 31 tests on the first run. The Link timing test passed on a separate rerun. The executable in `dist/windows-cue-monitor/Portable` passed both Cue regressions with its bundled plug-ins and matches the executable in the portable ZIP by SHA-256.
+
 ## Vocal timeline and track playback
 
 `feature/vocal-piano-roll` adds written and pronounced lyric lanes, per-note delivery editing and a voicebank portrait. The first verse of Paper Lantern Replies enters in bar 5. Its lead and backing tracks use separate Formant Singer instances. The Windows app's `--vocal-track-smoke INPUT [OUTPUT.wav]` opens the score through Studio, checks both singers and the piano-roll lanes, edits and undoes a delivery parameter, and renders the lead on its own. Run it from a portable folder containing the bundled VST3s. The preview tests also cover package save and reopen after changing a reading.

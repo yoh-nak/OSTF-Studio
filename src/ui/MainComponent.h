@@ -240,6 +240,7 @@ private:
     void loadEffect(bool output, std::size_t index, std::size_t slot, const juce::PluginDescription& description, bool openEditor = false);
     void restoreEffects(bool output, std::size_t index, const juce::StringArray& ids);
     PluginBrowser& ensurePluginBrowser();
+    DeviceSettingsWindow& ensureDeviceSettings();
     void showTrackMix(std::size_t index);
     void updatePresetLabel(std::size_t index);
     void refreshEditor();

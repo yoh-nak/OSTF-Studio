@@ -36,12 +36,14 @@ public:
     std::size_t returnCount() const { return routing_.returnCount; }
     const ostfstudio::MixerRouting& routing() const { return routing_; }
     void setCue(std::size_t index, bool enabled);
+    void setActiveOutputCount(int count);
     void setMuted(std::size_t index, bool muted);
     void setSoloed(std::size_t index, bool soloed);
     ostfstudio::SessionMix snapshot() const;
     void restore(const ostfstudio::SessionMix& mix);
     std::function<void(std::size_t)> channelChanged;
     std::function<void()> routingChanged;
+    std::function<void(bool)> cueMonitorChanged;
     std::function<void(bool isReturn)> requestAddOutput;
     std::function<void(bool, std::size_t)> rowMenu;
 
@@ -57,6 +59,7 @@ private:
         juce::TextButton mute {"M"};
         juce::TextButton solo {"S"};
         ViewButton cue {ViewButton::Icon::headphones};
+        std::unique_ptr<juce::TextButton> listenOnMain;
         juce::ComboBox output, returnTarget;
         juce::Slider sendLevel;
         juce::Label status;
@@ -68,6 +71,9 @@ private:
     };
     void updateReturnOptions();
     void refreshAudibility();
+    void updateCueStatus();
+    int activeOutputCount_ = -1;
+    bool listeningOnMain_ = false;
 
     juce::Label caption_ {"", ""};
     juce::TextButton addBusButton_ {TRANS("+ Bus")};

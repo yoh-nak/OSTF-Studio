@@ -254,6 +254,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     if (outputChannels > 0) {
         pluginAudio_.setSize(std::max(2, outputChannels), blockSize);
         for (auto& stem : stems_) stem.setSize(2, blockSize);
+        cueBus_.setSize(2, blockSize);
         pluginMidi_.ensureSize(1024 * 1024);
         patchMidi_.ensureSize(1024 * 1024);
         for (std::size_t track = 0; track < std::min(tracks.size(), instruments_.size()); ++track) {
@@ -559,8 +560,9 @@ void PreviewTransport::processEffects(const Chain& effects, juce::AudioBuffer<fl
     }
 }
 
-void PreviewTransport::renderInstruments(float* const* output, int channels, int count, int first, int end) {
+void PreviewTransport::renderInstruments(float* const* output, int channels, int count, int first, int end, bool listenToCue) {
     for (auto& stem : stems_) stem.clear(0, count);
+    cueBus_.clear(0, count);
     const int audible = count;
     const auto timelineStep = double(end - first) / count;
     for (std::size_t track = 0; track < instruments_.size(); ++track) {
@@ -630,6 +632,7 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
         for (const auto& region : slot.regions) region.mixInto(block, count, first, timelineStep, sampleRate_, clock_);
         processEffects(chain, block, count, &patchMidi_);
         const auto& mix = gains_[track];
+        const auto cueGain = mix.cue.load();
         const auto basePan = mix.pan.load();
         const bool automated = !slot.panEnvelope.points.empty();
         if (automated) {
@@ -649,8 +652,8 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
                 const auto send = mix.sends[r].load();
                 if (send != 0.0f) stems_[3 + r].addFrom(channel, 0, data, audible, gain * send);
             }
-            if (channels >= 4 && output[channel + 2])
-                juce::FloatVectorOperations::addWithMultiply(output[channel + 2], data, mix.cue.load() * balance, audible);
+            if (cueGain != 0.0f)
+                cueBus_.addFrom(channel, 0, data, audible, cueGain * balance);
         }
     }
     for (std::size_t i = 1; i < stems_.size(); ++i) {
@@ -666,12 +669,16 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
     const float masterGain = outputGains_[0].load();
     for (int c = 0; c < 2; ++c) {
         outputMeters_[0].publish(c, stems_[0].getMagnitude(c, 0, audible) * masterGain);
-        if (c < channels && output[c])
-            juce::FloatVectorOperations::addWithMultiply(output[c], stems_[0].getReadPointer(c), masterGain, audible);
-        if (channels >= 4 && output[c + 2] && audible > 0) {
-            auto range = juce::FloatVectorOperations::findMinAndMax(output[c + 2], audible);
-            cueMeter_.publish(c, std::max(std::abs(range.getStart()), std::abs(range.getEnd())));
+        cueMeter_.publish(c, cueBus_.getMagnitude(c, 0, audible));
+        const auto* cue = cueBus_.getReadPointer(c);
+        if (c < channels && output[c]) {
+            if (listenToCue)
+                juce::FloatVectorOperations::copy(output[c], cue, audible);
+            else
+                juce::FloatVectorOperations::addWithMultiply(output[c], stems_[0].getReadPointer(c), masterGain, audible);
         }
+        if (channels >= 4 && output[c + 2])
+            juce::FloatVectorOperations::copy(output[c + 2], cue, audible);
     }
 }
 
@@ -692,11 +699,12 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
     for (int c = 0; c < channels; ++c)
         if (output[c]) juce::FloatVectorOperations::clear(output[c], count);
     if (!running_) return;
+    const bool listenToCue = listenToCue_.load();
     if (pluginAudio_.getNumChannels() && count > pluginAudio_.getNumSamples()) { running_ = false; return; }
     const auto blockStart = juce::Time::getMillisecondCounterHiRes() + 1.0;
     blockTimeMs_ = blockStart;
     if (monitorOnly_) {
-        if (pluginAudio_.getNumChannels()) renderInstruments(output, channels, count, int(sample_.load()), int(sample_.load()) + count);
+        if (pluginAudio_.getNumChannels()) renderInstruments(output, channels, count, int(sample_.load()), int(sample_.load()) + count, listenToCue);
         return;
     }
     int done = 0;
@@ -721,7 +729,7 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
             const auto played = countLength_ - remaining;
             const auto age = played % countBeat_;
             const int n = int(std::min<juce::int64>({count - done, remaining, countBeat_ - age}));
-            mixClick(output, channels, done, n, int(age), played % countBar_ < countBeat_);
+            if (!listenToCue) mixClick(output, channels, done, n, int(age), played % countBar_ < countBeat_);
             countRemaining_ -= n;
             done += n;
             continue;
@@ -744,7 +752,7 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
         const int outs = std::min(channels, int(dest.size()));
         for (int c=0; c<outs; ++c) dest[c] = output[c] ? output[c] + done : nullptr;
         blockTimeMs_ = blockStart + done * 1000.0 / sampleRate_;
-        if (pluginAudio_.getNumChannels()) renderInstruments(dest.data(), outs, part, int(first), int(first) + timelineFrames);
+        if (pluginAudio_.getNumChannels()) renderInstruments(dest.data(), outs, part, int(first), int(first) + timelineFrames, listenToCue);
         if (captured_.getNumChannels()) {
             const int pos = int(first) - captureOrigin_;
             const int channelsNeeded = captured_.getNumChannels();
@@ -756,7 +764,7 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
             captureFirst_ = std::min(captureFirst_, pos);
             captureEnd_ = std::max(captureEnd_, pos + part);
         }
-        if (metronome) {
+        if (metronome && !listenToCue) {
             const int clickLength = std::max(1, int(sampleRate_ * .025));
             auto beat = std::lower_bound(beatSamples_.begin(), beatSamples_.end(), int(first) - clickLength,
                 [](const auto& b, int x) { return b.first < x; });

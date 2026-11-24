@@ -1073,6 +1073,7 @@ MainComponent::MainComponent() {
         controls.pan.setValue(mix.pan * 100.0f, juce::dontSendNotification);
         updateTransportMix();
     };
+    mixer_.cueMonitorChanged = [this](bool listen) { transport_.setListenToCue(listen); };
     mixer_.routingChanged = [this] {
         markSessionEdited();
         for (std::size_t i = 0; i < outputControls_.size(); ++i) {
@@ -1486,8 +1487,7 @@ void MainComponent::menuItemSelected(int item, int) {
             refreshEditor();
             break;
         case showDevices:
-            if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
-            deviceSettings_->devices();
+            ensureDeviceSettings().devices();
             showStudioWindow(*deviceSettings_, *this);
             break;
         case showSamplesPane: togglePluginBrowser(true); break;
@@ -1527,6 +1527,12 @@ void MainComponent::menuItemSelected(int item, int) {
                 + "\n" + TRANS("See the included Licenses folder and the corresponding source on GitHub Releases."));
             break;
     }
+}
+
+DeviceSettingsWindow& MainComponent::ensureDeviceSettings() {
+    if (!deviceSettings_)
+        deviceSettings_ = std::make_unique<DeviceSettingsWindow>([this](int count) { mixer_.setActiveOutputCount(count); });
+    return *deviceSettings_;
 }
 
 PluginBrowser& MainComponent::ensurePluginBrowser() {
@@ -2020,8 +2026,7 @@ void MainComponent::openController(bool show) {
 
 void MainComponent::connectController(juce::MidiDeviceInfo port) {
     if (recordTrack_) { surfacePanel_->refreshPorts(mackiePort_); return; }
-    if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
-    auto& devices = deviceSettings_->midiDevices();
+    auto& devices = ensureDeviceSettings().midiDevices();
     const bool opened = port.identifier == mackiePort_ ? openedSurfacePort_
         : port.identifier.isNotEmpty() && !devices.isMidiInputDeviceEnabled(port.identifier);
     if (port.identifier.isNotEmpty()) {
@@ -2129,8 +2134,7 @@ void MainComponent::cancelPadLearn() {
 void MainComponent::attachPadInput(bool enable) {
     if (enable == padListening_) return;
     if (enable) {
-        if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
-        deviceSettings_->midiDevices().addMidiInputDeviceCallback({}, this);
+        ensureDeviceSettings().midiDevices().addMidiInputDeviceCallback({}, this);
     } else {
         deviceSettings_->midiDevices().removeMidiInputDeviceCallback({}, this);
         padUpdate_.cancelPendingUpdate();
@@ -2374,7 +2378,6 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
             }));
         return;
     }
-    if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
     if (!canEditTracks()) {
         statusLabel_.setText(TRANS("Waiting for instruments and effects to finish loading"), juce::dontSendNotification);
         return;
@@ -2389,7 +2392,7 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
     if (monitorOnly && !inputTrack) return;
     const auto localDest = inputTrack ? trackControls_[*inputTrack]->outputTrack.value_or(*inputTrack) : size_t(0);
     const auto monitorDest = inputTrack && midiOutputs_.contains(armedId_) ? *inputTrack : localDest;
-    auto& devices = deviceSettings_->devices();
+    auto& devices = ensureDeviceSettings().devices();
     std::map<juce::String,std::shared_ptr<PreviewTransport::MidiDestination>> openPorts;
     updateTransportMix();
     std::vector<PreviewTransport::TrackSetup> tracks;
@@ -3529,8 +3532,7 @@ void MainComponent::saveMidiRoutes() {
 void MainComponent::setRecordArm(std::size_t i, bool arm) {
     if (recordTrack_ || !project_ || i >= project_->sourceTrackCount()) return;
     if (arm && project_->trackKinds[i] == ostfstudio::TrackKind::audio) {
-        if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
-        deviceSettings_->devices();
+        ensureDeviceSettings().devices();
         startTimerHz(24);
     }
     armedId_ = arm ? project_->trackIds[int(i)] : juce::String{};
@@ -3631,8 +3633,7 @@ void MainComponent::updateInputMeters() {
 }
 
 void MainComponent::showAudioInput(std::size_t i) {
-    if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
-    auto* device = deviceSettings_->devices().getCurrentAudioDevice();
+    auto* device = ensureDeviceSettings().devices().getCurrentAudioDevice();
     const auto id = project_->trackIds[int(i)];
     const auto first = audioInputs_[id].first;
     const int width = captureChannels_.contains(id) ? captureChannels_.at(id) : 1;
@@ -3677,7 +3678,7 @@ void MainComponent::rebuildTrackControls() {
         controls->input.onClick = [this, i] { showTrackInput(i); };
         for (juce::Component* c : std::array<juce::Component*,3>{&controls->arm, &controls->inputLamp, &controls->input}) rowOverlay_.addChildComponent(c);
         controls->cue.setTitle(name + " Cue");
-        controls->cue.setTooltip(TRANS("Cue to headphones (outputs 3-4)"));
+        controls->cue.setTooltip(TRANS("Send this track to Cue before its fader."));
         controls->cue.setClickingTogglesState(true);
         controls->cue.onClick = [this, i, button = &controls->cue] { mixer_.setCue(i, button->getToggleState()); };
         rowOverlay_.addChildComponent(controls->cue);
@@ -5058,8 +5059,7 @@ void MainComponent::openSplice() {
     auto& browser = ensurePluginBrowser();
     for (const auto& type : browser.types()) {
         if (type.pluginFormatName != "VST3" || !type.name.trim().equalsIgnoreCase("Splice Sounds")) continue;
-        if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
-        auto* device = deviceSettings_->devices().getCurrentAudioDevice();
+        auto* device = ensureDeviceSettings().devices().getCurrentAudioDevice();
         spliceLoading_ = true;
         statusLabel_.setText(TRANS("Loading Splice Sounds..."), juce::dontSendNotification);
         pluginFormats_.createPluginInstanceAsync(type, device ? device->getCurrentSampleRate() : 44100.,

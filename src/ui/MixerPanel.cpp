@@ -47,7 +47,14 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
     mute.setColour(juce::TextButton::textColourOnId, juce::Colour(0xff211f15));
     solo.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff277bdf));
     mute.setTitle(title + " mute");
-    if (group != "MONITOR") addAndMakeVisible(mute);
+    if (group == "MONITOR") {
+        listenOnMain = std::make_unique<juce::TextButton>(TRANS("Listen on 1-2"));
+        listenOnMain->setTitle(TRANS("Listen to Cue on outputs 1-2"));
+        listenOnMain->setTooltip(TRANS("Switch outputs 1-2 between Master and Cue."));
+        listenOnMain->setClickingTogglesState(true);
+        listenOnMain->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff216d68));
+        addAndMakeVisible(*listenOnMain);
+    } else addAndMakeVisible(mute);
     if (isTrack) {
         solo.setTitle(title + " solo");
         cue.setTitle(title + " pre-fader cue");
@@ -80,6 +87,7 @@ void MixerPanel::Strip::resized() {
     classification.setBounds(area.removeFromTop(15));
     name.setBounds(area.removeFromTop(18));
     status.setBounds(area.removeFromBottom(17));
+    if (listenOnMain) listenOnMain->setBounds(area.removeFromBottom(21));
     if (!isTrack && mute.isVisible()) mute.setBounds(area.removeFromBottom(21).withSizeKeepingCentre(40, 21));
     if (isTrack) {
         output.setBounds(area.removeFromTop(21).reduced(0, 1));
@@ -171,8 +179,8 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     std::iota(trackOrder_.begin(), trackOrder_.end(), std::size_t{0});
     std::stable_sort(trackOrder_.begin(), trackOrder_.end(), [&](auto a, auto b) { return project.mixerGroups[a] < project.mixerGroups[b]; });
     caption_.setText(project.chordVoicings > 0
-        ? TRANS("Global Timeline: ") + juce::String(project.chordVoicings) + TRANS(" chord voicings / Cue outputs 3-4")
-        : TRANS("Global Timeline tracks left / Cue outputs 3-4"), juce::dontSendNotification);
+        ? TRANS("Global Timeline: ") + juce::String(project.chordVoicings) + TRANS(" chord voicings")
+        : TRANS("Global Timeline tracks"), juce::dontSendNotification);
 
     for (std::size_t i = 0; i < tracks.size(); ++i) {
         auto strip = std::make_unique<Strip>(juce::String::fromUTF8(tracks[i].label), project.trackKinds[i] == ostfstudio::TrackKind::audio ? "Audio" : groupName(project.mixerGroups[i]), true);
@@ -183,7 +191,7 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         strip->pan.setTooltip(TRANS("Pan"));
         strip->mute.setTooltip(TRANS("Mute"));
         strip->solo.setTooltip(TRANS("Solo"));
-        strip->cue.setTooltip(TRANS("Cue to headphones (outputs 3-4)"));
+        strip->cue.setTooltip(TRANS("Send this track to Cue before its fader."));
         auto* controls = strip.get();
         strip->volume.onValueChange = [this, i, controls] { setVolumeDb(i, controls->volume.getValue()); };
         strip->pan.onValueChange = [this, i, controls] { setPan(i, static_cast<float>(controls->pan.getValue() / 100.0)); };
@@ -213,10 +221,17 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     addBus();
     master_ = std::make_unique<Strip>(TRANS("Master"), "OUTPUT", false);
     cue_ = std::make_unique<Strip>("Cue", "MONITOR", false);
+    cue_->status.setTitle(TRANS("Cue output"));
     master_->contextMenu = [this] { if (rowMenu) rowMenu(true, 0); };
     master_->mute.onClick = [this] { setOutputMuted(0, master_->mute.getToggleState()); };
     master_->status.setText(TRANS("Out 1-2"), juce::dontSendNotification);
-    cue_->status.setText(TRANS("Out 3-4"), juce::dontSendNotification);
+    cue_->listenOnMain->setToggleState(listeningOnMain_, juce::dontSendNotification);
+    cue_->listenOnMain->onClick = [this] {
+        listeningOnMain_ = cue_->listenOnMain->getToggleState();
+        updateCueStatus();
+        if (cueMonitorChanged) cueMonitorChanged(listeningOnMain_);
+    };
+    updateCueStatus();
     master_->volume.onValueChange = [this] {
         routing_.masterDb = master_->volume.getValue();
         if (routingChanged) routingChanged();
@@ -345,6 +360,21 @@ void MixerPanel::setCue(std::size_t index, bool enabled) {
     channels_.at(index).cue = enabled;
     strips_.at(index)->cue.setToggleState(enabled, juce::dontSendNotification);
     if (channelChanged) channelChanged(index);
+}
+
+void MixerPanel::setActiveOutputCount(int count) {
+    activeOutputCount_ = count;
+    updateCueStatus();
+}
+
+void MixerPanel::updateCueStatus() {
+    if (!cue_) return;
+    juce::String status;
+    if (activeOutputCount_ < 0) status = TRANS("Cue bus");
+    else if (activeOutputCount_ == 0) status = TRANS("No audio output");
+    else if (listeningOnMain_) status = activeOutputCount_ >= 4 ? TRANS("Out 1-2 + 3-4") : TRANS("Out 1-2");
+    else status = activeOutputCount_ >= 4 ? TRANS("Out 3-4") : TRANS("Out 3-4 inactive");
+    cue_->status.setText(status, juce::dontSendNotification);
 }
 
 void MixerPanel::setMuted(std::size_t index, bool muted) {

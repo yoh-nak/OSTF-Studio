@@ -38,7 +38,7 @@ private:
 
 class DeviceSettingsContent final : public juce::Component, private juce::ChangeListener, private juce::MidiInputCallback, private juce::AsyncUpdater {
 public:
-    DeviceSettingsContent() {
+    explicit DeviceSettingsContent(std::function<void(int)> outputsChanged) : outputsChanged_(std::move(outputsChanged)) {
         juce::PropertiesFile::Options options;
         options.applicationName = "OSTF Studio";
         options.filenameSuffix = ".settings";
@@ -90,6 +90,7 @@ public:
         addAndMakeVisible(viewport_);
         devices_.addAudioCallback(&peaks);
         devices_.addChangeListener(this);
+        reportOutputs();
         resized();
     }
 
@@ -160,7 +161,16 @@ private:
         lamp_.pulse();
         activity_.setText("MIDI IN  " + port + (channel > 0 ? "  Ch " + juce::String(channel) : juce::String{}), juce::dontSendNotification);
     }
-    void changeListenerCallback(juce::ChangeBroadcaster*) override { save(); }
+    void changeListenerCallback(juce::ChangeBroadcaster*) override {
+        reportOutputs();
+        save();
+    }
+
+    void reportOutputs() {
+        auto* device = devices_.getCurrentAudioDevice();
+        if (outputsChanged_) outputsChanged_(device && device->isOpen() ? device->getActiveOutputChannels().countNumberOfSetBits() : 0);
+    }
+    std::function<void(int)> outputsChanged_;
 
     juce::ApplicationProperties properties_;
     juce::AudioDeviceManager devices_;
@@ -171,10 +181,10 @@ private:
 };
 }
 
-DeviceSettingsWindow::DeviceSettingsWindow()
+DeviceSettingsWindow::DeviceSettingsWindow(std::function<void(int)> outputsChanged)
     : DocumentWindow(TRANS("Audio / MIDI Settings"), juce::Colour(0xff1b2734), DocumentWindow::closeButton, false) {
     setUsingNativeTitleBar(true);
-    setContentOwned(new DeviceSettingsContent(), true);
+    setContentOwned(new DeviceSettingsContent(std::move(outputsChanged)), true);
     setResizable(true, true);
     setResizeLimits(460, 360, 1000, 1000);
     centreWithSize(getWidth(), getHeight());

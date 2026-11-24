@@ -289,6 +289,73 @@ int checkStudioInstruments(const juce::StringArray& args) {
     return 0;
 }
 
+static bool checkCueMonitoring(ostfstudio::OstfpPreview& song) {
+    auto copy = song.audio.front();
+    const auto tick = copy.startTick;
+    const auto first = copy.track;
+    const auto second = (first + 1) % song.sourceTrackCount();
+    copy.track = second;
+    song.audio.push_back(copy);
+    PreviewTransport engine;
+    const auto ready = engine.preparePlayback(song, {}, {}, 48000, 256);
+    song.audio.pop_back();
+    if (ready.failed()) return false;
+    engine.setOutputMix({});
+    ostfstudio::ChannelMix mix;
+    mix.cue = true;
+    mix.volumeDb = -40;
+    engine.setChannelMix(first, mix, false, -12);
+    engine.setChannelMix(second, {}, false, -12);
+    auto render = [&](int outputs, bool listen, std::optional<float> expectedCue = {}) {
+        engine.setListenToCue(listen);
+        engine.seekToTick(tick);
+        juce::AudioBuffer<float> buffer(outputs, 256);
+        float peak = 0;
+        for (int n = 0; n < 24; ++n) {
+            engine.renderBlock(buffer.getArrayOfWritePointers(), outputs, 256);
+            const auto frame = engine.takeMeters();
+            if (frame.outputs[0] != ostfstudio::StereoPeak{}) return -1.f;
+            for (int c = 0; c < 2; ++c) {
+                peak = std::max(peak, frame.cue[c]);
+                if (std::abs(buffer.getMagnitude(c, 0, 256) - (listen ? frame.cue[c] : 0.f)) > .00001f) return -1.f;
+                if (outputs == 4 && std::abs(buffer.getMagnitude(c + 2, 0, 256) - frame.cue[c]) > .00001f) return -1.f;
+            }
+            if (outputs == 3 && buffer.getMagnitude(2, 0, 256) != 0) return -1.f;
+        }
+        return expectedCue && std::abs(peak - *expectedCue) > .00001f ? -1.f : peak;
+    };
+    const auto one = render(2, false);
+    if (one <= .0001f) return false;
+    engine.setChannelMix(second, mix, false, -12);
+    if (render(4, false, 2 * one) < 0 || render(2, true, 2 * one) < 0
+        || render(3, false, 2 * one) < 0) return false;
+    engine.setChannelMix(first, mix, false, -18);
+    mix.cue = false;
+    engine.setChannelMix(second, mix, false, -18);
+    if (render(4, true, one * ostfstudio::gainFromDb(-6)) < 0) return false;
+    engine.setChannelMix(first, mix, false, -18);
+    if (render(2, true, 0.f) != 0) return false;
+    mix.volumeDb = 0;
+    engine.setChannelMix(first, mix, true, 0);
+    juce::AudioBuffer<float> audio(2, 256);
+    for (bool listen : {true, false}) {
+        engine.setListenToCue(listen);
+        engine.seekToTick(tick);
+        float masterPeak = 0;
+        for (int n = 0; n < 24; ++n) {
+            engine.renderBlock(audio.getArrayOfWritePointers(), 2, 256);
+            const auto frame = engine.takeMeters();
+            if (frame.cue != ostfstudio::StereoPeak{}) return false;
+            for (int c = 0; c < 2; ++c) {
+                masterPeak = std::max(masterPeak, frame.outputs[0][c]);
+                if (std::abs(audio.getMagnitude(c, 0, 256) - (listen ? 0.f : frame.outputs[0][c])) > .00001f) return false;
+            }
+        }
+        if (masterPeak < .0001f) return false;
+    }
+    return true;
+}
+
 int checkStockEffects(const juce::StringArray& args) {
     juce::AudioPluginFormatManager formats;
     formats.addFormat(std::make_unique<juce::VST3PluginFormat>());
@@ -354,8 +421,11 @@ int checkStockEffects(const juce::StringArray& args) {
         }
         const auto frame = transport.takeMeters();
         for (int c = 0; c < 2; ++c) {
-            metersMatchAudio &= std::abs(std::min(1.0f, frame.outputs[0][c]) - actualPeak[c]) < .00001f
-                && std::abs(std::min(1.0f, frame.cue[c]) - actualPeak[c + 2]) < .00001f;
+            metersMatchAudio &= std::abs(std::min(1.0f, frame.outputs[0][c]) - actualPeak[c]) < .00001f;
+            if (audio.getNumChannels() == 4)
+                metersMatchAudio &= std::abs(std::min(1.0f, frame.cue[c]) - actualPeak[c + 2]) < .00001f;
+            else
+                metersMatchAudio &= frame.cue[c] > .00001f;
             metersMatchAudio &= (frame.tracks[piano][c] > 0.00001f) == !cueOnly;
             metersMatchAudio &= (frame.outputs[2][c] > 0.00001f) == (bus && !cueOnly);
             metersMatchAudio &= (frame.outputs[3][c] > 0.00001f) == (room && send && !cueOnly);
@@ -406,6 +476,7 @@ int checkStockEffects(const juce::StringArray& args) {
     juce::FileInputStream mediaFile(juce::File(args[3]).getSiblingFile("paper-lantern-replies.ostfp"));
     std::unique_ptr<ostfstudio::OstfpPreview> cue;
     if (ostfstudio::readOstfpPreview(mediaFile, cue).failed() || cue->audio.size() != 1 || !cue->savedMix) return 29;
+    if (!checkCueMonitoring(*cue)) { std::cerr << "Cue bus or monitor routing failed\n"; return 52; }
     const auto lyricScore = juce::JSON::parse(cue->sourceScore.toString());
     const auto lyricId = lyricScore["lyrics"]["alignments"][0]["noteIds"][0].toString();
     bool testedLyric = false;

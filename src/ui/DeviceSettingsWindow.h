@@ -6,7 +6,7 @@
 
 class DeviceSettingsWindow final : public juce::DocumentWindow {
 public:
-    DeviceSettingsWindow();
+    explicit DeviceSettingsWindow(std::function<void(int)> outputsChanged = {});
     std::array<float,64> takeInputPeaks();
     void closeButtonPressed() override;
     bool enableTrackInput(const juce::MidiDeviceInfo&);

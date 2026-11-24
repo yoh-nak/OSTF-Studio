@@ -1223,6 +1223,17 @@ int checkTrackView(const juce::File& fixture) {
         if (!click("Mixer")) return 251;
         auto* mixer = descendant<MixerPanel>(main);
         if (!mixer || !mixer->isVisible()) return 251;
+        auto* listen = findControl<juce::TextButton>(*mixer, TRANS("Listen to Cue on outputs 1-2"));
+        auto* cueStatus = findControl<juce::Label>(*mixer, TRANS("Cue output"));
+        if (!listen || !cueStatus || listen->getToggleState()) return 254;
+        mixer->setActiveOutputCount(2);
+        if (cueStatus->getText() != TRANS("Out 3-4 inactive")) return 254;
+        listen->setToggleState(true, juce::sendNotificationSync);
+        if (cueStatus->getText() != TRANS("Out 1-2")) return 254;
+        mixer->setActiveOutputCount(4);
+        if (cueStatus->getText() != TRANS("Out 1-2 + 3-4")) return 254;
+        listen->setToggleState(false, juce::sendNotificationSync);
+        if (cueStatus->getText() != TRANS("Out 3-4")) return 254;
         auto* addBus = findControl<juce::TextButton>(*mixer, TRANS("Add bus track"));
         auto* addReturn = findControl<juce::TextButton>(*mixer, TRANS("Add return track"));
         auto* output = findControl<juce::ComboBox>(*mixer, tracks->getItemText(0) + " output");
