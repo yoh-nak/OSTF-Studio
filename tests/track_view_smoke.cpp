@@ -1,4 +1,6 @@
 #include "ui/MainComponent.h"
+#include "ui/PluginRoles.h"
+#include <BinaryData.h>
 #if JUCE_WINDOWS
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -30,6 +32,68 @@ T* findControl(juce::Component& root, const juce::String& title) {
     }
     return nullptr;
 }
+}
+
+int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument) {
+    {
+        juce::MemoryInputStream input(BinaryData::bluehourwaltzsharedgm_ostfp, BinaryData::bluehourwaltzsharedgm_ostfpSize, false);
+        std::unique_ptr<ostfstudio::OstfpPreview> shared;
+        if (ostfstudio::readOstfpPreview(input, shared).failed() || !shared->savedMix) return 60;
+        const auto& mix = *shared->savedMix;
+        const auto owner = shared->trackIds.indexOf("keys");
+        if (owner < 0 || !matchesVst3Instrument(mix.instruments[owner], instrument->getPluginDescription())) return 61;
+        std::vector<PreviewTransport::TrackSetup> routes(shared->trackLanes.size());
+        for (size_t i = 0; i < shared->sourceTrackCount(); ++i) {
+            const auto& route = mix.midiRoutes[i];
+            if (i != size_t(owner) && (route.destination != size_t(owner) || mix.instruments[i].isObject())) return 62;
+            routes[i] = {route.destination, i == size_t(owner) ? instrument.get() : nullptr, route.channel};
+        }
+        PreviewTransport playback;
+        playback.setChannelMix(size_t(owner), {}, true, 0);
+        playback.setOutputMix({});
+        if (playback.preparePlayback(*shared, routes, {}, 44100, 512).failed()) return 63;
+        playback.seekToTick(60 * 3 * shared->ppq);
+        juce::AudioBuffer<float> block(2, 512);
+        float peak = 0;
+        for (int i = 0; i < 12; ++i) {
+            playback.renderBlock(block.getArrayOfWritePointers(), 2, 512);
+            peak = std::max(peak, block.getMagnitude(0, 512));
+        }
+        if (peak < .001f) return 64;
+        juce::MemoryBlock state, component;
+        instrument->getStateInformation(state);
+        auto wrapper = juce::AudioProcessor::getXmlFromBinary(state.getData(), int(state.getSize()));
+        const auto* child = wrapper ? wrapper->getChildByName("IComponent") : nullptr;
+        if (!child || !component.fromBase64Encoding(child->getAllSubText())) return 65;
+        auto xml = juce::AudioProcessor::getXmlFromBinary(component.getData(), int(component.getSize()));
+        for (size_t i = 0; i < shared->sourceTrackCount(); ++i) {
+            const auto& events = shared->programChanges[i];
+            if (events.empty() || !xml || xml->getIntAttribute("p" + juce::String(routes[i].midiChannel - 1), -1) != events.front().program)
+                return 66;
+        }
+    }
+    MainComponent studio;
+    studio.newProject();
+    studio.editTracks(ostfstudio::TrackKind::pitched);
+    if (!studio.project_ || studio.project_->sourceTrackCount() != 1) return 70;
+    auto* original = instrument.get();
+    studio.trackControls_[0]->instance = std::move(instrument);
+    studio.trackControls_[0]->playableInstrument = true;
+    studio.trackControls_[0]->midiChannel = 16;
+    studio.addSharedPart(0);
+    if (studio.project_->sourceTrackCount() != 2) return 71;
+    studio.addSharedPart(1);
+    if (studio.project_->sourceTrackCount() != 3 || studio.trackControls_[0]->instance.get() != original) return 72;
+    for (size_t i = 1; i <= 2; ++i) {
+        const auto& part = *studio.trackControls_[i];
+        if (part.instance || part.outputTrack != 0 || part.midiChannel != int(i)
+            || studio.project_->sourceMidiChannels[i] != int(i) || !part.plugin.getButtonText().contains("Ch ")) return 73;
+    }
+    studio.trackControls_[0]->midiChannel = 9;
+    studio.addSharedPart(2);
+    if (studio.project_->sourceTrackCount() != 4 || studio.project_->trackKinds[3] != ostfstudio::TrackKind::drum
+        || studio.trackControls_[3]->midiChannel != 10 || studio.trackControls_[3]->outputTrack != 0) return 74;
+    return 0;
 }
 
 // Optional integration check using the user's installed VST3 and its real native editor.
@@ -219,7 +283,7 @@ int checkTrackView(const juce::File& fixture) {
             for (juce::PopupMenu::MenuItemIterator demo(*item.subMenu); demo.next();)
                 songs.add(demo.getItem().text);
     }
-    if (!newEnabled || !saveScoreEnabled || !savePackageEnabled || songs.size() != 6
+    if (!newEnabled || !saveScoreEnabled || !savePackageEnabled || songs.size() != 7 || !songs.contains("Blue Hour Waltz (Shared GM)")
         || !songs.contains("Copper Mile (Rock)") || !songs.contains("First Light Vector (Trance)")) return 14;
     auto* group = findControl<juce::ComboBox>(main, TRANS("Track height group"));
     auto* height = findControl<juce::Slider>(main, TRANS("Group track height"));

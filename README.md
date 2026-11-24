@@ -14,6 +14,10 @@ The **External connections** menu opens Splice, Melodyne and Ableton Link. Selec
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
 
+## Sharing a multitimbral instrument
+
+Load one instrument on a MIDI track. Open its instrument button and choose **Add MIDI track sharing this instrument**. Studio creates an empty part on the next unused channel. Existing tracks can choose **Instrument destination and channel** and see which tracks already use each channel. Use **Initial MIDI patch** or the program-change lane to change the part's sound. Audio returns in stereo on the instrument's track. **File → Demo songs → Blue Hour Waltz (Shared GM)** plays seven parts with one GM Sound Module.
+
 ## Mackie Control
 
 Set the device to Mackie Control (MCU) mode and select its DAW MIDI input under **Settings → Mackie Control**. Select the feedback output to mirror faders, pan rings and button LEDs. The eight strips control volume, pan, record arm, solo, mute and selection. Bank and channel navigation move the strips across the mixer. Transport controls include rewind, forward, stop, play and record. Double-click a track name to edit it in place, press Enter to save or Escape to cancel.

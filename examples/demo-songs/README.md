@@ -2,6 +2,8 @@
 
 OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、対応する `.ostfp` は同じデータとマニフェストを含むプロジェクトです。OSTFPのProduction Sessionに、各演奏トラックのVST3音源を記録しています。MIDIチャンネルはOSTF Coreの track.midi、音色番号は各トラックのProgram Changeイベントに入っています。GM音源と試聴バンクはアプリの配布パッケージに含まれます。 [OSTF 5.0.0の仕様とSchema](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.0/tree/d8ce48ca6c873a5a24a94bcc80d847bf33135b46)
 
+「Blue Hour Waltz」には共有音源版もあります。[Blue Hour Waltz (Shared GM)](blue-hour-waltz-shared-gm.ostfp) はピアノに置いた1台のGM音源を7パートで共有します。ピアノはCh 2、ベースはCh 3、ドラムはCh 10です。各パートの音量とパンはMIDIで指定し、ピアノのトラックにステレオ音声を返します。
+
 | 曲 | 尺・トラック数 | 曲の構成と確認できるデータ |
 |---|---:|---|
 | [Neon Platforms](neon-platforms.ostfp) · シティポップ | 2:52 · 76小節 · 8 | Aメロ、プレコーラス、サビ、ブリッジ、ギター間奏、終サビ、アウトロ。ギターのフックに弦、ブラス、パッド、カッティングを段階的に重ねます。 |

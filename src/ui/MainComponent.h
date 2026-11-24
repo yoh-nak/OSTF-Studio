@@ -110,6 +110,7 @@ private:
     void updateInputMeters();
     bool hasAudioInputs_ = false;
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
+    void restoreLocalInstrument(std::size_t index, const juce::Array<juce::PluginDescription>& types);
     void stopTransport();
     void navigateTransport(TransportKey::Action);
     void locateTransport(juce::int64 tick, const juce::ScrollBar* anchoredView = nullptr);
@@ -157,7 +158,8 @@ private:
     std::optional<std::size_t> drumInputMonitor_;
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
                     std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched,
-                    const ImportResultRow* import = nullptr, juce::int64 tick = 0);
+                    const ImportResultRow* import = nullptr, juce::int64 tick = 0,
+                    std::optional<ostfstudio::SessionMix::MidiRoute> sharedPart = {});
     juce::TextEditor renameEditor_{TRANS("Track name")};
     std::size_t renameRow_{};
     bool renameOutput_{};
@@ -173,6 +175,10 @@ private:
     bool canEditTracks() const;
     void chooseTrackPlugin(std::size_t index, bool bundleDirectory);
     void showTrackPluginMenu(std::size_t index);
+    int nextSharedChannel(std::size_t owner) const;
+    bool hasSharedParts(std::size_t owner) const;
+    void addSharedPart(std::size_t index);
+    friend int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>);
     void scanTrackPlugin(std::size_t index);
     void discoverTrackPlugin(std::size_t index);
     void loadTrackPlugin(std::size_t index, const juce::PluginDescription& description, bool restoring = false, juce::MemoryBlock state = {});
@@ -285,6 +291,8 @@ private:
         std::optional<std::size_t> outputTrack;
         int midiChannel = 1;
         juce::var instrumentAssignment;
+        std::optional<juce::PluginDescription> inactiveInstrument;
+        juce::MemoryBlock inactiveInstrumentState;
     };
     juce::MenuBarComponent menuBar_;
     ViewButton pianoButton_ {ViewButton::Icon::piano}, mixerButton_ {ViewButton::Icon::mixer},

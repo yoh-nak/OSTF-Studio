@@ -5,6 +5,8 @@
 #include "ui/PluginRoles.h"
 #include <cmath>
 
+int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>);
+
 namespace {
 int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const juce::String& arrangerPath) {
     juce::AudioPluginFormatManager formats;
@@ -20,6 +22,9 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const ju
     auto instance = formats.createPluginInstance(*descriptions[0], 44100, 256, error);
     if (!instance || !PreviewTransport::supportsInstrument(*instance)) return 2;
     const auto fluid = juce::File(plugin).getChildFile("Contents/Resources/FluidR3_GM.sf2");
+    if (const auto result = checkSharedPartEditing(std::move(instance))) return result;
+    instance = formats.createPluginInstance(*descriptions[0], 44100, 256, error);
+    if (!instance) return 2;
     if (fluid.existsAsFile()) {
         juce::MemoryBlock state, component;
         instance->getStateInformation(state);

@@ -9,6 +9,36 @@
 #include <string_view>
 
 static int checkGallery(const juce::File& directory) {
+    for (bool packed : {false, true}) {
+        juce::FileInputStream input(directory.getChildFile(packed ? "blue-hour-waltz-shared-gm.ostfp" : "blue-hour-waltz-shared-gm.ostf"));
+        std::unique_ptr<ostfstudio::OstfpPreview> shared;
+        auto opened = packed ? ostfstudio::readOstfpPreview(input, shared) : ostfstudio::readOstfPreview(input, shared);
+        if (opened.failed() || !shared->savedMix || shared->sourceTrackCount() != 7) return 94;
+        const auto& mix = *shared->savedMix;
+        const int owner = shared->trackIds.indexOf("keys");
+        if (owner < 0) return 95;
+        juce::MemoryOutputStream written;
+        auto saved = packed ? ostfstudio::writeOstfpPreview(*shared, mix, written) : ostfstudio::writeOstfPreview(*shared, mix, written);
+        if (saved.failed()) return 96;
+        juce::MemoryInputStream bytes(written.getData(), written.getDataSize(), false);
+        std::unique_ptr<ostfstudio::OstfpPreview> reopened;
+        auto again = packed ? ostfstudio::readOstfpPreview(bytes, reopened) : ostfstudio::readOstfPreview(bytes, reopened);
+        if (again.failed() || !reopened->savedMix) return 97;
+        for (const auto* song : {shared.get(), reopened.get()}) {
+            const auto& session = *song->savedMix;
+            for (size_t i = 0; i < song->sourceTrackCount(); ++i) {
+                const auto& route = session.midiRoutes[i];
+                if (route.channel != song->sourceMidiChannels[i]) return 98;
+                if (i == size_t(owner)) {
+                    if (route.destination || session.instruments[i]["name"].toString() != "OSTF GM Sound Module") return 98;
+                } else if (route.destination != size_t(owner) || session.instruments[i].isObject()) return 98;
+            }
+        }
+        const auto bass = shared->trackIds.indexOf("bass");
+        juce::MemoryBlock before;
+        if (bass < 0 || shared->setPatchAt(bass, 0, 15, {-1,-1,35}, before, true).failed()
+            || shared->programChanges[bass].size() != 1 || shared->programChanges[bass].front().program != 35) return 99;
+    }
     const auto templateFile = directory.getParentDirectory().getParentDirectory().getChildFile("assets/NewProject.ostf");
     juce::FileInputStream templateStream(templateFile);
     std::unique_ptr<ostfstudio::OstfpPreview> fresh;
@@ -423,6 +453,16 @@ int main(int argc, char** argv) {
         return 1;
     }
     const auto view = project->view();
+    {
+        std::unique_ptr<ostfstudio::OstfpPreview> withPart;
+        if (project->editTracks(ostfstudio::TrackKind::pitched, {}, withPart, {}, ostfstudio::MixerTrackGroup::pitched, 16).failed())
+            return 91;
+        const auto added = withPart->sourceTrackCount() - 1;
+        if (withPart->sourceMidiChannels[added] != 16 || !withPart->pitchedNotes[added].empty()
+            || juce::String::fromUTF8(withPart->trackLanes[added].label) != "MIDI Ch 16") return 92;
+        if (project->editTracks(ostfstudio::TrackKind::pitched, {}, withPart, {}, ostfstudio::MixerTrackGroup::pitched, 17).wasOk())
+            return 93;
+    }
     if (view.bars.endBar != 17 || view.globalLanes.size() != 6 || view.trackLanes.size() != 3) return 1;
     if (std::string_view(view.globalLanes[0].regions[0].label) != "Intro"
         || view.globalLanes[1].regions.size() != 16

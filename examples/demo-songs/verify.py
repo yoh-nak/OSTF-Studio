@@ -66,6 +66,18 @@ def verify(path, spec, schemas, catalog):
     assert len(set(assigned)) == len(assigned) and set(assigned) == devices.keys()
     tracks = [c for c in channels.values() if c["kind"] == "track"]
     assert sorted(c["trackId"] for c in tracks) == sorted(t["id"] for t in score["tracks"])
+    if path.stem == "blue-hour-waltz-shared-gm":
+        instrument, = [d for d in devices.values() if d["role"] == "instrument"]
+        owner, = [c for c in tracks if instrument["id"] in c["deviceIds"]]
+        assert instrument["plugin"]["name"] == "OSTF GM Sound Module" and owner["trackId"] == "keys"
+        routes = {r["trackId"]: r for r in session["hostExtensions"][0]["data"]["tracks"]}
+        assert len({r["midiChannel"] for r in routes.values()}) == len(routes) == 7
+        for t in score["tracks"]:
+            r = routes[t["id"]]
+            assert r["midiChannel"] == t["midi"]["channel"] and r.get("destinationTrackId", t["id"]) == "keys"
+            assert any(e["type"] == "programChange" and e["channel"] == r["midiChannel"]
+                       for c in t["clips"] for e in c.get("midiEvents", []))
+        return {d["plugin"]["name"] for d in devices.values() if d["role"] == "effect"}
     used = set()
     for c in channels.values():
         chain = [devices[k] for k in c["deviceIds"]]

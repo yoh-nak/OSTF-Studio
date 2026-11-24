@@ -195,7 +195,8 @@ struct OstfpPreview {
     [[nodiscard]] ArrangementView view() const { return {bars, globalLanes, trackLanes}; }
     const char* keepLabel(juce::String label);
     juce::Result editTracks(TrackKind kind, std::optional<std::size_t> remove, std::unique_ptr<OstfpPreview>& result,
-                            std::optional<std::size_t> duplicate = {}, MixerTrackGroup group = MixerTrackGroup::pitched) const;
+                            std::optional<std::size_t> duplicate = {}, MixerTrackGroup group = MixerTrackGroup::pitched,
+                            std::optional<int> newPartChannel = {}) const;
     juce::Result extendedForImport(juce::int64 end, std::unique_ptr<OstfpPreview>& draft, juce::MemoryBlock& original) const;
     bool insertGeneratorPattern(std::size_t track, int bar);
     juce::Result editDrumPad(size_t track, int row, std::optional<int> pitch, juce::MemoryBlock &before,
@@ -206,7 +207,8 @@ struct OstfpPreview {
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);
     juce::Result editNotes(std::size_t track, const std::vector<NoteEdit>& edits, juce::MemoryBlock& before,
                            juce::StringArray& resultingIds);
-    juce::Result setPatchAt(std::size_t track, juce::int64 tick, int channel, std::array<int,3> values, juce::MemoryBlock& before);
+    juce::Result setPatchAt(std::size_t track, juce::int64 tick, int channel, std::array<int,3> values,
+                            juce::MemoryBlock& before, bool sharedPart = false);
     juce::Result editController(std::size_t track, const MidiControl&, const juce::String& id, juce::int64 tick,
                                 std::optional<int> value, juce::MemoryBlock& before);
     juce::Result restoreNoteScore(const juce::MemoryBlock& bytes);

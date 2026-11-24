@@ -890,7 +890,7 @@ def audio_parts(stem, song):
         yield identifier, name, identifier, bar * 4 * PPQ, bpm, bus, club_stem(song, voice, bar, bars, bpm)
 
 
-def production_session(song, cues):
+def production_session(song, cues, shared_gm=False):
     programs = {
         "hook": 27, "horn": 65, "arp": 81, "voice-track": 53, "backing": 52, "keys": 4, "bass": 33,
         "answer": 5, "nylon": 24, "strings": 48, "comp": 28, "brass": 61, "pad": 89, "vibes": 11,
@@ -961,6 +961,7 @@ def production_session(song, cues):
                 channel("return-1", "bus", name="Room", gainDb=-3, outputChannelId="master")]
     for strip, kind in zip(channels, ("Limiter", "Compressor", "EQ", "Reverb")):
         insert(strip, kind)
+    shared_routes = []
     for index, lane in enumerate(song["tracks"], start=1):
         midi_channel = 10 if lane["trackType"] == "drum" else index
         lane["midi"] = {"mode": "singleChannel", "channel": midi_channel}
@@ -974,13 +975,25 @@ def production_session(song, cues):
             dest = next(c for c in lane["clips"] if c["start"] <= at < c["start"] + c["duration"])
             dest.setdefault("midiEvents", []).append({"id": f"{lane['id']}-daybreak-program", "type": "programChange",
                 "start": at - dest["start"], "channel": midi_channel, "program": 2})
+        level, pan, output, send, inserts = parts[lane["id"]]
+        if shared_gm:
+            route = {"trackId": lane["id"], "midiChannel": midi_channel}
+            if lane["id"] != "keys":
+                route["destinationTrackId"] = "keys"
+            shared_routes.append(route)
+            for cc, value in ((7, round(100 * 10 ** (level / 40))), (10, round(64 + 63 * pan))):
+                clip["midiEvents"].append({"id": f"{lane['id']}-cc{cc}", "type": "controlChange",
+                    "start": 0, "channel": midi_channel, "controller": cc, "value": value})
+            if lane["id"] != "keys":
+                channels.append(channel(f"track-{index}", "track", trackId=lane["id"], outputChannelId="master"))
+                continue
+            level, pan, output = -2, 0, "master"
         device = f"instrument-{index}"
         devices.append({"id": device, "role": "instrument", "enabled": True, "bypass": False,
             "onUnavailable": "reportAndPreserve", "plugin": {
                 "format": "vst3", "pluginId": "ABCDEF019182FAEB4F737466" + instrument["code"].encode("ascii").hex().upper(),
                 "name": instrument["name"], "vendor": "OSTF Studio",
             }})
-        level, pan, output, send, inserts = parts[lane["id"]]
         strip = channel(f"track-{index}", "track", trackId=lane["id"], outputChannelId=output,
                         deviceIds=[device], gainDb=level, pan=pan)
         if send is not None:
@@ -991,6 +1004,9 @@ def production_session(song, cues):
             insert(strip, "Analyzer")
         channels.append(strip)
     production = {"channels": channels, "devices": devices}
+    if shared_gm:
+        production["hostExtensions"] = [{"namespace": "org.ostf.studio", "version": "1.0",
+                                         "data": {"tracks": shared_routes}}]
     for identifier, name, asset, start, length, bus in cues:
         song["tracks"].append({"id": identifier, "name": name, "clips": []})
         strip = channel(identifier + "-strip", "track", trackId=identifier, gainDb=-7 if identifier == "foley" else -9,
@@ -1041,7 +1057,7 @@ def json_bytes(document):
     return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
-def write_song(stem, document):
+def write_song(stem, document, shared_gm=False):
     vary_harmonic_rhythm(document)
     media = []
     cues = []
@@ -1054,7 +1070,9 @@ def write_song(stem, document):
         (DESTINATION / path).parent.mkdir(exist_ok=True)
         (DESTINATION / path).write_bytes(wav)
         media.append((path, wav))
-    production = production_session(document, cues)
+    production = production_session(document, cues, shared_gm)
+    if shared_gm:
+        document["song"]["title"] += " (Shared GM)"
     document.setdefault("extensions", {})["org.ostf.studio"] = {
         "version": "1.0", "status": "current", "dependencies": {"scope": "document"}, "data": production,
     }
@@ -1092,3 +1110,4 @@ if __name__ == "__main__":
                          ("offset-bridges", full_progressive), ("copper-mile", copper_mile),
                          ("first-light-vector", first_light_vector)):
         write_song(name, author())
+    write_song("blue-hour-waltz-shared-gm", full_waltz(), shared_gm=True)

@@ -140,6 +140,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     juce_add_binary_data(OSTFStudioAssets SOURCES
         assets/AppIcon.png assets/Japanese.txt assets/NewProject.ostf assets/GMFamilies.json
         examples/demo-songs/neon-platforms.ostfp examples/demo-songs/blue-hour-waltz.ostfp
+        examples/demo-songs/blue-hour-waltz-shared-gm.ostfp
         examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp
         examples/demo-songs/copper-mile.ostfp examples/demo-songs/first-light-vector.ostfp)
     juce_generate_juce_header(OSTFStudio)

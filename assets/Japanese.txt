@@ -1009,6 +1009,8 @@ countries: jp
 "Retry PDF" = "このPDFを再試行"
 "Instrument destination and channel" = "音源の出力先とMIDIチャンネル"
 "Open shared instrument" = "共有音源の画面を開く"
+"Add MIDI track sharing this instrument" = "この音源を共有するMIDIトラックを追加"
+"Shared instrument" = "共有音源"
 
 "Transpose and tempo" = "移調・テンポ"
 "Audio files" = "オーディオ素材"

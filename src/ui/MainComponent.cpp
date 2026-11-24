@@ -122,6 +122,7 @@ constexpr int demoMenuBase = 300;
 constexpr struct { const char* title; const char* resource; } gallery[] {
     {"Neon Platforms (City Pop)", "neonplatforms_ostfp"},
     {"Blue Hour Waltz (Jazz Waltz)", "bluehourwaltz_ostfp"},
+    {"Blue Hour Waltz (Shared GM)", "bluehourwaltzsharedgm_ostfp"},
     {"Relay Circuit (Techno)", "relaycircuit_ostfp"},
     {"Paper Lantern Replies (R&B)", "paperlanternreplies_ostfp"},
     {"Copper Mile (Rock)", "coppermile_ostfp"},
@@ -2042,12 +2043,22 @@ void MainComponent::restoreInstrumentAssignments(const ostfstudio::SessionMix& m
         if (!reference.isObject()) continue;
         auto& track = *trackControls_[index];
         track.instrumentAssignment = reference;
-        const auto match = std::find_if(types.begin(), types.end(), [&](const auto& description) {
-            return matchesVst3Instrument(reference, description);
-        });
-        if (match == types.end()) track.plugin.setButtonText(reference["name"].toString() + TRANS(" (missing)"));
-        else loadTrackPlugin(index, *match, true);
+        if (!track.outputTrack) restoreLocalInstrument(index, types);
     }
+}
+
+void MainComponent::restoreLocalInstrument(std::size_t index, const juce::Array<juce::PluginDescription>& types) {
+    auto& track = *trackControls_[index];
+    if (!track.instrumentAssignment.isObject() || track.instance || track.outputTrack) return;
+    if (track.inactiveInstrument) {
+        loadTrackPlugin(index, *track.inactiveInstrument, true, track.inactiveInstrumentState);
+        return;
+    }
+    const auto match = std::find_if(types.begin(), types.end(), [&](const auto& description) {
+        return matchesVst3Instrument(track.instrumentAssignment, description);
+    });
+    if (match == types.end()) track.plugin.setButtonText(track.instrumentAssignment["name"].toString() + TRANS(" (missing)"));
+    else loadTrackPlugin(index, *match, true, track.inactiveInstrumentState);
 }
 
 namespace {
@@ -2630,12 +2641,12 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
         cycleButton_.setToggleState(cycleOn, juce::dontSendNotification);
         pianoRuler_.cycleMode = audioEditor_.recordRuler.cycleMode = cycleOn;
         mixer_.restore(*saved);
-        restoreInstrumentAssignments(*saved);
         for (std::size_t i = 0; i < std::min(trackControls_.size(), saved->midiRoutes.size()); ++i) {
             trackControls_[i]->midiChannel = saved->midiRoutes[i].channel;
             trackControls_[i]->outputTrack = saved->midiRoutes[i].destination;
             updatePresetLabel(i);
         }
+        restoreInstrumentAssignments(*saved);
         for (std::size_t i = 0; i < outputControls_.size(); ++i) {
             auto ids = saved->outputEffects[i];
             if (ids.isEmpty() && saved->insertIds[i].isNotEmpty())
@@ -2859,10 +2870,11 @@ void MainComponent::showPatch(std::size_t track, juce::int64 tick) {
                                                       juce::String::fromUTF8(project_->trackLanes[track].label),
                                                       juce::MessageBoxIconType::NoIcon, this);
     const int channel = trackControls_[track]->midiChannel;
+    const bool shared = trackControls_[track]->outputTrack.has_value() || hasSharedParts(track);
     std::array<int,3> current{-1,-1,-1};
     for (const auto& curve : project_->performanceCurves[track]) {
         const auto& k = curve.control;
-        if (!curve.enabled || (k.channel && k.channel != channel)) continue;
+        if (!curve.enabled || (!shared && k.channel && k.channel != channel)) continue;
         int field = k.type == "programChange" ? 2 : k.type == "controlChange" && k.number == 0 ? 0
                   : k.type == "controlChange" && k.number == 32 ? 1 : -1;
         if (field >= 0) for (const auto& p : curve.points) if (p.tick == tick) current[field] = juce::roundToInt(p.value * 127);
@@ -2878,7 +2890,7 @@ void MainComponent::showPatch(std::size_t track, juce::int64 tick) {
     dialog->addButton(TRANS("Cancel"), 0);
     auto* w = dialog.release();
     w->enterModalState(true, juce::ModalCallbackFunction::create(
-        [safe = juce::Component::SafePointer<MainComponent>(this), w, names, current, track, tick, channel, generation = projectGeneration_](int choice) {
+        [safe = juce::Component::SafePointer<MainComponent>(this), w, names, current, track, tick, channel, shared, generation = projectGeneration_](int choice) {
             if (!safe || choice != 1 || safe->recordTrack_ || safe->projectGeneration_ != generation) return;
             std::array<int,3> values;
             for (int i = 0; i < 3; ++i) values[i] = w->getComboBoxComponent(names[i])->getSelectedItemIndex() - 1;
@@ -2886,7 +2898,7 @@ void MainComponent::showPatch(std::size_t track, juce::int64 tick) {
             const bool playing = safe->transportActive_;
             if (playing) safe->stopTransport();
             juce::MemoryBlock before;
-            auto result = safe->project_->setPatchAt(track, tick, channel, values, before);
+            auto result = safe->project_->setPatchAt(track, tick, channel, values, before, shared);
             if (result.wasOk()) safe->rememberScoreEdit(std::move(before));
             else safe->statusLabel_.setText(result.getErrorMessage(), juce::dontSendNotification);
             safe->finishNoteEdit(playing);
@@ -2977,6 +2989,8 @@ void MainComponent::renameTrack(std::size_t index, bool output) {
             controls.solo.setTitle(name + " solo");
             controls.volume.setName(name + " volume");
             controls.pan.setName(name + " pan");
+            for (size_t i = 0; i < safe->trackControls_.size(); ++i)
+                if (safe->trackControls_[i]->outputTrack == index) safe->updatePresetLabel(i);
             safe->refreshEditor();
             safe->repaint();
     };
@@ -3069,11 +3083,13 @@ void MainComponent::editOutput(bool send, std::optional<std::size_t> source, boo
 
 void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove,
                                std::optional<std::size_t> duplicate, ostfstudio::MixerTrackGroup group,
-                               const ImportResultRow* import, juce::int64 tick) {
+                               const ImportResultRow* import, juce::int64 tick,
+                               std::optional<ostfstudio::SessionMix::MidiRoute> sharedPart) {
     if (!canEditTracks()) return;
     stopTransport();
     std::unique_ptr<ostfstudio::OstfpPreview> updated;
-    auto result = project_->editTracks(kind, remove, updated, duplicate, group);
+    auto result = project_->editTracks(kind, remove, updated, duplicate, group,
+                                       sharedPart ? std::optional<int>(sharedPart->channel) : std::nullopt);
     if (result.wasOk() && import) {
         const auto dest = updated->sourceTrackCount() - 1;
         result = updated->renameTrack(dest, juce::String::fromUTF8(import->source.trackLanes[import->index].label));
@@ -3128,6 +3144,8 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         track.playableInstrument = old.playableInstrument;
         track.midiChannel = old.midiChannel;
         track.instrumentAssignment = old.instrumentAssignment;
+        track.inactiveInstrument = std::move(old.inactiveInstrument);
+        track.inactiveInstrumentState = std::move(old.inactiveInstrumentState);
         track.outputTrack = old.outputTrack;
         if (remove && track.outputTrack) {
             if (*track.outputTrack == *remove) track.outputTrack.reset();
@@ -3138,9 +3156,19 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         track.effects.slots = std::move(old.effects.slots);
         updateEffectButton(track.effects);
         track.plugin.setButtonText(old.plugin.getButtonText());
+        if (old.outputTrack) track.plugin.getProperties().set("sharedPart", true);
         updatePresetLabel(i);
+        if (old.outputTrack && !track.outputTrack && track.instrumentAssignment.isObject())
+            restoreLocalInstrument(i, ensurePluginBrowser().types());
     }
     mixer_.restore(mix);
+    if (sharedPart) {
+        const auto dest = project_->sourceTrackCount() - 1;
+        trackControls_[dest]->midiChannel = sharedPart->channel;
+        trackControls_[dest]->outputTrack = sharedPart->destination;
+        updatePresetLabel(dest);
+        markSessionEdited();
+    }
     if (duplicate) {
         const auto dest = project_->sourceTrackCount() - 1;
         const auto& src = *trackControls_[*duplicate];
@@ -3151,7 +3179,10 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         copy.pluginPath = src.pluginPath;
         copy.candidatePath = src.candidatePath;
         copy.instrumentAssignment = src.instrumentAssignment.clone();
+        copy.inactiveInstrument = src.inactiveInstrument;
+        copy.inactiveInstrumentState = src.inactiveInstrumentState;
         copy.plugin.setButtonText(src.plugin.getButtonText());
+        updatePresetLabel(dest);
         if (src.instance) {
             juce::MemoryBlock state;
             src.instance->getStateInformation(state);
@@ -3417,12 +3448,51 @@ void MainComponent::rebuildTrackControls() {
     resized();
 }
 
+bool MainComponent::hasSharedParts(std::size_t owner) const {
+    return std::any_of(trackControls_.begin(), trackControls_.end(),
+                       [owner](const auto& part) { return part->outputTrack == owner; });
+}
+
+int MainComponent::nextSharedChannel(std::size_t owner) const {
+    if (!project_ || owner >= project_->sourceTrackCount() || project_->sourceTrackCount() >= project_->maxTracks
+        || !canEditTracks() || recordTrack_) return 0;
+    const auto& host = *trackControls_[owner];
+    if (host.outputTrack || !host.playableInstrument || !host.instance || !host.instance->acceptsMidi()
+        || midiOutputs_.contains(project_->trackIds[int(owner)])) return 0;
+    std::array<bool, 17> used{};
+    used[host.midiChannel] = true;
+    for (const auto& track : trackControls_)
+        if (track->outputTrack == owner) used[track->midiChannel] = true;
+    for (int offset = 0; offset < 16; ++offset) {
+        const int channel = 1 + (host.midiChannel + offset) % 16;
+        if (!used[channel]) return channel;
+    }
+    return 0;
+}
+
+void MainComponent::addSharedPart(std::size_t index) {
+    const auto owner = trackControls_[index]->outputTrack.value_or(index);
+    const int channel = nextSharedChannel(owner);
+    if (!channel) return;
+    const bool gmDrums = channel == 10 && trackControls_[owner]->instance->getName() == "OSTF GM Sound Module";
+    editTracks(gmDrums ? ostfstudio::TrackKind::drum : ostfstudio::TrackKind::pitched, {}, {},
+               ostfstudio::MixerTrackGroup::pitched, nullptr, 0, ostfstudio::SessionMix::MidiRoute{channel, owner});
+}
+
 void MainComponent::showTrackPluginMenu(std::size_t index) {
     auto& control = *trackControls_[index];
     juce::PopupMenu menu;
     constexpr int channelId = 100;
     constexpr int outputId = 200;
     constexpr int sharedId = 20000;
+    const auto owner = control.outputTrack.value_or(index);
+    const int nextChannel = nextSharedChannel(owner);
+    if (nextChannel || control.outputTrack || control.playableInstrument) {
+        auto label = TRANS("Add MIDI track sharing this instrument");
+        if (nextChannel) label += " / Ch " + juce::String(nextChannel);
+        menu.addItem(10, label, nextChannel != 0);
+        menu.addSeparator();
+    }
     juce::PopupMenu channels;
     for (int channel = 1; channel <= 16; ++channel)
         channels.addItem(channelId + channel, juce::String(channel), true, control.midiChannel == channel);
@@ -3432,12 +3502,21 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
     const auto sourceLimit = std::min(PreviewTransport::maxTracks, trackControls_.size());
     for (std::size_t i = 0; i < sourceLimit; ++i) {
         const auto& target = *trackControls_[i];
-        if (i == index || i >= project_->sourceTrackCount() || !target.playableInstrument || !target.instance
+        if (i == index || i >= project_->sourceTrackCount() || target.outputTrack || !target.playableInstrument || !target.instance
             || !target.instance->acceptsMidi() || midiOutputs_.contains(project_->trackIds[int(i)])) continue;
         juce::PopupMenu parts;
-        for (int part = 1; part <= 16; ++part)
-            parts.addItem(sharedId + static_cast<int>(i) * 16 + part - 1, "Ch " + juce::String(part),
+        std::array<juce::StringArray, 16> assigned;
+        for (std::size_t source = 0; source < sourceLimit; ++source) {
+            const auto& route = *trackControls_[source];
+            if (source == i || route.outputTrack == i)
+                assigned[route.midiChannel - 1].add(juce::String::fromUTF8(project_->trackLanes[source].label));
+        }
+        for (int part = 1; part <= 16; ++part) {
+            auto label = "Ch " + juce::String(part);
+            if (!assigned[part - 1].isEmpty()) label += "   " + assigned[part - 1].joinIntoString(", ");
+            parts.addItem(sharedId + static_cast<int>(i) * 16 + part - 1, label,
                           true, control.outputTrack == i && control.midiChannel == part);
+        }
         outputs.addSubMenu(juce::String::fromUTF8(project_->trackLanes[i].label) + " / " + target.instance->getName(), parts);
     }
     const auto ports = juce::MidiOutput::getAvailableDevices();
@@ -3449,7 +3528,7 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
         hardware.addItem(1001 + p, ports[p].name, true, stored != midiOutputs_.end() && ports[p].identifier == stored->second.identifier);
     if (index < project_->sourceTrackCount() && project_->trackKinds[index] != ostfstudio::TrackKind::audio)
         menu.addSubMenu(stored == midiOutputs_.end() ? juce::String("MIDI OUT") : "MIDI OUT / " + stored->second.name, hardware);
-    menu.addSubMenu(TRANS("Instrument destination and channel"), outputs);
+    menu.addSubMenu(TRANS("Instrument destination and channel"), outputs, !hasSharedParts(index) && !control.loading);
     menu.addItem(9, TRANS("Initial MIDI patch..."), index < project_->sourceTrackCount());
     menu.addSeparator();
     menu.addItem(8, TRANS("Link WAV on this track..."), !control.loading && index < project_->sourceTrackCount());
@@ -3469,6 +3548,7 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
             if (selection == 5) self->openTrackPluginEditor(self->trackControls_[index]->outputTrack.value_or(index));
             if (selection == 8) self->linkAudio(index);
             if (selection == 9) self->showPatch(index, 0);
+            if (selection == 10) self->addSharedPart(index);
             if (selection > channelId && selection <= channelId + 16) {
                 self->stopTransport();
                 if (self->trackControls_[index]->midiChannel != selection - channelId) self->markSessionEdited();
@@ -3492,10 +3572,21 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
                 auto& channel = self->trackControls_[index]->midiChannel;
                 const int part = next ? 1 + (selection - sharedId) % 16 : channel;
                 if (route != next || channel != part) self->markSessionEdited();
+                auto& strip = *self->trackControls_[index];
+                if (next && strip.instance) {
+                    strip.editor.reset();
+                    strip.inactiveInstrument = strip.instance->getPluginDescription();
+                    strip.inactiveInstrumentState.reset();
+                    strip.instance->getStateInformation(strip.inactiveInstrumentState);
+                    strip.instance.reset();
+                    strip.playableInstrument = false;
+                }
                 route = next;
                 channel = part;
                 self->refreshMidiRoutes();
                 self->updatePresetLabel(index);
+                if (!next && strip.instrumentAssignment.isObject())
+                    self->restoreLocalInstrument(index, self->ensurePluginBrowser().types());
             }
             if (selection == 2) {
                 self->stopTransport();
@@ -3505,6 +3596,8 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
                 strip.playableInstrument = false;
                 if (!strip.instrumentAssignment.isVoid()) self->markSessionEdited();
                 strip.instrumentAssignment = juce::var{};
+                strip.inactiveInstrument.reset();
+                strip.inactiveInstrumentState.reset();
                 strip.pluginPath = juce::File{};
                 strip.candidatePath = juce::File{};
                 strip.plugin.setButtonText(TRANS("Instrument"));
@@ -3721,6 +3814,8 @@ void MainComponent::loadTrackPlugin(std::size_t index, const juce::PluginDescrip
                     target.pluginPath = juce::File(description.fileOrIdentifier);
                     if (!restoring) target.outputTrack.reset();
                     target.instance = std::move(instance);
+                    target.inactiveInstrument.reset();
+                    target.inactiveInstrumentState.reset();
                     if (!restoring) {
                         auto reference = std::make_unique<juce::DynamicObject>();
                         reference->setProperty("format", "vst3");
@@ -3767,7 +3862,17 @@ void MainComponent::updatePresetLabel(std::size_t index) {
     juce::String label;
     if (strip.outputTrack && *strip.outputTrack < project_->trackLanes.size()) {
         label = juce::String::fromUTF8(project_->trackLanes[*strip.outputTrack].label) + " / Ch " + juce::String(strip.midiChannel);
-    } else if (auto* instance = strip.instance.get()) {
+        strip.plugin.setButtonText("Ch " + juce::String(strip.midiChannel) + "  " + juce::String::charToString(0x2192));
+        strip.plugin.setTooltip(TRANS("Shared instrument") + ": " + label);
+        strip.plugin.getProperties().set("sharedPart", true);
+    } else if (strip.plugin.getProperties().remove("sharedPart")) {
+        const auto fallback = strip.instrumentAssignment.isObject()
+            ? strip.instrumentAssignment["name"].toString() + TRANS(" (missing)") : TRANS("Instrument");
+        strip.plugin.setButtonText(strip.instance ? strip.instance->getName() : fallback);
+        strip.plugin.setTooltip(TRANS("Assign a local plug-in to this track"));
+    }
+    if (!strip.outputTrack && strip.instance) {
+        auto* instance = strip.instance.get();
         if (const auto program = instance->getCurrentProgram(); program >= 0 && program < instance->getNumPrograms()) {
             label = instance->getProgramName(program);
         }

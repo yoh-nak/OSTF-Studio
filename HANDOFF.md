@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Shared multitimbral instrument tracks
+
+Branch `feature/shared-instrument-parts`. Open a loaded instrument's button and choose **Add MIDI track sharing this instrument**. The same command on a child creates a sibling. Studio finds a free channel on that instance. A shared GM part on channel 10 uses the drum editor. To route an existing track, choose **Instrument destination and channel**. Occupied channels show their track names.
+
+The **Blue Hour Waltz (Shared GM)** gallery entry routes seven parts into one GM instrument on the piano track. The package stores the instrument assignment, routes and MIDI patch events. Its stereo return goes to the piano strip. Reproduce the Windows checks with the Release CTest cases `ostf_studio_gm_plugin`, `ostf_studio_demo_gallery`, `ostf_studio_transport` and `ostf_studio_track_view`. The GM case reads back all seven part programs from the hosted VST3 after a seek and exercises track creation from the owner and a child. Independent audio returns and arbitrary third-party plug-in state recall are outside this implementation.
+
+Windows x64 Release passed 27/27 CTest cases, and the core-only build passed 2/2. All eight demo packages passed the pinned OSTF 5.0 package and schema checks. The GM playback check renders to memory. macOS execution and listening through a physical audio interface remain unverified.
+
 ## Local samples, performance entry and factory instruments
 
 Branch `feature/instruments-browser-midi-entry`. The information icon opens metadata, the note-and-arrows menu offers score and audition transforms, and divider lines group the toolbar commands. In the right browser choose **Audio files**, select a folder and drag a file to an audio track. WAV stays linked during editing. AIFF, FLAC and MP3 are decoded to 24-bit WAV for the project. The current one-region-per-audio-track rule prompts before replacement. In a performance lane, **Enter value…** accepts an exact tick and value. Velocity applies to the selected notes. Pitch bend uses −8192 to 8191, and mixer pan uses −100 to 100 percent.

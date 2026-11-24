@@ -11,7 +11,9 @@ class PerformanceProbe final : public juce::AudioPluginInstance {
 public:
     explicit PerformanceProbe(bool insert = false) { setPlayConfigDetails(insert ? 2 : 0, 2, 960, 96); }
     juce::MidiBuffer received;
+    int blocksProcessed = 0;
     void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer& midi) override {
+        ++blocksProcessed;
         received.addEvents(midi, 0, -1, 0);
         midi.clear();
         for (int ch = 0; ch < audio.getNumChannels(); ++ch)
@@ -79,23 +81,25 @@ bool checkPerformanceAudio() {
         shared.trackKinds = {TrackKind::pitched, TrackKind::pitched};
         shared.pitchedNotes = {{{0, 60, 72, 90}}, {{0, 60, 42, 90}}};
         shared.programChanges.resize(2);
+        shared.programChanges[0].push_back({0, 4, 2});
         shared.programChanges[1].push_back({0, 33, 1});
-        PerformanceProbe rack;
+        PerformanceProbe rack, unusedLocal;
         PreviewTransport playback;
-        const std::array<PreviewTransport::TrackSetup, 2> parts{{{{}, &rack, 1}, {0, nullptr, 2}}};
+        const std::array<PreviewTransport::TrackSetup, 2> parts{{{{}, &rack, 1}, {0, &unusedLocal, 2}}};
         if (playback.preparePlayback(shared, parts, {}, 960, 96).failed()) return false;
         playback.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
-        bool piano = false, bass = false, patch = false;
+        bool piano = false, bass = false, patch = false, ownerPatch = false;
         for (const auto entry : rack.received) {
             const auto message = entry.getMessage();
             if (message.isNoteOn() && message.getNoteNumber() == 72) piano = message.isForChannel(1);
             if (message.isNoteOn() && message.getNoteNumber() == 42) bass = message.isForChannel(2);
+            if (message.isProgramChange() && message.getProgramChangeNumber() == 4) ownerPatch = message.isForChannel(1);
             if (message.isProgramChange() && message.getProgramChangeNumber() == 33) {
                 if (!message.isForChannel(2)) return false;
                 patch = true;
             }
         }
-        if (!piano || !bass || !patch) return false;
+        if (!piano || !bass || !patch || !ownerPatch || rack.blocksProcessed != 1 || unusedLocal.blocksProcessed != 0) return false;
     }
     {
         PerformanceProbe padInstrument;

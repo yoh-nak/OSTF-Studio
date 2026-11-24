@@ -1323,7 +1323,7 @@ juce::var copyScoreTrack(const juce::var& original, juce::var lyrics) {
 
 juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t> remove,
                                      std::unique_ptr<OstfpPreview>& result, std::optional<std::size_t> duplicate,
-                                     MixerTrackGroup group) const {
+                                     MixerTrackGroup group, std::optional<int> newPartChannel) const {
     try {
         const auto before = savedScore(*this);
         auto score = parseObject(before);
@@ -1386,6 +1386,11 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
                 materialiseKits(score, *this);
                 createKit(score, track, {defaultPads.begin(), defaultPads.end()});
                 track.getDynamicObject()->setProperty("midi", object({{"mode", "singleChannel"}, {"channel", 10}}));
+            }
+            if (newPartChannel) {
+                require(kind != TrackKind::audio && *newPartChannel >= 1 && *newPartChannel <= 16, "Invalid MIDI part channel");
+                track.getDynamicObject()->setProperty("name", "MIDI Ch " + juce::String(*newPartChannel));
+                track.getDynamicObject()->setProperty("midi", object({{"mode", "singleChannel"}, {"channel", *newPartChannel}}));
             }
             entries.add(track);
             score.getDynamicObject()->setProperty("tracks", tracks);
@@ -1919,7 +1924,8 @@ juce::var editableClip(juce::var clips, juce::int64 tick, juce::int64 bar, juce:
 }
 }
 
-juce::Result OstfpPreview::setPatchAt(std::size_t track, juce::int64 tick, int channel, std::array<int,3> values, juce::MemoryBlock& before) try {
+juce::Result OstfpPreview::setPatchAt(std::size_t track, juce::int64 tick, int channel, std::array<int,3> values,
+                                      juce::MemoryBlock& before, bool sharedPart) try {
     require(track < sourceTrackCount() && tick >= 0 && tick < playbackEndTick() && channel >= 1 && channel <= 16, "Invalid patch destination.");
     require(std::all_of(values.begin(), values.end(), [](int v) { return v >= -1 && v <= 127; }), "Invalid MIDI patch.");
     before = savedScore(*this);
@@ -1934,7 +1940,8 @@ juce::Result OstfpPreview::setPatchAt(std::size_t track, juce::int64 tick, int c
             if (auto* list = events.getArray()) for (int i = list->size(); --i >= 0;) {
                 const auto e = (*list)[i];
                 if (integer(clip["start"]) + integer(e["start"]) == tick && e["type"] == type
-                    && (field == 2 || int(e["controller"]) == cc) && int(e.getProperty("channel", channel)) == channel) {
+                    && (field == 2 || int(e["controller"]) == cc)
+                    && (sharedPart || int(e.getProperty("channel", channel)) == channel)) {
                     destination = clip;
                     previous = e;
                     list->remove(i);
