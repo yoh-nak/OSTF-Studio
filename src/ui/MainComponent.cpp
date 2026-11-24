@@ -26,7 +26,7 @@ int toolbarButtonWidth(int width) { return std::clamp(width / 24, 24, 39); }
 
 int viewBarHeight(int width) {
     const bool wrapIcons = width < 860;
-    const int available = width - (wrapIcons ? 32 : 56) - (wrapIcons ? 9 : 20) * toolbarButtonWidth(width);
+    const int available = width - (wrapIcons ? 32 : 56) - (wrapIcons ? 9 : 21) * toolbarButtonWidth(width);
     const int rows = (wrapIcons ? 2 : 1) + (available < 394 ? 1 : 0);
     return 32 * rows;
 }
@@ -100,7 +100,7 @@ int browserWidthFor(int available, int preferred) {
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal, exportMusicXml, exportChordPro };
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal, exportMusicXml, exportChordPro, showSamplesPane };
 constexpr struct { const char* name; const char* first; const char* second; const char* third; } studioModes[] {
     {"AI Arrangement Studio", "Keep just piano and bass in the verse. Suggest an eight-bar build into the chorus.",
                               "Suggest two bass lines with different rhythms over these chords.",
@@ -450,6 +450,8 @@ MainComponent::MainComponent() {
     addView(pianoButton_, "Piano Roll", showPiano);
     addView(mixerButton_, "Mixer", showMixer);
     addView(pluginBrowserButton_, "Plug-in Browser", showPlugins);
+    addView(sampleBrowserButton_, "Audio files", showSamplesPane);
+    sampleBrowserButton_.setToggleable(true);
     addView(outputButton_, "Output Tracks", showOutputs);
     addView(lanesButton_, "Global Timeline Lanes", 0);
     addView(arrangementButton_, "Arrangement", showArrangement);
@@ -1188,6 +1190,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(showArrangement, TRANS("Arrangement"), true, workspaceMode_ == WorkspaceMode::arrangement);
             menu.addItem(showPiano, TRANS("Piano Roll"), project_ != nullptr, pianoButton_.getToggleState());
             menu.addItem(showMixer, TRANS("Mixer"), project_ != nullptr, mixer_.isVisible());
+            menu.addItem(showSamplesPane, TRANS("Audio files"), true, sampleBrowserButton_.getToggleState());
             menu.addItem(showPlugins, TRANS("Plug-in Browser"), true, pluginBrowserButton_.getToggleState());
             menu.addItem(showOutputs, TRANS("Output Tracks"), outputButton_.isEnabled(), outputButton_.getToggleState());
             menu.addSubMenu(TRANS("Global Timeline Lanes"), timelineMenu(), lanesButton_.isEnabled());
@@ -1386,6 +1389,7 @@ void MainComponent::menuItemSelected(int item, int) {
             deviceSettings_->setVisible(true);
             deviceSettings_->toFront(true);
             break;
+        case showSamplesPane: togglePluginBrowser(true); break;
         case showPlugins: togglePluginBrowser(); break;
         case showOutputs: showOutputTracks_ = !showOutputTracks_; refreshEditor(); break;
         case showSongInformation: editSongInformation(); break;
@@ -1427,24 +1431,33 @@ void MainComponent::menuItemSelected(int item, int) {
 PluginBrowser& MainComponent::ensurePluginBrowser() {
     if (!pluginBrowser_) {
         pluginBrowser_ = std::make_unique<PluginBrowser>();
+        pluginBrowser_->onTabChanged = [this](bool samples) {
+            pluginBrowserButton_.setToggleState(!samples, juce::dontSendNotification);
+            sampleBrowserButton_.setToggleState(samples, juce::dontSendNotification);
+        };
         addChildComponent(*pluginBrowser_);
     }
     return *pluginBrowser_;
 }
 
-void MainComponent::togglePluginBrowser() {
-    const bool shown = !pluginBrowserButton_.getToggleState();
+void MainComponent::togglePluginBrowser(bool samples) {
     auto& browser = ensurePluginBrowser();
-    if (shown && !browser.hasScanCache()) browser.scan();
-    pluginBrowserButton_.setToggleState(shown, juce::dontSendNotification);
-    pluginBrowser_->setVisible(shown);
+    const bool shown = !browser.isVisible() || !(samples ? sampleBrowserButton_ : pluginBrowserButton_).getToggleState();
+    if (shown) {
+        browser.showSamples(samples);
+        if (!samples && !browser.hasScanCache()) browser.scan();
+    } else {
+        sampleBrowserButton_.setToggleState(false, juce::dontSendNotification);
+        pluginBrowserButton_.setToggleState(false, juce::dontSendNotification);
+    }
+    browser.setVisible(shown);
     resized();
     repaint();
 }
 
 juce::Rectangle<int> MainComponent::getWorkspace() const {
     auto bounds = workspaceBounds(getLocalBounds(), topBasicsHeight());
-    if (pluginBrowserButton_.getToggleState()) bounds.removeFromRight(browserWidthFor(bounds.getWidth(), preferredBrowserWidth_) + columnGripWidth);
+    if (pluginBrowser_ && pluginBrowser_->isVisible()) bounds.removeFromRight(browserWidthFor(bounds.getWidth(), preferredBrowserWidth_) + columnGripWidth);
     return bounds;
 }
 
@@ -1750,7 +1763,7 @@ void MainComponent::itemDropped(const SourceDetails& details) {
 }
 
 void MainComponent::placeResult(ImportResultRow& row, std::optional<std::size_t> track, juce::int64 tick,
-                                bool replace) {
+                                bool replace, std::shared_ptr<const ostfstudio::OstfpPreview> dropped) {
     if (!project_ || recordTrack_)
         return;
     bool playing = transportActive_;
@@ -1782,9 +1795,12 @@ void MainComponent::placeResult(ImportResultRow& row, std::optional<std::size_t>
             row.index == -1 ? TRANS("Replace the chords covered by this progression?")
                             : TRANS("Replace the WAV on this track?"),
             TRANS("Replace"), TRANS("Cancel"), this,
-            juce::ModalCallbackFunction::create([safe, source, generation, track, tick](int answer) {
-                if (answer && safe && source && safe->projectGeneration_ == generation)
-                    safe->placeResult(*source, track, tick, true);
+            juce::ModalCallbackFunction::create([safe, source, generation, track, tick, dropped, index = row.index](int answer) {
+                if (!answer || !safe || safe->projectGeneration_ != generation) return;
+                if (dropped) {
+                    ImportResultRow part({}, *dropped, index);
+                    safe->placeResult(part, track, tick, true, dropped);
+                } else if (source) safe->placeResult(*source, track, tick, true);
             }));
         return;
     }
@@ -3479,6 +3495,19 @@ void MainComponent::addSharedPart(std::size_t index) {
                ostfstudio::MixerTrackGroup::pitched, nullptr, 0, ostfstudio::SessionMix::MidiRoute{channel, owner});
 }
 
+void MainComponent::detachSharedPart(std::size_t index) {
+    if (!project_ || recordTrack_ || index >= trackControls_.size()) return;
+    auto& part = *trackControls_[index];
+    if (!part.outputTrack) return;
+    stopTransport();
+    part.outputTrack.reset();
+    updatePresetLabel(index);
+    markSessionEdited();
+    refreshMidiRoutes();
+    if (part.instrumentAssignment.isObject()) restoreLocalInstrument(index, ensurePluginBrowser().types());
+    else statusLabel_.setText(TRANS("Sharing stopped. Choose an instrument for this track."), juce::dontSendNotification);
+}
+
 void MainComponent::showTrackPluginMenu(std::size_t index) {
     auto& control = *trackControls_[index];
     juce::PopupMenu menu;
@@ -3492,6 +3521,17 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
         if (nextChannel) label += " / Ch " + juce::String(nextChannel);
         menu.addItem(10, label, nextChannel != 0);
         menu.addSeparator();
+    }
+    constexpr int detachId = 500;
+    if (control.outputTrack) menu.addItem(detachId + int(index), TRANS("Stop sharing this instrument"), !recordTrack_);
+    else if (hasSharedParts(index)) {
+        juce::PopupMenu parts;
+        for (size_t i = 0; i < trackControls_.size(); ++i) {
+            const auto& part = *trackControls_[i];
+            if (part.outputTrack == index)
+                parts.addItem(detachId + int(i), "Ch " + juce::String(part.midiChannel) + "  " + juce::String::fromUTF8(project_->trackLanes[i].label));
+        }
+        menu.addSubMenu(TRANS("Stop sharing with track"), parts, !recordTrack_);
     }
     juce::PopupMenu channels;
     for (int channel = 1; channel <= 16; ++channel)
@@ -3549,6 +3589,8 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
             if (selection == 8) self->linkAudio(index);
             if (selection == 9) self->showPatch(index, 0);
             if (selection == 10) self->addSharedPart(index);
+            if (selection >= detachId && selection < detachId + int(self->trackControls_.size()))
+                self->detachSharedPart(size_t(selection - detachId));
             if (selection > channelId && selection <= channelId + 16) {
                 self->stopTransport();
                 if (self->trackControls_[index]->midiChannel != selection - channelId) self->markSessionEdited();
@@ -3615,34 +3657,81 @@ ostfstudio::ProjectAudio* MainComponent::clipOn(std::size_t track) const {
     return it != clips.end() ? &*it : nullptr;
 }
 
+bool MainComponent::shouldDropFilesWhenDraggedExternally(const juce::DragAndDropTarget::SourceDetails& details,
+                                                        juce::StringArray& paths, bool& canMove) {
+    const auto id = details.description.toString();
+    if (!id.startsWith("ostf-audio:")) return false;
+    const juce::File file(id.fromFirstOccurrenceOf(":", false, false));
+    if (!file.existsAsFile() || !PluginBrowser::supportsSample(file)) return false;
+    paths.add(file.getFullPathName());
+    canMove = false;
+    return true;
+}
+
 bool MainComponent::isInterestedInFileDrag(const juce::StringArray& files) {
     return project_ && !recordTrack_ && workspaceMode_ == WorkspaceMode::arrangement
-           && files.size() == 1 && PluginBrowser::supportsSample(juce::File::getCurrentWorkingDirectory().getChildFile(files[0]));
+           && files.size() == 1 && (PluginBrowser::supportsSample(juce::File::getCurrentWorkingDirectory().getChildFile(files[0]))
+                || files[0].endsWithIgnoreCase(".mid") || files[0].endsWithIgnoreCase(".midi"));
 }
 
 void MainComponent::filesDropped(const juce::StringArray& files, int x, int y) {
     if (!isInterestedInFileDrag(files)) return;
     auto track = pluginDropTrack({x, y});
     if (audioEditor_.isVisible() && audioEditor_.getBounds().contains(x, y)) track = selectedTrack_;
-    if (!track || project_->trackKinds[*track] != ostfstudio::TrackKind::audio) {
+    const juce::File file(files[0]);
+    const bool arrangement = rowOverlay_.getBounds().contains(x, y);
+    const auto tickAtDrop = arrangement && x >= rowOverlay_.getX() + trackHeaderWidth
+        ? arrangementTickAt(x) : std::max<juce::int64>(0, cursorTick_);
+    if (file.hasFileExtension("mid;midi")) {
+        if (!arrangement) return;
+        std::unique_ptr<ostfstudio::OstfpPreview> source;
+        juce::String summary;
+        auto r = ostfstudio::prepareMediaImport(file, source, summary);
+        if (r.failed()) { statusLabel_.setText(r.getErrorMessage(), juce::dontSendNotification); return; }
+        const bool chords = globalLaneAt({x,y}) == TimelineLane::chord;
+        if (!chords && source->sourceTrackCount() != 1) {
+            statusLabel_.setText(TRANS("Use Import for a multitrack MIDI file."), juce::dontSendNotification);
+            return;
+        }
+        auto held = std::shared_ptr<const ostfstudio::OstfpPreview>(std::move(source));
+        ImportResultRow part(file.getFileName(), *held, chords ? -1 : 0);
+        if (chords) placeResult(part, {}, tickAtDrop, false, held);
+        else if (track && *track < project_->sourceTrackCount() && project_->trackKinds[*track] == held->trackKinds[0])
+            placeResult(part, track, tickAtDrop, false, held);
+        else if (canEditTracks()) editTracks(held->trackKinds[0], {}, {}, held->mixerGroups[0], &part, tickAtDrop);
+        return;
+    }
+    if (!track || *track >= project_->sourceTrackCount() || project_->trackKinds[*track] != ostfstudio::TrackKind::audio) {
+        if (arrangement && canEditTracks()) {
+            placeWav(file, project_->sourceTrackCount(), tickAtDrop, false);
+            return;
+        }
         statusLabel_.setText(TRANS("Drop the sample onto an audio track"), juce::dontSendNotification);
         return;
     }
-    const auto tick = trackRows_[*track].withTrimmedLeft(trackHeaderWidth).contains(x, y)
-        ? arrangementTickAt(x) : std::max<juce::int64>(0, cursorTick_);
+    const auto local = audioEditor_.getLocalPoint(this, juce::Point<int>(x,y));
+    const auto tick = !arrangement && audioEditor_.isVisible() && audioEditor_.recordRuler.getBounds().contains(local.x, audioEditor_.recordRuler.getY())
+        ? arrangementTickAt(x) : tickAtDrop;
     placeWav(juce::File(files[0]), *track, tick, false);
 }
 
 void MainComponent::placeWav(const juce::File& file, std::size_t index, juce::int64 tick, bool replace) {
-    if (!project_ || index >= project_->sourceTrackCount() || recordTrack_) return;
-    auto* prior = clipOn(index);
+    if (!project_ || index > project_->sourceTrackCount() || recordTrack_) return;
+    const bool addTrack = index == project_->sourceTrackCount();
+    if (addTrack && (!canEditTracks() || index >= project_->maxTracks)) {
+        statusLabel_.setText(TRANS("Choose a matching destination track."), juce::dontSendNotification);
+        return;
+    }
+    auto* prior = addTrack ? nullptr : clipOn(index);
     if (prior && !replace) {
-        juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, TRANS("Replace"),
-            TRANS("Replace the WAV on this track?"), TRANS("Replace"), TRANS("Cancel"), this,
-            juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<MainComponent>(this),
-                generation = projectGeneration_, index, tick, file](int answer) {
-                if (answer && safe && generation == safe->projectGeneration_) safe->placeWav(file, index, tick, true);
-            }));
+        juce::PopupMenu options;
+        options.addSectionHeader(TRANS("Replace the WAV on this track?"));
+        options.addItem(1, TRANS("Replace"));
+        options.addItem(2, TRANS("Cancel"));
+        options.showMenuAsync(juce::PopupMenu::Options{}.withParentComponent(this),
+            [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, index, tick, file](int answer) {
+                if (answer == 1 && safe && generation == safe->projectGeneration_) safe->placeWav(file, index, tick, true);
+            });
         return;
     }
     juce::AudioFormatManager formats;
@@ -3682,6 +3771,12 @@ void MainComponent::placeWav(const juce::File& file, std::size_t index, juce::in
         + reader->lengthInSamples / reader->sampleRate) - tick), 1, end - tick);
     const bool playing = transportActive_;
     if (playing) stopTransport();
+    if (addTrack) {
+        editTracks(ostfstudio::TrackKind::audio);
+        if (project_->sourceTrackCount() != index + 1) return;
+        if (project_->renameTrack(index, file.getFileNameWithoutExtension()).wasOk())
+            trackPicker_.changeItemText(int(index + 1), file.getFileNameWithoutExtension());
+    }
     if (prior) *prior = std::move(clip);
     else project_->audio.push_back(std::move(clip));
     markSessionEdited();
@@ -4795,7 +4890,10 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
                 const double left = edge - (waveforms_.endTick(*clip, clock) - clip->startTick) / project_->ticksPerBar
                     / (range.end - range.start) * timeline.getWidth();
                 resizingAudioStart_ = !clip->timing.loop && std::abs(event.x - left) <= 7 && std::abs(event.x - left) < std::abs(event.x - edge);
-                if ((resizingAudioStart_ || std::abs(event.x - edge) <= 8) && waveforms_.available(i)) {
+                const bool atEnd = std::abs(event.x - edge) <= 8;
+                movingAudio_ = !atEnd && !resizingAudioStart_ && event.x >= left && event.x < edge;
+                if ((movingAudio_ || resizingAudioStart_ || atEnd) && waveforms_.available(i)) {
+                    audioGrabOffset_ = arrangementTickAt(event.x) - clip->startTick;
                     resizingAudio_ = i;
                     previewAudioStart_ = clip->startTick;
                     previewAudioLength_ = std::max<juce::int64>(1, std::llround(waveforms_.endTick(*clip, clock)) - clip->startTick);
@@ -4831,7 +4929,10 @@ void MainComponent::mouseDrag(const juce::MouseEvent& event) {
             const auto& clock = auditionClock_ ? *auditionClock_ : project_->clock;
             const auto end = std::llround(waveforms_.endTick(*clip, clock));
             const auto tick = arrangementTickAt(event.x, true);
-            if (resizingAudioStart_) {
+            if (movingAudio_) {
+                previewAudioStart_ = std::clamp<juce::int64>(tick - audioGrabOffset_, 0,
+                    std::max<juce::int64>(0, project_->playbackEndTick() - previewAudioLength_));
+            } else if (resizingAudioStart_) {
                 previewAudioStart_ = std::clamp<juce::int64>(tick, 0, std::min<juce::int64>(clip->sourceTick(), end - 1));
                 previewAudioLength_ = end - previewAudioStart_;
             } else {
@@ -4857,10 +4958,21 @@ void MainComponent::mouseUp(const juce::MouseEvent& event) {
     auto* clip = clipOn(*resizingAudio_);
     resizingAudio_.reset();
     if (!clip || recordTrack_ || !event.mouseWasDraggedSinceMouseDown()) return;
+    const auto destination = pluginDropTrack(event.getPosition());
+    if (movingAudio_ && (!destination || *destination >= project_->sourceTrackCount()
+        || project_->trackKinds[*destination] != ostfstudio::TrackKind::audio
+        || (*destination != clip->track && clipOn(*destination)))) { repaint(); return; }
     const bool playing = transportActive_;
     if (playing) stopTransport();
-    const auto& clock = auditionClock_ ? *auditionClock_ : project_->clock;
-    clip->resizeBounds(previewAudioStart_, previewAudioStart_ + previewAudioLength_, std::llround(waveforms_.endTick(*clip, clock)));
+    if (movingAudio_) {
+        clip->startTick = previewAudioStart_;
+        clip->track = *destination;
+        waveforms_.load(project_->audio);
+        selectTrack(*destination);
+    } else {
+        const auto& clock = auditionClock_ ? *auditionClock_ : project_->clock;
+        clip->resizeBounds(previewAudioStart_, previewAudioStart_ + previewAudioLength_, std::llround(waveforms_.endTick(*clip, clock)));
+    }
     markSessionEdited();
     finishNoteEdit(playing);
 }
@@ -5488,7 +5600,7 @@ void MainComponent::resized() {
     };
     for (auto* button : {&arrangementButton_, &leadButton_, &scoreButton_, &pianoButton_, &mixerButton_}) place(*button);
     divider();
-    for (auto* button : {&pluginBrowserButton_, &outputButton_, &lanesButton_, &theoryButton_}) place(*button);
+    for (auto* button : {&pluginBrowserButton_, &sampleBrowserButton_, &outputButton_, &lanesButton_, &theoryButton_}) place(*button);
     divider();
     place(songInfoButton_); place(musicButton_);
     if (getWidth() < 860) { toolbarHint_.setBounds(row); row = viewBar.removeFromTop(32); }
@@ -6046,9 +6158,10 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                             const auto oldLength = audio->durationTicks - audio->timing.leadingTicks;
                             if (!preview->sourceLimitTicks || oldLength < preview->sourceLimitTicks) preview->sourceLimitTicks = oldLength;
                         }
+                        const auto offset = movingAudio_ && resizingAudio_ == i ? previewAudioStart_ - audio->startTick : 0;
                         waveforms_.draw(g, body, *audio, audioClock,
-                                        (std::max(start, visible.start) - 1) * project_->ticksPerBar,
-                                        (std::min(endBar, visible.end) - 1) * project_->ticksPerBar, preview ? &*preview : nullptr);
+                                        (std::max(start, visible.start) - 1) * project_->ticksPerBar - offset,
+                                        (std::min(endBar, visible.end) - 1) * project_->ticksPerBar - offset, preview ? &*preview : nullptr);
                     }
                     g.setColour(juce::Colours::white);
                     const auto label = missing ? TRANS("Missing WAV") : audio->path.fromLastOccurrenceOf("/", false, false);

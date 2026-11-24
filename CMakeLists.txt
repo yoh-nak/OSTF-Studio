@@ -146,7 +146,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     juce_generate_juce_header(OSTFStudio)
     target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/OstfpPreview.cpp
         src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
-        src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/MusicXmlImport.cpp
+        src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
         src/ui/TheoryGuide.cpp tests/stock_effects_smoke.cpp tests/track_view_smoke.cpp tests/notation_smoke.cpp
         tests/transport_smoke.cpp tests/piano_edit_smoke.cpp tests/theory_guide_smoke.cpp)
     target_include_directories(OSTFStudio PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")

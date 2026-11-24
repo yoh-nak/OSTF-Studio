@@ -40,6 +40,7 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
             if (block > 5) peak = std::max(peak, std::abs(wet));
         }
     }
+    if (desc.name == "OSTF Stem Separator") return difference == 0 && instance.getLatencySamples() == 0 && instance.hasEditor();
     if (desc.name == "OSTF Wave Analyzer") {
         if (difference != 0 || instance.getLatencySamples() != 0 || !instance.hasEditor()) return false;
         auto* span = instance.getParameters()[0];

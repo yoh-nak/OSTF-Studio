@@ -134,6 +134,7 @@ void PluginBrowser::showSamples(bool show) {
         selectionChanged();
     }
     showingSamples_ = show;
+    if (onTabChanged) onTabChanged(show);
     sampleTab_.setToggleState(show, juce::dontSendNotification);
     pluginTab_.setToggleState(!show, juce::dontSendNotification);
     resized();

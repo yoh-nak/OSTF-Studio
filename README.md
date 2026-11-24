@@ -2,6 +2,12 @@
 
 **English** · [日本語](README.ja.md)
 
+When several tracks share one instrument, open the GM Sound Module to see its sounding parts in **Playing Ch**. **EDIT CH** selects the part whose controls are shown. Open a child track's instrument menu and choose **Stop sharing this instrument**, or select the child from **Stop sharing with track** on the owner.
+
+The **Audio files** toolbar button sits beside **Plug-ins**. Drop a sample onto the arrangement at the desired time. Drag the body of the resulting audio clip to move it or drag an edge to trim it. A Studio audio track holds one clip.
+
+Insert **OSTF Stem Separator** on an audio track. Drop a file into the editor or use **Capture track**, play the passage, and select **Finish capture**. Drag the estimated Drums, Bass, Other and Vocals WAV files to audio tracks. Detected notes and chords are also available as standard MIDI files. Dropping the chord MIDI onto Studio's chord lane places the timed chord symbols. The local separator uses spectral and transient estimates, so stems can contain bleed. Results are stored under the user's Music folder in `OSTF Studio/Stems`.
+
 In the upcoming release, mixer strips have metal-capped level faders and separate pan and send knobs with editable values. **Settings → Colour theme** offers seven finishes, including Forest Console, Midnight Indigo and Copper Console. The bundled GM Sound Module and nine stock effects use hardware-style controls. Each effect has its own rack panel and retains its existing automation parameters.
 
 Choose AI Arrangement Studio, AI Lyric Studio or AI Vocal Studio from the **Mode** menu. The prompt guide beside the global timeline headings cycles through three example requests for the selected mode every 15 seconds. The previous and next buttons reset the reading time. The ChatGPT connection button sits at the right of the top toolbar, alongside the model selector and refresh button when signed in. Open **Settings → Mackie Control** to connect a control surface. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.

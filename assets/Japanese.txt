@@ -1009,6 +1009,10 @@ countries: jp
 "Retry PDF" = "このPDFを再試行"
 "Instrument destination and channel" = "音源の出力先とMIDIチャンネル"
 "Open shared instrument" = "共有音源の画面を開く"
+"Stop sharing this instrument" = "このトラックの音源共有を解除"
+"Stop sharing with track" = "共有を解除するトラック"
+"Sharing stopped. Choose an instrument for this track." = "共有を解除しました。このトラックで使う音源を選んでください。"
+"Use Import for a multitrack MIDI file." = "複数トラックのMIDIファイルは「取り込み・採譜」から開けます。"
 "Add MIDI track sharing this instrument" = "この音源を共有するMIDIトラックを追加"
 "Shared instrument" = "共有音源"
 

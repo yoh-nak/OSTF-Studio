@@ -34,6 +34,8 @@ inline juce::Result estimateStemAudio(juce::AudioFormatReader &reader, std::arra
     std::array<float, 2 * size> inverse{};
     juce::AudioBuffer<float> input(channels, size), output(channels, hop);
     for (juce::int64 pos = -hop; pos < reader.lengthInSamples; pos += hop) {
+        if (auto* job = juce::ThreadPoolJob::getCurrentThreadPoolJob(); job && job->shouldExit())
+            return juce::Result::fail(TRANS("Analysis cancelled or timed out."));
         input.clear();
         const int offset = int(std::max<juce::int64>(0, -pos));
         const auto start = std::max<juce::int64>(0, pos);

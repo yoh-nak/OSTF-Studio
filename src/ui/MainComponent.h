@@ -47,6 +47,7 @@ public:
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseUp(const juce::MouseEvent& event) override;
     bool isInterestedInFileDrag(const juce::StringArray&) override;
+    bool shouldDropFilesWhenDraggedExternally(const juce::DragAndDropTarget::SourceDetails&, juce::StringArray&, bool&) override;
     void filesDropped(const juce::StringArray&, int x, int y) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 private:
@@ -119,14 +120,15 @@ private:
     void panTimeline(juce::ScrollBar&, double fraction);
     void showShortcutList();
     void updateTransportMix();
-    void togglePluginBrowser();
+    void togglePluginBrowser(bool samples = false);
     juce::Rectangle<int> getWorkspace() const;
     int getArrangementHeight(int workspaceHeight) const;
     void refreshTimelineLanes();
     std::optional<ostfstudio::TimelineLane> globalLaneAt(juce::Point<int>) const;
     juce::int64 arrangementTickAt(int x, bool endBoundary = false) const;
     void globalCommand(int command);
-    void placeResult(ImportResultRow&, std::optional<std::size_t> track, juce::int64 tick, bool replace);
+    void placeResult(ImportResultRow&, std::optional<std::size_t> track, juce::int64 tick, bool replace,
+                     std::shared_ptr<const ostfstudio::OstfpPreview> dropped = {});
     void applyGlobalChange(ostfstudio::TimelineLane, juce::Array<juce::var> remove, juce::Array<juce::var> insert);
     std::optional<ostfstudio::TimelineLane> selectedGlobal_, copiedLane_;
     juce::int64 selectedGlobalTick_ = 0, copiedPpq_ = 0;
@@ -177,7 +179,9 @@ private:
     void showTrackPluginMenu(std::size_t index);
     int nextSharedChannel(std::size_t owner) const;
     bool hasSharedParts(std::size_t owner) const;
+    void detachSharedPart(std::size_t);
     void addSharedPart(std::size_t index);
+    friend int checkSamplePlacement(const juce::File&);
     friend int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>);
     void scanTrackPlugin(std::size_t index);
     void discoverTrackPlugin(std::size_t index);
@@ -296,7 +300,7 @@ private:
     };
     juce::MenuBarComponent menuBar_;
     ViewButton pianoButton_ {ViewButton::Icon::piano}, mixerButton_ {ViewButton::Icon::mixer},
-               pluginBrowserButton_ {ViewButton::Icon::plugins}, outputButton_ {ViewButton::Icon::outputs},
+               pluginBrowserButton_ {ViewButton::Icon::plugins}, sampleBrowserButton_ {ViewButton::Icon::samples}, outputButton_ {ViewButton::Icon::outputs},
                songInfoButton_ {ViewButton::Icon::information}, lanesButton_ {ViewButton::Icon::lanes}, arrangementButton_ {ViewButton::Icon::arrangement},
                leadButton_ {ViewButton::Icon::leadSheet}, scoreButton_ {ViewButton::Icon::score};
     ViewButton melodyAdd_ {ViewButton::Icon::melody}, chorusAdd_ {ViewButton::Icon::chorus},
@@ -432,7 +436,8 @@ private:
     AudioClipEditor audioEditor_{waveforms_};
     TempoEditor tempoEditor_;
     std::optional<std::size_t> resizingAudio_;
-    bool resizingAudioStart_ = false;
+    bool resizingAudioStart_ = false, movingAudio_ = false;
+    juce::int64 audioGrabOffset_ = 0;
     juce::int64 previewAudioStart_ = 0;
     juce::int64 previewAudioLength_ = 0;
     bool spaceHeld_ = false;

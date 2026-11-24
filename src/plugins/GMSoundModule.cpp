@@ -85,19 +85,28 @@ public:
         if (!next || !tsf_set_max_voices(next.get(), 128)) return false;
         for (int channel = 0; channel < 16; ++channel)
             if (!tsf_channel_set_presetindex(next.get(), channel, 0)) return false;
+        juce::StringArray names, kits;
+        for (int i = 0; i < tsf_get_presetcount(next.get()); ++i)
+            names.add(juce::String::fromUTF8(tsf_get_presetname(next.get(), i)));
+        for (int i = 0; i < 128; ++i)
+            kits.add(names[tsf_get_presetindex(next.get(), 128, i)]);
         const juce::ScopedLock lock(bankLock_);
         tsf_set_output(next.get(), TSF_STEREO_INTERLEAVED, sampleRate_, -12.0f);
         bank_.swap(next);
         file_ = file;
-        bankName_ = name;
-        current_.fill(-1);
+        {
+            const juce::ScopedLock metadata(metadataLock_);
+            presetNames_.swapWith(names);
+            kitNames_.swapWith(kits);
+            bankName_ = name;
+            for (int ch = 0; ch < 16; ++ch) selectProgram(ch, program(ch));
+        }
         return true;
     }
 
     juce::String bankName() const {
-        const juce::ScopedLock lock(bankLock_);
-        if (!bank_) return "No SoundFont loaded";
-        return bankName_;
+        const juce::ScopedLock lock(metadataLock_);
+        return bankName_.isEmpty() ? "No SoundFont loaded" : bankName_;
     }
 
     int program(int channel) const { return programs_[channel].load(); }
@@ -108,21 +117,18 @@ public:
     }
     bool hasActivity(int channel) const {
         const auto last = activity_[channel].load();
-        return last != 0 && juce::Time::getMillisecondCounter() - last < 170;
+        return (soundingMask_.load() & (1u << channel)) != 0 || (last != 0 && juce::Time::getMillisecondCounter() - last < 350);
     }
     juce::String presetName(int channel) const {
-        const juce::ScopedLock lock(bankLock_);
-        const auto index = bank_ ? presetIndex(channel, program(channel)) : -1;
-        return index >= 0 ? juce::String::fromUTF8(tsf_get_presetname(bank_.get(), index)) : juce::String{};
+        const juce::ScopedLock lock(metadataLock_);
+        return presetNames_[displayPreset_[channel].load()];
     }
     bool isDrum(int ch) const {
-        const juce::ScopedLock lock(bankLock_);
-        return (ch == 9 || ch == 10) && active_[ch].msb == 120;
+        return drumMode_[ch].load();
     }
     juce::String drumKitName(int program) const {
-        const juce::ScopedLock lock(bankLock_);
-        const auto index = bank_ ? tsf_get_presetindex(bank_.get(), 128, program) : -1;
-        return index >= 0 ? juce::String::fromUTF8(tsf_get_presetname(bank_.get(), index)) : juce::String{};
+        const juce::ScopedLock lock(metadataLock_);
+        return kitNames_[program];
     }
 
     void prepareToPlay(double rate, int) override {
@@ -133,6 +139,8 @@ public:
     void releaseResources() override { reset(); }
     void reset() override {
         const juce::ScopedLock lock(bankLock_);
+        soundingMask_ = 0;
+        for (auto& stamp : activity_) stamp = 0;
         if (!bank_) return;
         for (int channel = 0; channel < 16; ++channel) tsf_channel_sounds_off_all(bank_.get(), channel);
         // TinySoundFont's sounds-off uses a short release. Consume it before restarting.
@@ -194,7 +202,10 @@ public:
         if (juce::File::isAbsolutePath(path) && loadBank(juce::File(path))) return;
         {
             const juce::ScopedLock lock(bankLock_);
-            if (bank_ && file_ == juce::File{}) return;
+            if (bank_ && file_ == juce::File{}) {
+                for (int ch = 0; ch < 16; ++ch) selectProgram(ch, program(ch));
+                return;
+            }
         }
         loadFactoryBank();
     }
@@ -216,6 +227,13 @@ public:
             applyMidi(event);
         }
         render(audio, rendered, audio.getNumSamples());
+        unsigned sounding = 0;
+        for (int i = 0; i < bank_->voiceNum; ++i) {
+            const auto& voice = bank_->voices[i];
+            if (voice.playingPreset >= 0 && juce::isPositiveAndBelow(voice.playingChannel, 16))
+                sounding |= 1u << voice.playingChannel;
+        }
+        soundingMask_ = sounding;
     }
 
 private:
@@ -278,6 +296,8 @@ private:
     void selectProgram(int channel, int program) {
         const auto preset = presetIndex(channel, program);
         current_[channel] = program;
+        displayPreset_[channel] = preset;
+        drumMode_[channel] = (channel == 9 || channel == 10) && active_[channel].msb == 120;
         valid_[channel] = preset >= 0;
         if (preset >= 0) tsf_channel_set_presetindex(bank_.get(), channel, preset);
     }
@@ -377,6 +397,11 @@ private:
     mutable juce::CriticalSection bankLock_;
     Bank bank_ {nullptr, closeBank};
     juce::File file_;
+    juce::CriticalSection metadataLock_;
+    juce::StringArray presetNames_, kitNames_;
+    std::array<std::atomic<int>,16> displayPreset_{};
+    std::array<std::atomic<bool>,16> drumMode_{};
+    std::atomic<unsigned> soundingMask_{0};
     juce::String bankName_;
     std::array<std::atomic<int>, 16> programs_ {};
     std::array<std::array<std::atomic<int>, controlCount>, 16> controls_ {};
@@ -454,7 +479,12 @@ public:
 
     void paintOverChildren(juce::Graphics& g) override {
         for (int i = 0; i < 16; ++i) {
+            const auto bounds = channels_[i].getBounds().toFloat().reduced(1);
             const auto top = channels_[i].getBounds().getTopRight();
+            if (module_.hasActivity(i)) {
+                g.setColour(juce::Colour(0xff87ffc6));
+                g.drawRoundedRectangle(bounds, 5.f, 2.f);
+            }
             g.setColour(juce::Colour(module_.hasActivity(i) ? 0xff87ffc6 : 0xff405059));
             g.fillEllipse(static_cast<float>(top.x - 12), static_cast<float>(top.y + 6), 5.0f, 5.0f);
         }
@@ -527,9 +557,11 @@ private:
             channels_[i].setTooltip(tooltip);
             channels_[i].setToggleState(i == selected_, juce::dontSendNotification);
         }
-        part_.setText("MIDI CHANNEL " + juce::String(selected_ + 1) + (showingDrums_ ? " / PERCUSSION" : ""),
+        part_.setText("EDIT CH " + juce::String(selected_ + 1) + (showingDrums_ ? " / PERCUSSION" : ""),
                       juce::dontSendNotification);
-        bank_.setText(module_.bankName(), juce::dontSendNotification);
+        juce::StringArray sounding;
+        for (int i = 0; i < 16; ++i) if (module_.hasActivity(i)) sounding.add(juce::String(i + 1));
+        bank_.setText(module_.bankName() + "     Playing Ch: " + (sounding.isEmpty() ? "-" : sounding.joinIntoString(", ")), juce::dontSendNotification);
         const auto preset = module_.presetName(selected_);
         preset_.setText(preset.isNotEmpty() ? "Bank patch: " + preset : "Patch unavailable", juce::dontSendNotification);
         program_.setSelectedId(module_.program(selected_) + 1, juce::dontSendNotification);

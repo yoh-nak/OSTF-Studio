@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Sample placement, stem separation and shared-part feedback
+
+Branch `feature/sample-placement-stem-separator`. Windows x64 Release passed all 29 CTest cases. The separate JUCE-free core build passed 2/2. The Audio files button next to Plug-ins opens the right-hand folder browser. Drop a sample to place it at the pointer, then drag the clip body to move it. Dropping over an occupied audio track opens a replacement menu. The current model has one audio clip per track.
+
+The bundled **OSTF Stem Separator** VST3 accepts a file or records its audio insert input. It reuses Studio's local separation and transcription and writes WAV stems, detected MIDI parts and a named chord MIDI track to the user's Music folder under `OSTF Studio/Stems`. MIDI uses the importer's provisional 120 BPM grid. The named chord markers can be dropped on Studio's chord lane. Test file and capture paths with `ostf_stem_separator_tests` and host loading with `ostf_studio_stock_effects`. Real-device monitoring, macOS and file dragging in a third-party host require separate verification.
+
+The GM editor shows the edited part and currently sounding channels separately. Its periodic display refresh no longer takes the synthesizer lock. Stop sharing from a child track's instrument menu or choose a child by name on the owner. The Windows tests `ostf_gm_channel_activity_tests`, `ostf_studio_gm_plugin` and `ostf_studio_track_view` cover sustained multi-channel activity, rendering each of the seven shared GM demo parts, unlinking one sibling and moving samples.
+
 ## Shared multitimbral instrument tracks
 
 Branch `feature/shared-instrument-parts`. Open a loaded instrument's button and choose **Add MIDI track sharing this instrument**. The same command on a child creates a sibling. Studio finds a free channel on that instance. A shared GM part on channel 10 uses the drum editor. To route an existing track, choose **Instrument destination and channel**. Occupied channels show their track names.

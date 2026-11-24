@@ -71,6 +71,25 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
             if (events.empty() || !xml || xml->getIntAttribute("p" + juce::String(routes[i].midiChannel - 1), -1) != events.front().program)
                 return 66;
         }
+        playback.stop();
+        const auto pitched = shared->pitchedNotes;
+        const auto drums = shared->drumNotes;
+        for (size_t part = 0; part < shared->sourceTrackCount(); ++part) {
+            for (auto& notes : shared->pitchedNotes) notes.clear();
+            for (auto& notes : shared->drumNotes) notes.clear();
+            shared->pitchedNotes[part] = pitched[part];
+            shared->drumNotes[part] = drums[part];
+            const auto& notes = drums[part].empty() ? pitched[part] : drums[part];
+            if (notes.empty() || playback.preparePlayback(*shared, routes, {}, 44100, 512).failed()) return 76;
+            playback.seekToTick(notes.front().startTick);
+            float partPeak = 0;
+            for (int i = 0; i < 12; ++i) {
+                playback.renderBlock(block.getArrayOfWritePointers(), 2, 512);
+                partPeak = std::max(partPeak, block.getMagnitude(0, 512));
+            }
+            playback.stop();
+            if (partPeak < .0001f) return 77;
+        }
     }
     MainComponent studio;
     studio.newProject();
@@ -89,6 +108,9 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
         if (part.instance || part.outputTrack != 0 || part.midiChannel != int(i)
             || studio.project_->sourceMidiChannels[i] != int(i) || !part.plugin.getButtonText().contains("Ch ")) return 73;
     }
+    studio.detachSharedPart(1);
+    if (studio.trackControls_[1]->outputTrack || studio.trackControls_[2]->outputTrack != 0
+        || studio.trackControls_[0]->instance.get() != original || studio.trackControls_[1]->plugin.getButtonText().contains("Ch ")) return 75;
     studio.trackControls_[0]->midiChannel = 9;
     studio.addSharedPart(2);
     if (studio.project_->sourceTrackCount() != 4 || studio.project_->trackKinds[3] != ostfstudio::TrackKind::drum
@@ -177,7 +199,62 @@ std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)> fin
     return std::make_unique<Probe>(std::move(finished));
 }
 
+int checkSamplePlacement(const juce::File& file) {
+    MainComponent main;
+    main.setSize(1650, 1400);
+    main.newProject();
+    main.editTracks(ostfstudio::TrackKind::audio);
+    main.editTracks(ostfstudio::TrackKind::audio);
+    const auto x = main.rowOverlay_.getX() + main.trackHeaderWidth + 40;
+    main.filesDropped({file.getFullPathName()}, x, main.trackRows_[0].getCentreY());
+    auto* clip = main.clipOn(0);
+    if (!clip || clip->localFile != file || clip->startTick != main.arrangementTickAt(x)) return 151;
+    const auto start = clip->startTick;
+    const auto length = clip->durationTicks;
+    const auto begin = juce::Point<int>(x + 14, main.trackRows_[0].getCentreY());
+    auto drag = [&](juce::Point<int> position, bool moved) {
+        const auto time = juce::Time::getCurrentTime();
+        return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), position.toFloat(),
+            juce::ModifierKeys::leftButtonModifier, 1, 0, 0, 0, 0, &main, &main, time, begin.toFloat(), time, 1, moved);
+    };
+    main.mouseDown(drag(begin, false));
+    if (!main.movingAudio_ || main.resizingAudio_ != 0) return 152;
+    const auto end = juce::Point<int>(begin.x + 120, main.trackRows_[1].getCentreY());
+    main.mouseDrag(drag(end, true));
+    main.mouseUp(drag(end, true));
+    clip = main.clipOn(1);
+    if (main.clipOn(0) || !clip || clip->durationTicks != length || clip->startTick <= start
+        || clip->startFrame != 0 || clip->timing.leadingTicks != 0 || clip->localFile != file) return 153;
+    // A separator file carries playable triads and named regions in the same standard MIDI track.
+    juce::MidiMessageSequence notes;
+    notes.addEvent(juce::MidiMessage::textMetaEvent(3, "OSTF Stem Separator Chords"));
+    notes.addEvent(juce::MidiMessage::textMetaEvent(6, "Dm"), 0);
+    for (int pitch : {62,65,69}) {
+        notes.addEvent(juce::MidiMessage::noteOn(1, pitch, juce::uint8(90)), 0);
+        notes.addEvent(juce::MidiMessage::noteOff(1,pitch), 480);
+    }
+    juce::TemporaryFile temporary(".mid");
+    juce::MidiFile midi;
+    midi.setTicksPerQuarterNote(480); midi.addTrack(notes);
+    { auto out = temporary.getFile().createOutputStream(); if (!out || !midi.writeTo(*out)) return 154; }
+    const auto before = main.project_->sourceTrackCount();
+    main.filesDropped({temporary.getFile().getFullPathName()}, x, main.trackRows_[0].getCentreY());
+    if (main.project_->sourceTrackCount() != before + 1 || main.project_->pitchedNotes[before].size() != 3) return 155;
+    for (int y = main.rowOverlay_.getY(); y < main.rowOverlay_.getBottom(); ++y) {
+        if (main.globalLaneAt({x,y}) != ostfstudio::TimelineLane::chord) continue;
+        main.filesDropped({temporary.getFile().getFullPathName()}, x, y);
+        const auto score = juce::JSON::parse(main.project_->sourceScore.toString());
+        const auto regions = score["harmony"]["chords"];
+        for (const auto& r : *regions.getArray()) if (r["label"] == "Dm" && juce::int64(r["start"]) == main.arrangementTickAt(x)) return 0;
+        return 156;
+    }
+    return 157;
+}
+
 int checkTrackView(const juce::File& fixture) {
+    const auto wave = fixture.getParentDirectory().getParentDirectory().getParentDirectory()
+        .getChildFile("examples/demo-songs/assets/glass-lantern-chimes.wav");
+    if (const auto result = checkSamplePlacement(wave)) return result;
     using namespace ostfstudio;
     using A = SurfaceAction;
     if (mackieAction(juce::MidiMessage::pitchWheel(8,16383)).index != 7
@@ -363,19 +440,19 @@ int checkTrackView(const juce::File& fixture) {
     tracks->setSelectedId(audioTrack, juce::sendNotificationSync);
     if (audioEditor->channels.getSelectedId() != 2) return 69;
     if (!audioEditor->isVisible() || !main.isInterestedInFileDrag({"Splice sample.wav"})
-        || main.isInterestedInFileDrag({"notes.mid"})) return 53;
+        || !main.isInterestedInFileDrag({"notes.mid"})) return 53;
     main.setSize(1450, 1200);
     const auto sample = fixture.getParentDirectory().getParentDirectory().getParentDirectory()
         .getChildFile("examples/demo-songs/assets/glass-lantern-chimes.wav");
     const auto drop = audioEditor->getBounds().getCentre();
     auto* pane = descendant<PluginBrowser>(main);
-    if (!pane && !click("Plug-in Browser")) return 140;
+    if (!click("Audio files")) return 140;
     pane = descendant<PluginBrowser>(main);
     if (!pane) return 140;
     auto* assets = dynamic_cast<juce::Button*>(pane->findChildWithID("browser-samples"));
     auto* plugins = dynamic_cast<juce::Button*>(pane->findChildWithID("browser-plugins"));
     if (!assets || !plugins) return 141;
-    assets->onClick();
+    if (!assets->getToggleState() || !pane->isVisible()) return 141;
     auto* files = descendant<juce::FileBrowserComponent>(*pane);
     if (!files || !files->isVisible() || !files->getDisplayComponent()) return 142;
     files->setRoot(sample.getParentDirectory());

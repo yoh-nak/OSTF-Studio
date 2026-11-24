@@ -4,7 +4,7 @@
 
 class ViewButton final : public juce::Button {
 public:
-    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones };
+    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones, samples };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
     std::function<void(juce::String)> onHint;
     void mouseEnter(const juce::MouseEvent& e) override { Button::mouseEnter(e); if (onHint) onHint(getTooltip()); }
@@ -98,6 +98,10 @@ public:
                     g.fillRoundedRectangle(x+i*7, y+(i == 1 ? 3 : 9), 6, 4, 1);
                 }
                 break;
+            case Icon::samples:
+                line(1, 5, 1, 16); line(1, 16, 19, 16); line(19, 16, 19, 5);
+                line(19, 5, 9, 5); line(9, 5, 7, 2); line(7, 2, 1, 2); line(1, 2, 1, 5);
+                line(4, 11, 7, 11); line(7, 11, 9, 8); line(9, 8, 11, 14); line(11, 14, 13, 10); line(13, 10, 16, 10); break;
             case Icon::plugins:
                 line(6, 0, 6, 6); line(14, 0, 14, 6);
                 g.drawRoundedRectangle(x+3, y+6, 14, 7, 2, 1.6f);

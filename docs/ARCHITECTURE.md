@@ -1,5 +1,11 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## Shared instruments, sample placement and stem exports
+
+The shared instrument owner receives channel-remapped events from its routed parts. Its stereo return is mixed once. The GM editor reads cached bank metadata and publishes channel activity from MIDI onsets and sounding synth voices. Each editor part selector edits a single channel while all channels can play. Detaching a child removes its route and reactivates its prior instrument assignment if available.
+
+The folder toolbar button and the right pane use the same sample browser. File drops resolve to arrangement time. Moving a clip changes its start tick and keeps its source and warp data. Existing audio tracks accept one clip and require confirmation to replace it. The Stem Separator VST3 passes its input through, records bounded mono or stereo host audio on request, and analyses file or captured input on a background worker. Studio's importer and the VST3 share the local complementary stem estimates and note/drum/chord analysis. Each completed result is a directory of WAV and standard MIDI files. The chord MIDI carries playable triads and timed text markers under a named track so that Studio can also place it on its chord lane.
+
 ## Factory instruments and the sample browser
 
 Four separately identifiable VST3 instruments share a polyphonic rendering engine. FM uses phase modulation, analog uses band-limited saw oscillators, the drum machine models pitched and noise transients, and wavetable synthesis interpolates harmonic-limited tables. The processor takes MIDI events at sample offsets and captures the active preset per voice. Its VST3 state holds preset, tone and output level. First Light Vector stores program changes in the score and instrument class references in the production session.

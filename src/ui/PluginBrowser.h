@@ -10,6 +10,8 @@ public:
     void resized() override;
     bool hasScanCache() const { return cache_.existsAsFile(); }
     void scan();
+    void showSamples(bool);
+    std::function<void(bool)> onTabChanged;
     static bool supportsSample(const juce::File& file) { return file.hasFileExtension("wav;aif;aiff;flac;mp3"); }
     std::optional<juce::PluginDescription> find(const juce::String& identifier) const;
     juce::Array<juce::PluginDescription> types() const { return plugins_.getTypes(); }
@@ -17,7 +19,6 @@ public:
 
 private:
     void timerCallback() override;
-    void showSamples(bool show);
     void selectionChanged() override;
     void fileClicked(const juce::File&, const juce::MouseEvent&) override {}
     void fileDoubleClicked(const juce::File&) override {}
