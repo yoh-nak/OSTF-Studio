@@ -1,5 +1,6 @@
 #include "ui/Notation.h"
 #include "ui/MainComponent.h"
+#include "ui/InstrumentProgramWatch.h"
 #include "ui/GlobalTimelineEdit.h"
 #include "ui/ExternalAudioEdit.h"
 #include "ui/AudioRegionEdits.h"
@@ -144,6 +145,7 @@ public:
         setUsingNativeTitleBar(true);
     }
     std::function<void()> onClosed;
+    std::unique_ptr<ostfstudio::InstrumentProgramWatch> programWatch;
     void closeButtonPressed() override {
         setVisible(false);
         if (onClosed) onClosed();
@@ -451,7 +453,7 @@ MainComponent::MainComponent() {
     addView(pianoButton_, "Piano Roll", showPiano);
     addView(mixerButton_, "Mixer", showMixer);
     addView(pluginBrowserButton_, "Plug-in Browser", showPlugins);
-    addView(sampleBrowserButton_, "Audio files", showSamplesPane);
+    addView(sampleBrowserButton_, "Media library", showSamplesPane);
     sampleBrowserButton_.setToggleable(true);
     addView(outputButton_, "Output Tracks", showOutputs);
     addView(lanesButton_, "Global Timeline Lanes", 0);
@@ -1191,7 +1193,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(showArrangement, TRANS("Arrangement"), true, workspaceMode_ == WorkspaceMode::arrangement);
             menu.addItem(showPiano, TRANS("Piano Roll"), project_ != nullptr, pianoButton_.getToggleState());
             menu.addItem(showMixer, TRANS("Mixer"), project_ != nullptr, mixer_.isVisible());
-            menu.addItem(showSamplesPane, TRANS("Audio files"), true, sampleBrowserButton_.getToggleState());
+            menu.addItem(showSamplesPane, TRANS("Media library"), true, sampleBrowserButton_.getToggleState());
             menu.addItem(showPlugins, TRANS("Plug-in Browser"), true, pluginBrowserButton_.getToggleState());
             menu.addItem(showOutputs, TRANS("Output Tracks"), outputButton_.isEnabled(), outputButton_.getToggleState());
             menu.addSubMenu(TRANS("Global Timeline Lanes"), timelineMenu(), lanesButton_.isEnabled());
@@ -1634,7 +1636,7 @@ bool MainComponent::isInterestedInDragSource(const SourceDetails& details) {
     const auto id = details.description.toString();
     return workspaceMode_ == WorkspaceMode::arrangement && project_ &&
            (dynamic_cast<ImportResultRow*>(details.sourceComponent.get()) || id == generatorDragId ||
-            (pluginBrowser_ && (id.startsWith("ostf-vst3:") || (id.startsWith("ostf-audio:") && !recordTrack_))));
+            (pluginBrowser_ && (id.startsWith("ostf-vst3:") || (id.startsWith("ostf-media:") && !recordTrack_))));
 }
 
 std::optional<std::size_t> MainComponent::pluginDropTrack(juce::Point<int> position) const {
@@ -1662,7 +1664,8 @@ void MainComponent::itemDragMove(const SourceDetails& details) {
     const auto plugin = pluginBrowser_ && id.startsWith("ostf-vst3:") ? pluginBrowser_->find(id.substring(10)) : std::nullopt;
     const auto output = plugin && !plugin->isInstrument ? outputDropTrack(details.localPosition) : std::nullopt;
     auto track = pluginDropTrack(details.localPosition);
-    if (id.startsWith("ostf-audio:") && track && project_->trackKinds[*track] != ostfstudio::TrackKind::audio) track.reset();
+    if (id.startsWith("ostf-media:") && track && !juce::File(id.fromFirstOccurrenceOf(":", false, false)).hasFileExtension("mid;midi;ostf;ostfp")
+        && project_->trackKinds[*track] != ostfstudio::TrackKind::audio) track.reset();
     const auto* part = dynamic_cast<ImportResultRow*>(details.sourceComponent.get());
     importTrackDrop_.setVisible(part && part->index >= 0 && canEditTracks() && !recordTrack_);
     if (importTrackDrop_.isVisible()) {
@@ -1692,7 +1695,7 @@ void MainComponent::itemDropped(const SourceDetails& details) {
     itemDragExit(details);
     if (!isInterestedInDragSource(details)) return;
     const auto id = details.description.toString();
-    if (id.startsWith("ostf-audio:")) {
+    if (id.startsWith("ostf-media:")) {
         filesDropped({id.fromFirstOccurrenceOf(":",false,false)}, details.localPosition.x, details.localPosition.y);
         return;
     }
@@ -3131,8 +3134,11 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
     if (!canEditTracks()) return;
     stopTransport();
     std::unique_ptr<ostfstudio::OstfpPreview> updated;
-    auto result = project_->editTracks(kind, remove, updated, duplicate, group,
-                                       sharedPart ? std::optional<int>(sharedPart->channel) : std::nullopt);
+    std::optional<int> newChannel;
+    if (sharedPart) newChannel = sharedPart->channel;
+    else if (import && kind != ostfstudio::TrackKind::audio && import->index >= 0)
+        newChannel = import->source.sourceMidiChannels[size_t(import->index)];
+    auto result = project_->editTracks(kind, remove, updated, duplicate, group, newChannel);
     if (result.wasOk() && import) {
         const auto dest = updated->sourceTrackCount() - 1;
         result = updated->renameTrack(dest, juce::String::fromUTF8(import->source.trackLanes[import->index].label));
@@ -3503,7 +3509,7 @@ bool MainComponent::hasSharedParts(std::size_t owner) const {
 }
 
 int MainComponent::nextSharedChannel(std::size_t owner) const {
-    if (!project_ || owner >= project_->sourceTrackCount() || project_->sourceTrackCount() >= project_->maxTracks
+    if (!project_ || owner >= project_->sourceTrackCount()
         || !canEditTracks() || recordTrack_) return 0;
     const auto& host = *trackControls_[owner];
     if (host.outputTrack || !host.playableInstrument || !host.instance || !host.instance->acceptsMidi()
@@ -3522,7 +3528,7 @@ int MainComponent::nextSharedChannel(std::size_t owner) const {
 void MainComponent::addSharedPart(std::size_t index) {
     const auto owner = trackControls_[index]->outputTrack.value_or(index);
     const int channel = nextSharedChannel(owner);
-    if (!channel) return;
+    if (!channel || project_->sourceTrackCount() >= project_->maxTracks) return;
     const bool gmDrums = channel == 10 && trackControls_[owner]->instance->getName() == "OSTF GM Sound Module";
     editTracks(gmDrums ? ostfstudio::TrackKind::drum : ostfstudio::TrackKind::pitched, {}, {},
                ostfstudio::MixerTrackGroup::pitched, nullptr, 0, ostfstudio::SessionMix::MidiRoute{channel, owner});
@@ -3532,13 +3538,66 @@ void MainComponent::detachSharedPart(std::size_t index) {
     if (!project_ || recordTrack_ || index >= trackControls_.size()) return;
     auto& part = *trackControls_[index];
     if (!part.outputTrack) return;
+    routeMidiPart(index, {}, part.midiChannel);
+    if (!part.instrumentAssignment.isObject()) statusLabel_.setText(TRANS("Sharing stopped. Choose an instrument for this track."), juce::dontSendNotification);
+}
+
+void MainComponent::routeMidiPart(std::size_t index, std::optional<std::size_t> owner, int channel) {
+    if (!project_ || recordTrack_ || index >= project_->sourceTrackCount() || channel < 1 || channel > 16) return;
+    auto& part = *trackControls_[index];
+    if (part.loading || (owner && (*owner == index || *owner >= project_->sourceTrackCount()
+        || hasSharedParts(index) || trackControls_[*owner]->outputTrack || !trackControls_[*owner]->playableInstrument))) return;
     stopTransport();
-    part.outputTrack.reset();
-    updatePresetLabel(index);
-    markSessionEdited();
+    if (midiOutputs_.erase(project_->trackIds[int(index)])) saveMidiRoutes();
+    if (owner && part.instance) {
+        part.editor.reset();
+        part.inactiveInstrument = part.instance->getPluginDescription();
+        part.inactiveInstrumentState.reset();
+        part.instance->getStateInformation(part.inactiveInstrumentState);
+        part.instance.reset();
+        part.playableInstrument = false;
+    }
+    if (owner != part.outputTrack || channel != part.midiChannel) markSessionEdited();
+    part.outputTrack = owner;
+    part.midiChannel = channel;
     refreshMidiRoutes();
-    if (part.instrumentAssignment.isObject()) restoreLocalInstrument(index, ensurePluginBrowser().types());
-    else statusLabel_.setText(TRANS("Sharing stopped. Choose an instrument for this track."), juce::dontSendNotification);
+    updatePresetLabel(index);
+    if (!owner && !part.instance && part.instrumentAssignment.isObject()) restoreLocalInstrument(index, ensurePluginBrowser().types());
+}
+
+bool MainComponent::isEmptyMidiTrack(std::size_t i) const {
+    if (!project_ || i >= project_->sourceTrackCount() || project_->trackKinds[i] == ostfstudio::TrackKind::audio) return false;
+    const auto id = project_->trackIds[int(i)];
+    const auto& t = *trackControls_[i];
+    const auto name = juce::String::fromUTF8(project_->trackLanes[i].label);
+    const auto n = name.getTrailingIntValue();
+    if (n < 1 || n > 16 || name != "MIDI Ch " + juce::String(n) || t.loading || t.outputTrack || hasSharedParts(i)
+        || t.instance || t.instrumentAssignment.isObject() || !t.effects.slots.empty() || t.inactiveInstrument
+        || armedId_ == id || midiOutputs_.contains(id) || project_->panAutomation.contains(id)
+        || !clipsOn(i).empty() || !project_->performanceCurves[i].empty()) return false;
+    return std::none_of(project_->addedClips.begin(), project_->addedClips.end(), [i](const auto& clip) { return clip.track == i; });
+}
+
+void MainComponent::reviewEmptyMidiTracks() {
+    if (!canEditTracks() || recordTrack_) return;
+    juce::StringArray names, ids;
+    for (size_t i = 0; i < project_->sourceTrackCount(); ++i) if (isEmptyMidiTrack(i)) {
+        names.add("#" + juce::String(int(i + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[i].label));
+        ids.add(project_->trackIds[int(i)]);
+    }
+    if (ids.isEmpty()) {
+        statusLabel_.setText(TRANS("No unused MIDI parts to remove."), juce::dontSendNotification);
+        return;
+    }
+    juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::WarningIcon, TRANS("Remove these empty MIDI parts?"),
+        names.joinIntoString("\n"), TRANS("Delete track"), TRANS("Cancel"), this,
+        juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<MainComponent>(this), ids, generation = projectGeneration_](int answer) {
+            if (!safe || !answer || safe->projectGeneration_ != generation || safe->recordTrack_) return;
+            for (int n = ids.size(); --n >= 0;) {
+                const auto index = safe->project_->trackIds.indexOf(ids[n]);
+                if (index >= 0 && safe->isEmptyMidiTrack(size_t(index))) safe->editTracks(ostfstudio::TrackKind::pitched, size_t(index));
+            }
+        }));
 }
 
 void MainComponent::showTrackPluginMenu(std::size_t index) {
@@ -3547,12 +3606,21 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
     constexpr int channelId = 100;
     constexpr int outputId = 200;
     constexpr int sharedId = 20000;
+    constexpr int reuseId = 600;
     const auto owner = control.outputTrack.value_or(index);
     const int nextChannel = nextSharedChannel(owner);
     if (nextChannel || control.outputTrack || control.playableInstrument) {
         auto label = TRANS("Add MIDI track sharing this instrument");
         if (nextChannel) label += " / Ch " + juce::String(nextChannel);
-        menu.addItem(10, label, nextChannel != 0);
+        menu.addSectionHeader("#" + juce::String(int(owner + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[owner].label));
+        menu.addItem(10, label, nextChannel != 0 && project_->sourceTrackCount() < project_->maxTracks);
+        juce::PopupMenu existing;
+        for (size_t i = 0; i < project_->sourceTrackCount(); ++i) {
+            const auto& part = *trackControls_[i];
+            if (i == owner || part.outputTrack || part.loading || hasSharedParts(i) || project_->trackKinds[i] == ostfstudio::TrackKind::audio) continue;
+            existing.addItem(reuseId + int(i), "#" + juce::String(int(i + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[i].label));
+        }
+        if (existing.getNumItems()) menu.addSubMenu(TRANS("Use an existing track") + " / Ch " + juce::String(nextChannel), existing, nextChannel != 0);
         menu.addSeparator();
     }
     constexpr int detachId = 500;
@@ -3565,7 +3633,9 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
                 parts.addItem(detachId + int(i), "Ch " + juce::String(part.midiChannel) + "  " + juce::String::fromUTF8(project_->trackLanes[i].label));
         }
         menu.addSubMenu(TRANS("Stop sharing with track"), parts, !recordTrack_);
+        menu.addItem(11, TRANS("Disconnect all parts and keep tracks"), !recordTrack_);
     }
+    menu.addItem(12, TRANS("Review unused MIDI parts..."), canEditTracks() && !recordTrack_);
     juce::PopupMenu channels;
     for (int channel = 1; channel <= 16; ++channel)
         channels.addItem(channelId + channel, juce::String(channel), true, control.midiChannel == channel);
@@ -3590,7 +3660,7 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
             parts.addItem(sharedId + static_cast<int>(i) * 16 + part - 1, label,
                           true, control.outputTrack == i && control.midiChannel == part);
         }
-        outputs.addSubMenu(juce::String::fromUTF8(project_->trackLanes[i].label) + " / " + target.instance->getName(), parts);
+        outputs.addSubMenu("#" + juce::String(int(i + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[i].label) + " / " + target.instance->getName(), parts);
     }
     const auto ports = juce::MidiOutput::getAvailableDevices();
     const auto id = project_->trackIds[int(index)];
@@ -3612,7 +3682,7 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
     menu.addItem(5, control.outputTrack ? TRANS("Open shared instrument") : TRANS("Open plug-in editor"),
                  editorTrack < trackControls_.size() && trackControls_[editorTrack]->instance != nullptr);
     menu.addSeparator();
-    menu.addItem(2, TRANS("Clear assignment"), (control.pluginPath != juce::File{} || control.instrumentAssignment.isObject()) && !control.loading);
+    menu.addItem(2, hasSharedParts(index) ? TRANS("Clear instrument and disconnect its parts") : TRANS("Clear assignment"), (control.pluginPath != juce::File{} || control.instrumentAssignment.isObject()) && !control.loading);
     menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&control.plugin),
         [self = juce::Component::SafePointer<MainComponent>(this), index, ports, id, generation = projectGeneration_](int selection) {
             if (self == nullptr || self->projectGeneration_ != generation) return;
@@ -3622,6 +3692,15 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
             if (selection == 8) self->linkAudio(index);
             if (selection == 9) self->showPatch(index, 0);
             if (selection == 10) self->addSharedPart(index);
+            if (selection == 11 && !self->recordTrack_)
+                for (size_t i = 0; i < self->trackControls_.size(); ++i)
+                    if (self->trackControls_[i]->outputTrack == index) self->detachSharedPart(i);
+            if (selection == 12) self->reviewEmptyMidiTracks();
+            if (selection >= reuseId && selection < reuseId + int(self->project_->sourceTrackCount())) {
+                const auto owner = self->trackControls_[index]->outputTrack.value_or(index);
+                const int channel = self->nextSharedChannel(owner);
+                if (channel) self->routeMidiPart(size_t(selection - reuseId), owner, channel);
+            }
             if (selection >= detachId && selection < detachId + int(self->trackControls_.size()))
                 self->detachSharedPart(size_t(selection - detachId));
             if (selection > channelId && selection <= channelId + 16) {
@@ -3639,32 +3718,13 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
                 return;
             }
             if (selection == outputId || selection >= sharedId) {
-                self->midiOutputs_.erase(id);
-                self->saveMidiRoutes();
-                self->stopTransport();
-                auto& route = self->trackControls_[index]->outputTrack;
                 const auto next = selection == outputId ? std::nullopt : std::optional<std::size_t>((selection - sharedId) / 16);
-                auto& channel = self->trackControls_[index]->midiChannel;
-                const int part = next ? 1 + (selection - sharedId) % 16 : channel;
-                if (route != next || channel != part) self->markSessionEdited();
-                auto& strip = *self->trackControls_[index];
-                if (next && strip.instance) {
-                    strip.editor.reset();
-                    strip.inactiveInstrument = strip.instance->getPluginDescription();
-                    strip.inactiveInstrumentState.reset();
-                    strip.instance->getStateInformation(strip.inactiveInstrumentState);
-                    strip.instance.reset();
-                    strip.playableInstrument = false;
-                }
-                route = next;
-                channel = part;
-                self->refreshMidiRoutes();
-                self->updatePresetLabel(index);
-                if (!next && strip.instrumentAssignment.isObject())
-                    self->restoreLocalInstrument(index, self->ensurePluginBrowser().types());
+                self->routeMidiPart(index, next, next ? 1 + (selection - sharedId) % 16 : self->trackControls_[index]->midiChannel);
             }
             if (selection == 2) {
                 self->stopTransport();
+                for (size_t i = 0; i < self->trackControls_.size(); ++i)
+                    if (self->trackControls_[i]->outputTrack == index) self->detachSharedPart(i);
                 auto& strip = *self->trackControls_[index];
                 strip.editor.reset();
                 strip.instance.reset();
@@ -3694,7 +3754,7 @@ ostfstudio::ProjectAudio* MainComponent::clipOn(std::size_t track) const {
 bool MainComponent::shouldDropFilesWhenDraggedExternally(const juce::DragAndDropTarget::SourceDetails& details,
                                                         juce::StringArray& paths, bool& canMove) {
     const auto id = details.description.toString();
-    if (!id.startsWith("ostf-audio:")) return false;
+    if (!id.startsWith("ostf-media:")) return false;
     const juce::File file(id.fromFirstOccurrenceOf(":", false, false));
     if (!file.existsAsFile() || !PluginBrowser::supportsSample(file)) return false;
     paths.add(file.getFullPathName());
@@ -3704,8 +3764,7 @@ bool MainComponent::shouldDropFilesWhenDraggedExternally(const juce::DragAndDrop
 
 bool MainComponent::isInterestedInFileDrag(const juce::StringArray& files) {
     return project_ && !recordTrack_ && workspaceMode_ == WorkspaceMode::arrangement
-           && files.size() == 1 && (PluginBrowser::supportsSample(juce::File::getCurrentWorkingDirectory().getChildFile(files[0]))
-                || files[0].endsWithIgnoreCase(".mid") || files[0].endsWithIgnoreCase(".midi"));
+           && files.size() == 1 && PluginBrowser::supportsSample(juce::File::getCurrentWorkingDirectory().getChildFile(files[0]));
 }
 
 void MainComponent::filesDropped(const juce::StringArray& files, int x, int y) {
@@ -3716,23 +3775,39 @@ void MainComponent::filesDropped(const juce::StringArray& files, int x, int y) {
     const bool arrangement = rowOverlay_.getBounds().contains(x, y);
     const auto tickAtDrop = arrangement && x >= rowOverlay_.getX() + trackHeaderWidth
         ? arrangementTickAt(x) : std::max<juce::int64>(0, cursorTick_);
-    if (file.hasFileExtension("mid;midi")) {
+    if (file.hasFileExtension("mid;midi;ostf;ostfp")) {
         if (!arrangement) return;
         std::unique_ptr<ostfstudio::OstfpPreview> source;
         juce::String summary;
-        auto r = ostfstudio::prepareMediaImport(file, source, summary);
+        juce::Result r = juce::Result::ok();
+        if (file.hasFileExtension("ostf;ostfp")) {
+            juce::FileInputStream in(file);
+            r = file.hasFileExtension("ostfp") ? ostfstudio::readOstfpPreview(in, source) : ostfstudio::readOstfPreview(in, source);
+            if (r.wasOk() && file.hasFileExtension("ostf"))
+                for (auto& region : source->audio) region.localFile = file.getSiblingFile(region.path);
+        } else r = ostfstudio::prepareMediaImport(file, source, summary);
         if (r.failed()) { statusLabel_.setText(r.getErrorMessage(), juce::dontSendNotification); return; }
         const bool chords = globalLaneAt({x,y}) == TimelineLane::chord;
-        if (!chords && source->sourceTrackCount() != 1) {
-            statusLabel_.setText(TRANS("Use Import for a multitrack MIDI file."), juce::dontSendNotification);
-            return;
-        }
         auto held = std::shared_ptr<const ostfstudio::OstfpPreview>(std::move(source));
-        ImportResultRow part(file.getFileName(), *held, chords ? -1 : 0);
-        if (chords) placeResult(part, {}, tickAtDrop, false, held);
-        else if (track && *track < project_->sourceTrackCount() && project_->trackKinds[*track] == held->trackKinds[0])
-            placeResult(part, track, tickAtDrop, false, held);
-        else if (canEditTracks()) editTracks(held->trackKinds[0], {}, {}, held->mixerGroups[0], &part, tickAtDrop);
+        auto place = [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, held, track, tickAtDrop,
+                      name = file.getFileName()](int partIndex) {
+            if (!safe || safe->projectGeneration_ != generation || safe->recordTrack_) return;
+            ImportResultRow part(name, *held, partIndex);
+            if (partIndex < 0) safe->placeResult(part, {}, tickAtDrop, false, held);
+            else if (track && *track < safe->project_->sourceTrackCount() && safe->project_->trackKinds[*track] == held->trackKinds[partIndex])
+                safe->placeResult(part, track, tickAtDrop, false, held);
+            else if (safe->canEditTracks()) safe->editTracks(held->trackKinds[partIndex], {}, {}, held->mixerGroups[partIndex], &part, tickAtDrop);
+        };
+        if (chords) place(-1);
+        else if (held->sourceTrackCount() == 1) place(0);
+        else {
+            juce::PopupMenu menu;
+            menu.addSectionHeader(TRANS("Choose a source track"));
+            for (size_t i = 0; i < held->sourceTrackCount(); ++i)
+                menu.addItem(int(i + 1), juce::String(int(i + 1)) + "  " + juce::String::fromUTF8(held->trackLanes[i].label));
+            if (held->sourceTrackCount()) menu.showMenuAsync({}, [place](int choice) { if (choice) place(choice - 1); });
+            else statusLabel_.setText(TRANS("No tracks to place."), juce::dontSendNotification);
+        }
         return;
     }
     if (!track || *track >= project_->sourceTrackCount() || project_->trackKinds[*track] != ostfstudio::TrackKind::audio) {
@@ -3979,7 +4054,13 @@ void MainComponent::openTrackPluginEditor(std::size_t index) {
     if (!pluginEditor) {
         std::unique_ptr<juce::AudioProcessorEditor> editor(instance->createEditorAndMakeActive());
         if (!editor) editor = std::make_unique<juce::GenericAudioProcessorEditor>(*instance);
-        auto window = std::make_unique<PluginWindow>(instance->getName());
+        auto window = std::make_unique<PluginWindow>(instance->getName() + " / #" + juce::String(int(index + 1))
+                                                      + " " + juce::String::fromUTF8(project_->trackLanes[index].label));
+        if (strip.playableInstrument)
+            window->programWatch = std::make_unique<ostfstudio::InstrumentProgramWatch>(*instance,
+                [w = window.get()] { return w->isVisible(); },
+                [this] { return !transportActive_ && !recordTrack_; },
+                [this, index](int channel, int program) { offerInstrumentProgram(index, channel, program); });
         std::unique_ptr<juce::Component> body;
         if (isOstfArranger(instance->getPluginDescription())) body = std::make_unique<GeneratorPanel>(std::move(editor), *this);
         else body = std::move(editor);
@@ -3995,11 +4076,56 @@ void MainComponent::openTrackPluginEditor(std::size_t index) {
                          juce::dontSendNotification);
 }
 
+void MainComponent::offerInstrumentProgram(std::size_t owner, int channel, int program) {
+    if (!project_ || owner >= project_->sourceTrackCount() || recordTrack_) return;
+    juce::StringArray choices;
+    std::vector<std::size_t> destinations;
+    for (size_t i = 0; i < project_->sourceTrackCount(); ++i) {
+        const auto& part = *trackControls_[i];
+        if (part.outputTrack.value_or(i) != owner || (channel && part.midiChannel != channel)) continue;
+        destinations.push_back(i);
+        choices.add("#" + juce::String(int(i + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[i].label)
+                    + " / Ch " + juce::String(part.midiChannel));
+    }
+    if (choices.isEmpty()) return;
+    auto dialog = std::make_unique<juce::AlertWindow>(TRANS("Write instrument preset to the track?"),
+        TRANS("MIDI program (0-127)") + "  " + juce::String(program), juce::MessageBoxIconType::QuestionIcon, this);
+    dialog->addComboBox("track", choices, TRANS("Track"));
+    const auto cursor = juce::jlimit<juce::int64>(0, project_->playbackEndTick() - 1, cursorTick_);
+    juce::StringArray positions{TRANS("Song start")};
+    if (cursor > 0) positions.add(TRANS("Edit cursor") + " / " + juce::String(cursor));
+    dialog->addComboBox("position", positions, TRANS("Position"));
+    dialog->addButton(TRANS("Apply"), 1);
+    dialog->addButton(TRANS("Cancel"), 0);
+    auto* w = dialog.release();
+    w->enterModalState(true, juce::ModalCallbackFunction::create(
+        [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, owner,
+         plugin = trackControls_[owner]->instance.get(), destinations, channel, program, cursor, w](int answer) {
+            if (!safe || answer != 1 || safe->recordTrack_ || safe->projectGeneration_ != generation
+                || owner >= safe->trackControls_.size() || plugin != safe->trackControls_[owner]->instance.get()) return;
+            const int choice = w->getComboBoxComponent("track")->getSelectedItemIndex();
+            if (!juce::isPositiveAndBelow(choice, int(destinations.size()))) return;
+            const auto track = destinations[size_t(choice)];
+            const auto& part = *safe->trackControls_[track];
+            if (part.outputTrack.value_or(track) != owner || (channel && part.midiChannel != channel)) return;
+            const auto tick = w->getComboBoxComponent("position")->getSelectedItemIndex() == 1 ? cursor : 0;
+            const bool playing = safe->transportActive_;
+            if (playing) safe->stopTransport();
+            juce::MemoryBlock before;
+            const bool routed = part.outputTrack.has_value() || safe->hasSharedParts(owner);
+            const auto result = safe->project_->setPatchAt(track, tick, part.midiChannel,
+                                                            {-1, -1, program}, before, routed, true);
+            if (result.wasOk()) safe->rememberScoreEdit(std::move(before));
+            else safe->statusLabel_.setText(result.getErrorMessage(), juce::dontSendNotification);
+            safe->finishNoteEdit(playing);
+        }), true);
+}
+
 void MainComponent::updatePresetLabel(std::size_t index) {
     auto& strip = *trackControls_[index];
     juce::String label;
     if (strip.outputTrack && *strip.outputTrack < project_->trackLanes.size()) {
-        label = juce::String::fromUTF8(project_->trackLanes[*strip.outputTrack].label) + " / Ch " + juce::String(strip.midiChannel);
+        label = "#" + juce::String(int(*strip.outputTrack + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[*strip.outputTrack].label) + " / Ch " + juce::String(strip.midiChannel);
         strip.plugin.setButtonText("Ch " + juce::String(strip.midiChannel) + "  " + juce::String::charToString(0x2192));
         strip.plugin.setTooltip(TRANS("Shared instrument") + ": " + label);
         strip.plugin.getProperties().set("sharedPart", true);

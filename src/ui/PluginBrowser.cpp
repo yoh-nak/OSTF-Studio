@@ -88,7 +88,7 @@ PluginBrowser::PluginBrowser() {
     sampleTab_.onClick = [this] { showSamples(true); };
     pluginTab_.setToggleState(true, juce::dontSendNotification);
     folder_.onClick = [this] {
-        folderChooser_ = std::make_unique<juce::FileChooser>(TRANS("Select sample folder..."), samples_->getRoot());
+        folderChooser_ = std::make_unique<juce::FileChooser>(TRANS("Select media folder..."), samples_->getRoot());
         folderChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
             [safe = juce::Component::SafePointer<PluginBrowser>(this)](const juce::FileChooser& chooser) {
                 if (safe && chooser.getResult().isDirectory()) safe->samples_->setRoot(chooser.getResult());
@@ -144,7 +144,7 @@ void PluginBrowser::selectionChanged() {
     const auto file = samples_->getHighlightedFile();
     if (auto* tree = dynamic_cast<juce::FileTreeComponent*>(samples_->getDisplayComponent()))
         tree->setDragAndDropDescription(file.existsAsFile() && supportsSample(file)
-            ? "ostf-audio:" + file.getFullPathName() : juce::String{});
+            ? "ostf-media:" + file.getFullPathName() : juce::String{});
 }
 
 void PluginBrowser::resized() {

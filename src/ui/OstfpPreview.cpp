@@ -2026,12 +2026,12 @@ juce::var editableClip(juce::var clips, juce::int64 tick, juce::int64 bar, juce:
 }
 
 juce::Result OstfpPreview::setPatchAt(std::size_t track, juce::int64 tick, int channel, std::array<int,3> values,
-                                      juce::MemoryBlock& before, bool sharedPart) try {
+                                      juce::MemoryBlock& before, bool sharedPart, bool programOnly) try {
     require(track < sourceTrackCount() && tick >= 0 && tick < playbackEndTick() && channel >= 1 && channel <= 16, "Invalid patch destination.");
     require(std::all_of(values.begin(), values.end(), [](int v) { return v >= -1 && v <= 127; }), "Invalid MIDI patch.");
     before = savedScore(*this);
     auto score = parseObject(before), owner = score["tracks"][int(track)], clips = arrayProperty(owner, "clips");
-    for (int field = 0; field < 3; ++field) {
+    for (int field = programOnly ? 2 : 0; field < 3; ++field) {
         const int cc = field == 0 ? 0 : 32;
         const auto type = field == 2 ? "programChange" : "controlChange";
         juce::var destination, previous;
@@ -2200,8 +2200,9 @@ bool OstfpPreview::insertGeneratorPattern(std::size_t track, int bar) {
 }
 
 juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64> range,
-                                         const std::vector<PitchedNote>& notes, juce::MemoryBlock& before, const juce::String& name) try {
-    require(index < sourceTrackCount() && trackKinds[index] != TrackKind::audio && !notes.empty(), "No MIDI notes captured");
+                                         const std::vector<PitchedNote>& notes, juce::MemoryBlock& before, const juce::String& name,
+                                         const juce::Array<juce::var>& midiEvents) try {
+    require(index < sourceTrackCount() && trackKinds[index] != TrackKind::audio && (!notes.empty() || !midiEvents.isEmpty()), "No MIDI notes captured");
     before = savedScore(*this);
     auto score = parseObject(before);
     const bool drum = trackKinds[index] == TrackKind::drum;
@@ -2222,8 +2223,22 @@ juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64
         events.add(event);
     }
     std::stable_sort(events.begin(), events.end(), [](const auto& a, const auto& b) { return integer(a["start"]) < integer(b["start"]); });
-    arrayProperty(track, "clips").getArray()->add(object({{"id", "take-" + juce::Uuid().toString()},
-        {"name", name}, {"start", range.getStart()}, {"duration", range.getLength()}, {"notes", events}}));
+    auto clip = object({{"id", "take-" + juce::Uuid().toString()}, {"name", name}, {"start", range.getStart()},
+                        {"duration", range.getLength()}, {"notes", events}});
+    juce::Array<juce::var> controls;
+    for (const auto& event : midiEvents) {
+        const auto at = integer(event["start"]);
+        require(range.contains(at) && at < playbackEndTick(), "MIDI event outside the editable range.");
+        auto copy = event.clone();
+        auto* e = copy.getDynamicObject();
+        e->setProperty("id", "midi-" + juce::Uuid().toString());
+        e->setProperty("start", at - range.getStart());
+        if (track["midi"]["mode"] == "singleChannel") e->removeProperty("channel");
+        else if (!copy.hasProperty("channel")) e->setProperty("channel", sourceMidiChannels[index]);
+        controls.add(copy);
+    }
+    if (!controls.isEmpty()) clip.getDynamicObject()->setProperty("midiEvents", controls);
+    arrayProperty(track, "clips").getArray()->add(clip);
     reviseDocument(score, before, "studio-" + juce::Uuid().toString());
     return restoreNoteScore(editedScoreBytes(before, score, {"tracks", "drumKits", "soundSlots", "document"}));
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }

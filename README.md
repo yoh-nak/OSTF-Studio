@@ -2,6 +2,10 @@
 
 **English** · [日本語](README.ja.md)
 
+**Media library** opens a folder of audio, MIDI and OSTF material. Drag a MIDI file into the arrangement to convert the selected part to editable OSTF notes and MIDI events. Drag an OSTF or OSTFP file to place a part, or use File → Open to restore its complete session.
+
+A shared instrument belongs to its host track. Use the instrument menu to connect an existing MIDI track, add a new part on a free channel, or disconnect one or all parts. Track numbers distinguish two instances of the same plug-in. Disconnecting keeps the tracks and their clips. **Review unused MIDI parts** lists empty, unassigned parts with their generated names for optional removal. The GM editor meters all 16 parts. Selecting a preset in the editor offers to write the MIDI program to the destination track at the song start or edit cursor.
+
 When several tracks share one instrument, open the GM Sound Module to see its sounding parts in **Playing Ch**. **EDIT CH** selects the part whose controls are shown. Open a child track's instrument menu and choose **Stop sharing this instrument**, or select the child from **Stop sharing with track** on the owner.
 
 The **Audio files** toolbar button sits beside **Plug-ins**. Drop a sample onto the arrangement at the desired time. Drag the body of the resulting audio clip to move it or drag an edge to trim it. A track can hold several audio clips. On MIDI and audio tracks, drag the clip body to move it or right-click for **Split clip here**, **Join with next clip**, **Copy clip**, **Paste clip here**, and **Duplicate clip**. Click an empty time position to set the paste destination. With the arrangement focused, use Ctrl (Cmd on macOS) with C, V, D, E, or J for copy, paste, duplicate, split at the playhead, or join. Undo and redo use Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z. Clips can move to a matching track type. A placement that would overlap a clip is declined.

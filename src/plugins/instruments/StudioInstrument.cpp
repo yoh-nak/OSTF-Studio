@@ -1,4 +1,5 @@
 #include "StudioInstrument.h"
+#include "../EditorProgramParameter.h"
 #include "../../ui/ConsoleLookAndFeel.h"
 #include <array>
 #include <cmath>
@@ -88,6 +89,7 @@ public:
         if (engine == Engine::Wavetable) (void)tables();
         addParameter(tone = new juce::AudioParameterFloat({"colour",1}, "Tone", 0.f, 1.f, .5f));
         addParameter(level = new juce::AudioParameterFloat({"gain",1}, "Output (dB)", -36.f, 6.f, -3.f));
+        addParameter(editorProgram = new ostfstudio::EditorProgramParameter("midiProgram", "MIDI Program", program, 4));
     }
     const juce::String getName() const override { return name; }
     bool acceptsMidi() const override { return true; }
@@ -101,6 +103,7 @@ public:
     bool hasEditor() const override { return true; }
     juce::AudioProcessorEditor* createEditor() override;
     int getNumPrograms() override { return 4; }
+    void chooseProgram(int preset) { editorProgram->choose(preset); }
     int getCurrentProgram() override { return program.load(); }
     void setCurrentProgram(int p) override { if (p >= 0 && p < 4) program.store(p); }
     const juce::String getProgramName(int p) override { return p >= 0 && p < 4 ? patch(p).name : ""; }
@@ -143,6 +146,7 @@ private:
     Engine engine;
     juce::String name;
     std::atomic<int> program {0};
+    ostfstudio::EditorProgramParameter* editorProgram{};
     juce::AudioParameterFloat *tone, *level;
     std::array<Voice, 32> voices {};
     std::array<Channel,16> channels {};
@@ -289,7 +293,7 @@ public:
         for (int i=0; i<processor.getNumPrograms(); ++i)
             presets.addItem("PC " + juce::String(i) + "   " + processor.getProgramName(i), i+1);
         presets.setTitle("Factory preset");
-        presets.onChange = [this]{processor.setCurrentProgram(presets.getSelectedId()-1);};
+        presets.onChange = [this]{processor.chooseProgram(presets.getSelectedId()-1);};
         addAndMakeVisible(presets);
         for (size_t i=0; i<controls.size(); ++i) {
             auto& param = *static_cast<juce::RangedAudioParameter*>(processor.getParameters()[int(i)]);

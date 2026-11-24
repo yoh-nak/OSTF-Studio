@@ -1,5 +1,6 @@
 #include "ui/MainComponent.h"
 #include "ui/PluginRoles.h"
+#include "ui/MediaImport.h"
 #include <BinaryData.h>
 #if JUCE_WINDOWS
 #ifndef NOMINMAX
@@ -111,10 +112,30 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     studio.detachSharedPart(1);
     if (studio.trackControls_[1]->outputTrack || studio.trackControls_[2]->outputTrack != 0
         || studio.trackControls_[0]->instance.get() != original || studio.trackControls_[1]->plugin.getButtonText().contains("Ch ")) return 75;
+    if (!studio.isEmptyMidiTrack(1) || studio.isEmptyMidiTrack(2)) return 187;
+    studio.routeMidiPart(1, 0, 1);
+    if (studio.project_->sourceTrackCount() != 3 || studio.trackControls_[1]->outputTrack != 0 || studio.isEmptyMidiTrack(1)) return 188;
+    studio.detachSharedPart(1);
     studio.trackControls_[0]->midiChannel = 9;
     studio.addSharedPart(2);
     if (studio.project_->sourceTrackCount() != 4 || studio.project_->trackKinds[3] != ostfstudio::TrackKind::drum
         || studio.trackControls_[3]->midiChannel != 10 || studio.trackControls_[3]->outputTrack != 0) return 74;
+    studio.openTrackPluginEditor(0);
+    juce::AudioProcessorParameter* partProgram = nullptr;
+    for (auto* param : original->getParameters())
+        if (param->getName(64) == "MIDI Program Ch 2") partProgram = param;
+    if (!partProgram) return 193;
+    partProgram->beginChangeGesture();
+    partProgram->setValueNotifyingHost(44.f / 127.f);
+    partProgram->endChangeGesture();
+    juce::Thread::sleep(120);
+    juce::Timer::callPendingTimersSynchronously();
+    auto* prompt = dynamic_cast<juce::AlertWindow*>(juce::Component::getCurrentlyModalComponent());
+    if (!prompt) return 194;
+    auto* tracks = prompt->getComboBoxComponent("track");
+    if (!tracks || tracks->getNumItems() != 1 || !tracks->getItemText(0).startsWith("#3 ")) return 195;
+    prompt->exitModalState(0);
+    if (!studio.project_->programChanges[2].empty()) return 196;
     return 0;
 }
 
@@ -255,9 +276,11 @@ int checkSamplePlacement(const juce::File& file) {
     juce::MidiMessageSequence notes;
     notes.addEvent(juce::MidiMessage::textMetaEvent(3, "OSTF Stem Separator Chords"));
     notes.addEvent(juce::MidiMessage::textMetaEvent(6, "Dm"), 0);
+    notes.addEvent(juce::MidiMessage::controllerEvent(4, 32, 8), 0);
+    notes.addEvent(juce::MidiMessage::programChange(4, 33), 0);
     for (int pitch : {62,65,69}) {
-        notes.addEvent(juce::MidiMessage::noteOn(1, pitch, juce::uint8(90)), 0);
-        notes.addEvent(juce::MidiMessage::noteOff(1,pitch), 480);
+        notes.addEvent(juce::MidiMessage::noteOn(4, pitch, juce::uint8(90)), 0);
+        notes.addEvent(juce::MidiMessage::noteOff(4,pitch), 480);
     }
     juce::TemporaryFile temporary(".mid");
     juce::MidiFile midi;
@@ -269,6 +292,8 @@ int checkSamplePlacement(const juce::File& file) {
     const auto midiClips = main.clipsOn(before);
     if (midiClips.size() != 1) return 178;
     const auto first = midiClips.front();
+    if (main.trackControls_[before]->midiChannel != 4 || main.project_->programChanges[before].size() != 1
+        || main.project_->programChanges[before][0].program != 33) return 189;
     main.clipCommand(Op::duplicate, first, before, 0);
     auto duplicate = main.clipAt(before, first.end);
     if (!duplicate || duplicate->id == first.id || main.project_->pitchedNotes[before].size() != 6) return 179;
@@ -283,15 +308,35 @@ int checkSamplePlacement(const juce::File& file) {
     if (!last || last->id == duplicate->id) return 182;
     main.clipCommand(Op::move, last, before, last->end);
     if (main.clipAt(before, last->start) || !main.clipAt(before, last->end) || main.clipAt(before, last->end)->id != last->id) return 183;
+    bool placedChord = false;
     for (int y = main.rowOverlay_.getY(); y < main.rowOverlay_.getBottom(); ++y) {
         if (main.globalLaneAt({x,y}) != ostfstudio::TimelineLane::chord) continue;
         main.filesDropped({temporary.getFile().getFullPathName()}, x, y);
         const auto score = juce::JSON::parse(main.project_->sourceScore.toString());
-        const auto regions = score["harmony"]["chords"];
-        for (const auto& r : *regions.getArray()) if (r["label"] == "Dm" && juce::int64(r["start"]) == main.arrangementTickAt(x)) return 0;
-        return 156;
+        for (const auto& region : *score["harmony"]["chords"].getArray())
+            if (region["label"] == "Dm" && juce::int64(region["start"]) == main.arrangementTickAt(x)) placedChord = true;
+        break;
     }
-    return 157;
+    if (!placedChord) return 156;
+    std::unique_ptr<ostfstudio::OstfpPreview> source;
+    juce::String details;
+    if (ostfstudio::prepareMediaImport(temporary.getFile(), source, details).failed()) return 190;
+    ostfstudio::SessionMix materialMix;
+    materialMix.tracks.resize(source->sourceTrackCount());
+    for (const auto kind : source->trackKinds) materialMix.audioTracks.push_back(kind == ostfstudio::TrackKind::audio);
+    for (bool packed : {false, true}) {
+        juce::TemporaryFile material(packed ? ".ostfp" : ".ostf");
+        {
+            auto out = material.getFile().createOutputStream();
+            if (!out || (packed ? ostfstudio::writeOstfpPreview(*source, materialMix, *out)
+                                : ostfstudio::writeOstfPreview(*source, *out)).failed()) return 191;
+        }
+        const auto tracks = main.project_->sourceTrackCount();
+        main.filesDropped({material.getFile().getFullPathName()}, x, main.trackRows_[0].getCentreY());
+        if (main.project_->sourceTrackCount() != tracks + 1 || main.project_->pitchedNotes[tracks].size() != 3
+            || main.project_->programChanges[tracks].size() != 1 || main.project_->programChanges[tracks][0].program != 33) return 192;
+    }
+    return 0;
 }
 
 int checkTrackView(const juce::File& fixture) {
@@ -489,7 +534,7 @@ int checkTrackView(const juce::File& fixture) {
         .getChildFile("examples/demo-songs/assets/glass-lantern-chimes.wav");
     const auto drop = audioEditor->getBounds().getCentre();
     auto* pane = descendant<PluginBrowser>(main);
-    if (!click("Audio files")) return 140;
+    if (!click("Media library")) return 140;
     pane = descendant<PluginBrowser>(main);
     if (!pane) return 140;
     auto* assets = dynamic_cast<juce::Button*>(pane->findChildWithID("browser-samples"));
@@ -499,7 +544,7 @@ int checkTrackView(const juce::File& fixture) {
     auto* files = descendant<juce::FileBrowserComponent>(*pane);
     if (!files || !files->isVisible() || !files->getDisplayComponent()) return 142;
     files->setRoot(sample.getParentDirectory());
-    const juce::DragAndDropTarget::SourceDetails dragging("ostf-audio:" + sample.getFullPathName(),files,drop);
+    const juce::DragAndDropTarget::SourceDetails dragging("ostf-media:" + sample.getFullPathName(),files,drop);
     auto* dropTarget = dynamic_cast<juce::DragAndDropTarget*>(static_cast<juce::Component*>(&main));
     if (!dropTarget || !dropTarget->isInterestedInDragSource(dragging)) return 143;
     dropTarget->itemDropped(dragging);

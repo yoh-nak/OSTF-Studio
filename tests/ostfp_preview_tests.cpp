@@ -35,6 +35,21 @@ static int checkGallery(const juce::File& directory) {
                 } else if (route.destination != size_t(owner) || session.instruments[i].isObject()) return 98;
             }
         }
+        // Two instances of the very same VST3 retain independent destinations.
+        auto twoGroups = mix;
+        const size_t second = owner == 0 ? 1 : 0;
+        const size_t member = 6;
+        twoGroups.instruments[second] = mix.instruments[size_t(owner)];
+        twoGroups.midiRoutes[second].destination.reset();
+        twoGroups.midiRoutes[member].destination = second;
+        juce::MemoryOutputStream two;
+        if ((packed ? ostfstudio::writeOstfpPreview(*shared, twoGroups, two) : ostfstudio::writeOstfPreview(*shared, twoGroups, two)).failed()) return 130;
+        juce::MemoryInputStream inputTwo(two.getData(), two.getDataSize(), false);
+        std::unique_ptr<ostfstudio::OstfpPreview> restored;
+        if ((packed ? ostfstudio::readOstfpPreview(inputTwo, restored) : ostfstudio::readOstfPreview(inputTwo, restored)).failed()
+            || !restored->savedMix || restored->savedMix->midiRoutes[member].destination != second
+            || restored->savedMix->midiRoutes[second].destination || restored->savedMix->midiRoutes[size_t(owner)].destination
+            || restored->savedMix->instruments[second]["name"] != mix.instruments[size_t(owner)]["name"]) return 131;
         const auto bass = shared->trackIds.indexOf("bass");
         juce::MemoryBlock before;
         if (bass < 0 || shared->setPatchAt(bass, 0, 15, {-1,-1,35}, before, true).failed()
@@ -396,6 +411,15 @@ static int legacyRoundTrip(const juce::File& file) {
             for (const auto& curve : project->performanceCurves[0]) if (curve.control.type == type && curve.control.number == number) return &curve;
             return nullptr;
         };
+        juce::MemoryBlock priorPreset;
+        if (project->setPatchAt(0, 0, 1, {-1, -1, 27}, priorPreset, false, true).failed()) return 132;
+        for (auto [cc, value] : {std::pair{0, 2}, std::pair{32, 9}}) {
+            const auto* curve = lookup("controlChange", cc);
+            if (!curve || !std::any_of(curve->points.begin(), curve->points.end(), [value](const auto& p) {
+                return p.tick == 0 && std::lround(p.value * 127) == value;
+            })) return 133;
+        }
+        if (project->restoreNoteScore(priorPreset).failed()) return 134;
         auto* patch = lookup("programChange", 0);
         const auto* bank = lookup("controlChange", 32);
         if (!patch || !bank || !std::any_of(bank->points.begin(), bank->points.end(), [](const auto& p) { return p.tick == 0 && std::lround(p.value * 127) == 9; })) return 71;

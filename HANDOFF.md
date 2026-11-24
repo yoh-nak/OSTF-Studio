@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Media library and shared GM instruments
+
+Branch `feature/media-browser-gm-racks`. The folder tab accepts local audio, MIDI and OSTF or OSTFP material. A score or SMF drop lets the user choose a source track and uses the import placement and undo path. Program changes, CC 0–119, pitch bend, poly pressure and channel pressure are carried with the selected part.
+
+The track instrument menu identifies each host by track number and name. It can connect existing tracks, disconnect individual or all parts, and separately review empty, unassigned parts with generated names. The GM VST3 meters the audio of all 16 SoundFont parts. Its editor and the four stock synths emit program edit gestures. Studio asks which score event to write and keeps the existing bank selects. Use the rebuilt GM VST3 with the rebuilt application.
+
+The two-instance routing test in `checkGallery` saves and reads back both supported project forms. The GM editor test exercises two independent level meters and an editor-initiated program change. The track-view smoke test drops MIDI, OSTF and OSTFP. The hosted GM smoke test exercises part creation, routing and reuse. No new OSTF schema version was introduced. Windows x64 Release passed all 29 CTest cases, including the real hosted GM VST3, and the separate JUCE-free core passed both tests. macOS and third-party hardware or plug-in preset workflows were not exercised.
+
 ## Arrangement clip editing
 
 Branch `feature/arrangement-clip-editing`. MIDI and audio clip editing lives in `ArrangementClipEdits.cpp`, with regression cases in the track-view, transport and OSTFP tests. Each track can hold multiple audio regions. The OSTFP production layer binds them to shared audio sources, and the existing Studio timing extension stores the source phase of a split region. Existing OSTF 5 scores can be loaded without migration. Test references include both parts of a split warped loop and copying or moving an imported MIDI clip. Windows x64 Release passed all 29 tests including reruns. Startup reached its timeout and the waveform check missed its asynchronous thumbnail during the full run. Both passed on the isolated rerun. The JUCE-free core passed 2/2. The locally packaged portable executable passed the track-view and transport checks and matched the compiled executable. The Setup and Portable packages were built. Real-device playback and macOS were not validated in this change.

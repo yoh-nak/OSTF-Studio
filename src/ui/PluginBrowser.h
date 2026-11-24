@@ -12,7 +12,7 @@ public:
     void scan();
     void showSamples(bool);
     std::function<void(bool)> onTabChanged;
-    static bool supportsSample(const juce::File& file) { return file.hasFileExtension("wav;aif;aiff;flac;mp3"); }
+    static bool supportsSample(const juce::File& file) { return file.hasFileExtension("wav;aif;aiff;flac;mp3;mid;midi;ostf;ostfp"); }
     std::optional<juce::PluginDescription> find(const juce::String& identifier) const;
     juce::Array<juce::PluginDescription> types() const { return plugins_.getTypes(); }
     static int runScanWorker(const juce::String& token, const juce::String& target = {});
@@ -23,8 +23,8 @@ private:
     void fileClicked(const juce::File&, const juce::MouseEvent&) override {}
     void fileDoubleClicked(const juce::File&) override {}
     void browserRootChanged(const juce::File&) override { selectionChanged(); }
-    juce::TextButton pluginTab_ {TRANS("Plug-ins")}, sampleTab_ {TRANS("Audio files")}, folder_ {TRANS("Select sample folder...")};
-    juce::WildcardFileFilter sampleFilter_ {"*.wav;*.aif;*.aiff;*.flac;*.mp3", "*", TRANS("Audio samples")};
+    juce::TextButton pluginTab_ {TRANS("Plug-ins")}, sampleTab_ {TRANS("Media library")}, folder_ {TRANS("Select media folder...")};
+    juce::WildcardFileFilter sampleFilter_ {"*.wav;*.aif;*.aiff;*.flac;*.mp3;*.mid;*.midi;*.ostf;*.ostfp", "*", TRANS("Audio, MIDI and OSTF files")};
     std::unique_ptr<juce::FileBrowserComponent> samples_;
     std::unique_ptr<juce::FileChooser> folderChooser_;
     bool showingSamples_ = false;

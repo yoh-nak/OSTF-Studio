@@ -229,7 +229,7 @@ struct OstfpPreview {
     bool insertGeneratorPattern(std::size_t track, int bar);
     juce::Result editDrumPad(size_t track, int row, std::optional<int> pitch, juce::MemoryBlock &before,
                              std::optional<int> moveTo = {});
-    juce::Result addRecordedClip(size_t track, juce::Range<juce::int64>, const std::vector<PitchedNote>&, juce::MemoryBlock& before, const juce::String& name = "Recorded MIDI");
+    juce::Result addRecordedClip(size_t track, juce::Range<juce::int64>, const std::vector<PitchedNote>&, juce::MemoryBlock& before, const juce::String& name = "Recorded MIDI", const juce::Array<juce::var>& midiEvents = {});
     struct MidiClipCopy { juce::var data; juce::int64 period = 0; TrackKind kind = TrackKind::pitched; };
     MidiClipCopy copyMidiClip(size_t track, const juce::String& id) const;
     juce::Result placeMidiClip(const MidiClipCopy&, size_t destination, juce::int64 tick,
@@ -241,7 +241,7 @@ struct OstfpPreview {
     juce::Result editNotes(std::size_t track, const std::vector<NoteEdit>& edits, juce::MemoryBlock& before,
                            juce::StringArray& resultingIds);
     juce::Result setPatchAt(std::size_t track, juce::int64 tick, int channel, std::array<int,3> values,
-                            juce::MemoryBlock& before, bool sharedPart = false);
+                            juce::MemoryBlock& before, bool sharedPart = false, bool programOnly = false);
     juce::Result editController(std::size_t track, const MidiControl&, const juce::String& id, juce::int64 tick,
                                 std::optional<int> value, juce::MemoryBlock& before);
     juce::Result restoreNoteScore(const juce::MemoryBlock& bytes);

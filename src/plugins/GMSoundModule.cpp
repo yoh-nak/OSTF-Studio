@@ -1,4 +1,5 @@
 #include "../ui/ConsoleLookAndFeel.h"
+#include "EditorProgramParameter.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <GMPreviewData.h>
 #define TSF_IMPLEMENTATION
@@ -43,6 +44,10 @@ public:
     SoundModule() : AudioProcessor(BusesProperties().withOutput("Main", juce::AudioChannelSet::stereo(), true)) {
         for (int channel = 0; channel < 16; ++channel)
             for (int control = 0; control < controlCount; ++control) setControl(channel, control, defaults[control]);
+        for (int ch = 0; ch < 16; ++ch) {
+            const auto n = juce::String(ch + 1);
+            addParameter(editorPrograms_[ch] = new ostfstudio::EditorProgramParameter("gmProgram" + n, "MIDI Program Ch " + n, programs_[ch], 128));
+        }
         resetBanks();
         loadFactoryBank();
     }
@@ -109,6 +114,12 @@ public:
         return bankName_.isEmpty() ? "No SoundFont loaded" : bankName_;
     }
 
+    void chooseProgram(int ch, int index) {
+        editorPrograms_[ch]->choose(index);
+        const juce::ScopedLock lock(bankLock_);
+        if (bank_) selectProgram(ch, program(ch));
+    }
+    float peakLevel(int ch) const { return peaks_[ch].load(std::memory_order_relaxed); }
     int program(int channel) const { return programs_[channel].load(); }
     void setProgram(int channel, int program) { programs_[channel] = program; }
     int control(int channel, int id) const { return controls_[channel][id].load(); }
@@ -140,6 +151,7 @@ public:
     void reset() override {
         const juce::ScopedLock lock(bankLock_);
         soundingMask_ = 0;
+        for (auto& peak : peaks_) peak = 0;
         for (auto& stamp : activity_) stamp = 0;
         if (!bank_) return;
         for (int channel = 0; channel < 16; ++channel) tsf_channel_sounds_off_all(bank_.get(), channel);
@@ -219,6 +231,7 @@ public:
             if (next != current_[channel]) selectProgram(channel, next);
             applyControls(channel);
         }
+        blockPeaks_.fill(0.f);
         int rendered = 0;
         for (const auto event : midi) {
             const auto end = juce::jlimit(rendered, audio.getNumSamples(), event.samplePosition);
@@ -234,6 +247,9 @@ public:
                 sounding |= 1u << voice.playingChannel;
         }
         soundingMask_ = sounding;
+        const float decay = std::exp(-5.f * audio.getNumSamples() / sampleRate_);
+        for (int ch = 0; ch < 16; ++ch)
+            peaks_[ch].store(std::max(blockPeaks_[ch], peakLevel(ch) * decay), std::memory_order_relaxed);
     }
 
 private:
@@ -385,10 +401,26 @@ private:
         const float master = masterVolume_ / 16383.f;
         while (start < end) {
             const auto count = std::min(512, end - start);
-            tsf_render_float(bank_.get(), scratch_.data(), count, 0);
-            for (int channel = 0; channel < 2; ++channel) {
-                auto* out = audio.getWritePointer(channel, start);
-                for (int i = 0; i < count; ++i) out[i] = scratch_[2 * i + channel] * master;
+            unsigned used = 0;
+            for (int i = 0; i < bank_->voiceNum; ++i) {
+                auto& voice = bank_->voices[i];
+                if (voice.playingPreset < 0 || !juce::isPositiveAndBelow(voice.playingChannel, 16)) continue;
+                const int ch = voice.playingChannel;
+                auto* stereo = partAudio_[ch].data();
+                if (!(used & (1u << ch))) std::fill_n(stereo, count * 2, 0.f);
+                used |= 1u << ch;
+                tsf_voice_render(bank_.get(), &voice, stereo, count);
+            }
+            for (int ch = 0; ch < 16; ++ch) if (used & (1u << ch)) {
+                const auto* stereo = partAudio_[ch].data();
+                for (int side = 0; side < 2; ++side) {
+                    auto* out = audio.getWritePointer(side, start);
+                    for (int i = 0; i < count; ++i) {
+                        const float sample = stereo[2 * i + side] * master;
+                        blockPeaks_[ch] = std::max(blockPeaks_[ch], std::abs(sample));
+                        out[i] += sample;
+                    }
+                }
             }
             start += count;
         }
@@ -404,6 +436,10 @@ private:
     std::atomic<unsigned> soundingMask_{0};
     juce::String bankName_;
     std::array<std::atomic<int>, 16> programs_ {};
+    std::array<ostfstudio::EditorProgramParameter*, 16> editorPrograms_{};
+    std::array<std::array<float, 1024>, 16> partAudio_{};
+    std::array<float, 16> blockPeaks_{};
+    std::array<std::atomic<float>, 16> peaks_{};
     std::array<std::array<std::atomic<int>, controlCount>, 16> controls_ {};
     std::array<std::atomic<juce::uint32>, 16> activity_ {};
     std::array<BankAddress, 16> active_{}, pending_{};
@@ -455,14 +491,14 @@ public:
             }
         }
         program_.onChange = [this] {
-            if (program_.getSelectedId() > 0) module_.setProgram(selected_, program_.getSelectedId() - 1);
+            if (program_.getSelectedId() > 0) module_.chooseProgram(selected_, program_.getSelectedId() - 1);
         };
         load_.onClick = [this] { chooseBank(); };
         factory_.onClick = [this] { module_.loadFactoryBank(); refreshPrograms(); timerCallback(); };
         refreshPrograms();
         timerCallback();
         startTimerHz(12);
-        setSize(780, 405);
+        setSize(780, 493);
     }
 
     ~SoundModuleEditor() override { stopTimer(); setLookAndFeel(nullptr); }
@@ -473,6 +509,20 @@ public:
         g.fillRoundedRectangle(display_.toFloat(), 9.0f);
         g.setColour(juce::Colour(0xff407b74));
         g.drawRoundedRectangle(display_.toFloat().reduced(.5f), 9.0f, 1.0f);
+        g.setColour(juce::Colour(0xff0c1c22));
+        g.fillRoundedRectangle(meters_.toFloat(), 5.f);
+        for (int ch = 0; ch < 16; ++ch) {
+            auto strip = meters_.withLeft(meters_.getX() + ch * meters_.getWidth() / 16)
+                                .withRight(meters_.getX() + (ch + 1) * meters_.getWidth() / 16).reduced(5, 4);
+            g.setFont(12.f);
+            g.setColour(juce::Colour(ch == selected_ ? 0xffffca76 : 0xff9bb9ba));
+            g.drawText(juce::String(ch + 1), strip.removeFromBottom(17), juce::Justification::centred);
+            const float db = juce::Decibels::gainToDecibels(module_.peakLevel(ch), -54.f);
+            for (int i = 0; i < 12; ++i) {
+                g.setColour(juce::Colour(db > -54.f + i * 4.5f ? (i >= 10 ? 0xffffbd62 : 0xff69dfb4) : 0xff22383b));
+                g.fillRect(strip.getX(), strip.getBottom() - (i + 1) * 4, strip.getWidth(), 3);
+            }
+        }
         g.setColour(juce::Colour(0xff21323d));
         g.fillRoundedRectangle(panel_.toFloat(), 9.0f);
     }
@@ -504,6 +554,8 @@ public:
         bank_.setBounds(upper);
         preset_.setBounds(display.removeFromRight(265));
         program_.setBounds(display);
+        area.removeFromTop(5);
+        meters_ = area.removeFromTop(78);
         area.removeFromTop(9);
         for (int row = 0; row < 2; ++row) {
             auto line = area.removeFromTop(64);
@@ -583,7 +635,7 @@ private:
     juce::ComboBox program_;
     juce::TextButton load_ {"Load SoundFont"}, factory_ {"Factory bank"};
     std::unique_ptr<juce::FileChooser> chooser_;
-    juce::Rectangle<int> display_, panel_;
+    juce::Rectangle<int> display_, meters_, panel_;
     int selected_ = 0;
 };
 

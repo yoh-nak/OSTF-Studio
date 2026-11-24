@@ -17,6 +17,7 @@ struct Part {
     int channel = 1;
     List notes;
     juce::String role;
+    List midiEvents;
 };
 struct ImportSong {
     int ppq = 480, beats = 4, beatType = 4, count = 0;

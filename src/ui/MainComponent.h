@@ -180,7 +180,11 @@ private:
     int nextSharedChannel(std::size_t owner) const;
     bool hasSharedParts(std::size_t owner) const;
     void detachSharedPart(std::size_t);
+    void offerInstrumentProgram(std::size_t owner, int channel, int program);
+    void reviewEmptyMidiTracks();
+    bool isEmptyMidiTrack(std::size_t) const;
     void addSharedPart(std::size_t index);
+    void routeMidiPart(std::size_t track, std::optional<std::size_t> owner, int channel);
     friend int checkSamplePlacement(const juce::File&);
     friend int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>);
     void scanTrackPlugin(std::size_t index);

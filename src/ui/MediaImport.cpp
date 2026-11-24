@@ -23,6 +23,7 @@ juce::Result readMidi(const juce::File& source, ImportSong& song, List& chords) 
     song.ppq = file.getTimeFormat();
     song.length = std::max<Tick>(1, static_cast<Tick>(file.getLastTimestamp()));
     auto &meters = song.meters;
+    int midiEventCount = 0;
     for (int tr = 0; tr < file.getNumTracks(); ++tr) {
         const auto* seq = file.getTrack(tr);
         juce::String name;
@@ -46,6 +47,23 @@ juce::Result readMidi(const juce::File& source, ImportSong& song, List& chords) 
             }
             if (msg.isMetaEvent() && msg.getMetaEventType() == 6 && name == "OSTF Stem Separator Chords")
                 chordMarkers[at] = msg.getTextFromTextMetaEvent();
+            juce::var control;
+            if (msg.isProgramChange()) control = obj({{"type","programChange"}, {"program",msg.getProgramChangeNumber()}});
+            else if (msg.isController() && msg.getControllerNumber() < 120)
+                control = obj({{"type","controlChange"}, {"controller",msg.getControllerNumber()}, {"value",msg.getControllerValue()}});
+            else if (msg.isPitchWheel()) control = obj({{"type","pitchBend"}, {"value14",msg.getPitchWheelValue()}});
+            else if (msg.isChannelPressure()) control = obj({{"type","channelPressure"}, {"value",msg.getChannelPressureValue()}});
+            else if (msg.isAftertouch()) control = obj({{"type","polyPressure"}, {"pitch",msg.getNoteNumber()}, {"value",msg.getAfterTouchValue()}});
+            if (auto* data = control.getDynamicObject()) {
+                if (++midiEventCount > 60000) return fail("Too many MIDI events.");
+                data->setProperty("id", "event-" + juce::String(midiEventCount));
+                data->setProperty("start", at);
+                data->setProperty("order", 1); // Stable stream order, before note-ons at this tick.
+                auto& part = channels[msg.getChannel()];
+                part.channel = msg.getChannel();
+                part.midiEvents.add(control);
+                song.length = std::max(song.length, at + 1);
+            }
             if (!msg.isNoteOn())
                 continue;
             if (!event->noteOffObject)
@@ -104,8 +122,11 @@ juce::Result buildImportScore(const juce::File& source, ImportSong& song, const 
     for (auto& p : song.parts) {
         auto id = "track-" + juce::String(tracks.size() + 1);
         List clips;
-        if (!p.notes.isEmpty())
-            clips.add(obj({{"id", id + "-clip"}, {"start", 0}, {"duration", duration}, {"notes", p.notes}}));
+        if (!p.notes.isEmpty() || !p.midiEvents.isEmpty()) {
+            auto clip = obj({{"id", id + "-clip"}, {"start", 0}, {"duration", duration}, {"notes", p.notes}});
+            if (!p.midiEvents.isEmpty()) clip.getDynamicObject()->setProperty("midiEvents", p.midiEvents);
+            clips.add(clip);
+        }
         tracks.add(obj({{"id", id},
                         {"name", p.name},
                         {"trackType", p.channel == 10 ? "drum" : "melodic"},
@@ -196,7 +217,7 @@ juce::Result prepareMediaImport(const juce::File& source, std::unique_ptr<OstfpP
             return r;
         detail = juce::String(static_cast<int>(song.parts.size())) + " " + TRANS("tracks") + " / " +
                  juce::String(song.count) + " " + TRANS("notes") + "\n" +
-                 TRANS("Imports note timing, velocity, channels, tempo and meter. Controller data is omitted.");
+                 TRANS("Imports MIDI notes, program changes, controllers, tempo and meter.");
     }
     auto r = buildImportScore(source, song, chordEvents, project);
     if (r.failed())
@@ -718,6 +739,7 @@ juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPrevie
     // Only grow to the end of the part being placed. Keep the live score intact
     // until overlap checks, conversion and the actual placement have succeeded.
     Tick sourceEnd = 0;
+    List midiEvents;
     if (index == -1 && !track) {
         const auto parsed = juce::JSON::parse(source.sourceScore.toString());
         if (auto* chords = parsed["harmony"]["chords"].getArray())
@@ -731,6 +753,17 @@ juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPrevie
         } else {
             const auto& notes = source.trackKinds[index] == TrackKind::drum ? source.drumNotes[index] : source.pitchedNotes[index];
             for (const auto& note : notes) sourceEnd = std::max(sourceEnd, note.endTick);
+            const auto score = juce::JSON::parse(source.sourceScore.toString());
+            if (auto* clips = score["tracks"][index]["clips"].getArray()) for (const auto& clip : *clips) {
+                if (!bool(clip.getProperty("enabled", true))) continue;
+                if (auto* list = clip["midiEvents"].getArray()) for (const auto& event : *list) {
+                    const Tick at = Tick(clip["start"]) + Tick(event["start"]);
+                    sourceEnd = std::max(sourceEnd, at + 1);
+                    auto placed = event.clone();
+                    placed.getDynamicObject()->setProperty("start", convert(at));
+                    midiEvents.add(placed);
+                }
+            }
         }
     }
     if (sourceEnd > 0 && convert(sourceEnd) > dest.durationTicks) {
@@ -812,7 +845,7 @@ juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPrevie
     if (source.trackKinds[index] != TrackKind::drum && source.trackKinds[index] != TrackKind::pitched)
         return fail("Choose a matching destination track.");
     auto notes = source.trackKinds[index] == TrackKind::drum ? source.drumNotes[index] : source.pitchedNotes[index];
-    if (notes.empty()) return fail("No MIDI notes to place.");
+    if (notes.empty() && midiEvents.isEmpty()) return fail("No MIDI notes to place.");
     auto start = dest.durationTicks;
     auto end = tick;
     for (auto& note : notes) {
@@ -821,7 +854,12 @@ juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPrevie
         start = std::min(start, note.startTick);
         end = std::max(end, note.endTick);
     }
-    return dest.addRecordedClip(*track, {start, end}, notes, before, juce::String::fromUTF8(source.trackLanes[index].label));
+    for (const auto& event : midiEvents) {
+        const Tick at = event["start"];
+        start = std::min(start, at);
+        end = std::max(end, at + 1);
+    }
+    return dest.addRecordedClip(*track, {start, end}, notes, before, juce::String::fromUTF8(source.trackLanes[index].label), midiEvents);
 }
 
 juce::Result saveMediaImport(const OstfpPreview& p, const juce::File& file) {
