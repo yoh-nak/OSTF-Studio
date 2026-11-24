@@ -486,10 +486,10 @@ def full_progressive():
 
 PAPER_LANTERN_LYRICS = {
     "Verse 1": (
-        "Rain counts the change in my coat",
-        "Trains pull the night down the line",
-        "I cup the last of the glow",
-        "And keep your side of the light",
+        "あ め の お と が す る",
+        "ま ど に ひ か る し ず く",
+        "そ っ と て を か さ ね",
+        "きょ う も と も る あ か り",
     ),
     "Pre-Chorus": (
         "If the street lights all go out",
@@ -502,10 +502,10 @@ PAPER_LANTERN_LYRICS = {
         "My pa-per lan-tern shines for you",
     ),
     "Verse 2": (
-        "Steam on the glass hides the road",
-        "I trace the shape of your name",
-        "Dawn puts a hand on the roofs",
-        "But I still shel-ter the flame",
+        "よ あ け の か ぜ が ふ く",
+        "き み の な を よ ん だ",
+        "ち い さ な ちょ う ち ん",
+        "ふ た り の み ち を て ら す",
     ),
     "Bridge": (
         "One breath can bend the light",
@@ -543,7 +543,9 @@ def sing_lantern(song):
             line_id = f"{prefix}-line-{line + 1}"
             words = text.split()
             syllables = [syllable for word in words for syllable in word.split("-")]
-            lyrics["phrases"].append({"id": line_id, "documentId": "lantern-text", "text": text.replace("-", "")})
+            japanese = name in ("Verse 1", "Verse 2")
+            phrase = text.replace(" ", "") if japanese else text.replace("-", "")
+            lyrics["phrases"].append({"id": line_id, "documentId": "lantern-text", "text": phrase})
             offsets = ([.5, 1, 1.5, 2.25, 3, 3.5, 4.25, 5, 5.5, 6.25, 6.75, 7.25] if refrain else
                        [.5, 1.25, 2, 2.5, 3, 3.5, 4.5, 5.25, 5.75, 6.25, 6.75, 7.25])
             shape = ([1, 2, 3, 2, 1, 2, 4, 3, 2, 1, 1, 0] if refrain else
@@ -573,6 +575,8 @@ def sing_lantern(song):
                 vel = (89 if refrain else 76) + [3, -2, 6, 0][i % 4]
                 lead_notes.append(note(note_id, start + offset, held, pool[tone], vel, releaseVelocity=48 if refrain else 33))
                 lyrics["units"].append({"id": unit_id, "phraseId": line_id, "text": syllable, "start": at, "duration": held})
+                if japanese and syllable == "を":
+                    lyrics["units"][-1]["pronunciation"] = "お"
                 lyrics["alignments"].append({"id": f"{unit_id}-alignment", "voiceId": "voice",
                                              "unitIds": [unit_id], "noteIds": [note_id]})
                 if i == 0 or i + 1 == len(syllables):

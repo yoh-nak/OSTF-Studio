@@ -1,6 +1,8 @@
 # OSTF Studio
 
-The mixing collection adds 8-band, dynamic, graphic and parametric EQ, multimode and high/low-pass filters, gate, delay, de-esser, three compressor configurations and dedicated electric-guitar, acoustic-guitar and bass rigs. Each is a separate VST3. Paper Lantern Replies uses **OSTF Formant Singer**, an offline five-vowel voice driven by OSTF lyric units and pitched notes. In another host, open an `.ostf` inside the instrument, select a part and play the host transport. Its file player follows one melodic line. Use MusicXML for score/lyric exchange with Synthesizer V Studio 2 Pro.
+The mixing collection adds 8-band, dynamic, graphic and parametric EQ, multimode and high/low-pass filters, gate, delay, de-esser, three compressor configurations and dedicated electric-guitar, acoustic-guitar and bass rigs. Each is a separate VST3.
+
+**OSTF Formant Singer** sings both Japanese verses of **Paper Lantern Replies** locally. The lead enters at bar 5. The instrument reads aligned kana or a lyric unit’s pronunciation and renders consonants, vowels, scoops and vibrato. Choose **Load voice folder...** to use your own kana-named WAV recordings or a Japanese UTAU single-pitch CV folder containing `oto.ini`. **Use built-in voice** restores the synthesized voice. In another VST3 host, open an `.ostf` inside the instrument, select a part and play the host transport. Its file player follows one melodic line. Use MusicXML for score/lyric exchange with Synthesizer V Studio 2 Pro.
 
 The first demo, **Neon Platforms**, plays eight tracks through two GM Sound Modules. At bar 17, open **GM #1** from Electric Guitar Hook and **GM #3** from Bass to compare their channel meters during the chorus. The number after # identifies the track hosting that instrument. Each part opens its own group's editor. **Sharing ▾** lets you disconnect the current part, or choose one or all parts from the host. Disconnecting preserves the tracks and clips.
 

@@ -46,7 +46,7 @@ foreach(i RANGE 0 ${last_instrument})
         IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE FORMATS VST3 VST3_CATEGORIES Instrument Synth
         VST3_COPY_DIR "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" COPY_PLUGIN_AFTER_BUILD FALSE)
     if(type STREQUAL "Singer")
-        target_sources(${target} PRIVATE ../instruments/Singer.cpp)
+        target_sources(${target} PRIVATE ../instruments/Singer.cpp ../instruments/VoiceBank.cpp)
     else()
         target_sources(${target} PRIVATE ../instruments/Factory.cpp)
     endif()

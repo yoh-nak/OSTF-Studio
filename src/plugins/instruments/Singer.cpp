@@ -1,4 +1,5 @@
 #include "SingingScore.h"
+#include "VoiceBank.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <cmath>
 
@@ -8,72 +9,103 @@ using namespace ostfstudio::singing;
 class Voice {
   public:
     int channel = -1, key = -1;
-    void start(int ch, int pitch, float velocity, Phone p, double sr) {
-        channel = ch;
-        key = pitch;
-        gain = velocity;
-        phase = 0;
-        envelope = 0;
-        released = false;
+    void start(int ch, int pitch, float velocity, Phone p, double sr, const VoiceBank* bank) {
+        channel = ch; key = pitch; gain = velocity;
+        phase = envelope = 0; released = false;
         hz = juce::MidiMessage::getMidiNoteInHertz(pitch);
-        for (auto& r : resonators)
-            r = {};
-        articulate(p, sr);
+        resonators = {};
+        articulate(p, sr, bank);
     }
-    void articulate(Phone p, double sr) {
+    void articulate(Phone p, double sr, const VoiceBank* bank) {
         constexpr float freq[5][3] = {
-            {760, 1200, 2600}, {290, 2250, 3100}, {330, 850, 2300}, {490, 1880, 2650}, {490, 900, 2450}};
+            {760, 1200, 2600}, {290, 2250, 3100}, {330, 1250, 2350}, {490, 1880, 2650}, {490, 900, 2450}};
         constexpr float bandwidth[3] = {90, 120, 175};
-        onset = p.onset;
+        phone = p;
         age = 0;
+        recorded = bank ? bank->find(p) : nullptr;
+        vowelSample = false;
+        if (bank && !recorded && p.onset != closure && p.onset != moraN) {
+            recorded = bank->find({p.vowel, vowelOnly});
+            vowelSample = recorded != nullptr;
+        }
+        position = 0;
+        const int onset = p.onset;
+        nasal = onset == m || onset == n || onset == moraN;
+        stop = onset == velar || onset == g || onset == t || onset == d || onset == pStop || onset == b;
+        fricative = onset == sibilant || onset == sh || onset == z || onset == j || onset == ch || onset == ts
+            || onset == h || onset == f || onset == v;
+        voiced = onset == g || onset == d || onset == b || onset == z || onset == j || onset == v;
+        double first = freq[p.vowel][0], second = freq[p.vowel][1];
+        if (p.glide == 1 || onset == y || onset == sh || onset == j || onset == ch) { first = 305; second = 2200; }
+        else if (p.glide == 2 || onset == w || onset == b || onset == pStop || onset == m) { first = 280; second = 800; }
+        else if (nasal || onset == r || onset == t || onset == d) { first = 280; second = 1570; }
+        else if (onset == velar || onset == g) { first = 380; second = 1800; }
+        const double initial[3] = {first, second, freq[p.vowel][2]};
+        transition = 1 - std::exp(-1 / (.017 * sr));
         for (int i = 0; i < 3; ++i) {
             const double pole = std::exp(-juce::MathConstants<double>::pi * bandwidth[i] / sr);
-            auto& r = resonators[i];
-            r.a = 2 * pole *
-                  std::cos(juce::MathConstants<double>::twoPi * std::min(.44 * sr, double(freq[p.vowel][i])) / sr);
-            r.b = -pole * pole;
-            r.drive = (1 - pole) * (i == 0 ? 1.0 : .65);
+            auto coefficient = [&](double f) { return 2 * pole * std::cos(juce::MathConstants<double>::twoPi * std::min(.44 * sr, f) / sr); };
+            auto& res = resonators[i];
+            res.a = coefficient(initial[i]); res.target = coefficient(freq[p.vowel][i]);
+            res.b = -pole * pole; res.drive = (1 - pole) * (i == 0 ? 1.0 : .65);
         }
     }
-    void stop() { released = true; }
-    float sample(double sr) {
-        if (key < 0)
-            return 0;
+    void stopNote() { released = true; }
+    float sample(double sr, double bendRatio, float expression) {
         envelope = std::clamp(envelope + (released ? -95.0 : 110.0) / sr, 0.0, 1.0);
-        if (released && envelope == 0) {
-            key = channel = -1;
-            return 0;
-        }
-        const double t = age++ / sr;
-        phase += hz / sr;
-        phase -= std::floor(phase);
-        const double pulse = phase < .6 ? std::sin(phase / .6 * juce::MathConstants<double>::twoPi) : 0.0;
+        if (released && envelope == 0) { key = channel = -1; return 0; }
+        const double time = age++ / sr;
+        if (phone.onset == closure) return 0;
+        const double strength = phone.intensity / 127.0;
+        double cents = 0;
+        if (phone.delivery == vibrato && time > .09)
+            cents = 65 * strength * std::min(1.0, (time - .09) / .14) * std::sin(juce::MathConstants<double>::twoPi * 5.4 * time);
+        if (phone.delivery == scoop && time < .12)
+            cents = -140 * strength * (1 - time / .12) * (1 - time / .12);
+        const auto pitch = hz * bendRatio * (cents == 0 ? 1 : std::exp2(cents / 1200));
+        const auto level = gain * envelope * expression;
+        const float recording = recorded ? recorded->read(position, pitch * recorded->period / sr) : 0.f;
+        if (recorded && !vowelSample) return float(level * recording);
+        phase += pitch / sr; phase -= std::floor(phase);
+        const double pulse = phase < .6 ? std::sin(phase / .6 * juce::MathConstants<double>::twoPi) : 0;
         noise = noise * 1664525u + 1013904223u;
-        const double breath = (double(noise) / 2147483648.0 - 1.0);
-        const auto attack = std::min(1.0, t / (onset == 1 ? .085 : .033));
-        double input = pulse * ((onset == 1 || onset == 2) ? attack : 1.0) + breath * .02;
-        if (onset == 1 || onset == 2)
-            input += breath * (1 - attack) * .6;
-        double out = 0;
-        for (auto& r : resonators) {
-            const auto v = r.drive * input + r.a * r.y1 + r.b * r.y2;
-            r.y2 = r.y1;
-            r.y1 = v;
-            out += v;
+        const double white = double(noise) / 2147483648.0 - 1.0;
+        const double hiss = white - previousNoise;
+        previousNoise = white;
+        const auto onset = phone.onset;
+        const double attack = fricative ? .075 : stop ? .042 : nasal ? .065 : .035;
+        const double opened = std::min(1.0, time / attack);
+        double source = pulse + white * .012, unfiltered = 0;
+        if (fricative || stop) {
+            const double burst = stop ? (time < .014 ? 0 : std::exp(-95 * (time - .014))) : 1 - opened;
+            source = pulse * (opened + (voiced ? .40 : 0) * (1 - opened)) + white * burst * .38;
+            unfiltered = (onset == h || onset == f ? white * .10 : hiss * (onset == sh || onset == j ? .13 : .19)) * burst;
         }
-        return float(.45 * gain * envelope * std::tanh(out) * (onset == 3 ? .65 : 1.0));
+        if (nasal) {
+            const double nasalMix = onset == moraN ? 1 : 1 - opened;
+            source *= 1 - .88 * nasalMix;
+            unfiltered += nasalMix * .46 * std::sin(juce::MathConstants<double>::twoPi * phase);
+        }
+        if (onset == r && time > .009 && time < .022) source *= .10;
+        double out = 0;
+        for (auto& res : resonators) {
+            res.a += (res.target - res.a) * transition;
+            const double value = res.drive * source + res.a * res.y1 + res.b * res.y2;
+            res.y2 = res.y1; res.y1 = value; out += value;
+        }
+        double tone = .45 * std::tanh(out) + unfiltered;
+        if (vowelSample) tone += opened * (recording - tone);
+        return float(level * tone);
     }
-
   private:
-    struct Resonator {
-        double a{}, b{}, drive{}, y1{}, y2{};
-    };
+    struct Resonator { double a{}, target{}, b{}, drive{}, y1{}, y2{}; };
     std::array<Resonator, 3> resonators{};
-    double hz = 220, phase = 0, gain = 0, envelope = 0;
+    const RecordedMora* recorded = nullptr;
+    Phone phone;
+    double hz{}, phase{}, gain{}, envelope{}, position{}, transition{}, previousNoise{};
     unsigned noise = 1397;
     uint64_t age = 0;
-    int onset = 0;
-    bool released = false;
+    bool released = false, nasal = false, stop = false, voiced = false, fricative = false, vowelSample = false;
 };
 class Singer;
 class Editor final : public juce::AudioProcessorEditor {
@@ -84,8 +116,9 @@ class Editor final : public juce::AudioProcessorEditor {
   private:
     Singer& singer;
     juce::TextButton open{"Load OSTF..."};
+    juce::TextButton importVoice{"Load voice folder..."}, factory{"Use built-in voice"};
     juce::ComboBox parts;
-    juce::Label status;
+    juce::Label status, voiceStatus;
     std::unique_ptr<juce::FileChooser> chooser;
     void refresh();
 };
@@ -116,6 +149,8 @@ class Singer final : public juce::AudioProcessor {
     void reset() override {
         voices = {};
         articulation = {};
+        bend.fill(1.0);
+        expression.fill(1.0f);
         lastPart = -1;
         lastIndex = -1;
         expected = -1;
@@ -145,17 +180,39 @@ class Singer final : public juce::AudioProcessor {
         index = selected;
         return names;
     }
+    bool setVoice(const juce::File& directory, juce::String& error, bool recalling = false) {
+        auto next = directory == juce::File{} ? nullptr : VoiceBank::load(directory, error);
+        if (!next && directory != juce::File{} && !recalling) return false;
+        {
+            const juce::SpinLock::ScopedLockType guard(lock);
+            bank.swap(next);
+            requestedVoice = directory;
+            ++generation;
+        }
+        if (!recalling) updateHostDisplay(ChangeDetails{}.withNonParameterStateChanged(true));
+        return true;
+    }
+    juce::String voiceName() const {
+        const juce::SpinLock::ScopedLockType guard(lock);
+        if (bank) return bank->folder.getFileName() + "  /  " + juce::String(int(bank->sounds.size())) + " recorded morae";
+        if (requestedVoice != juce::File{}) return "Voice folder unavailable: " + requestedVoice.getFileName() + "  /  using built-in voice";
+        return "Built-in Japanese formant voice";
+    }
     void getStateInformation(juce::MemoryBlock& b) override {
         juce::XmlElement xml("OSTFSinger");
         {
             const juce::SpinLock::ScopedLockType guard(lock);
             xml.setAttribute("part", selected);
+            if (requestedVoice != juce::File{}) xml.setAttribute("voiceFolder", requestedVoice.getFullPathName());
             xml.addTextElement(text);
         }
         copyXmlToBinary(xml, b);
     }
     void setStateInformation(const void* b, int n) override {
         if (auto xml = getXmlFromBinary(b, n); xml && xml->hasTagName("OSTFSinger")) {
+            const auto path = xml->getStringAttribute("voiceFolder");
+            juce::String error;
+            setVoice(juce::File::isAbsolutePath(path) ? juce::File(path) : juce::File{}, error, true);
             auto source = xml->getAllSubText();
             if (source.isNotEmpty())
                 load(source, xml->getIntAttribute("part", -1));
@@ -210,9 +267,11 @@ class Singer final : public juce::AudioProcessor {
                 if (active != lastIndex) {
                     if (active >= 0) {
                         const auto& s = (*sequence)[size_t(active)];
-                        voices[0].start(1, s.key, s.velocity / 127.f, s.phone, rate);
+                        if (s.continuesNote && lastIndex >= 0 && lastIndex + 1 == active)
+                            voices[0].articulate(s.phone, rate, bank.get());
+                        else voices[0].start(1, s.key, s.velocity / 127.f, s.phone, rate, bank.get());
                     } else
-                        voices[0].stop();
+                        voices[0].stopNote();
                     lastIndex = active;
                 }
                 beat += step;
@@ -224,7 +283,7 @@ class Singer final : public juce::AudioProcessor {
             float sample = 0;
             for (auto& v : voices)
                 if (v.key >= 0)
-                    sample += v.sample(rate);
+                    sample += v.sample(rate, bend[v.channel - 1], expression[v.channel - 1]);
             for (int ch = 0; ch < b.getNumChannels(); ++ch)
                 b.setSample(ch, i, std::tanh(sample));
         }
@@ -237,10 +296,11 @@ class Singer final : public juce::AudioProcessor {
         if (isPhone(m)) {
             const auto* p = m.getSysExData();
             Phone phone{p[6], p[7]};
+            if (m.getSysExDataSize() == 11) { phone.glide = p[8]; phone.delivery = p[9]; phone.intensity = p[10]; }
             articulation[p[4]][p[5]] = phone;
             for (auto& v : voices)
                 if (v.channel == p[4] + 1 && v.key == p[5])
-                    v.articulate(phone, rate);
+                    v.articulate(phone, rate, bank.get());
         } else if (m.isNoteOn()) {
             auto* target = &voices[0];
             for (auto& v : voices) {
@@ -250,11 +310,15 @@ class Singer final : public juce::AudioProcessor {
                 }
             }
             target->start(m.getChannel(), m.getNoteNumber(), m.getFloatVelocity(),
-                          articulation[m.getChannel() - 1][m.getNoteNumber()], rate);
+                          articulation[m.getChannel() - 1][m.getNoteNumber()], rate, bank.get());
+        } else if (m.isPitchWheel()) {
+            bend[m.getChannel() - 1] = std::exp2((m.getPitchWheelValue() - 8192) / (8192.0 * 6));
+        } else if (m.isController() && m.getControllerNumber() == 11) {
+            expression[m.getChannel() - 1] = m.getControllerValue() / 127.f;
         } else if (m.isNoteOff() || m.isAllNotesOff() || m.isAllSoundOff()) {
             for (auto& v : voices)
                 if (v.channel == m.getChannel() && (!m.isNoteOff() || v.key == m.getNoteNumber()))
-                    v.stop();
+                    v.stopNote();
         }
     }
     mutable juce::SpinLock lock;
@@ -263,12 +327,19 @@ class Singer final : public juce::AudioProcessor {
     int selected = -1, generation = 0, seen = -1, lastPart = -1, cursor = -1, lastIndex = -1;
     double rate = 48000, expected = -1;
     std::array<Voice, 16> voices{};
+    std::unique_ptr<VoiceBank> bank;
+    juce::File requestedVoice;
+    std::array<double, 16> bend{};
+    std::array<float, 16> expression{};
     std::array<std::array<Phone, 128>, 16> articulation{};
 };
 Editor::Editor(Singer& s) : AudioProcessorEditor(s), singer(s) {
     addAndMakeVisible(open);
     addAndMakeVisible(parts);
     addAndMakeVisible(status);
+    addAndMakeVisible(importVoice);
+    addAndMakeVisible(factory);
+    addAndMakeVisible(voiceStatus);
     refresh();
     parts.onChange = [this] { singer.select(parts.getSelectedId() - 2); };
     open.onClick = [this] {
@@ -286,7 +357,18 @@ Editor::Editor(Singer& s) : AudioProcessorEditor(s), singer(s) {
                                  safe->refresh();
                              });
     };
-    setSize(480, 120);
+    importVoice.onClick = [this] {
+        chooser = std::make_unique<juce::FileChooser>("Choose a Japanese CV voice folder (kana WAV files or oto.ini)");
+        chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+            [safe = juce::Component::SafePointer<Editor>(this)](const auto& fc) {
+                if (!safe || !fc.getResult().isDirectory()) return;
+                juce::String error;
+                if (safe->singer.setVoice(fc.getResult(), error)) safe->refresh();
+                else safe->voiceStatus.setText(error, juce::dontSendNotification);
+            });
+    };
+    factory.onClick = [this] { juce::String error; singer.setVoice({}, error); refresh(); };
+    setSize(525, 172);
 }
 void Editor::refresh() {
     int index;
@@ -296,6 +378,7 @@ void Editor::refresh() {
     parts.addItemList(names, 2);
     parts.setSelectedId(index + 2, juce::dontSendNotification);
     status.setText("Formant voice  /  OSTF lyrics and notes", juce::dontSendNotification);
+    voiceStatus.setText(singer.voiceName(), juce::dontSendNotification);
 }
 void Editor::resized() {
     auto r = getLocalBounds().reduced(12);
@@ -305,6 +388,12 @@ void Editor::resized() {
     open.setBounds(row.removeFromLeft(115));
     row.removeFromLeft(6);
     parts.setBounds(row);
+    r.removeFromTop(7);
+    voiceStatus.setBounds(r.removeFromTop(30));
+    auto voices = r.removeFromTop(30);
+    importVoice.setBounds(voices.removeFromLeft(160));
+    voices.removeFromLeft(6);
+    factory.setBounds(voices.removeFromLeft(156));
 }
 } // namespace
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new Singer; }

@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## Japanese Formant Singer and local voices
+
+Branch `feature/japanese-formant-singer`. In the demo gallery, select **Paper Lantern Replies** and play bar 5. The two verses use Japanese morae aligned to melody notes. The singer reads kana or the optional OSTF 5.0 lyric pronunciation field and supports note-targeted scoop and vibrato. Studio also sends pitch bend and expression to the instrument. In other hosts the VST3 file player follows the selected melodic part.
+
+**Load voice folder...** accepts kana- or romaji-named WAV recordings and Japanese UTAU CV folders with UTF-8 or CP932 `oto.ini`. Choose one pitch folder. It estimates the recorded pitch and sustain loop at load time. The folder path is saved in plugin state. A missing folder uses the built-in voice. Multi-pitch mapping, VCV and automatic kanji readings remain open.
+
+The Windows singing test renders the authored score, checks imported sample playback against known waveforms and verifies pitch, note length, pronunciation, expressive articulation and state recall. For a listening excerpt, pass the full path to the demo score and a new WAV path to `ostf_singing_tests.exe`. An optional third argument selects a voice folder. A four-bar excerpt rendered with both the built-in voice and 125 imported morae from Kasane Teto's free 2008 Lite CV library. Those third-party recordings remain local to validation. [Original voicebank](https://kasaneteto.jp/utau/)
+
+The final Windows Release suite passed all 30 tests in one run. In earlier runs the piano-roll editing and Link timing checks each failed once and subsequently passed. All seven demo projects passed the pinned OSTF 5.0 schema, manifest and production validation. The extracted app and singer under `dist/windows-japanese-singer/Portable` matched the build binaries by SHA-256 and passed the hosted instruments test. The built-in voice excerpt is next to the Portable folder. macOS, third-party DAWs and listening on physical audio hardware remain unverified.
+
 ## Track header and mixer controls
 
 Branch `feature/track-header-button-order` places Record Arm immediately before headphone Cue in all three arrangement row layouts. The mixer has adjacent **+ Bus** and **+ Return** buttons. The track-view regression checks hit targets at all three heights, adds buses from the mixer, routes a track to each new bus and checks the eight-bus limit independently of returns.

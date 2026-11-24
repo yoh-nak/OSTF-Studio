@@ -1,95 +1,89 @@
 ﻿#pragma once
-#include <juce_audio_basics/juce_audio_basics.h>
+#include "JapaneseMora.h"
 #include <map>
 #include <string_view>
 #include <vector>
 
 namespace ostfstudio::singing {
-struct Phone {
-    int vowel = 0, onset = 0;
-};
 using Lyrics = std::map<juce::String, std::vector<Phone>>;
 inline const juce::Array<juce::var>& items(const juce::var& v) {
     static const juce::Array<juce::var> empty;
     return v.isArray() ? *v.getArray() : empty;
 }
-// Five vowel nuclei with a voiced, fricative or stop onset. Kana and romanised lyrics
-// are interpreted locally; this small voice does not depend on a pronunciation service.
-inline std::vector<Phone> pronounce(const juce::String& text) {
-    static constexpr std::u32string_view kana[]{U"あぁかがさざただなはばぱまゃやらわ",
-                                     U"いぃきぎしじちぢにひびぴみりゐ",
-                                     U"うぅくぐすずつづぬふぶぷむゅゆるゔ",
-                                     U"えぇけげせぜてでねへべぺめれゑ",
-                                     U"おぉこごそぞとどのほぼぽもょよろを"};
-    std::vector<Phone> phones;
-    int onset = 0;
-    for (auto c : text.toLowerCase()) {
-        if (c >= 0x30a1 && c <= 0x30f6)
-            c -= 0x60;
-        const auto roman = juce::String("aiueo").indexOfChar(c);
-        if (roman >= 0) {
-            phones.push_back({roman, onset});
-            onset = 0;
-            continue;
-        }
-        bool found = false;
-        for (int v = 0; v < 5; ++v)
-            if (kana[v].find(c) != std::u32string_view::npos) {
-                const int attack =
-                    std::u32string_view(U"さしすせそざじずぜぞはひふへほ").find(c) != std::u32string_view::npos                       ? 1
-                    : std::u32string_view(U"かきくけこたちつてとぱぴぷぺぽがぎぐげごだぢづでど").find(c) != std::u32string_view::npos ? 2
-                                                                                                                   : 0;
-                phones.push_back({v, attack});
-                onset = 0;
-                found = true;
-                break;
-            }
-        if (!found && juce::String("sfhzvx").containsChar(c))
-            onset = 1;
-        else if (!found && juce::String("ktpgdb").containsChar(c))
-            onset = 2;
-        else if (c == 0x3093)
-            phones.push_back({2, 3});
-    }
-    if (phones.empty())
-        phones.push_back({0, onset});
-    return phones;
-}
 inline Lyrics lyricsFor(const juce::var& score) {
     Lyrics lyrics;
-    std::map<juce::String, juce::String> text;
-    for (const auto& u : items(score["lyrics"]["units"]))
-        text[u["id"].toString()] = u["text"].toString();
-    for (const auto& a : items(score["lyrics"]["alignments"])) {
-        juce::String words;
-        for (const auto& u : items(a["unitIds"]))
-            words += text[u.toString()] + " ";
-        if (words.isEmpty() || words.trim().isEmpty())
-            continue;
-        for (const auto& n : items(a["noteIds"])) {
-            auto& p = lyrics[n.toString()];
-            const auto next = pronounce(words);
-            p.insert(p.end(), next.begin(), next.end());
+    std::map<juce::String, juce::String> readings;
+    for (const auto& unit : items(score["lyrics"]["units"])) {
+        auto reading = unit["pronunciation"].toString().trim();
+        readings[unit["id"].toString()] = reading.isEmpty() ? unit["text"].toString() : reading;
+    }
+    for (const auto& alignment : items(score["lyrics"]["alignments"])) {
+        std::vector<Phone> phones;
+        for (const auto& id : items(alignment["unitIds"])) {
+            const auto found = readings.find(id.toString());
+            if (found == readings.end() || found->second.trim().isEmpty()) continue;
+            const auto next = pronounce(found->second);
+            phones.insert(phones.end(), next.begin(), next.end());
+        }
+        if (phones.empty()) continue;
+        for (const auto& id : items(alignment["noteIds"])) {
+            auto& dest = lyrics[id.toString()];
+            dest.insert(dest.end(), phones.begin(), phones.end());
+        }
+    }
+    for (const auto& track : items(score["tracks"])) {
+        std::multimap<double, juce::String> ordered;
+        for (const auto& clip : items(track["clips"])) {
+            if (!bool(clip.getProperty("enabled", true))) continue;
+            for (const auto& note : items(clip["notes"]))
+                if (bool(note.getProperty("enabled", true)))
+                    ordered.emplace(double(clip["start"]) + double(note["start"]), note["id"].toString());
+            for (const auto& perf : items(clip["vocalPerformances"]))
+                for (const auto& tech : items(perf["techniques"])) {
+                    const auto id = tech["targetNoteId"].toString();
+                    const auto kind = tech["kind"].toString();
+                    if (id.isEmpty() || (kind != "vibrato" && kind != "scoop")) continue;
+                    auto& phones = lyrics[id];
+                    if (phones.empty()) phones.push_back({});
+                    for (auto& phone : phones) {
+                        phone.delivery = kind == "vibrato" ? vibrato : scoop;
+                        phone.intensity = juce::jlimit(0, 127, juce::roundToInt(double(tech.getProperty("intensity", 0.5)) * 127));
+                    }
+                }
+        }
+        int lastVowel = 0;
+        for (const auto& [time, id] : ordered) {
+            if (auto found = lyrics.find(id); found != lyrics.end()) {
+                for (auto& phone : found->second) {
+                    if (phone.onset == lengthMark) { phone.onset = vowelOnly; phone.vowel = lastVowel; }
+                    if (phone.onset != closure && phone.onset != moraN) lastVowel = phone.vowel;
+                }
+            }
         }
     }
     return lyrics;
 }
+
+// Studio-private non-commercial SysEx. Accept the earlier two-field articulation as well.
 inline juce::MidiMessage phoneMessage(int ch, int key, Phone phone) {
-    const juce::uint8 data[]{
-        0x7d, 'O', 'S', 'V', juce::uint8(ch - 1), juce::uint8(key), juce::uint8(phone.vowel), juce::uint8(phone.onset)};
+    const juce::uint8 data[]{0x7d, 'O', 'S', 'V', juce::uint8(ch - 1), juce::uint8(key),
+        juce::uint8(phone.vowel), juce::uint8(phone.onset), juce::uint8(phone.glide),
+        juce::uint8(phone.delivery), juce::uint8(phone.intensity)};
     return juce::MidiMessage::createSysExMessage(data, sizeof(data));
 }
 inline bool isPhone(const juce::MidiMessage& m) {
-    if (!m.isSysEx() || m.getSysExDataSize() != 8)
-        return false;
+    if (!m.isSysEx()) return false;
+    const int size = m.getSysExDataSize();
+    if (size != 8 && size != 11) return false;
     const auto* p = m.getSysExData();
-    return true && p[0] == 0x7d && p[1] == 'O' && p[2] == 'S' && p[3] == 'V' && p[4] < 16 && p[5] < 128 && p[6] < 5 &&
-           p[7] < 4;
+    return p[0] == 0x7d && p[1] == 'O' && p[2] == 'S' && p[3] == 'V' && p[4] < 16 && p[5] < 128 && p[6] < 5
+        && (size == 8 ? p[7] < 4 : p[7] < onsetCount && p[8] <= 2 && p[9] <= scoop && p[10] <= 127);
 }
 struct Syllable {
     double start, end;
     int key, velocity;
     Phone phone;
+    bool continuesNote = false;
 };
 struct Part {
     juce::String name;
@@ -124,7 +118,7 @@ inline std::vector<Part> readParts(const juce::var& song) {
                 const auto& phones = entry->second;
                 for (size_t i = 0; i < phones.size(); ++i)
                     part.syllables.push_back({first + length * i / phones.size(),
-                                              first + length * (i + 1) / phones.size(), key, vel, phones[i]});
+                                              first + length * (i + 1) / phones.size(), key, vel, phones[i], i > 0});
             }
         }
         std::stable_sort(part.syllables.begin(), part.syllables.end(),

@@ -9,12 +9,12 @@ OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、�
 | [Neon Platforms](neon-platforms.ostfp) · シティポップ | 2:52 · 76小節 · 8 | Aメロ、プレコーラス、サビ、ブリッジ、ギター間奏、終サビ、アウトロ。ギターのフックに弦、ブラス、パッド、カッティングを段階的に重ねます。 |
 | [Blue Hour Waltz](blue-hour-waltz.ostfp) · ジャズワルツ | 2:55 · 128小節 · 7 | ピアノイントロ、テーマ、ピアノとホーンのコーラス、4小節単位のセクション、テーマ回帰。3拍のウォーキングベースとライド、ブラシのスロット、固定とオープンの演奏プランを収録。 |
 | [Relay Circuit](relay-circuit.ostfp) · テクノ | 3:00 · 96小節 · 8 | DJイントロ、グルーヴ、ブレイク、ビルド、2回のドロップ、DJアウトロ。サブベース、コードスタブ、金属的なシーケンス、パッドが区間ごとに入れ替わります。 |
-| [Paper Lantern Replies](paper-lantern-replies.ostfp) · R&B | 2:52 · 56小節 · 9 | 2つのヴァース、プレコーラス、サビ、ブリッジ、終サビ。英語のオリジナル歌詞にリードとコーラスの譜面を割り当て、音節とノートを対応付けています。 |
+| [Paper Lantern Replies](paper-lantern-replies.ostfp) · R&B | 2:52 · 56小節 · 9 | 5小節目から日本語のリードが入ります。1番と2番のヴァースは日本語、プレコーラスとサビは英語です。リードにはOSTF Formant Singerを割り当てています。 |
 | [Copper Mile](copper-mile.ostfp) · ロック | 2:12 · 64小節 · 6 | パワーコードの刻み、クリーンギターとオルガン、リードギターのソロを聴き比べられます。 |
 | [First Light Vector](first-light-vector.ostfp) · トランス | 2:47 · 96小節 · 7 | 四つ打ちキックと裏拍のサブベースに16分アルペジオを重ね、ブレイクからドロップへ展開します。8小節目の3拍目から「Transition Sweep」をソロにすると、1小節のワープを3回聴き比べられます。 |
 | [Offset Bridges](offset-bridges.ostfp) · プログレッシブ・ロック | 2:22 · 80小節 · 8 | 7/8のテーマと4/4の展開、混合拍子の間奏、再現部、コーダ。ギター、オルガン、メロトロン、ロックドラムを収録。混合拍子の検証曲です。 |
 
-**Paper Lantern Replies** の歌詞にはヴァースごとの文章と繰り返すサビがあります。
+**Paper Lantern Replies** の1番は「あめのおとがする／まどにひかるしずく／そっとてをかさね／きょうもともるあかり」です。促音「っ」の間と「きょ」の発音を、リードのソロで聴き比べられます。サビの歌詞は次のように始まります。
 
 > Fold a little dawn into the blue
 > Leave a little light across the room
@@ -28,7 +28,7 @@ OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、�
 - **File → Demo songs** から6曲を開けます。フォルダー内の `.ostf`／`.ostfp` も **File → Open OSTF / OSTFP** で開けます。現行プレビューは混合拍子の **Offset Bridges** を読み込み時に明示的に拒否します。
 - **View → Global Timeline Lanes** でセクション、コード、ボイシング、スケールなどの表示を切り替えます。アレンジの区切りは名前付きクリップで確認できます。
 - **Paper Lantern Replies** の **Lead Vocal Guide** を選び、ピアノロールのパラメーター選択で、ベロシティ、CC11、チャンネル／ポリ・アフタータッチ、歌唱ピッチ、dynamics・breathiness・tension・brightness・voicingを切り替えます。
-- 試聴するには、**Settings → Audio / MIDI Devices** で出力を確認して **Play** を押します。デモを開くと、保存した通常のInstrument割り当てが復元されます。読み込み後にPlayでCoreのProgram Changeが各チャンネルに送られます。単体OSTFはStudioが保存する共通の制作設定を使用します。ドラムはGMスロットのマッピングを使います。ボーカルも試聴用の楽器音色で鳴ります。歌唱合成、歌詞の表示、演奏プラン、発音確率、MIDIピッチベンドの再生は未対応です。
+- 試聴するには、**Settings → Audio / MIDI Devices** で出力を確認して **Play** を押します。デモを開くと保存した音源の割り当てが復元されます。Paper Lantern Repliesのリードは歌詞の読みと音符を受け取って歌います。Singerの **Load voice folder...** から自分の録音やUTAUの日本語単独音を選ぶと、同じフレーズを別の声で確認できます。
 
 アレンジとピアノロールはそれぞれ下部の表示小節数と横スクロールで拡大・移動できます。コードの切り替わりは拍単位で表示します。尺と拍子を保ちつつ、イントロでは和音を長めに保ち、区切りでは着地する和音を前倒ししています。
 

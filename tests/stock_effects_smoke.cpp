@@ -255,10 +255,13 @@ int checkStudioInstruments(const juce::StringArray& args) {
     std::vector<PreviewTransport::TrackSetup> vocalRoutes(vocal->trackLanes.size());
     vocalRoutes[voice].instrument=singer.get();
     auto renderVowel = [&](const juce::String& vowel) {
-        auto score = juce::JSON::parse(vocal->sourceScore.toString());
-        for (auto& unit : *score["lyrics"]["units"].getArray()) unit.getDynamicObject()->setProperty("text",vowel);
-        const auto json = juce::JSON::toString(score);
-        vocal->sourceScore = juce::MemoryBlock(json.toRawUTF8(),json.getNumBytesAsUTF8());
+        if (vowel.isNotEmpty()) {
+            auto score = juce::JSON::parse(vocal->sourceScore.toString());
+            for (auto& unit : *score["lyrics"]["units"].getArray())
+                unit.getDynamicObject()->setProperty("pronunciation",vowel);
+            const auto json = juce::JSON::toString(score);
+            vocal->sourceScore = juce::MemoryBlock(json.toRawUTF8(),json.getNumBytesAsUTF8());
+        }
         PreviewTransport preview;
         preview.setChannelMix(voice,{},true,0);
         preview.setOutputMix({});
@@ -273,6 +276,8 @@ int checkStudioInstruments(const juce::StringArray& args) {
         }
         return result;
     };
+    const auto authored = renderVowel({});
+    if (authored.getMagnitude(0, 0, authored.getNumSamples()) < .001f) return 11;
     const auto aa=renderVowel("a"), ii=renderVowel("i");
     double delta=0;
     for (int n=0;n<aa.getNumSamples();++n) delta+=std::abs(aa.getSample(0,n)-ii.getSample(0,n));
