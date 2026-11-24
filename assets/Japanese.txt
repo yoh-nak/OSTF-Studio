@@ -1144,3 +1144,13 @@ countries: jp
 "Cancel chord edit" = "コード区間の編集を取消"
 "Keep chords" = "現在のコードを維持"
 "Apply chord choices" = "候補のコードを確定"
+
+"Performance" = "パフォーマンス"
+
+"History entries" = "履歴の最大件数"
+
+"History memory" = "履歴のメモリー上限"
+
+"Meter refresh rate" = "メーターの更新頻度"
+
+"Phase" = "位相"

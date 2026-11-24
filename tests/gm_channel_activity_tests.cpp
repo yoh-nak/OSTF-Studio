@@ -74,6 +74,14 @@ int checkDemoMeters(const juce::File& file) {
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     if (argc != 2) return 9;
+    ostfstudio::VolumeUnit vu;
+    constexpr int rate = 48000;
+    std::vector<float> tone(rate);
+    for (int i = 0; i < rate; ++i)
+        tone[i] = float(std::sin(juce::MathConstants<double>::twoPi * 1000. * i / rate) * std::pow(10., -.9));
+    vu.prepare(rate);
+    if (std::abs(vu.process(tone.data(), rate, 1) - 1.f) > .015f) return 17;
+    if (vu.process(tone.data(), rate, 0) > .001f) return 18;
     if (auto result = checkDemoMeters(juce::File(argv[1]))) return result;
     std::unique_ptr<juce::AudioProcessor> gm(createPluginFilter());
     gm->setRateAndBufferSizeDetails(48000,256);

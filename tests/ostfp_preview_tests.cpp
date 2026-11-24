@@ -137,20 +137,40 @@ static int checkGallery(const juce::File& directory) {
         }
         if (std::string_view(expected.file) == "paper-lantern-replies.ostfp") {
             if (project->lyricTrackIds.size()!=2 || project->vocalNotes.size()!=204 || project->primaryMelodyTrack!=0) return 86;
+            const auto harmony = std::find_if(project->globalLanes.begin(), project->globalLanes.end(),
+                [](const auto& lane) { return lane.kind == ostfstudio::TimelineLane::chord; });
+            if (harmony == project->globalLanes.end()) return 91;
+            const auto matchesChords = [&](const auto& lane) {
+                if (lane.regions.size() != harmony->regions.size()) return false;
+                for (size_t i = 0; i < lane.regions.size(); ++i) {
+                    const auto a = lane.regions[i].exactBars, b = harmony->regions[i].exactBars;
+                    if (!a || !b || a->start != b->start || a->end != b->end) return false;
+                }
+                return true;
+            };
             const auto& leadLanes = project->partLyricLanes.at(0);
             for (auto kind : {ostfstudio::TimelineLane::displayLyrics, ostfstudio::TimelineLane::pronunciation}) {
                 const auto lane = std::find_if(leadLanes.begin(), leadLanes.end(),
                     [kind](const auto& entry) { return entry.kind == kind; });
                 const bool sheet = kind == ostfstudio::TimelineLane::displayLyrics;
-                if (lane == leadLanes.end() || lane->regions.size() != (sheet ? 32 : 194)
-                    || !lane->regions.front().exactBars || lane->regions.front().exactBars->start != (sheet ? 5.0 : 5.125)
-                    || juce::String::fromUTF8(lane->regions.front().label) != juce::String::fromUTF8(sheet ? "雨の音が" : "あ")) return 91;
+                if (lane == leadLanes.end() || (sheet ? !matchesChords(*lane) : lane->regions.size() != 194)) return 91;
+                const auto first = std::find_if(lane->regions.begin(), lane->regions.end(), [](const auto& cell) { return cell.label[0] != 0; });
+                if (first == lane->regions.end() || first->exactBars->start != (sheet ? 5.0 : 5.125)
+                    || juce::String::fromUTF8(first->label) != juce::String::fromUTF8(sheet ? "雨の音が" : "あ")) return 91;
             }
             const auto& backingLanes = project->partLyricLanes.at(project->trackIds.indexOf("backing"));
             if (backingLanes.size() != 2 || backingLanes[0].kind != ostfstudio::TimelineLane::displayLyrics
                 || backingLanes[1].kind != ostfstudio::TimelineLane::pronunciation
-                || backingLanes[0].regions.size() != 10 || backingLanes[1].regions.size() != 10
-                || juce::String::fromUTF8(backingLanes[0].regions.front().label) != "Ah") return 92;
+                || !matchesChords(backingLanes[0]) || backingLanes[1].regions.size() != 10) return 92;
+            for (const auto& reading : backingLanes[1].regions) {
+                const auto at = reading.exactBars->start;
+                const auto cells = backingLanes[0].regions;
+                const auto display = std::find_if(cells.begin(), cells.end(), [at](const auto& cell) {
+                    return cell.exactBars->start <= at && at < cell.exactBars->end;
+                });
+                if (display == cells.end() || juce::String::fromUTF8(display->label) != "Ah"
+                    || display->exactBars->start >= at) return 92;
+            }
             const auto id = project->pitchedNotes[0].front().id;
             const auto original = project->vocalNotes.at(id);
             auto changed = original;

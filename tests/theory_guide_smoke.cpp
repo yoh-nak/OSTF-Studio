@@ -247,10 +247,10 @@ int checkTheoryGuide(const juce::File& demo) {
     };
     const auto show = find(*model, TRANS("Show Theory Guide")), chord = find(*model, TRANS("Chord fit")),
                scale = find(*model, TRANS("Scale fit"));
-    const auto blue = find(*model, TRANS("Studio Blue"), 4), harmonic = find(*model, TRANS("Harmonic colours"), 4);
-    const auto graphite = find(*model, TRANS("Graphite"), 4), aubergine = find(*model, TRANS("Aubergine"), 4);
-    const std::array themes{blue, harmonic, graphite, aubergine, find(*model, TRANS("Forest Console"), 4),
-                            find(*model, TRANS("Midnight Indigo"), 4), find(*model, TRANS("Copper Console"), 4)};
+    const auto blue = find(*model, TRANS("Studio Blue"), 5), harmonic = find(*model, TRANS("Harmonic colours"), 5);
+    const auto graphite = find(*model, TRANS("Graphite"), 5), aubergine = find(*model, TRANS("Aubergine"), 5);
+    const std::array themes{blue, harmonic, graphite, aubergine, find(*model, TRANS("Forest Console"), 5),
+                            find(*model, TRANS("Midnight Indigo"), 5), find(*model, TRANS("Copper Console"), 5)};
     const auto active = std::find_if(themes.begin(), themes.end(), [](const auto& t) { return t.checked; });
     if (active == themes.end() || std::any_of(themes.begin(), themes.end(), [](const auto& t) { return !t.id; }))
         return 44;
@@ -276,7 +276,7 @@ int checkTheoryGuide(const juce::File& demo) {
     for (std::size_t i = 0; i < themes.size(); ++i) {
         model->menuItemSelected(themes[i].id, 4);
         const auto& finish = ostfstudio::console::finishes[i];
-        if (!find(*model, juce::translate(finish.name), 4).checked
+        if (!find(*model, juce::translate(finish.name), 5).checked
             || main.findColour(ostfstudio::console::LookAndFeel::accentColourId) != juce::Colour(finish.accent)) return 47;
     }
     const auto preview = juce::SystemStats::getEnvironmentVariable("OSTF_CONSOLE_MIXER_PNG", {});
@@ -344,7 +344,7 @@ int checkTheoryGuide(const juce::File& demo) {
     const auto multicolour = main.createComponentSnapshot(main.getLocalBounds());
     model->menuItemSelected(blue.id, 4);
     const auto snapshot = main.createComponentSnapshot(main.getLocalBounds());
-    if (!find(*model, TRANS("Studio Blue"), 4).checked) return 45;
+    if (!find(*model, TRANS("Studio Blue"), 5).checked) return 45;
     int different = 0;
     for (int y = grid->getY(); y < grid->getBottom(); y += 3)
         for (int x = grid->getX(); x < grid->getRight(); x += 3)

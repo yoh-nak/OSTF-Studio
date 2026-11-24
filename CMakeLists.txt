@@ -126,6 +126,8 @@ if (OSTF_STUDIO_BUILD_GUI)
         target_sources(OSTFStudio PRIVATE ${ostf_document_icons})
         set_source_files_properties(${ostf_document_icons} PROPERTIES MACOSX_PACKAGE_LOCATION Resources HEADER_FILE_ONLY TRUE)
     endif()
+    juce_add_binary_data(OSTFEnglishLexicon HEADER_NAME EnglishLexiconData.h NAMESPACE EnglishLexiconData SOURCES assets/voices/english-lexicon.gz)
+    target_link_libraries(OSTFStudio PRIVATE OSTFEnglishLexicon)
     juce_add_binary_data(OSTFStudioAssets SOURCES
         assets/AppIcon.png assets/Japanese.txt assets/NewProject.ostf assets/GMFamilies.json
         examples/demo-songs/neon-platforms.ostfp examples/demo-songs/blue-hour-waltz.ostfp
@@ -168,7 +170,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
     target_include_directories(ostf_gm_channel_activity_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_link_libraries(ostf_gm_channel_activity_tests PRIVATE OSTFGMSoundModule ostf_effect_dsp ostf_link
-        ostf_score_validation ostf_studio_core juce::juce_audio_devices juce::juce_audio_formats
+        OSTFEnglishLexicon ostf_score_validation ostf_studio_core juce::juce_audio_devices juce::juce_audio_formats
         juce::juce_cryptography juce::juce_recommended_config_flags)
     add_test(NAME ostf_gm_channel_activity_tests COMMAND ostf_gm_channel_activity_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostfp")

@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Chorus display lyrics and mixer monitoring
+
+The arrangement and piano roll share the written lyric cells derived from the original phrases and the exact chord boundaries. Paper Lantern Replies has 55 chord cells per voice. Its first backing “Ah” starts on the offbeat of beat two in bar 18. The backing track opens at 100 px. Note timing and the portable score schema are unchanged.
+
+Edit commands are in the toolbar and Edit menu. Settings → Performance controls history capacity and meter refresh rate. Source mixer strips include record arm and VU, with momentary and integrated loudness, true peak and a stereo phase scope on the master. The singer includes the CMU pronunciation dictionary and local English speech sounds, with sustained vocal pitch and short consonants.
+
+Windows Release passed all 31 CTest cases, and the core-only build passed both tests. The verified portable executable in `dist/windows-chorus-lyrics/Portable` opens Paper Lantern Replies with the lead and backing controls visible and renders both independent singers. Listening quality and macOS operation were not assessed in this run.
+
 ## Plug-in catalogue and global chord and scale fit
 
 Branch `feat/plugin-catalog-global-fit` retires the fixed-phrase OSTF Arranger from the host, CMake targets and Windows/macOS package definitions. The Windows scan cache contained stock components from the shared VST3 directory. Portable startup also registered the same classes beside the executable. The browser and track menus now select a single usable copy for each class, preferring the portable bundle. Previously scanned Arranger entries are hidden.

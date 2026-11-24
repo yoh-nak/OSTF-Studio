@@ -184,6 +184,11 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     if (!std::isfinite(sampleRate) || sampleRate <= 0 || blockSize < 1)
         return juce::Result::fail("Invalid audio configuration");
     sampleRate_ = sampleRate;
+    for (auto& pair : vu_) for (auto& channel : pair) channel.prepare(sampleRate);
+    for (auto& v : vuPublished_) v.store(0, std::memory_order_relaxed);
+    masterAnalyzer_.prepare(sampleRate, 2);
+    phaseIndex_ = 0; phaseDecimation_ = 0; scopeFrame_ = {};
+    { const juce::SpinLock::ScopedLockType guard(masterPublishLock_); publishedMaster_ = {}; }
     if (project.clock.empty()) return juce::Result::fail("The song needs an initial tempo.");
     if (!monitorOnly) {
         if (auto check = project.checkAudition(semitones, tempoRate); check.failed()) return check;
@@ -354,9 +359,13 @@ juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview&
                 const auto entry=lyrics->find(n.id);
                 if (entry == lyrics->end()) {
                     midi->addEvent(ostfstudio::singing::phoneMessage(setup.midiChannel,key,{}),juce::roundToInt(clock_.secondsAt(n.startTick)*sampleRate_));
-                } else for (size_t p=0;p<entry->second.size();++p) {
-                    auto tick = n.startTick+(n.endTick-n.startTick)*static_cast<juce::int64>(p)/static_cast<juce::int64>(entry->second.size());
-                    midi->addEvent(ostfstudio::singing::phoneMessage(setup.midiChannel,key,entry->second[p]),juce::roundToInt(clock_.secondsAt(tick)*sampleRate_));
+                } else {
+                    const auto start = clock_.secondsAt(n.startTick);
+                    const auto duration = clock_.secondsAt(n.endTick) - start;
+                    const auto edges = ostfstudio::singing::articulationPositions(entry->second, duration);
+                    for (size_t p = 0; p < entry->second.size(); ++p)
+                        midi->addEvent(ostfstudio::singing::phoneMessage(setup.midiChannel, key, entry->second[p]),
+                                       juce::roundToInt((start + edges[p] * duration) * sampleRate_));
                 }
             }
         }
@@ -642,10 +651,12 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
                 for (int ch = 0; ch < 2; ++ch) block.getWritePointer(ch)[i] *= ostfstudio::stereoBalance(pan, ch == 1);
             }
         }
+        float trackVu = 0;
         for (int channel = 0; channel < 2; ++channel) {
             const auto balance = automated ? 1.f : ostfstudio::stereoBalance(basePan, channel == 1);
             const auto gain = mix.level.load() * balance;
             const auto* data = block.getReadPointer(channel);
+            trackVu = std::max(trackVu, vu_[track][size_t(channel)].process(data, audible, gain));
             trackMeters_[track].publish(channel, block.getMagnitude(channel, 0, audible) * gain);
             stems_[static_cast<std::size_t>(mix.bus.load())].addFrom(channel, 0, data, audible, gain);
             for (std::size_t r = 0; r < mix.sends.size(); ++r) {
@@ -655,6 +666,7 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
             if (cueGain != 0.0f)
                 cueBus_.addFrom(channel, 0, data, audible, cueGain * balance);
         }
+        vuPublished_[track].store(trackVu, std::memory_order_relaxed);
     }
     for (std::size_t i = 1; i < stems_.size(); ++i) {
         const auto gain = outputGains_[i].load();
@@ -667,6 +679,23 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
     }
     processEffects(inserts_[0], stems_[0], count);
     const float masterGain = outputGains_[0].load();
+    const auto* left = stems_[0].getReadPointer(0);
+    const auto* right = stems_[0].getReadPointer(1);
+    for (int i = 0; i < audible; ++i) {
+        const float l = left[i] * masterGain, r = right[i] * masterGain;
+        masterAnalyzer_.push(l, r);
+        if (--phaseDecimation_ <= 0) {
+            scopeFrame_.scope[phaseIndex_] = {l, r};
+            phaseIndex_ = (phaseIndex_ + 1) % scopeFrame_.scope.size();
+            phaseDecimation_ = std::max(1, int(sampleRate_ / 6000));
+        }
+    }
+    const auto& readings = masterAnalyzer_.values;
+    scopeFrame_.momentary = readings.momentary;
+    scopeFrame_.integrated = readings.integrated;
+    scopeFrame_.truePeak = std::max(readings.currentTruePeak[0], readings.currentTruePeak[1]);
+    { const juce::SpinLock::ScopedTryLockType guard(masterPublishLock_);
+      if (guard.isLocked()) publishedMaster_ = scopeFrame_; }
     for (int c = 0; c < 2; ++c) {
         outputMeters_[0].publish(c, stems_[0].getMagnitude(c, 0, audible) * masterGain);
         cueMeter_.publish(c, cueBus_.getMagnitude(c, 0, audible));
@@ -687,6 +716,8 @@ ostfstudio::MeterFrame PreviewTransport::takeMeters() noexcept {
     for (std::size_t i = 0; i < trackMeters_.size(); ++i) frame.tracks[i] = trackMeters_[i].take();
     for (std::size_t i = 0; i < outputMeters_.size(); ++i) frame.outputs[i] = outputMeters_[i].take();
     frame.cue = cueMeter_.take();
+    for (size_t i = 0; i < vuPublished_.size(); ++i) frame.vu[i] = vuPublished_[i].load(std::memory_order_relaxed);
+    { const juce::SpinLock::ScopedLockType guard(masterPublishLock_); frame.master = publishedMaster_; }
     return frame;
 }
 

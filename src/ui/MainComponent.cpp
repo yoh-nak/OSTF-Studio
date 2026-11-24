@@ -26,8 +26,8 @@ constexpr int menuHeight = 28;
 int toolbarButtonWidth(int width) { return std::clamp(width / 24, 24, 39); }
 
 int viewBarHeight(int width) {
-    const bool wrapIcons = width < 964;
-    const int available = width - (wrapIcons ? 32 : 64) - (wrapIcons ? 9 : 23) * toolbarButtonWidth(width);
+    const bool wrapIcons = width < 1160;
+    const int available = width - (wrapIcons ? 32 : 80) - (wrapIcons ? 9 : 28) * toolbarButtonWidth(width);
     const int rows = (wrapIcons ? 2 : 1) + (available < 394 ? 1 : 0);
     return 32 * rows;
 }
@@ -124,6 +124,8 @@ constexpr struct { const char* name; const char* first; const char* second; cons
                         "Mark the words to emphasize in the first vocal phrase."}
 };
 static_assert(std::size(studioModes) == studioVocal - studioArrangement + 1);
+constexpr int historyLimits[]{16, 32, 64, 128}, historyMemoryOptions[]{8, 16, 32, 64}, meterRates[]{6, 12, 24};
+constexpr int historyCountMenu = 600, historyMemoryMenu = 610, meterRateMenu = 620;
 constexpr int firstThemeId = 89;
 constexpr int themeCount = static_cast<int>(std::size(ostfstudio::console::finishes));
 constexpr int timelineMenuBase = 100;
@@ -437,6 +439,9 @@ MainComponent::MainComponent() {
     for (int i = 0; i < 128; ++i)
         padMapping_[i] = juce::jlimit(0, 127, viewPreferences_.getUserSettings()->getIntValue("padInput" + juce::String(i), i));
     if (const auto* config = viewPreferences_.getUserSettings()) {
+        historyLimit_ = std::clamp(config->getIntValue("historyLimit", 64), 16, 128);
+        historyMemoryMiB_ = std::clamp(config->getIntValue("historyMemoryMiB", 32), 8, 64);
+        meterRefreshHz_ = std::clamp(config->getIntValue("meterRefreshHz", 24), 6, 24);
         interfaceScale_ = std::clamp(config->getIntValue("interfaceScale", 100), minInterfaceScale, maxInterfaceScale);
         juce::Desktop::getInstance().setGlobalScaleFactor(interfaceScale_ / 100.f);
         timelineLaneMask_ = static_cast<unsigned>(config->getIntValue("timelineLanesWithLyrics",
@@ -459,9 +464,9 @@ MainComponent::MainComponent() {
     addAndMakeVisible(statusLabel_);
     addAndMakeVisible(systemUsage_);
     for (auto* button : {&undoButton_, &redoButton_, &historyButton_}) addAndMakeVisible(*button);
-    undoButton_.setButtonText(TRANS("Undo"));
-    redoButton_.setButtonText(TRANS("Redo"));
-    historyButton_.setButtonText(TRANS("Edit history"));
+    undoButton_.setTitle(TRANS("Undo")); undoButton_.setTooltip(TRANS("Undo"));
+    redoButton_.setTitle(TRANS("Redo")); redoButton_.setTooltip(TRANS("Redo"));
+    historyButton_.setTitle(TRANS("Edit history")); historyButton_.setTooltip(TRANS("Edit history"));
     undoButton_.onClick = [this] { undoPianoEdit(false); };
     redoButton_.onClick = [this] { undoPianoEdit(true); };
     historyButton_.onClick = [this] {
@@ -1043,6 +1048,7 @@ MainComponent::MainComponent() {
     trackPicker_.onChange = [this] {
         if (const auto id = trackPicker_.getSelectedId(); id > 0) selectTrack(static_cast<std::size_t>(id - 1));
     };
+    mixer_.recordArmChanged = [this](size_t track, bool armed) { setRecordArm(track, armed); };
     mixer_.channelChanged = [this](std::size_t index) {
         markSessionEdited();
         auto& controls = *trackControls_[index];
@@ -1071,7 +1077,7 @@ MainComponent::MainComponent() {
     newProject();
 }
 
-juce::StringArray MainComponent::getMenuBarNames() { return {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")}; }
+juce::StringArray MainComponent::getMenuBarNames() { return {TRANS("File"), TRANS("View"), TRANS("Edit"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")}; }
 
 juce::PopupMenu MainComponent::timelineMenu() const {
     juce::PopupMenu lanes;
@@ -1252,10 +1258,6 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(showSongInformation, TRANS("Song information..."), project_ != nullptr);
             menu.addSubMenu(TRANS("Transpose and tempo"), musicMenu(), project_ != nullptr);
             menu.addSeparator();
-            menu.addItem(undoScore, TRANS("Undo score edit"), project_ && !recordTrack_ && noteHistoryCursor_ > 0);
-            menu.addItem(redoScore, TRANS("Redo score edit"), project_ && !recordTrack_ && noteHistoryCursor_ < noteHistory_.size());
-            menu.addSubMenu(TRANS("Edit history"), editHistoryMenu(), project_ && !recordTrack_ && !noteHistory_.empty());
-            menu.addSeparator();
             menu.addItem(saveScore, TRANS("Save as OSTF..."), canEditTracks());
             menu.addItem(saveProject, TRANS("Save as OSTFP..."), canEditTracks());
             juce::PopupMenu midi;
@@ -1285,14 +1287,30 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(showPartScore, TRANS("Score"), project_ != nullptr, scoreButton_.getToggleState());
             break;
         }
-        case 3:
+        case 2:
+            menu.addItem(undoScore, TRANS("Undo"), project_ && !recordTrack_ && noteHistoryCursor_ > 0);
+            menu.addItem(redoScore, TRANS("Redo"), project_ && !recordTrack_ && noteHistoryCursor_ < noteHistory_.size());
+            menu.addSubMenu(TRANS("Edit history"), editHistoryMenu(), project_ && !recordTrack_ && !noteHistory_.empty());
+            break;
+        case 4:
             for (int i = 0; i < int(std::size(studioModes)); ++i)
                 menu.addItem(studioArrangement + i, studioModes[i].name, true, i == studioModeIndex_);
             break;
-        case 4: {
+        case 5: {
             menu.addItem(showDevices, TRANS("Audio / MIDI Devices..."));
             menu.addItem(aiConnections, TRANS("AI connections..."));
             menu.addItem(controllerSettings, "Mackie Control...");
+            juce::PopupMenu performance, entries, memory, refresh;
+            for (int i = 0; i < int(std::size(historyLimits)); ++i) {
+                entries.addItem(historyCountMenu + i, juce::String(historyLimits[i]), true, historyLimits[i] == historyLimit_);
+                memory.addItem(historyMemoryMenu + i, juce::String(historyMemoryOptions[i]) + " MiB", true, historyMemoryOptions[i] == historyMemoryMiB_);
+            }
+            for (int i = 0; i < int(std::size(meterRates)); ++i)
+                refresh.addItem(meterRateMenu + i, juce::String(meterRates[i]) + " Hz", true, meterRates[i] == meterRefreshHz_);
+            performance.addSubMenu(TRANS("History entries"), entries);
+            performance.addSubMenu(TRANS("History memory"), memory);
+            performance.addSubMenu(TRANS("Meter refresh rate"), refresh);
+            menu.addSubMenu(TRANS("Performance"), performance);
             juce::PopupMenu themes;
             for (int i = 0; i < themeCount; ++i)
                 themes.addItem(firstThemeId + i, juce::translate(ostfstudio::console::finishes[i].name),
@@ -1306,7 +1324,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addSubMenu(TRANS("Language"), languages);
             break;
         }
-        case 5:
+        case 6:
             menu.addItem(externalSplice, TRANS("Open Splice Sounds"));
             menu.addItem(externalMelodyne, "Melodyne...", !recordTrack_);
             menu.addSeparator();
@@ -1317,11 +1335,11 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
                              juce::String(int(state.peers)) + " " + TRANS("peers") + "...", !recordTrack_);
             }
             break;
-        case 6:
+        case 7:
             menu.addItem(showShortcuts, TRANS("Shortcuts..."));
             menu.addItem(showAbout, TRANS("About OSTF Studio"));
             break;
-        case 2: {
+        case 3: {
             const auto editable = canEditTracks();
             const auto add = editable && project_->sourceTrackCount() < ostfstudio::OstfpPreview::maxTracks;
             menu.addItem(addMelody, TRANS("Add melody track"), add);
@@ -1352,6 +1370,21 @@ void MainComponent::menuItemSelected(int item, int) {
         applyAiSelection();
         menuItemsChanged();
         return;
+    }
+    if (juce::isPositiveAndBelow(item - historyCountMenu, int(std::size(historyLimits)))) {
+        historyLimit_ = historyLimits[item - historyCountMenu];
+        viewPreferences_.getUserSettings()->setValue("historyLimit", historyLimit_);
+        trimHistory(); refreshHistoryControls(); return;
+    }
+    if (juce::isPositiveAndBelow(item - historyMemoryMenu, int(std::size(historyMemoryOptions)))) {
+        historyMemoryMiB_ = historyMemoryOptions[item - historyMemoryMenu];
+        viewPreferences_.getUserSettings()->setValue("historyMemoryMiB", historyMemoryMiB_);
+        trimHistory(); refreshHistoryControls(); return;
+    }
+    if (juce::isPositiveAndBelow(item - meterRateMenu, int(std::size(meterRates)))) {
+        meterRefreshHz_ = meterRates[item - meterRateMenu];
+        viewPreferences_.getUserSettings()->setValue("meterRefreshHz", meterRefreshHz_);
+        nextMeterUpdate_ = 0; return;
     }
     if (item >= firstThemeId && item < firstThemeId + themeCount) {
         pianoInspector_.theme = static_cast<pianoHarmony::Theme>(item - firstThemeId);
@@ -2748,12 +2781,14 @@ void MainComponent::timerCallback() {
     else if (recordTrack_ && statusLabel_.getText() == TRANS("Count-in"))
         statusLabel_.setText(project_->trackKinds[*recordTrack_] == ostfstudio::TrackKind::audio ? TRANS("Recording audio")
                              : TRANS("Recording MIDI into the selected track"), juce::dontSendNotification);
-    const auto frame = transport_.takeMeters();
     if (transportActive_) {
         const auto cursor = transport_.cursor();
         displayTransportPosition(cursor.tick, cursor.seconds);
     }
     const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+    if (now < nextMeterUpdate_) return;
+    nextMeterUpdate_ = now + 1.0 / meterRefreshHz_ - .003;
+    const auto frame = transport_.takeMeters();
     for (std::size_t i = 0; i < std::min(trackControls_.size(), frame.tracks.size()); ++i)
         trackControls_[i]->meter.update(frame.tracks[i], now);
     for (std::size_t i = 0; i < outputControls_.size(); ++i)
@@ -2881,7 +2916,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     trackRows_.clear();
     verticalScroll_.setCurrentRangeStart(0, juce::dontSendNotification);
     groupDefaults_.fill(TrackRowSize::minimum);
-    for (auto group : {HeightGroup::melody, HeightGroup::pitched, HeightGroup::drums, HeightGroup::audio})
+    for (auto group : {HeightGroup::melody, HeightGroup::vocal, HeightGroup::pitched, HeightGroup::drums, HeightGroup::audio})
         groupDefaults_[static_cast<size_t>(group)] = 100;
     groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)] = defaultTimelineHeight;
     for (auto& output : outputControls_) {
@@ -3554,6 +3589,7 @@ void MainComponent::refreshMidiRoutes() {
             strip.inputGain.setValue(in.gainDb, juce::dontSendNotification);
         }
         const bool armed = armedId_.isNotEmpty() && armedId_ == id;
+        mixer_.setRecordState(i, armed, !recordTrack_);
         strip.arm.setToggleState(armed, juce::dontSendNotification);
         strip.arm.setTooltip(armed ? TRANS("Record armed. Press Record to start.") : TRANS("Arm this track for recording"));
     }
@@ -5653,10 +5689,14 @@ void MainComponent::refreshPianoNotes() {
     if (!project_ || !selectedTrack_) { grid.resetRange(false); return; }
     const auto track = *selectedTrack_;
     grid.notes = project_->pitchedNotes[track];
-    if (track < project_->sourceTrackCount()) {
-        for (const auto& phrase : project_->displayPhrases)
-            if (project_->partDisplaysDocument(track, phrase.document))
-                vocalLane_.phrases.push_back(phrase);
+    if (const auto part = project_->partLyricLanes.find(track); part != project_->partLyricLanes.end()) {
+        for (const auto& lane : part->second) if (lane.kind == TimelineLane::displayLyrics) {
+            for (const auto& cell : lane.regions) {
+                const auto extent = cell.exactBars.value();
+                const auto tick = [this](double bar) { return std::llround((bar - 1.) * project_->ticksPerBar); };
+                vocalLane_.phrases.push_back({tick(extent.start), tick(extent.end), juce::String::fromUTF8(cell.label), {}, {}});
+            }
+        }
     }
     const auto& drums = project_->drumNotes[track];
     grid.notes.insert(grid.notes.end(), drums.begin(), drums.end());
@@ -5932,15 +5972,22 @@ void MainComponent::rememberScoreEdit(juce::MemoryBlock before, const char* labe
     noteHistory_.push_back({std::move(before), project_->sourceScore});
     noteHistory_.back().label = juce::translate(label);
     ++historyRevision_;
-    std::size_t bytes = 0;
-    for (const auto& revision : noteHistory_) bytes += revision.before.getSize() + revision.after.getSize();
-    while (noteHistory_.size() > 1 && (noteHistory_.size() > 64 || bytes > 32 * 1024 * 1024)) {
-        bytes -= noteHistory_.front().before.getSize() + noteHistory_.front().after.getSize();
-        noteHistory_.pop_front();
-    }
     noteHistoryCursor_ = noteHistory_.size();
+    trimHistory();
     refreshHistoryControls();
     refreshWindowTitle();
+}
+
+void MainComponent::trimHistory() {
+    std::size_t bytes = 0;
+    for (const auto& revision : noteHistory_) bytes += revision.before.getSize() + revision.after.getSize();
+    while (noteHistory_.size() > 1 && (noteHistory_.size() > size_t(historyLimit_) || bytes > size_t(historyMemoryMiB_) * 1024 * 1024)) {
+        const auto& drop = noteHistoryCursor_ ? noteHistory_.front() : noteHistory_.back();
+        bytes -= drop.before.getSize() + drop.after.getSize();
+        if (noteHistoryCursor_) { noteHistory_.pop_front(); --noteHistoryCursor_; }
+        else noteHistory_.pop_back();
+        ++historyRevision_;
+    }
 }
 
 void MainComponent::finishNoteEdit(bool playing) {
@@ -6465,8 +6512,9 @@ void MainComponent::resized() {
     divider();
     place(songInfoButton_); place(musicButton_);
     divider();
+    place(undoButton_); place(redoButton_); place(historyButton_); divider();
     place(splitTool_); place(joinTool_);
-    if (getWidth() < 964) row = viewBar.removeFromTop(32);
+    if (getWidth() < 1160) row = viewBar.removeFromTop(32);
     else divider();
     for (auto* button : {&melodyAdd_, &chorusAdd_, &pitchedAdd_, &drumsAdd_, &audioAdd_}) place(*button);
     divider();
@@ -6488,9 +6536,6 @@ void MainComponent::resized() {
     auto footer = juce::Rectangle<int>(18, getHeight() - 37, getWidth() - 36, 24);
     systemUsage_.setBounds(footer.removeFromRight(std::min(190, footer.getWidth() / 3)));
     footer.removeFromRight(8);
-    historyButton_.setBounds(footer.removeFromRight(86).reduced(2, 0));
-    redoButton_.setBounds(footer.removeFromRight(62).reduced(2, 0));
-    undoButton_.setBounds(footer.removeFromRight(62).reduced(2, 0));
     statusLabel_.setBounds(footer);
     auto editor = getWorkspace();
     trackHeaderWidth = std::min(preferredHeaderWidth_, std::max(320, editor.getWidth() - 145));
@@ -6628,6 +6673,7 @@ void MainComponent::resized() {
             if (visible && canArm) strip.input.setButtonText(strip.size.expanded() ? strip.input.getProperties()["routeLabel"].toString() : "IN");
             strip.inputLamp.setVisible(visible && midi);
             strip.arm.setEnabled(!recordTrack_);
+            mixer_.setRecordState(i, strip.arm.getToggleState(), !recordTrack_);
             strip.input.setEnabled(!recordTrack_);
             if (!visible) continue;
             auto inputControls = [&](juce::Rectangle<int>& row) {

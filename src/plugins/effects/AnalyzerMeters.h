@@ -72,7 +72,7 @@ private:
 };
 
 struct Readings {
-    std::array<float, 2> peak{}, rms{}, maxTruePeak{};
+    std::array<float, 2> peak{}, rms{}, currentTruePeak{}, maxTruePeak{};
     double correlation = 0;
     bool hasCorrelation = false;
     double momentary = noLevel, shortTerm = noLevel, integrated = noLevel;
@@ -93,6 +93,7 @@ public:
         sum = {};
         cross = 0;
         peaks = {};
+        truePeaksInHop = {};
         hopEnergy = {};
         cursor = 0;
         filled = 0;
@@ -108,7 +109,9 @@ public:
             totalEnergy += weighted * weighted;
             sum[c] += static_cast<double>(input[c]) * input[c];
             peaks[c] = std::max(peaks[c], std::abs(input[c]));
-            values.maxTruePeak[c] = std::max(values.maxTruePeak[c], truePeak[c].process(input[c]));
+            const float peak = truePeak[c].process(input[c]);
+            truePeaksInHop[c] = std::max(truePeaksInHop[c], peak);
+            values.maxTruePeak[c] = std::max(values.maxTruePeak[c], peak);
         }
         cross += static_cast<double>(l) * r;
         if (++count == hop)
@@ -128,7 +131,7 @@ private:
     std::uint64_t aboveGateCount = 0;
     std::array<double, 30> hopEnergy{};
     std::array<double, 2> sum{};
-    std::array<float, 2> peaks{};
+    std::array<float, 2> peaks{}, truePeaksInHop{};
     std::array<KWeighting, 2> filters{};
     std::array<TruePeak, 2> truePeak{};
     double totalEnergy = 0, cross = 0;
@@ -144,6 +147,8 @@ private:
     static int bin(double lufs) { return std::clamp(static_cast<int>(std::floor((lufs + 70) * 10)), 0, 1100); }
     void finishHop() noexcept {
         values.peak = peaks;
+        values.currentTruePeak = truePeaksInHop;
+        truePeaksInHop = {};
         for (int c = 0; c < 2; ++c)
             values.rms[c] = static_cast<float>(std::sqrt(sum[c] / hop));
         const double denominator = std::sqrt(sum[0] * sum[1]);

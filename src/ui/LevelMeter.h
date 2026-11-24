@@ -66,9 +66,9 @@ public:
                 else g.fillRect(bar.getX() + start * bar.getWidth(), bar.getY(),
                                 (end - start) * bar.getWidth(), bar.getHeight());
             };
-            band(floorDb, -12, juce::Colour(0xff56ceb0));
-            band(-12, -3, juce::Colour(0xffefbb65));
-            band(-3, 0, juce::Colour(0xffed8961));
+            band(floorDb, -12, juce::Colour(0xff49ce75));
+            band(-12, -3, juce::Colour(0xffffd14b));
+            band(-3, 0, juce::Colour(0xfff65055));
             if (clipped_[c]) {
                 g.setColour(juce::Colour(0xffff5654));
                 g.fillRect(vertical_ ? bar.withHeight(2.0f) : bar.withLeft(bar.getRight() - 3.0f));

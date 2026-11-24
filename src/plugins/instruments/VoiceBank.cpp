@@ -174,6 +174,25 @@ std::unique_ptr<VoiceBank> VoiceBank::load(const juce::File& directory, juce::St
     return bank;
 }
 
+const std::array<RecordedMora, 40>& VoiceBank::english() {
+    static const auto bank = [] {
+        std::array<RecordedMora, 40> sounds;
+        juce::MemoryInputStream in(MeiVoiceData::englishphones_bin, MeiVoiceData::englishphones_binSize, false);
+        for (size_t i = 1; i < sounds.size(); ++i) {
+            auto& sound = sounds[i];
+            sound.rate = in.readInt();
+            const int frames = in.readInt();
+            jassert(frames > 64 && sound.rate > 0 && in.getNumBytesRemaining() >= frames * 2);
+            sound.frames.resize(size_t(frames));
+            for (auto& frame : sound.frames) frame = in.readShort() / 32768.f;
+            sound.period = periodAt(sound.frames, frames / 4, sound.rate);
+            if (sound.period <= 0) sound.period = sound.rate / 150.;
+        }
+        return sounds;
+    }();
+    return bank;
+}
+
 const VoiceBank& VoiceBank::factory() {
     static const VoiceBank bank = [] {
         VoiceBank voice;

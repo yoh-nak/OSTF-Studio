@@ -323,6 +323,9 @@ private:
     };
     std::deque<NoteRevision> noteHistory_;
     std::size_t noteHistoryCursor_ = 0;
+    int historyLimit_ = 64, historyMemoryMiB_ = 32, meterRefreshHz_ = 24;
+    double nextMeterUpdate_ = 0;
+    void trimHistory();
     uint64_t historyRevision_ = 0;
     struct TrackControls {
         LevelMeter meter, recordingMeter;
@@ -521,7 +524,7 @@ private:
     std::optional<std::size_t> recordTrack_;
     juce::Label statusLabel_;
     SystemUsageMeter systemUsage_;
-    juce::TextButton undoButton_, redoButton_, historyButton_;
+    ViewButton undoButton_{ViewButton::Icon::undo}, redoButton_{ViewButton::Icon::redo}, historyButton_{ViewButton::Icon::history};
     juce::PopupMenu editHistoryMenu();
     void refreshHistoryControls();
     std::unique_ptr<juce::FileChooser> chooser_;

@@ -25,6 +25,9 @@ class Voice {
         constexpr float freq[5][3] = {
             {760, 1200, 2600}, {290, 2250, 3100}, {330, 1250, 2350}, {490, 1880, 2650}, {490, 900, 2450}};
         constexpr float bandwidth[3] = {90, 120, 175};
+        const bool betweenEnglish = phone.english != 0 || p.english != 0;
+        edgeCarry = betweenEnglish && key >= 0 ? lastTone : 0.f;
+        englishSound = p.english ? &VoiceBank::english()[size_t(p.english & 63)] : nullptr;
         outgoing = recorded;
         outgoingPosition = position;
         outgoingHz = hz;
@@ -32,9 +35,9 @@ class Voice {
         crossfadeLeft = outgoing ? crossfadeLength : 0;
         phone = p;
         age = 0;
-        recorded = bank ? bank->find(p) : nullptr;
+        recorded = !englishSound && bank ? bank->find(p) : nullptr;
         vowelSample = false;
-        if (bank && !recorded && p.onset != closure && p.onset != moraN) {
+        if (!englishSound && bank && !recorded && p.onset != closure && p.onset != moraN) {
             recorded = bank->find({p.vowel, vowelOnly});
             vowelSample = recorded != nullptr;
         }
@@ -81,9 +84,29 @@ class Voice {
         cents += glideCents * settling * settling;
         const double sustain = std::clamp((held - .15) / .28, 0., 1.);
         if (phone.delivery == plain && sustain > 0)
-            cents += sustain * (10 * std::sin(29.7 * held) + 3 * std::sin(10.1 * held));
+            cents += sustain * (10 * std::sin((28. + .05 * key) * held + .28 * std::sin(4.7 * held))
+                              + 3 * std::sin(10.1 * held + .2 * key));
         const auto pitch = hz * bendRatio * (cents == 0 ? 1 : std::exp2(cents / 1200));
         const auto level = gain * envelope * expression * (1. - sustain * (.035 + .025 * std::sin(6.3 * held)));
+        if (englishSound) {
+            const auto& sound = *englishSound;
+            const auto length = double(sound.frames.size() - 2);
+            float tone;
+            if ((phone.english & 63) <= 15) {
+                phase += std::min(.45, pitch / sr);
+                phase -= std::floor(phase);
+                const auto centre = std::min(.73 * length, sound.period + time * sound.rate * .78);
+                tone = sound.pitchedGrain(centre, phase, sound.rate / pitch);
+            } else {
+                // Play the entire consonant, including its release, at a speech-like duration.
+                const double pos = std::min(length, time / .055 * length);
+                const int i = int(pos);
+                tone = std::lerp(sound.frames[i], sound.frames[i + 1], float(pos - i));
+                if (pos == length) tone = 0;
+            }
+            lastTone = std::lerp(edgeCarry, tone, float(std::min(1., time / .004)));
+            return float(level * lastTone);
+        }
         float recording = 0;
         if (recorded) {
             const double tunedStep = pitch * recorded->period / sr;
@@ -93,8 +116,19 @@ class Voice {
                 step = std::lerp(recorded->rate / sr, tunedStep, mix);
             }
             recording = recorded->read(position, step);
+            if (!vowelSample && recorded->period > 0 && time > .085) {
+                phase += std::min(.45, pitch / sr);
+                phase -= std::floor(phase);
+                const double amount = std::min(1., (time - .085) / .055);
+                const auto grain = recorded->pitchedGrain(std::clamp(position, double(recorded->loopStart),
+                    double(recorded->loopEnd - recorded->fade)), phase, recorded->rate / pitch);
+                recording = std::lerp(recording, grain, float(amount));
+            }
         }
-        if (recorded && !vowelSample) return float(level * std::lerp(double(recording), double(previous), carry));
+        if (recorded && !vowelSample) {
+            lastTone = float(std::lerp(double(recording), double(previous), carry));
+            return float(level) * std::lerp(edgeCarry, lastTone, float(std::min(1., time / .004)));
+        }
         const double step = std::min(.45, pitch / sr);
         phase += step; phase -= std::floor(phase);
         // A band-limited glottal edge excites the higher formants as well as the fundamental.
@@ -136,6 +170,8 @@ class Voice {
     std::array<Resonator, 3> resonators{};
     const RecordedMora* recorded = nullptr;
     const RecordedMora* outgoing = nullptr;
+    const RecordedMora* englishSound = nullptr;
+    float lastTone = 0.f, edgeCarry = 0.f;
     double outgoingPosition{}, outgoingHz{}, glideCents{};
     int crossfadeLength = 1, crossfadeLeft = 0;
     Phone phone;
@@ -164,7 +200,7 @@ class Singer final : public juce::AudioProcessor {
   public:
     const bool studioHost = juce::File::getSpecialLocation(juce::File::hostApplicationPath)
         .getFileNameWithoutExtension().equalsIgnoreCase("OSTF Studio");
-    Singer() : AudioProcessor(BusesProperties().withOutput("Voice", juce::AudioChannelSet::stereo(), true)) {}
+    Singer() : AudioProcessor(BusesProperties().withOutput("Voice", juce::AudioChannelSet::stereo(), true)) { (void) VoiceBank::english(); }
     const juce::String getName() const override { return "OSTF Formant Singer"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
@@ -236,7 +272,7 @@ class Singer final : public juce::AudioProcessor {
         const juce::SpinLock::ScopedLockType guard(lock);
         if (bank) return bank->name + "  /  " + juce::String(int(bank->sounds.size())) + " recorded morae";
         if (requestedVoice != juce::File{}) return "Voice folder unavailable: " + requestedVoice.getFileName() + "  /  using built-in voice";
-        return factoryBank.name + "  /  MMDAgent";
+        return factoryBank.name + " (MMDAgent)  /  English (CMU KAL16)";
     }
     juce::File voicePortrait() const {
         const juce::SpinLock::ScopedLockType guard(lock);
@@ -340,7 +376,8 @@ class Singer final : public juce::AudioProcessor {
         if (isPhone(m)) {
             const auto* p = m.getSysExData();
             Phone phone{p[6], p[7]};
-            if (m.getSysExDataSize() == 11) { phone.glide = p[8]; phone.delivery = p[9]; phone.intensity = p[10]; }
+            if (m.getSysExDataSize() >= 11) { phone.glide = p[8]; phone.delivery = p[9]; phone.intensity = p[10]; }
+            if (m.getSysExDataSize() == 12) phone.english = p[11];
             articulation[p[4]][p[5]] = phone;
             for (auto& v : voices)
                 if (v.channel == p[4] + 1 && v.key == p[5] && !v.endingOn(v.channel))

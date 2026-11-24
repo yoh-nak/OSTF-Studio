@@ -518,15 +518,41 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
                                                phrase["pronunciation"].toString(),phrase["documentId"].toString()});
         }
     std::stable_sort(out->displayPhrases.begin(),out->displayPhrases.end(),[](const auto& a,const auto& b){return a.start < b.start;});
+    // The written lyric is a lead-sheet cell. A late vocal entrance changes its
+    // pronunciation timing, while its text still belongs to the enclosing chord.
+    std::vector<juce::Range<juce::int64>> chordSpans;
+    if (chords.isArray()) for (const auto& chord : array(chords)) {
+        chordSpans.push_back(juce::Range<juce::int64>::withStartAndLength(integer(chord["start"]), integer(chord["duration"])));
+    }
+    std::stable_sort(chordSpans.begin(), chordSpans.end(), [](auto a, auto b) { return a.getStart() < b.getStart(); });
+    auto writtenRegions = [&](auto includesDocument) {
+        std::vector<ArrangementRegion> cells;
+        std::vector<juce::StringArray> captions(chordSpans.size());
+        for (const auto& phrase : out->displayPhrases) {
+            if (!includesDocument(phrase.document)) continue;
+            auto next = std::upper_bound(chordSpans.begin(), chordSpans.end(), phrase.start,
+                [](auto tick, auto span) { return tick < span.getStart(); });
+            if (next != chordSpans.begin() && std::prev(next)->contains(phrase.start)) {
+                captions[static_cast<size_t>(std::prev(next) - chordSpans.begin())].add(phrase.text);
+            } else {
+                const auto end = next == chordSpans.end() ? phrase.end : std::min(phrase.end, next->getStart());
+                cells.push_back(region(phrase.start, end, phrase.text));
+            }
+        }
+        for (size_t i = 0; i < chordSpans.size(); ++i)
+            cells.push_back(region(chordSpans[i].getStart(), chordSpans[i].getEnd(), captions[i].joinIntoString("  ")));
+        std::stable_sort(cells.begin(), cells.end(), [](const auto& a, const auto& b) {
+            return a.exactBars->start < b.exactBars->start;
+        });
+        return cells;
+    };
     bool primaryDocumentShown = false;
     for (size_t track = 0; track < out->trackLanes.size(); ++track) {
         const auto& id = out->trackIds[int(track)];
         if (!out->isGlobalNoteTrack(track) && !out->trackLyricDocuments.contains(id)
             && !out->lyricTrackIds.contains(id)) continue;
-        std::vector<ArrangementRegion> words, readings;
-        for (const auto& phrase : out->displayPhrases)
-            if (out->partDisplaysDocument(track, phrase.document))
-                words.push_back(region(phrase.start, phrase.end, phrase.text));
+        std::vector<ArrangementRegion> readings;
+        auto words = writtenRegions([&](const auto& doc) { return out->partDisplaysDocument(track, doc); });
         for (const auto& note : out->pitchedNotes[track]) {
             const auto found = out->vocalNotes.find(note.id);
             if (found == out->vocalNotes.end() || found->second.pronunciation.isEmpty()) continue;
@@ -537,10 +563,8 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         addLane(lanes, "Pronunciation", std::move(readings), TimelineLane::pronunciation);
         primaryDocumentShown |= out->partDisplaysDocument(track, out->displayDocument);
     }
-    if (!primaryDocumentShown) {
-        std::vector<ArrangementRegion> words;
-        for (const auto& phrase : out->displayPhrases)
-            if (phrase.document == out->displayDocument) words.push_back(region(phrase.start, phrase.end, phrase.text));
+    if (!primaryDocumentShown && out->displayDocument.isNotEmpty()) {
+        auto words = writtenRegions([&](const auto& doc) { return doc == out->displayDocument; });
         if (!words.empty()) addLane(out->globalLanes, "Display lyrics", std::move(words), TimelineLane::displayLyrics);
     }
     if (!voicingNotes.empty() || retainVoicingRow) {

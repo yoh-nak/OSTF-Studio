@@ -305,6 +305,10 @@ private:
             || studio.displayedTrackOrder()[1] != size_t(lead)
             || studio.trackRows_[*project.chordVoicingTrack].getBottom() >= studio.trackGroupBounds(lead).getY()
             || studio.trackRows_[lead].getBottom() >= studio.trackGroupBounds(backing).getY()) return 16;
+        const auto& backingStrip = *studio.trackControls_[backing];
+        if (!backingStrip.size.expanded() || backingStrip.size.height() != 100 || studio.trackControls_[lead]->size.height() != 100
+            || !backingStrip.volume.isVisible() || !backingStrip.pan.isVisible()
+            || project.trackLanes[backing].regions.empty()) return 21;
         const auto pianoBounds = studio.pianoGrid_.getBounds();
         studio.mixerButton_.onClick();
         if (!studio.mixer_.isVisible() || studio.pianoGrid_.isVisible() || studio.pianoButton_.getToggleState()) return 17;
@@ -323,7 +327,8 @@ private:
         }
         if (studio.trackControls_[lead]->instance.get() == studio.trackControls_[backing]->instance.get()
             || !studio.trackControls_[backing]->plugin.isVisible()) return 12;
-        if (studio.vocalLane_.phrases.empty() || studio.vocalLane_.phrases.front().text != juce::String::fromUTF8("雨の音が"))
+        if (std::none_of(studio.vocalLane_.phrases.begin(), studio.vocalLane_.phrases.end(), [](const auto& phrase) {
+                return phrase.text == juce::String::fromUTF8("雨の音が") && phrase.start > 0; }))
             return 14;
         studio.vocalLane_.entrance.onClick();
         if (studio.cursorTick_ != project.pitchedNotes[lead].front().startTick || studio.cursorTick_/project.ticksPerBar != 4) return 5;
@@ -372,7 +377,11 @@ private:
         playback.seekToTick(project.pitchedNotes[backing].front().startTick);
         for (int i=0; i<20; ++i) playback.renderBlock(audio.getArrayOfWritePointers(),2,block);
         const auto meters = playback.takeMeters();
-        return meters.tracks[lead][0] > .001f && meters.tracks[backing][0] > .001f ? 0 : 13;
+        return meters.tracks[lead][0] > .001f && meters.tracks[backing][0] > .001f
+            && meters.vu[backing] > .001f && meters.master.truePeak > .001f
+            && std::any_of(meters.master.scope.begin(), meters.master.scope.end(), [](auto point) {
+                return point[0] != 0 || point[1] != 0;
+            }) ? 0 : 13;
     }
     void timerCallback() override {
         if (opened && !studio.canEditTracks() && ++polls < 600) return;
@@ -521,7 +530,7 @@ std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)> fin
             for (auto* child : studio.getChildren())
                 if (auto* bar = dynamic_cast<juce::MenuBarComponent*>(child)) menus = bar->getModel();
             if (menus) {
-                const auto menu = menus->getMenuForIndex(5, {});
+                const auto menu = menus->getMenuForIndex(6, {});
                 for (juce::PopupMenu::MenuItemIterator it(menu); it.next();)
                     if (it.getItem().text == TRANS("Open Splice Sounds")) command = it.getItem().itemID;
                 if (auto* pane = descendant<PluginBrowser>(studio)) {
@@ -864,8 +873,8 @@ int checkSamplePlacement(const juce::File& file) {
         for (auto id : {"chord-confirm-all", "chord-keep-all", "chord-cancel-all"})
             if (!button(id) || button(id)->getRight() > main.chordReview_.timeline().first.getX()) return 238;
         main.setSize(680, 550);
-        if (main.systemUsage_.getBounds().isEmpty() || main.historyButton_.getRight() > main.systemUsage_.getX()
-            || main.statusLabel_.getRight() > main.undoButton_.getX()) return 244;
+        if (main.systemUsage_.getBounds().isEmpty() || main.historyButton_.getY() != main.undoButton_.getY()
+            || main.statusLabel_.getRight() > main.systemUsage_.getX()) return 244;
        #if JUCE_WINDOWS || JUCE_MAC
         if (!main.systemUsage_.getTooltip().contains("GiB")) return 245;
        #endif
@@ -1008,9 +1017,18 @@ int checkTrackView(const juce::File& fixture) {
     if (!main.getName().contains(TRANS("Unsaved project"))
         || !tracks || tracks->getNumItems() != 0 || !menus || !menus->getModel()) return 13;
     auto& model = *menus->getModel();
-    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")};
+    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Edit"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")};
     if (model.getMenuBarNames() != names) return 38;
-    const auto external = model.getMenuForIndex(5, {});
+    const auto edit = model.getMenuForIndex(2, {});
+    juce::StringArray editActions;
+    for (juce::PopupMenu::MenuItemIterator item(edit); item.next();) editActions.add(item.getItem().text);
+    if (editActions != juce::StringArray{TRANS("Undo"), TRANS("Redo"), TRANS("Edit history")}) return 246;
+    const auto settings = model.getMenuForIndex(5, {});
+    juce::StringArray performanceOptions;
+    for (juce::PopupMenu::MenuItemIterator item(settings, true); item.next();) performanceOptions.add(item.getItem().text);
+    for (auto label : {"Performance", "History entries", "History memory", "Meter refresh rate"})
+        if (!performanceOptions.contains(juce::translate(label))) return 247;
+    const auto external = model.getMenuForIndex(6, {});
     juce::StringArray actions;
     for (juce::PopupMenu::MenuItemIterator it(external); it.next();) actions.add(it.getItem().text);
     if (!actions.contains(TRANS("Open Splice Sounds")) || !actions.contains("Melodyne...") || !actions.contains("Ableton Link")) return 121;
@@ -1018,7 +1036,7 @@ int checkTrackView(const juce::File& fixture) {
     auto* connection = main.findChildWithID("chatgpt-connection");
     if (!examples || !examples->isReadOnly() || !connection || !connection->isVisible()) return 122;
     const juce::StringArray modeNames{"AI Arrangement Studio", "AI Lyric Studio", "AI Vocal Studio"};
-    const auto modes = model.getMenuForIndex(3, {});
+    const auto modes = model.getMenuForIndex(4, {});
     if (modes.getNumItems() != modeNames.size()) return 122;
     juce::StringArray displayedExamples;
     int previousMode = 0;
@@ -1027,7 +1045,7 @@ int checkTrackView(const juce::File& fixture) {
         if (!modeNames.contains(mode.text) || !mode.isEnabled) return 122;
         if (mode.isTicked) previousMode = mode.itemID;
         model.menuItemSelected(mode.itemID, 3);
-        const auto selectedMenu = model.getMenuForIndex(3, {});
+        const auto selectedMenu = model.getMenuForIndex(4, {});
         for (juce::PopupMenu::MenuItemIterator selected(selectedMenu); selected.next();)
             if (selected.getItem().isTicked != (selected.getItem().itemID == mode.itemID)) return 122;
         const auto example = examples->getText();
@@ -1047,7 +1065,7 @@ int checkTrackView(const juce::File& fixture) {
     EditorClipLane exampleLane;
     exampleLane.clips = {{{1, 2}, "A"}, {{3, 5}, "B"}};
     if (exampleLane.at(1.5) != 1. || exampleLane.at(2.) || exampleLane.at(3.) != 3. || exampleLane.at(5.)) return 124;
-    const auto help = model.getMenuForIndex(6, {});
+    const auto help = model.getMenuForIndex(7, {});
     bool hasShortcuts = false;
     for (juce::PopupMenu::MenuItemIterator it(help); it.next();)
         if (it.getItem().text == TRANS("Shortcuts...")) hasShortcuts = it.getItem().isEnabled;
@@ -1079,12 +1097,12 @@ int checkTrackView(const juce::File& fixture) {
     };
     if (!choose(TRANS("Pitched tracks"))) return 17;
     height->setValue(84, juce::sendNotificationSync);
-    const auto trackMenu = model.getMenuForIndex(2, {});
+    const auto trackMenu = model.getMenuForIndex(3, {});
     for (juce::PopupMenu::MenuItemIterator it(trackMenu); it.next();)
         if (it.getItem().text == TRANS("Add pitched track") && it.getItem().isEnabled)
             model.menuItemSelected(it.getItem().itemID, 2);
     if (tracks->getNumItems() != 1 || tracks->getSelectedId() != 1) return 15;
-    const auto renameMenu = model.getMenuForIndex(2, {});
+    const auto renameMenu = model.getMenuForIndex(3, {});
     int renameId = 0;
     for (juce::PopupMenu::MenuItemIterator it(renameMenu); it.next();)
         if (it.getItem().text == TRANS("Rename track...")) renameId = it.getItem().itemID;
@@ -1126,10 +1144,12 @@ int checkTrackView(const juce::File& fixture) {
     auto* arm = findControl<juce::TextButton>(main, tracks->getText() + " record arm");
     auto* input = findControl<juce::TextButton>(main, tracks->getText() + " MIDI input");
     if (!arm || !arm->isVisible() || !input || !input->isVisible()) return 105;
+    auto* mixerArm = findControl<juce::TextButton>(main, tracks->getText() + " mixer record arm");
+    if (!mixerArm) return 106;
     arm->onClick();
-    if (!arm->getToggleState()) return 106;
-    arm->onClick();
-    if (arm->getToggleState()) return 107;
+    if (!arm->getToggleState() || !mixerArm->getToggleState()) return 106;
+    mixerArm->onClick();
+    if (arm->getToggleState() || mixerArm->getToggleState()) return 107;
     if (!click("Add chorus vocal track") || !click("Add drum / percussion track")
         || !click("Add audio track") || tracks->getNumItems() != 5) return 34;
     auto* audioEditor = dynamic_cast<AudioClipEditor*>(main.findChildWithID("audio-clip-editor"));
@@ -1222,7 +1242,7 @@ int checkTrackView(const juce::File& fixture) {
     main.mouseUp(gesture(&main, edgePoint, extendTo));
     if (imported->durationTicks <= length) return 61;
     const auto selected = tracks->getText();
-    auto trackActions = model.getMenuForIndex(2, {});
+    auto trackActions = model.getMenuForIndex(3, {});
     for (juce::PopupMenu::MenuItemIterator it(trackActions); it.next();)
         if (it.getItem().text == TRANS("Duplicate track") && it.getItem().isEnabled)
             model.menuItemSelected(it.getItem().itemID, 2);

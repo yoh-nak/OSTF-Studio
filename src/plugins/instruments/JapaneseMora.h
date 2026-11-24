@@ -10,6 +10,7 @@ enum Onset { vowelOnly, sibilant, velar, moraN, g, z, t, d, n, h, b, pStop, m, r
 enum Delivery { plain, vibrato, scoop };
 struct Phone {
     int vowel = 0, onset = vowelOnly, glide = 0, delivery = plain, intensity = 0;
+    int english = 0; // ARPAbet index, with bit 6 for primary stress.
     int sampleKey() const { return (onset * 3 + glide) * 5 + vowel; }
 };
 

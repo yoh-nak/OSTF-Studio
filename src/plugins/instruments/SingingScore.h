@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "JapaneseMora.h"
+#include "EnglishLyrics.h"
 #include <map>
 #include <string_view>
 #include <vector>
@@ -12,17 +12,51 @@ inline const juce::Array<juce::var>& items(const juce::var& v) {
 }
 inline Lyrics lyricsFor(const juce::var& score) {
     Lyrics lyrics;
-    std::map<juce::String, juce::String> readings;
+    Lyrics readings;
+    std::map<juce::String, std::vector<juce::var>> phraseUnits;
     for (const auto& unit : items(score["lyrics"]["units"])) {
         auto reading = unit["pronunciation"].toString().trim();
-        readings[unit["id"].toString()] = reading.isEmpty() ? unit["text"].toString() : reading;
+        readings[unit["id"].toString()] = lyricPhones(reading.isEmpty() ? unit["text"].toString() : reading);
+        phraseUnits[unit["phraseId"].toString()].push_back(unit);
+    }
+    // A word such as "city" can be written across the note units "ci" and "ty".
+    // Derive the syllables from the whole word when its spelling matches the units.
+    for (const auto& phrase : items(score["lyrics"]["phrases"])) {
+        const auto& units = phraseUnits[phrase["id"].toString()];
+        size_t pos = 0;
+        for (const auto& word : juce::StringArray::fromTokens(phrase["text"].toString().toLowerCase(), " \t\r\n,.;:!?", {})) {
+            if (word.isEmpty()) continue;
+            juce::String joined;
+            const auto begin = pos;
+            bool explicitReading = false;
+            while (pos < units.size() && joined.length() < word.length()) {
+                const auto& unit = units[pos++];
+                joined += unit["text"].toString().toLowerCase();
+                explicitReading |= unit["pronunciation"].toString().trim().isNotEmpty();
+            }
+            if (joined != word) break;
+            if (pos - begin < 2 || explicitReading || !word.containsOnly("abcdefghijklmnopqrstuvwxyz'-")) continue;
+            std::vector<Phone> pronunciation;
+            if (!englishWord(word, pronunciation)) continue;
+            std::vector<size_t> starts;
+            for (size_t i = 0; i < pronunciation.size(); ++i) {
+                if ((pronunciation[i].english & 63) > 15) continue;
+                const bool hasOnset = i > 0 && (pronunciation[i - 1].english & 63) > 15;
+                starts.push_back(starts.empty() ? 0 : i - size_t(hasOnset));
+            }
+            if (starts.size() != pos - begin) continue;
+            starts.push_back(pronunciation.size());
+            for (size_t i = 0; i < pos - begin; ++i)
+                readings[units[begin + i]["id"].toString()].assign(pronunciation.begin() + starts[i],
+                                                                   pronunciation.begin() + starts[i + 1]);
+        }
     }
     for (const auto& alignment : items(score["lyrics"]["alignments"])) {
         std::vector<Phone> phones;
         for (const auto& id : items(alignment["unitIds"])) {
             const auto found = readings.find(id.toString());
-            if (found == readings.end() || found->second.trim().isEmpty()) continue;
-            const auto next = pronounce(found->second);
+            if (found == readings.end()) continue;
+            const auto& next = found->second;
             phones.insert(phones.end(), next.begin(), next.end());
         }
         if (phones.empty()) continue;
@@ -68,15 +102,16 @@ inline Lyrics lyricsFor(const juce::var& score) {
 inline juce::MidiMessage phoneMessage(int ch, int key, Phone phone) {
     const juce::uint8 data[]{0x7d, 'O', 'S', 'V', juce::uint8(ch - 1), juce::uint8(key),
         juce::uint8(phone.vowel), juce::uint8(phone.onset), juce::uint8(phone.glide),
-        juce::uint8(phone.delivery), juce::uint8(phone.intensity)};
-    return juce::MidiMessage::createSysExMessage(data, sizeof(data));
+        juce::uint8(phone.delivery), juce::uint8(phone.intensity), juce::uint8(phone.english)};
+    return juce::MidiMessage::createSysExMessage(data, phone.english ? 12 : 11);
 }
 inline bool isPhone(const juce::MidiMessage& m) {
     if (!m.isSysEx()) return false;
     const int size = m.getSysExDataSize();
-    if (size != 8 && size != 11) return false;
+    if (size != 8 && size != 11 && size != 12) return false;
     const auto* p = m.getSysExData();
     return p[0] == 0x7d && p[1] == 'O' && p[2] == 'S' && p[3] == 'V' && p[4] < 16 && p[5] < 128 && p[6] < 5
+        && (size != 12 || ((p[11] & 63) >= 1 && (p[11] & 63) <= 39))
         && (size == 8 ? p[7] < 4 : p[7] < onsetCount && p[8] <= 2 && p[9] <= scoop && p[10] <= 127);
 }
 struct Syllable {
@@ -95,6 +130,8 @@ inline std::vector<Part> readParts(const juce::var& song) {
     if (song["format"] != "OSTF" || !(ppq > 0))
         return parts;
     const auto lyrics = lyricsFor(song);
+    const auto& tempos = items(song["timeline"]["tempoChanges"]);
+    const double bpm = tempos.isEmpty() ? 120. : std::max(1., double(tempos[0]["bpm"]));
     for (const auto& track : items(song["tracks"])) {
         Part part{track["name"].toString(), {}};
         if (track["trackType"] == "drum")
@@ -116,9 +153,10 @@ inline std::vector<Part> readParts(const juce::var& song) {
                     continue;
                 }
                 const auto& phones = entry->second;
+                const auto edges = articulationPositions(phones, length * 60. / bpm);
                 for (size_t i = 0; i < phones.size(); ++i)
-                    part.syllables.push_back({first + length * i / phones.size(),
-                                              first + length * (i + 1) / phones.size(), key, vel, phones[i], i > 0});
+                    part.syllables.push_back({first + length * edges[i],
+                                              first + length * edges[i + 1], key, vel, phones[i], i > 0});
             }
         }
         std::stable_sort(part.syllables.begin(), part.syllables.end(),

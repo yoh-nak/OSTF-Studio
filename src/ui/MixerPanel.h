@@ -22,6 +22,8 @@ public:
     void resized() override;
     void updateMeters(const ostfstudio::MeterFrame& frame, double now);
     void clearMeters();
+    void setRecordState(std::size_t track, bool armed, bool enabled);
+    std::function<void(std::size_t, bool)> recordArmChanged;
     const ostfstudio::ChannelMix& channel(std::size_t index) const { return channels_[index]; }
     bool isAudible(std::size_t index) const { return ostfstudio::channelIsAudible(channels_, index); }
     ostfstudio::MixGains gains(std::size_t index) const { return ostfstudio::mixGains(channels_, index, routing_); }
@@ -57,12 +59,16 @@ private:
         juce::Slider volume, pan;
         LevelMeter meter {true};
         juce::TextButton mute {"M"};
-        juce::TextButton solo {"S"};
+        juce::TextButton solo {"S"}, arm {"R"};
         ViewButton cue {ViewButton::Icon::headphones};
         std::unique_ptr<juce::TextButton> listenOnMain;
         juce::ComboBox output, returnTarget;
         juce::Slider sendLevel;
         juce::Label status;
+        juce::Rectangle<int> diagnostics;
+        float vu = 0;
+        bool isMaster = false;
+        ostfstudio::MasterReadout analysis;
         void mouseDown(const juce::MouseEvent& event) override {
             if (event.mods.isPopupMenu() && contextMenu) contextMenu();
         }

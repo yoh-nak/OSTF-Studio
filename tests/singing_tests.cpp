@@ -129,6 +129,19 @@ int main(int argc, char** argv) {
         singer->processBlock(audio,midi);
         return juce::AudioBuffer<float>(audio);
     };
+    const auto word = lyricPhones("light");
+    const auto city = lyricsFor(juce::JSON::parse(R"({"lyrics":{
+        "phrases":[{"id":"line","text":"city"}],
+        "units":[{"id":"first","phraseId":"line","text":"ci"},{"id":"last","phraseId":"line","text":"ty"}],
+        "alignments":[{"unitIds":["first"],"noteIds":["a"]},{"unitIds":["last"],"noteIds":["b"]}]}})"));
+    if (city.at("a").size() != 2 || city.at("b").size() != 2
+        || (city.at("a").front().english & 63) != 31 || (city.at("b").front().english & 63) != 33) return 21;
+    if (word.size() != 3 || (word[0].english & 63) != 25 || (word[1].english & 63) != 6
+        || (word[2].english & 63) != 33 || !isPhone(phoneMessage(1, 60, word[2]))) return 18;
+    const auto edges = articulationPositions(word, .8);
+    if (edges[2] - edges[1] < .8 || edges.back() != 1.) return 19;
+    const auto vowel = render(word[1]), stop = render(word[2]);
+    if (vowel.getMagnitude(0, 0, 2048) <= .01f || stop.getMagnitude(0, 0, 2048) <= .001f) return 20;
     const auto a = render({0,0}), i = render({1,0}), scooped = render({0,0,0,scoop,100});
     // Verify that a default MIDI note really uses the factory vowel waveform.
     const auto* vowelA = factory.find({0,vowelOnly});

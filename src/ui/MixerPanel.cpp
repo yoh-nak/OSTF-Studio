@@ -56,6 +56,10 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
         addAndMakeVisible(*listenOnMain);
     } else addAndMakeVisible(mute);
     if (isTrack) {
+        arm.setClickingTogglesState(false);
+        arm.setTitle(title + " mixer record arm");
+        arm.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffb63e50));
+        arm.setTooltip(TRANS("Arm this track for recording"));
         solo.setTitle(title + " solo");
         cue.setTitle(title + " pre-fader cue");
         cue.setTooltip("Send to the independent Cue output pair.");
@@ -89,15 +93,19 @@ void MixerPanel::Strip::resized() {
     status.setBounds(area.removeFromBottom(17));
     if (listenOnMain) listenOnMain->setBounds(area.removeFromBottom(21));
     if (!isTrack && mute.isVisible()) mute.setBounds(area.removeFromBottom(21).withSizeKeepingCentre(40, 21));
+    diagnostics = {};
+    if (isMaster) diagnostics = area.removeFromTop(std::clamp(area.getHeight() - 65, 0, 125));
     if (isTrack) {
         output.setBounds(area.removeFromTop(21).reduced(0, 1));
         returnTarget.setBounds(area.removeFromTop(20).reduced(0, 1));
         auto knobs = area.removeFromTop(62).withTrimmedTop(13);
         pan.setBounds(knobs.removeFromLeft(knobs.getWidth() / 2));
         sendLevel.setBounds(knobs);
+        diagnostics = area.removeFromTop(std::clamp(area.getHeight() - 64, 0, 22));
         auto switches = area.removeFromBottom(21);
-        mute.setBounds(switches.removeFromLeft(switches.getWidth() / 3));
-        solo.setBounds(switches.removeFromLeft(switches.getWidth() / 2));
+        mute.setBounds(switches.removeFromLeft(switches.getWidth() / (arm.isVisible() ? 4 : 3)));
+        solo.setBounds(switches.removeFromLeft(switches.getWidth() / (arm.isVisible() ? 3 : 2)));
+        if (arm.isVisible()) arm.setBounds(switches.removeFromLeft(switches.getWidth() / 2));
         cue.setBounds(switches);
     }
     meter.setBounds(area.removeFromRight(36).withTrimmedBottom(20).reduced(0, 2));
@@ -105,19 +113,30 @@ void MixerPanel::Strip::resized() {
 }
 
 void MixerPanel::updateMeters(const ostfstudio::MeterFrame& frame, double now) {
-    for (std::size_t i = 0; i < std::min(strips_.size(), frame.tracks.size()); ++i)
-        strips_[i]->meter.update(frame.tracks[i], now);
+    for (std::size_t i = 0; i < std::min(strips_.size(), frame.tracks.size()); ++i) {
+        auto& strip = *strips_[i];
+        strip.meter.update(frame.tracks[i], now);
+        if (strip.vu != frame.vu[i]) { strip.vu = frame.vu[i]; strip.repaint(strip.diagnostics); }
+    }
     for (std::size_t i = 0; i < buses_.size(); ++i) buses_[i]->meter.update(frame.outputs[ostfstudio::busOutput(i)], now);
     for (std::size_t i = 0; i < returns_.size(); ++i) returns_[i]->meter.update(frame.outputs[3 + i], now);
-    if (master_) master_->meter.update(frame.outputs[0], now);
+    if (master_) { master_->meter.update(frame.outputs[0], now); master_->analysis = frame.master; master_->repaint(master_->diagnostics); }
     if (cue_) cue_->meter.update(frame.cue, now);
 }
 
+void MixerPanel::setRecordState(std::size_t track, bool armed, bool enabled) {
+    if (track >= strips_.size()) return;
+    auto& button = strips_[track]->arm;
+    button.setToggleState(armed, juce::dontSendNotification);
+    button.setEnabled(enabled);
+    button.setTooltip(armed ? TRANS("Record armed. Press Record to start.") : TRANS("Arm this track for recording"));
+}
+
 void MixerPanel::clearMeters() {
-    for (auto& strip : strips_) strip->meter.clear();
+    for (auto& strip : strips_) { strip->meter.clear(); strip->vu = 0; strip->repaint(); }
     for (auto& strip : buses_) strip->meter.clear();
     for (auto& strip : returns_) strip->meter.clear();
-    if (master_) master_->meter.clear();
+    if (master_) { master_->meter.clear(); master_->analysis = {}; master_->repaint(); }
     if (cue_) cue_->meter.clear();
 }
 
@@ -129,6 +148,50 @@ void MixerPanel::Strip::paint(juce::Graphics& g) {
     g.fillRoundedRectangle(bounds, 4.f);
     g.setColour(face.brighter(.30f));
     g.drawRoundedRectangle(bounds.reduced(.5f), 4.f, 1.f);
+    if (!diagnostics.isEmpty()) {
+        auto box = diagnostics.reduced(1);
+        g.setColour(juce::Colour(0xff152026)); g.fillRoundedRectangle(box.toFloat(), 3);
+        g.setFont(juce::FontOptions(10.5f));
+        if (isTrack) {
+            const auto scale = box.reduced(3, 1);
+            const auto bar = scale.withTrimmedTop(std::max(0,scale.getHeight()-4)).toFloat();
+            const float db = juce::Decibels::gainToDecibels(vu, -24.f);
+            g.setColour(juce::Colour(0xffdae5ef));
+            g.drawText("VU", scale.withTrimmedBottom(3), juce::Justification::centredLeft);
+            g.drawText(vu > .0631f ? juce::String(db,1) : juce::String::charToString(0x2014),
+                       scale.withTrimmedBottom(3), juce::Justification::centredRight);
+            for (int i = 0; i < 24; ++i) {
+                const auto tick = -24.f + (i + 1) * 27.f / 24;
+                const juce::Colour colour(tick <= -3 ? 0xff49ce75 : tick <= 0 ? 0xffffd14b : 0xfff65055);
+                g.setColour(colour.withAlpha(db >= tick ? 1.f : .19f));
+                g.fillRect(bar.getX() + i * bar.getWidth()/24,bar.getY(),std::max(1.f,bar.getWidth()/24-1),bar.getHeight());
+            }
+        } else if (isMaster) {
+            auto content = box.reduced(4, 2);
+            auto reading = [&](const juce::String& unit, double value) {
+                const auto row = content.removeFromTop(std::min(15,content.getHeight()));
+                g.setColour(juce::Colour(0xffbac9cf)); g.drawText(unit,row,juce::Justification::centredLeft);
+                g.setColour(juce::Colour(0xffedf5f4));
+                g.drawText(std::isfinite(value) ? juce::String(value,1) : juce::String::charToString(0x2014),row,juce::Justification::centredRight);
+            };
+            reading("LUFS M",analysis.momentary); reading("LUFS I",analysis.integrated);
+            reading("dBTP",analysis.truePeak > 0 ? 20*std::log10(analysis.truePeak) : -INFINITY);
+            if (content.getHeight() >= 20) {
+                g.setColour(juce::Colour(0xffbac9cf));
+                g.drawText(TRANS("Phase"),content,juce::Justification::topLeft);
+                const auto mid = content.toFloat().getCentre();
+                const float scale = .48f * std::min(content.getWidth(),content.getHeight());
+                g.setColour(juce::Colour(0xff43535e));
+                g.drawLine(mid.x-scale,mid.y,mid.x+scale,mid.y); g.drawLine(mid.x,mid.y-scale,mid.x,mid.y+scale);
+                g.setColour(juce::Colour(0xff80debc));
+                for (const auto& p : analysis.scope) {
+                    const float side = std::clamp((p[0]-p[1])*.5f,-1.f,1.f);
+                    const float sum = std::clamp((p[0]+p[1])*.5f,-1.f,1.f);
+                    if (side != 0 || sum != 0) g.fillEllipse(mid.x+scale*side-1,mid.y-scale*sum-1,2,2);
+                }
+            }
+        }
+    }
     if (isTrack) {
         g.setColour(juce::Colour(0xffe1e4de));
         g.setFont(juce::FontOptions(11.f));
@@ -197,6 +260,12 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         strip->pan.onValueChange = [this, i, controls] { setPan(i, static_cast<float>(controls->pan.getValue() / 100.0)); };
         strip->mute.onClick = [this, i, controls] { setMuted(i, controls->mute.getToggleState()); };
         strip->solo.onClick = [this, i, controls] { setSoloed(i, controls->solo.getToggleState()); };
+        if (i < project.sourceTrackCount()) {
+            strip->addAndMakeVisible(strip->arm);
+            strip->arm.onClick = [this, i, controls] {
+                if (recordArmChanged) recordArmChanged(i, !controls->arm.getToggleState());
+            };
+        }
         strip->cue.onClick = [this, i, controls] {
             setCue(i, controls->cue.getToggleState());
         };
@@ -220,6 +289,7 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     addBus();
     addBus();
     master_ = std::make_unique<Strip>(TRANS("Master"), "OUTPUT", false);
+    master_->isMaster = true;
     cue_ = std::make_unique<Strip>("Cue", "MONITOR", false);
     cue_->status.setTitle(TRANS("Cue output"));
     master_->contextMenu = [this] { if (rowMenu) rowMenu(true, 0); };

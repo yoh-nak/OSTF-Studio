@@ -4,7 +4,7 @@
 
 class ViewButton final : public juce::Button {
 public:
-    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones, samples, scissors, join, chordFit, scaleFit };
+    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones, samples, scissors, join, chordFit, scaleFit, undo, redo, history };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
 
     void paintButton(juce::Graphics& g, bool hover, bool down) override {
@@ -23,6 +23,18 @@ public:
     static void drawIcon(juce::Graphics& g, Icon icon, float x, float y) {
         const auto line = [&](int x1, int y1, int x2, int y2) { g.drawLine(x+x1, y+y1, x+x2, y+y2, 1.6f); };
         switch (icon) {
+            case Icon::undo:
+            case Icon::redo: {
+                const bool back = icon == Icon::undo;
+                const auto px = [&](int offset) { return back ? offset : 20 - offset; };
+                line(px(2),7,px(7),2); line(px(2),7,px(7),12);
+                juce::Path turn;
+                turn.startNewSubPath(x+px(3), y+7); turn.lineTo(x+px(12), y+7);
+                turn.quadraticTo(x+px(19), y+7, x+px(17), y+16);
+                g.strokePath(turn, juce::PathStrokeType(1.7f)); break;
+            }
+            case Icon::history:
+                g.drawEllipse(x+2,y+1,16,16,1.6f); line(10,4,10,9); line(10,9,14,11); break;
             case Icon::chordFit:
                 for (int i : {3,8,13}) { g.fillEllipse(x+4,y+i,5,3); }
                 line(9,2,9,14); line(12,12,14,15); line(14,15,19,6); break;
