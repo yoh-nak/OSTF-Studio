@@ -2,6 +2,7 @@
 #include "ui/ControlTargetButton.h"
 #include "ui/ConsoleLookAndFeel.h"
 #include "ui/EditorClipLane.h"
+#include "ui/ChordReview.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <JuceHeader.h>
 #include "ui/DeviceSettingsWindow.h"
@@ -127,8 +128,20 @@ private:
     std::optional<ostfstudio::TimelineLane> globalLaneAt(juce::Point<int>) const;
     juce::int64 arrangementTickAt(int x, bool endBoundary = false) const;
     void globalCommand(int command);
+    void editGlobalBoundary(bool split);
+    ChordReviewLane chordReview_;
+    ostfstudio::ChordDecisions pendingReview_;
+    void refreshChordReview();
+    bool chordReviewBlocksSwitch();
+    void resolveChordReview(bool all, bool keep);
+    void reviewDroppedChords(const ostfstudio::OstfpPreview&, int index, std::optional<size_t> track, juce::int64 tick);
+    int chordReviewHeight(int width) const { return pendingReview_.empty() ? 0 : chordReview_.preferredHeight(width); }
+    enum class ClipTool { select, split, join };
+    ClipTool clipTool_ = ClipTool::select;
+    bool joinKeepsRight_ = false;
+    ViewButton splitTool_{ViewButton::Icon::scissors}, joinTool_{ViewButton::Icon::join};
     void placeResult(ImportResultRow&, std::optional<std::size_t> track, juce::int64 tick, bool replace,
-                     std::shared_ptr<const ostfstudio::OstfpPreview> dropped = {});
+                     std::shared_ptr<const ostfstudio::OstfpPreview> dropped = {}, bool review = false);
     void applyGlobalChange(ostfstudio::TimelineLane, juce::Array<juce::var> remove, juce::Array<juce::var> insert);
     std::optional<ostfstudio::TimelineLane> selectedGlobal_, copiedLane_;
     juce::int64 selectedGlobalTick_ = 0, copiedPpq_ = 0;
@@ -276,6 +289,8 @@ private:
     std::size_t pianoGeneration_ = 0;
     struct NoteRevision { juce::MemoryBlock before, after; juce::String panTrack; ostfstudio::PanEnvelope oldPan, newPan;
         std::optional<std::vector<ostfstudio::ProjectAudio>> beforeAudio, afterAudio;
+        std::optional<ostfstudio::ChordDecisions> reviewBefore, reviewAfter;
+        std::optional<size_t> reviewTrack;
     };
     std::deque<NoteRevision> noteHistory_;
     std::size_t noteHistoryCursor_ = 0;

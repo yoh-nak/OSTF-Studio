@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Timeline tools and chord review
+
+Branch `feature/timeline-tools-chord-review`. The scissors and join icons dispatch arrangement clip commands and global boundary edits. The global-lane context menu persists which side supplies a joined value. The chord review strip shows affected intervals after pitched-note edits and OSTF or OSTFP drops. Users can apply a ranked candidate, retain the destination chord, or use an imported chord with its voicing. The source and destination tempo maps determine the imported ranges. Resolve pending decisions before switching tracks. Note edits and score-changing decisions carry review snapshots in local undo history.
+
+Regression coverage is in `checkSamplePlacement` and the piano-edit smoke test. It exercises audio tool clicks, global splits and both join policies, ranked triads, partial chord replacement, note-edit undo/redo, both score container forms and the track-switch gate. The format remains OSTF 5.0. Engraving performance-plan repeats and comparing the playing technique of two sections remain future work.
+
+Windows x64 Release built locally. All 29 Windows CTest cases passed across the delivery run and a targeted rerun. The Link test failed once in the full run and passed three consecutive isolated runs. The separate JUCE-free build passed both core tests. macOS, physical controllers and real-device audio were not exercised in this change.
+
 ## Media library and shared GM instruments
 
 Branch `feature/media-browser-gm-racks`. The folder tab accepts local audio, MIDI and OSTF or OSTFP material. A score or SMF drop lets the user choose a source track and uses the import placement and undo path. Program changes, CC 0–119, pitch bend, poly pressure and channel pressure are carried with the selected part.

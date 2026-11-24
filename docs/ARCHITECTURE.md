@@ -1,5 +1,13 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## Arrangement tools and chord decisions
+
+The split and join toolbar tools dispatch to the same MIDI and audio commands as the arrangement context menu. Global spans and change points have distinct boundary rules. A split retains both sides of the value. A join uses the selected earlier or later value over the combined interval. The score validator checks references before a change is committed.
+
+Pitched-note gestures collect the old and new sounding ranges and rank chord templates using the selected track's duration-weighted pitch classes, missing tones and bass. The UI presents candidates in rank order. The user can keep the existing harmony even if the edited notes suggest a different chord. For OSTF material, Studio translates source times through both tempo maps and also offers each source chord including its authored voicing. Individual and bulk decisions replace only the approved intervals. The decision list is transient UI state and participates in local score undo/redo.
+
+OSTF 5.0 performance plans can visit a source section again and specify a fixed, open or silent realization for each participating track on each visit. Phrase instances already have a repeat count. The MusicXML exporter currently writes the linear score. Folding equivalent measures into repeat barlines and representing variant endings are future notation-export work. Compare the actual parts, rhythm, ties, articulations and dynamics before folding. A performer or composer can retain intentional variation without changing the source timeline.
+
 ## Shared instruments, sample placement and stem exports
 
 A routing group is identified by the owner's score track ID. Each member stores its destination and MIDI channel in Studio production data. OSTF 5.0 and OSTFP can restore multiple instances with the same plug-in identifier. Each GM meter measures samples from that part's SoundFont voices before their stereo outputs are summed. The bundled instrument editors notify Studio about manual program selections using per-part edit gestures. Score playback and state restoration do not emit those gestures. A third-party instrument exposing an indexed VST program list can propose a track update while stopped. A confirmed edit writes a program event and keeps existing bank selects.

@@ -42,7 +42,7 @@ void MainComponent::rememberAudioEdit(std::vector<ProjectAudio> before, juce::Me
 }
 
 void MainComponent::clipCommand(ClipOp op, std::optional<ClipHit> hit, size_t destination, Tick tick) {
-    if (!project_ || recordTrack_ || destination >= project_->sourceTrackCount()) return;
+    if (!project_ || recordTrack_ || destination >= project_->sourceTrackCount() || (op != ClipOp::copy && chordReviewBlocksSwitch())) return;
     auto fail = [this](const juce::String& error) { statusLabel_.setText(juce::translate(error), juce::dontSendNotification); };
     if (hit) {
         auto current = clipAt(hit->track, hit->start);

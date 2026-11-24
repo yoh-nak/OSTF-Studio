@@ -34,11 +34,83 @@ inline juce::var globalEventAt(const juce::var& score, TimelineLane lane, juce::
     if (auto* list = events.getArray())
         for (const auto& item : *list) {
             const auto at = static_cast<juce::int64>(item[source.span ? "start" : "at"]);
-            if (tick >= at && (!source.span || tick - at < static_cast<juce::int64>(item["duration"])))
+            if (tick >= at && (!hit.isObject() || at >= static_cast<juce::int64>(hit[source.span ? "start" : "at"]))
+                && (!source.span || tick - at < static_cast<juce::int64>(item["duration"])))
                 hit = item;
         }
     return hit;
 }
+// Compute a boundary edit without removing time from the lane.
+inline juce::Result globalBoundaryEdit(const juce::var& score, TimelineLane lane, juce::int64 tick,
+                                      juce::int64 endTick, bool split, bool keepRight,
+                                      juce::Array<juce::var>& remove, juce::Array<juce::var>& insert) {
+    const auto source = globalSource(lane);
+    if (!*source.events || tick < 0 || tick >= endTick) return juce::Result::fail("Choose a global interval.");
+    const auto key = source.span ? "start" : "at";
+    auto left = globalEventAt(score, lane, tick);
+    const bool inherited = !left.isObject() && lane == TimelineLane::key && score["song"]["key"].isObject();
+    if (inherited) {
+        left = new juce::DynamicObject;
+        left.getDynamicObject()->setProperty("at", 0);
+        left.getDynamicObject()->setProperty("key", score["song"]["key"].clone());
+        left.getDynamicObject()->setProperty("id", "key-" + juce::Uuid().toString());
+    }
+    const auto scales = score["harmony"]["scales"];
+    const bool defaultScale = !left.isObject() && lane == TimelineLane::scale && score["song"]["scale"].isObject() && scales.size() == 0;
+    if (defaultScale) {
+        left = score["song"]["scale"].clone();
+        left.getDynamicObject()->setProperty("id","scale-" + juce::Uuid().toString());
+        left.getDynamicObject()->setProperty("start",0);
+        left.getDynamicObject()->setProperty("duration",endTick);
+    }
+    if (!left.isObject()) return juce::Result::fail("Choose a global interval.");
+    const juce::int64 start = left[key];
+    juce::var next;
+    auto events = score[source.group][source.events];
+    if (auto* list = events.getArray()) for (const auto& other : *list) {
+        if (lane == TimelineLane::scale && juce::JSON::toString(left["targets"]) != juce::JSON::toString(other["targets"])) continue;
+        if (juce::int64(other[key]) > start && (!next.isObject() || juce::int64(other[key]) < juce::int64(next[key]))) next = other;
+    }
+    const auto end = source.span ? start + juce::int64(left["duration"]) : next.isObject() ? juce::int64(next[key]) : endTick;
+    auto visited = [&](const juce::var& section) {
+        if (lane != TimelineLane::section) return false;
+        const auto plans = score["performancePlans"];
+        if (auto* entries = plans.getArray()) for (const auto& plan : *entries)
+            if (auto* visits = plan["visits"].getArray()) for (const auto& visit : *visits)
+                if (auto* ids = visit["sourceSectionIds"].getArray(); ids && ids->contains(section["id"])) return true;
+        return false;
+    };
+    if (split) {
+        if (tick <= start || tick >= end) return juce::Result::fail("Choose a point inside the interval.");
+        auto right = left.clone();
+        right.getDynamicObject()->setProperty(key, tick);
+        if (right.hasProperty("id")) right.getDynamicObject()->setProperty("id", "event-" + juce::Uuid().toString());
+        if (source.span) {
+            // Changing a visited section's extent would silently change its performance plan.
+            if (visited(left))
+                return juce::Result::fail("This section is used in a performance plan.");
+            auto first = left.clone();
+            first.getDynamicObject()->setProperty("duration", tick - start);
+            right.getDynamicObject()->setProperty("duration", end - tick);
+            if (!defaultScale) remove.add(left);
+            insert.add(first);
+        }
+        insert.add(right);
+    } else {
+        if (!next.isObject() || end != juce::int64(next[key])) return juce::Result::fail("Choose an interval with an adjacent successor.");
+        if (visited(left) || visited(next)) return juce::Result::fail("This section is used in a performance plan.");
+        if (!inherited) remove.add(left);
+        remove.add(next);
+        if (!inherited || keepRight) {
+            auto joined = (keepRight ? next : left).clone();
+            joined.getDynamicObject()->setProperty(key, start);
+            if (source.span) joined.getDynamicObject()->setProperty("duration", end + juce::int64(next["duration"]) - start);
+            insert.add(joined);
+        }
+    }
+    return juce::Result::ok();
+}
+
 inline juce::String pitchText(const juce::var& note) {
     const auto alter = std::clamp(int(note["alter"]), -2, 2);
     return note["step"].toString() + juce::String::repeatedString(alter < 0 ? "b" : "#", std::abs(alter));

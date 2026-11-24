@@ -404,6 +404,9 @@ int checkPianoEdits(const juce::File& fixture) {
     if (editor->points.size()!=initialPoints+1) return 72;
     main.keyPressed(juce::KeyPress('Z',juce::ModifierKeys::commandModifier,0));
     if (editor->points.size()!=initialPoints) return 73;
+    auto* review = dynamic_cast<ChordReviewLane*>(main.findChildWithID("chord-review"));
+    if (!review || !review->isVisible()) return 121;
+    review->confirm(true,true);
     auto* drumMode = dynamic_cast<juce::ComboBox*>(main.findChildWithID("drum-mode"));
     auto* steps = dynamic_cast<DrumSteps*>(main.findChildWithID("drum-steps"));
     if (!drumMode || !steps) return 74;

@@ -27,8 +27,8 @@ constexpr int menuHeight = 28;
 int toolbarButtonWidth(int width) { return std::clamp(width / 24, 24, 39); }
 
 int viewBarHeight(int width) {
-    const bool wrapIcons = width < 860;
-    const int available = width - (wrapIcons ? 32 : 56) - (wrapIcons ? 9 : 21) * toolbarButtonWidth(width);
+    const bool wrapIcons = width < 964;
+    const int available = width - (wrapIcons ? 32 : 64) - (wrapIcons ? 9 : 23) * toolbarButtonWidth(width);
     const int rows = (wrapIcons ? 2 : 1) + (available < 394 ? 1 : 0);
     return 32 * rows;
 }
@@ -418,6 +418,7 @@ MainComponent::MainComponent() {
             if (config->getValue("workspaceTheme") == ostfstudio::console::finishes[i].key)
                 pianoInspector_.theme = static_cast<pianoHarmony::Theme>(i);
         parameterFraction_ = config->getDoubleValue("parameterLaneRatio", 0);
+        joinKeepsRight_ = config->getBoolValue("globalJoinKeepsRight", false);
         theoryVisible_ = config->getBoolValue("theoryGuide", false);
         chordFitVisible_ = config->getBoolValue("showChordFit", true);
         scaleFitVisible_ = config->getBoolValue("showScaleFit", true);
@@ -473,6 +474,25 @@ MainComponent::MainComponent() {
     addView(audioAdd_, "Add audio track", addAudio);
     addView(busAdd_, "Add bus track", addBus);
     addView(returnAdd_, "Add return track", addReturn);
+    addView(splitTool_, "Scissors: split at click", 0);
+    addView(joinTool_, "Join with next clip", 0);
+    splitTool_.setToggleable(true);
+    joinTool_.setToggleable(true);
+    auto chooseTool = [this](ClipTool tool) {
+        clipTool_ = clipTool_ == tool ? ClipTool::select : tool;
+        splitTool_.setToggleState(clipTool_ == ClipTool::split, juce::dontSendNotification);
+        joinTool_.setToggleState(clipTool_ == ClipTool::join, juce::dontSendNotification);
+    };
+    addChildComponent(chordReview_);
+    chordReview_.navigate = [this]{ refreshChordReview(); };
+    chordReview_.choose = [this](int choice){
+        const int index = chordReview_.selected();
+        if (juce::isPositiveAndBelow(index,int(pendingReview_.size()))) pendingReview_[size_t(index)].choice = choice;
+        refreshChordReview();
+    };
+    chordReview_.confirm = [this](bool all,bool keep){resolveChordReview(all,keep);};
+    splitTool_.onClick = [chooseTool] { chooseTool(ClipTool::split); };
+    joinTool_.onClick = [chooseTool] { chooseTool(ClipTool::join); };
     addView(uiSmaller_, "Zoom out interface", smallerUI);
     addView(uiLarger_, "Zoom in interface", largerUI);
     arrangementButton_.setTooltip(TRANS("Show the arrangement timeline"));
@@ -1767,13 +1787,18 @@ void MainComponent::itemDropped(const SourceDetails& details) {
 }
 
 void MainComponent::placeResult(ImportResultRow& row, std::optional<std::size_t> track, juce::int64 tick,
-                                bool replace, std::shared_ptr<const ostfstudio::OstfpPreview> dropped) {
-    if (!project_ || recordTrack_)
+                                bool replace, std::shared_ptr<const ostfstudio::OstfpPreview> dropped, bool review) {
+    if (!project_ || recordTrack_ || chordReviewBlocksSwitch())
         return;
     bool playing = transportActive_;
     if (playing)
         stopTransport();
     juce::MemoryBlock before;
+    if (review && row.index < 0) {
+        reviewDroppedChords(row.source,row.index,track,tick);
+        if (playing) startTransport(false);
+        return;
+    }
     auto result = ostfstudio::placeImportTrack(row.source, row.index, *project_, track, tick, before, replace);
     if (result.wasOk()) {
         if (row.index >= 0 && row.source.trackKinds[row.index] == ostfstudio::TrackKind::audio)
@@ -1788,6 +1813,14 @@ void MainComponent::placeResult(ImportResultRow& row, std::optional<std::size_t>
         if (track)
             selectTrack(*track);
         finishNoteEdit(playing);
+        if (review) {
+            reviewDroppedChords(row.source,row.index,track,tick);
+            if (row.index >= 0 && row.source.trackKinds[row.index] != ostfstudio::TrackKind::audio && !noteHistory_.empty()) {
+                noteHistory_.back().reviewBefore = ostfstudio::ChordDecisions{};
+                noteHistory_.back().reviewAfter = pendingReview_;
+                noteHistory_.back().reviewTrack = track;
+            }
+        }
     } else if (playing)
         startTransport(false);
     if (result.getErrorMessage() == TRANS("Confirm replacement of existing material.")) {
@@ -1799,11 +1832,11 @@ void MainComponent::placeResult(ImportResultRow& row, std::optional<std::size_t>
             row.index == -1 ? TRANS("Replace the chords covered by this progression?")
                             : TRANS("Replace the WAV on this track?"),
             TRANS("Replace"), TRANS("Cancel"), this,
-            juce::ModalCallbackFunction::create([safe, source, generation, track, tick, dropped, index = row.index](int answer) {
+            juce::ModalCallbackFunction::create([safe, source, generation, track, tick, dropped, review, index = row.index](int answer) {
                 if (!answer || !safe || safe->projectGeneration_ != generation) return;
                 if (dropped) {
                     ImportResultRow part({}, *dropped, index);
-                    safe->placeResult(part, track, tick, true, dropped);
+                    safe->placeResult(part, track, tick, true, dropped, review);
                 } else if (source) safe->placeResult(*source, track, tick, true);
             }));
         return;
@@ -2399,8 +2432,8 @@ bool MainComponent::keyPressed(const juce::KeyPress& key) {
                 globalCommand(2);
                 return true;
             }
-            if (key.isKeyCode('X')) {
-                globalCommand(3);
+            if (key.isKeyCode('E') || key.isKeyCode('J')) {
+                editGlobalBoundary(key.isKeyCode('E'));
                 return true;
             }
             if (key.isKeyCode('V')) {
@@ -2655,6 +2688,8 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     selectedAudioId_.clear();
     arrangementClipFocus_ = false;
     ++projectGeneration_;
+    pendingReview_.clear();
+    chordReview_.setVisible(false);
     selectedTrack_.reset();
     trackRows_.clear();
     verticalScroll_.setCurrentRangeStart(0, juce::dontSendNotification);
@@ -3131,7 +3166,7 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
                                std::optional<std::size_t> duplicate, ostfstudio::MixerTrackGroup group,
                                const ImportResultRow* import, juce::int64 tick,
                                std::optional<ostfstudio::SessionMix::MidiRoute> sharedPart) {
-    if (!canEditTracks()) return;
+    if (!canEditTracks() || chordReviewBlocksSwitch()) return;
     stopTransport();
     std::unique_ptr<ostfstudio::OstfpPreview> updated;
     std::optional<int> newChannel;
@@ -3177,6 +3212,8 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         previous.insert(previous.begin() + added, nullptr);
     }
     refreshTimelineLanes();
+    pendingReview_.clear();
+    chordReview_.setVisible(false);
     selectedTrack_.reset();
     pendingMidiDrag_.reset();
     pluginDropHighlight_.reset();
@@ -3768,7 +3805,7 @@ bool MainComponent::isInterestedInFileDrag(const juce::StringArray& files) {
 }
 
 void MainComponent::filesDropped(const juce::StringArray& files, int x, int y) {
-    if (!isInterestedInFileDrag(files)) return;
+    if (!isInterestedInFileDrag(files) || chordReviewBlocksSwitch()) return;
     auto track = pluginDropTrack({x, y});
     if (audioEditor_.isVisible() && audioEditor_.getBounds().contains(x, y)) track = selectedTrack_;
     const juce::File file(files[0]);
@@ -3790,13 +3827,17 @@ void MainComponent::filesDropped(const juce::StringArray& files, int x, int y) {
         const bool chords = globalLaneAt({x,y}) == TimelineLane::chord;
         auto held = std::shared_ptr<const ostfstudio::OstfpPreview>(std::move(source));
         auto place = [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, held, track, tickAtDrop,
-                      name = file.getFileName()](int partIndex) {
-            if (!safe || safe->projectGeneration_ != generation || safe->recordTrack_) return;
+                      name = file.getFileName(), review = file.hasFileExtension("ostf;ostfp")](int partIndex) {
+            if (!safe || safe->projectGeneration_ != generation || safe->recordTrack_ || safe->chordReviewBlocksSwitch()) return;
             ImportResultRow part(name, *held, partIndex);
-            if (partIndex < 0) safe->placeResult(part, {}, tickAtDrop, false, held);
+            if (partIndex < 0) safe->placeResult(part, {}, tickAtDrop, false, held, review);
             else if (track && *track < safe->project_->sourceTrackCount() && safe->project_->trackKinds[*track] == held->trackKinds[partIndex])
-                safe->placeResult(part, track, tickAtDrop, false, held);
-            else if (safe->canEditTracks()) safe->editTracks(held->trackKinds[partIndex], {}, {}, held->mixerGroups[partIndex], &part, tickAtDrop);
+                safe->placeResult(part, track, tickAtDrop, false, held, review);
+            else if (safe->canEditTracks()) {
+                const auto index = safe->project_->sourceTrackCount();
+                safe->editTracks(held->trackKinds[partIndex], {}, {}, held->mixerGroups[partIndex], &part, tickAtDrop);
+                if (review && safe->project_->sourceTrackCount() > index) safe->reviewDroppedChords(*held,partIndex,index,tickAtDrop);
+            }
         };
         if (chords) place(-1);
         else if (held->sourceTrackCount() == 1) place(0);
@@ -4861,6 +4902,19 @@ void MainComponent::applyGlobalChange(TimelineLane lane, juce::Array<juce::var> 
     repaint();
 }
 
+void MainComponent::editGlobalBoundary(bool split) {
+    if (!project_ || !selectedGlobal_ || recordTrack_) return;
+    if (chordReviewBlocksSwitch()) return;
+    juce::Array<juce::var> removed, added;
+    auto tick = selectedGlobalTick_;
+    if (split && (*selectedGlobal_ == TimelineLane::meter || *selectedGlobal_ == TimelineLane::section))
+        tick = std::llround(double(tick)/project_->ticksPerBar)*project_->ticksPerBar;
+    auto result = ostfstudio::globalBoundaryEdit(juce::JSON::parse(project_->sourceScore.toString()), *selectedGlobal_,
+        tick, project_->durationTicks, split, joinKeepsRight_, removed, added);
+    if (result.failed()) statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
+    else applyGlobalChange(*selectedGlobal_, removed, added);
+}
+
 void MainComponent::globalCommand(int command) {
     using namespace ostfstudio;
     if (!project_ || !selectedGlobal_ || recordTrack_)
@@ -4907,12 +4961,10 @@ void MainComponent::globalCommand(int command) {
             editSongInformation();
         return;
     }
-    if (command == 2 || command == 3) {
+    if (command == 2) {
         copiedLane_ = lane;
         copiedEvent_ = event.clone();
         copiedPpq_ = project_->ppq;
-        if (command == 3)
-            applyGlobalChange(lane, {event}, {});
         return;
     }
     if (command != 1)
@@ -5025,11 +5077,13 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
     const bool wasTempo = selectedGlobal_ == TimelineLane::tempo;
     if (!rowOverlay_.isVisible() || !rowOverlay_.getBounds().contains(event.getPosition())) return;
     if (auto lane = globalLaneAt(event.getPosition())) {
-        if (*lane == TimelineLane::tempo && recordTrack_) return;
+        if (chordReviewBlocksSwitch() || (*lane == TimelineLane::tempo && recordTrack_)) return;
         clipLane_.selected.reset();
         selectedGlobal_ = lane;
         selectedGlobalTick_ = event.x < rowOverlay_.getX() + trackHeaderWidth
             ? std::max<juce::int64>(0, cursorTick_) : arrangementTickAt(event.x);
+        if (clipTool_ != ClipTool::select && event.mods.isLeftButtonDown() && !event.mods.isPopupMenu()
+            && event.x >= rowOverlay_.getX() + trackHeaderWidth) { editGlobalBoundary(clipTool_ == ClipTool::split); return; }
         if (*lane == TimelineLane::tempo) {
             editorVisible_ = true;
             mixerSelected_ = false;
@@ -5044,13 +5098,24 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
             menu.addItem(1, TRANS("Edit value..."),
                          hasEvent || *lane == TimelineLane::key || *lane == TimelineLane::scale);
             menu.addItem(2, TRANS("Copy"), hasEvent);
-            menu.addItem(3, TRANS("Cut"), hasEvent);
+            menu.addItem(5, TRANS("Split here"));
+            menu.addItem(6, TRANS("Join with next interval"));
+            juce::PopupMenu policy;
+            policy.addItem(7, TRANS("Keep earlier value"), true, !joinKeepsRight_);
+            policy.addItem(8, TRANS("Keep later value"), true, joinKeepsRight_);
+            menu.addSubMenu(TRANS("Value after joining"), policy);
             menu.addItem(4, TRANS("Paste"), copiedLane_ == lane);
             const auto generation = projectGeneration_;
             menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(this),
                                [safe = juce::Component::SafePointer<MainComponent>(this), generation](int choice) {
                                    if (safe && safe->projectGeneration_ == generation && choice)
-                                       safe->globalCommand(choice);
+                                   {
+                                       if (choice == 5 || choice == 6) safe->editGlobalBoundary(choice == 5);
+                                       else if (choice == 7 || choice == 8) {
+                                           safe->joinKeepsRight_ = choice == 8;
+                                           safe->viewPreferences_.getUserSettings()->setValue("globalJoinKeepsRight", safe->joinKeepsRight_);
+                                       } else safe->globalCommand(choice);
+                                   }
                                });
         }
         return;
@@ -5075,12 +5140,22 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
                 && canExportTrack(i))
                 pendingMidiDrag_ = i;
             selectTrack(i);
+            if (selectedTrack_ != i) { pendingMidiDrag_.reset(); return; }
             const auto timeline = trackRows_[i].withTrimmedLeft(trackHeaderWidth);
             const auto bar = project_->bars.firstBar + double(arrangementTickAt(event.x)) / project_->ticksPerBar;
             if (event.mods.isLeftButtonDown() && timeline.contains(event.getPosition())) {
                 arrangementClipFocus_ = true;
                 clipInsertionTick_ = arrangementTickAt(event.x);
                 grabKeyboardFocus();
+                if (clipTool_ != ClipTool::select) {
+                    if (i == project_->chordVoicingTrack) {
+                        selectedGlobal_ = TimelineLane::chord;
+                        selectedGlobalTick_ = clipInsertionTick_;
+                        editGlobalBoundary(clipTool_ == ClipTool::split);
+                    } else if (auto clip = clipAt(i, clipInsertionTick_))
+                        clipCommand(clipTool_ == ClipTool::split ? ClipOp::split : ClipOp::join, clip, i, clipInsertionTick_);
+                    return;
+                }
             }
             if (event.mods.isLeftButtonDown() && timeline.contains(event.getPosition()) &&
                 beginMidiResize(i, bar, (horizontalRange().end - horizontalRange().start) * 7 / std::max(1, timeline.getWidth()))) return;
@@ -5123,6 +5198,7 @@ void MainComponent::mouseDoubleClick(const juce::MouseEvent& event) {
     if (!event.mods.isLeftButtonDown() || !project_)
         return;
     const auto p = event.getPosition();
+    if (clipTool_ != ClipTool::select) return;
     if (globalLaneAt(p) && selectedGlobal_) {
         globalCommand(1);
         return;
@@ -5213,6 +5289,10 @@ void MainComponent::mouseUp(const juce::MouseEvent& event) {
 }
 
 void MainComponent::selectTrack(std::size_t index) {
+    if (selectedTrack_ != index && chordReviewBlocksSwitch()) {
+        trackPicker_.setSelectedId(selectedTrack_ ? int(*selectedTrack_+1) : 0,juce::dontSendNotification);
+        return;
+    }
     if (recordTrack_ && *recordTrack_ != index) return;
     if (!project_ || index >= project_->trackLanes.size()) return;
     selectedGlobal_.reset();
@@ -5441,6 +5521,8 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
     if (playing && !liveLoop) stopTransport();
     juce::MemoryBlock before;
     juce::StringArray ids;
+    const auto affected = project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::pitched
+        ? ostfstudio::changedNoteRanges(project_->pitchedNotes[*selectedTrack_],edits) : std::vector<ostfstudio::ReviewRange>{};
     const auto result = project_->editNotes(*selectedTrack_, edits, before, ids);
     if (result.failed()) {
         if (playing && !liveLoop) startTransport(false);
@@ -5448,6 +5530,35 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
         return;
     }
     rememberScoreEdit(std::move(before));
+    if (!affected.empty()) {
+        auto& revision = noteHistory_.back();
+        revision.reviewBefore = pendingReview_;
+        revision.reviewTrack = selectedTrack_;
+        auto changes = ostfstudio::analyseChordRanges(*project_,selectedTrack_,affected);
+        for (auto& change : changes) {
+            auto position = change.range.getStart();
+            ostfstudio::ChordDecisions gaps;
+            auto appendGap = [&](juce::int64 end) {
+                if (end <= position) return;
+                auto part = change;
+                part.range = {position,end};
+                part.candidates = ostfstudio::rankChords(project_->pitchedNotes[*selectedTrack_], part.range);
+                part.choice = part.candidates.isEmpty() ? 0 : 1;
+                gaps.push_back(std::move(part));
+            };
+            for (auto& row : pendingReview_) if (row.range.intersects(change.range)) {
+                appendGap(row.range.getStart());
+                position = row.range.getEnd();
+                row.candidates = ostfstudio::rankChords(project_->pitchedNotes[*selectedTrack_], row.range);
+                if (row.choice != 4) row.choice = row.candidates.isEmpty() ? 0 : 1;
+            }
+            appendGap(change.range.getEnd());
+            pendingReview_.insert(pendingReview_.end(),gaps.begin(),gaps.end());
+        }
+        std::sort(pendingReview_.begin(),pendingReview_.end(),[](auto& a,auto& b){return a.range.getStart()<b.range.getStart();});
+        revision.reviewAfter = pendingReview_;
+        refreshChordReview();
+    }
     inspectedNote_.reset();
     if (!ids.isEmpty()) for (const auto& n : project_->pitchedNotes[*selectedTrack_])
         if (n.id == ids[0]) { inspectedNote_ = n; break; }
@@ -5507,6 +5618,14 @@ void MainComponent::undoPianoEdit(bool redo) {
     const auto result = project_->restoreNoteScore(redo ? revision.after : revision.before);
     if (result.wasOk()) {
         if (redo) ++noteHistoryCursor_; else --noteHistoryCursor_;
+        if (revision.reviewBefore) {
+            const auto track = revision.reviewTrack;
+            auto restored = redo ? *revision.reviewAfter : *revision.reviewBefore;
+            pendingReview_.clear();
+            if (!restored.empty() && track && selectedTrack_ != track) selectTrack(*track);
+            pendingReview_ = std::move(restored);
+            refreshChordReview();
+        }
         inspectedNote_.reset();
         pianoGrid_.selection.clear();
         theory_.reset();
@@ -5520,6 +5639,7 @@ void MainComponent::undoPianoEdit(bool redo) {
 }
 
 void MainComponent::setWorkspaceMode(WorkspaceMode mode) {
+    if (mode != WorkspaceMode::arrangement && chordReviewBlocksSwitch()) return;
     if (mode != WorkspaceMode::arrangement && !project_) return;
     if (workspaceMode_ == mode) return;
     workspaceMode_ = mode;
@@ -5854,7 +5974,9 @@ void MainComponent::resized() {
     for (auto* button : {&pluginBrowserButton_, &sampleBrowserButton_, &outputButton_, &lanesButton_, &theoryButton_}) place(*button);
     divider();
     place(songInfoButton_); place(musicButton_);
-    if (getWidth() < 860) { toolbarHint_.setBounds(row); row = viewBar.removeFromTop(32); }
+    divider();
+    place(splitTool_); place(joinTool_);
+    if (getWidth() < 964) { toolbarHint_.setBounds(row); row = viewBar.removeFromTop(32); }
     else divider();
     for (auto* button : {&melodyAdd_, &chorusAdd_, &pitchedAdd_, &drumsAdd_, &audioAdd_}) place(*button);
     divider();
@@ -5870,7 +5992,7 @@ void MainComponent::resized() {
         modelPicker_.setBounds(aiRow.removeFromRight(std::clamp(aiRow.getWidth() - 160, 112, 204)).reduced(2, 3));
     }
     aiButton_.setBounds(aiRow.removeFromRight(std::min(180, aiRow.getWidth())).reduced(2, 2));
-    if (getWidth() >= 860) toolbarHint_.setBounds(barHeight == 32 ? aiRow : row);
+    if (getWidth() >= 964) toolbarHint_.setBounds(barHeight == 32 ? aiRow : row);
 
     deck_.setBounds(18, menuHeight + barHeight + 8, std::min(1590, getWidth() - 36),
                     TransportPanel::panelHeight(getWidth()));
@@ -5892,7 +6014,9 @@ void MainComponent::resized() {
         if (scoreView_) scoreView_->setBounds(editor);
         return;
     }
-    const auto arrangerHeight = getArrangementHeight(editor.getHeight());
+    const int reviewHeight = chordReviewHeight(editor.getWidth());
+    const auto arrangerHeight = getArrangementHeight(std::max(0,editor.getHeight()-reviewHeight));
+    chordReview_.setBounds(editor.withY(editor.getY()+arrangerHeight+(editorVisible_ ? 8 : 0)).withHeight(reviewHeight));
     auto arrangement = editor.withHeight(arrangerHeight).reduced(13);
     if (project_) {
         const bool stacked = arrangement.getWidth() < 765;
@@ -6099,7 +6223,7 @@ void MainComponent::resized() {
         } else renameEditor_.setVisible(false);
     }
     pianoDivider_.setBounds(editor.withY(editor.getY() + arrangerHeight).withHeight(8));
-    editor.removeFromTop(arrangerHeight + 8);
+    editor.removeFromTop(arrangerHeight + 8 + reviewHeight);
     const int clipHeight = clipLane_.isVisible() ? std::min(24, editor.getHeight() / 5) : 0;
     const PianoLayout pianoLayout(editor.withTrimmedTop(30 + clipHeight), trackHeaderWidth, verticalScroll_.isVisible(),
                                   pitchedSelection() && pianoColours_.getSelectedId() != plainNotes,
@@ -6167,8 +6291,9 @@ void MainComponent::paint(juce::Graphics& g) {
         return;
     }
 
-    auto arrangementArea = area.removeFromTop(getArrangementHeight(area.getHeight()));
-    area.removeFromTop(8);
+    const int reviewHeight = chordReviewHeight(area.getWidth());
+    auto arrangementArea = area.removeFromTop(getArrangementHeight(std::max(0,area.getHeight()-reviewHeight)));
+    area.removeFromTop(8+reviewHeight);
     drawArrangement(g, arrangementArea, currentArrangement());
     if (!editorVisible_) return;
     g.setGradientFill(juce::ColourGradient(juce::Colour(0xff303840), 0.0f, static_cast<float>(area.getY()),

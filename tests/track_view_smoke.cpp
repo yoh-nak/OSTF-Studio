@@ -1,4 +1,5 @@
 #include "ui/MainComponent.h"
+#include "ui/GlobalTimelineEdit.h"
 #include "ui/PluginRoles.h"
 #include "ui/MediaImport.h"
 #include <BinaryData.h>
@@ -238,6 +239,14 @@ int checkSamplePlacement(const juce::File& file) {
         return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), position.toFloat(),
             juce::ModifierKeys::leftButtonModifier, 1, 0, 0, 0, 0, &main, &main, time, begin.toFloat(), time, 1, moved);
     };
+    main.splitTool_.onClick();
+    main.mouseDown(drag(begin,false));
+    if (!main.splitTool_.getToggleState() || main.clipsOn(0).size()!=2 || !main.clipAt(0,main.arrangementTickAt(begin.x))) return 216;
+    main.joinTool_.onClick();
+    main.mouseDown(drag({x+2,begin.y},false));
+    if (main.splitTool_.getToggleState() || !main.joinTool_.getToggleState() || main.clipsOn(0).size()!=1
+        || main.clipsOn(0).front().end!=start+length) return 217;
+    main.joinTool_.onClick();
     main.mouseDown(drag(begin, false));
     if (!main.movingAudio_ || main.resizingAudio_ != 0) return 152;
     const auto end = juce::Point<int>(begin.x + 120, main.trackRows_[1].getCentreY());
@@ -318,6 +327,34 @@ int checkSamplePlacement(const juce::File& file) {
         break;
     }
     if (!placedChord) return 156;
+    {
+        using namespace ostfstudio;
+        const auto score=juce::JSON::parse(R"({"harmony":{"chords":[{"id":"a","start":0,"duration":480,"label":"C"},{"id":"b","start":480,"duration":960,"label":"G"}]},"timeline":{"tempoChanges":[{"at":0,"bpm":100},{"at":480,"bpm":130}]}})");
+        for (bool later:{false,true}) {
+            juce::Array<juce::var> remove,insert;
+            if(globalBoundaryEdit(score,TimelineLane::chord,120,1440,false,later,remove,insert).failed() || remove.size()!=2 || insert.size()!=1
+                || int(insert[0]["duration"])!=1440 || insert[0]["label"].toString()!=(later?"G":"C")) return 208;
+            remove.clear(); insert.clear();
+            if(globalBoundaryEdit(score,TimelineLane::tempo,120,1440,false,later,remove,insert).failed() || int(insert[0]["at"])!=0
+                || int(insert[0]["bpm"])!=(later?130:100)) return 209;
+        }
+        juce::Array<juce::var> remove,insert;
+        if(globalBoundaryEdit(score,TimelineLane::chord,120,1440,true,false,remove,insert).failed() || insert.size()!=2
+            || int(insert[0]["duration"])!=120 || int(insert[1]["start"])!=120 || int(insert[1]["duration"])!=360
+            || insert[0]["id"]==insert[1]["id"]) return 210;
+        const std::vector<PitchedNote> notes{{0,480,62,90},{0,480,65,90},{0,480,69,90}};
+        if(rankChords(notes,{0,480})[0]!="Dm" || !rankChords(notes,{480,960}).isEmpty()) return 211;
+        remove.clear(); insert.clear();
+        ChordDecision middle{{120,360},"C",{"Dm"},{},1};
+        if(chordDecisionEdits(score,{middle},remove,insert).failed() || remove.size()!=1 || insert.size()!=3
+            || insert[0]["label"]!="Dm" || insert[1]["id"]!="a" || int(insert[2]["start"])!=360) return 212;
+        remove.clear(); insert.clear();
+        auto defaultScale=juce::JSON::parse(R"({"song":{"scale":{"id":"sm","label":"Major","tonic":{"step":"C","alter":0},"intervals":[0,2,4,5,7,9,11]}}})");
+        if(globalBoundaryEdit(defaultScale,TimelineLane::scale,240,1440,true,false,remove,insert).failed() ||
+            !remove.isEmpty() || insert.size()!=2 || int(insert[1]["duration"])!=1200 || insert[0]["id"]==insert[1]["id"]) return 215;
+        auto moved=notes.front(); moved.id="moved"; auto shifted=moved; shifted.startTick+=480; shifted.endTick+=480;
+        if(changedNoteRanges({moved},{{NoteEdit::change,shifted}}).size()!=2) return 213;
+    }
     std::unique_ptr<ostfstudio::OstfpPreview> source;
     juce::String details;
     if (ostfstudio::prepareMediaImport(temporary.getFile(), source, details).failed()) return 190;
@@ -335,6 +372,32 @@ int checkSamplePlacement(const juce::File& file) {
         main.filesDropped({material.getFile().getFullPathName()}, x, main.trackRows_[0].getCentreY());
         if (main.project_->sourceTrackCount() != tracks + 1 || main.project_->pitchedNotes[tracks].size() != 3
             || main.project_->programChanges[tracks].size() != 1 || main.project_->programChanges[tracks][0].program != 33) return 192;
+        if (main.pendingReview_.empty() || !main.chordReview_.isVisible() || main.pendingReview_.front().range.getStart() != main.arrangementTickAt(x)
+            || main.pendingReview_.front().sourceChord["label"] != "Dm") return 201;
+        main.selectTrack(0);
+        if (main.selectedTrack_ != tracks) return 202;
+        main.resolveChordReview(true,true);
+        main.selectTrack(0);
+        if (main.selectedTrack_ != 0 || !main.pendingReview_.empty()) return 203;
+        main.selectTrack(tracks);
+        auto note = main.project_->pitchedNotes[tracks].front();
+        note.pitch += 1;
+        main.applyNoteGesture({{ostfstudio::NoteEdit::change,note}});
+        if (main.pendingReview_.empty() || main.pendingReview_.front().candidates.size()!=3) return 204;
+        main.undoPianoEdit(false);
+        if (!main.pendingReview_.empty()) return 205;
+        main.undoPianoEdit(true);
+        if (main.pendingReview_.empty()) return 206;
+        auto& firstDecision=main.pendingReview_.front();
+        firstDecision.choice = firstDecision.candidates[0] == firstDecision.current ? 2 : 1;
+        const auto expected=firstDecision.candidates[firstDecision.choice-1];
+        const auto at=firstDecision.range.getStart();
+        const auto remaining=main.pendingReview_.size()-1;
+        main.resolveChordReview(false,false);
+        const auto updated=juce::JSON::parse(main.project_->sourceScore.toString());
+        if(main.pendingReview_.size()!=remaining || ostfstudio::globalEventAt(updated,ostfstudio::TimelineLane::chord,at)["label"]!=expected) return 214;
+        if (!main.pendingReview_.empty()) main.resolveChordReview(true,false);
+        if (!main.pendingReview_.empty()) return 207;
     }
     return 0;
 }

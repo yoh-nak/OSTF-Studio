@@ -4,7 +4,7 @@
 
 class ViewButton final : public juce::Button {
 public:
-    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones, samples };
+    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones, samples, scissors, join };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
     std::function<void(juce::String)> onHint;
     void mouseEnter(const juce::MouseEvent& e) override { Button::mouseEnter(e); if (onHint) onHint(getTooltip()); }
@@ -28,6 +28,12 @@ public:
     static void drawIcon(juce::Graphics& g, Icon icon, float x, float y) {
         const auto line = [&](int x1, int y1, int x2, int y2) { g.drawLine(x+x1, y+y1, x+x2, y+y2, 1.6f); };
         switch (icon) {
+            case Icon::scissors:
+                g.drawEllipse(x+1,y+10,6,6,1.6f); g.drawEllipse(x+10,y+10,6,6,1.6f);
+                line(5,11,16,1); line(12,11,2,1); break;
+            case Icon::join:
+                line(1,2,1,15); line(18,2,18,15); line(2,9,8,9); line(5,6,8,9); line(5,12,8,9);
+                line(17,9,11,9); line(14,6,11,9); line(14,12,11,9); break;
             case Icon::headphones: {
                 juce::Path band;
                 band.addCentredArc(x + 10, y + 10, 7, 8, 0, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);

@@ -124,12 +124,15 @@ public:
         setComponentID("transport");
     }
     static int panelHeight(int width) { return width < 1400 ? 101 : 65; }
-    void setPosition(const ostfstudio::OstfpPreview& song, juce::int64 tick, double seconds, int shift = 0, double rate = 1) {
+    static juce::String musicalPosition(const ostfstudio::OstfpPreview& song, juce::int64 tick, ostfstudio::MeterPoint meter) {
         const auto withinBar = tick % song.ticksPerBar;
-        const auto meter = ostfstudio::activeMeter(song.meters, double(tick), {0, song.meterBeats, song.beatUnit});
         const double beatLength = song.ppq * 4.0 / meter.denominator;
         const auto beat = static_cast<int>(std::floor(withinBar / beatLength));
         const auto sub = static_cast<juce::int64>(std::floor(withinBar - beat * beatLength));
+        return padded(1 + tick / song.ticksPerBar, 3) + "." + padded(beat + 1, 2) + "." + padded(sub, 3);
+    }
+    void setPosition(const ostfstudio::OstfpPreview& song, juce::int64 tick, double seconds, int shift = 0, double rate = 1) {
+        const auto meter = ostfstudio::activeMeter(song.meters, double(tick), {0, song.meterBeats, song.beatUnit});
         auto set = [&](int index, juce::String text) {
             if (text.isEmpty()) text = juce::String::charToString(0x2014);
             if (readouts_[index].getText() != text) {
@@ -137,7 +140,7 @@ public:
                 readouts_[index].setTooltip(captions_[index] + "  " + text);
             }
         };
-        set(0, padded(1 + tick / song.ticksPerBar, 3) + "." + padded(beat + 1, 2) + "." + padded(sub, 3));
+        set(0, musicalPosition(song,tick,meter));
         if (seconds < 0) seconds = song.clock.secondsAt(tick) / rate;
         const auto frames = static_cast<juce::int64>(std::floor(seconds * 30.0 + 1e-8));
         set(1, padded(frames / 108000, 2) + ":" + padded(frames / 1800 % 60, 2) + ":"
