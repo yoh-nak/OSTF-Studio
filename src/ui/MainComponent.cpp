@@ -7,7 +7,6 @@
 #include "ui/MediaImport.h"
 #include "ui/SongInformationPanel.h"
 #include "ui/DemoArrangement.h"
-#include "core/MidiGeneratorPattern.h"
 #include "ui/PluginRoles.h"
 #include "ui/StudioLanguage.h"
 #include "ui/SongMidi.h"
@@ -85,7 +84,6 @@ juce::String effectId(const juce::PluginDescription& description) {
     return description.pluginFormatName + "|" + description.manufacturerName + "|" + description.name
         + "|" + juce::String(description.uniqueId);
 }
-constexpr auto generatorDragId = "ostf-studio:generator-pattern";
 
 int arrangementLaneHeight(juce::Rectangle<int> inner, const ostfstudio::ArrangementView& view, std::size_t outputs) {
     const auto rows = 1 + static_cast<int>(view.globalLanes.size() + view.trackLanes.size() + outputs);
@@ -343,34 +341,6 @@ private:
     juce::TextButton add_ {TRANS("Add effect")}, browser_ {TRANS("Plug-in Browser")};
     int count_ = 0;
     std::optional<int> dragSource_, dragTarget_;
-};
-
-class GeneratorPanel final : public juce::Component {
-public:
-    GeneratorPanel(std::unique_ptr<juce::AudioProcessorEditor> editor, juce::DragAndDropContainer& dragHost)
-        : editor_(std::move(editor)), dragHost_(dragHost) {
-        addAndMakeVisible(*editor_);
-        addAndMakeVisible(ostfDrag_);
-        ostfDrag_.setTooltip(TRANS("Drop on an OSTF Studio arrangement track to add the pattern as editable OSTF notes."));
-        ostfDrag_.addMouseListener(this, false);
-        setSize(editor_->getWidth(), editor_->getHeight() + 44);
-    }
-
-    void resized() override {
-        auto area = getLocalBounds();
-        ostfDrag_.setBounds(area.removeFromBottom(44).reduced(16, 5));
-        editor_->setBounds(area);
-    }
-
-private:
-    void mouseDrag(const juce::MouseEvent& event) override {
-        if (event.getDistanceFromDragStart() < 5 || dragHost_.isDragAndDropActive()) return;
-        dragHost_.startDragging(generatorDragId, &ostfDrag_, juce::ScaledImage{}, true, nullptr, &event.source);
-    }
-
-    std::unique_ptr<juce::AudioProcessorEditor> editor_;
-    juce::DragAndDropContainer& dragHost_;
-    juce::TextButton ostfDrag_ {TRANS("Drag notes to an OSTF Studio track")};
 };
 
 class TrackMixPanel final : public juce::Component {
@@ -1826,7 +1796,7 @@ void MainComponent::placeTrackRow(size_t source, size_t target, bool after) {
 bool MainComponent::isInterestedInDragSource(const SourceDetails& details) {
     const auto id = details.description.toString();
     return workspaceMode_ == WorkspaceMode::arrangement && project_ &&
-           (dynamic_cast<ImportResultRow*>(details.sourceComponent.get()) || id == generatorDragId ||
+           (dynamic_cast<ImportResultRow*>(details.sourceComponent.get()) ||
             (pluginBrowser_ && (id.startsWith("ostf-vst3:") || (id.startsWith("ostf-media:") && !recordTrack_))));
 }
 
@@ -1933,22 +1903,6 @@ void MainComponent::itemDropped(const SourceDetails& details) {
     }
     const auto track = pluginDropTrack(details.localPosition);
     if (!track) return;
-    if (details.description.toString() == generatorDragId) {
-        const auto timeline = trackRows_[*track].withTrimmedLeft(trackHeaderWidth);
-        const auto visible = horizontalRange();
-        const auto x = juce::jlimit(0, timeline.getWidth() - 1, details.localPosition.x - timeline.getX());
-        const auto bar = static_cast<int>(std::floor(visible.start + x * (visible.end - visible.start) / timeline.getWidth()));
-        if (project_->insertGeneratorPattern(*track, bar)) {
-            refreshTrackTheory(*track);
-            selectTrack(*track);
-            markSessionEdited();
-            statusLabel_.setText(TRANS("OSTF pattern added at bar ") + juce::String(bar) + TRANS(" / current session"),
-                                 juce::dontSendNotification);
-        } else {
-            statusLabel_.setText(TRANS("The OSTF pattern does not fit at this position"), juce::dontSendNotification);
-        }
-        return;
-    }
     const auto plugin = pluginBrowser_->find(details.description.toString().substring(10));
     if (!plugin) return;
     selectTrack(*track);
@@ -4309,8 +4263,8 @@ void MainComponent::discoverTrackPlugin(std::size_t index) {
 void MainComponent::loadTrackPlugin(std::size_t index, const juce::PluginDescription& description, bool restoring, juce::MemoryBlock state) {
     auto& strip = *trackControls_[index];
     if (strip.loading) return;
-    if (isOstfGenerator(description)) {
-        statusLabel_.setText(TRANS("Use OSTF Arranger to load an instrument and play the arrangement"), juce::dontSendNotification);
+    if (isOstfGenerator(description) || isOstfArranger(description)) {
+        statusLabel_.setText(TRANS("This preview plug-in has been retired. Choose another instrument."), juce::dontSendNotification);
         return;
     }
     if (!description.isInstrument) {
@@ -4416,10 +4370,7 @@ void MainComponent::openTrackPluginEditor(std::size_t index) {
                 [w = window.get()] { return w->isVisible(); },
                 [this] { return !transportActive_ && !recordTrack_; },
                 [this, index](int channel, int program) { offerInstrumentProgram(index, channel, program); });
-        std::unique_ptr<juce::Component> body;
-        if (isOstfArranger(instance->getPluginDescription())) body = std::make_unique<GeneratorPanel>(std::move(editor), *this);
-        else body = std::move(editor);
-        window->setContentOwned(body.release(), true);
+        window->setContentOwned(editor.release(), true);
         window->centreWithSize(window->getWidth(), window->getHeight());
         if (hasSharedParts(index)) {
             for (size_t i = 0; i < trackControls_.size(); ++i) {
@@ -5745,19 +5696,35 @@ bool MainComponent::pitchedSelection() const {
 }
 
 void MainComponent::refreshTheory() {
-    if ((!theoryVisible_ && !chordFitVisible_ && !scaleFitVisible_ && pianoColours_.getSelectedId() == plainNotes) || !project_) { theory_.reset(); theoryTracks_.clear(); clipFits_.clear(); return; }
+    if ((!theoryVisible_ && !chordFitVisible_ && !scaleFitVisible_ && pianoColours_.getSelectedId() == plainNotes) || !project_) { theory_.reset(); theoryTracks_.clear(); clipFits_.clear(); regionFits_.clear(); return; }
     if (!theory_) {
         theory_ = std::make_unique<ostfstudio::TheoryGuide>(juce::JSON::parse(project_->sourceScore.toString()),
                                                             project_->playbackEndTick());
     }
     theoryTracks_.resize(project_->trackKinds.size());
     clipFits_.resize(project_->trackKinds.size());
+    regionFits_.assign(project_->trackKinds.size(), {});
     for (std::size_t i = 0; i < theoryTracks_.size(); ++i) refreshTrackTheory(i);
 }
 
 void MainComponent::refreshTrackTheory(std::size_t track) {
     if (theory_ && track < theoryTracks_.size() && project_->trackKinds[track] == ostfstudio::TrackKind::pitched)
-        theoryTracks_[track] = theory_->analyse(track, project_->pitchedNotes[track], scaleReference_, &clipFits_[track]);
+        theoryTracks_[track] = theory_->analyse(track, project_->pitchedNotes[track], scaleReference_, &clipFits_[track],
+                                                track == project_->chordVoicingTrack ? nullptr : &regionFits_[track]);
+}
+
+ostfstudio::TheoryGuide::Fit MainComponent::globalFit(TimelineLane lane, size_t region) const {
+    ostfstudio::TheoryGuide::Fit total;
+    for (size_t i = 0; i < regionFits_.size(); ++i) {
+        if (project_->chordVoicingTrack == i) continue;
+        const auto& fit = draggedNote_ && selectedTrack_ == i ? previewRegionFits_ : regionFits_[i];
+        const auto& spans = lane == TimelineLane::chord ? fit.chords : fit.scales;
+        if (region < spans.size()) {
+            total.inside += spans[region].inside;
+            total.total += spans[region].total;
+        }
+    }
+    return total;
 }
 
 const ostfstudio::TheoryGuide::ClipFit& MainComponent::clipFit(size_t track, const char* clipId, size_t chordBegin) const {
@@ -5770,10 +5737,12 @@ const ostfstudio::TheoryGuide::ClipFit& MainComponent::clipFit(size_t track, con
 }
 
 juce::Rectangle<int> MainComponent::drawFitBadges(juce::Graphics& g, juce::Rectangle<int> caption,
-                                                  const ostfstudio::TheoryGuide::ClipFit& fit) const {
+                                                  const ostfstudio::TheoryGuide::ClipFit& fit, TimelineLane lane) const {
     const int count = int(chordFitVisible_) + int(scaleFitVisible_);
-    const int width = std::min(94, caption.getWidth() / std::max(1, count));
+    const bool global = lane != TimelineLane::none;
+    const int width = global ? std::min(48, (caption.getWidth() + 1) / 2) : std::min(94, caption.getWidth() / std::max(1, count));
     for (bool chord : {false, true}) {
+        if (global && chord != (lane == TimelineLane::chord)) continue;
         if (chord ? !chordFitVisible_ : !scaleFitVisible_) continue;
         auto bounds = caption.removeFromRight(width).withHeight(std::min(18, caption.getHeight()));
         if (width >= 10) bounds = bounds.reduced(1, 0);
@@ -5781,7 +5750,8 @@ juce::Rectangle<int> MainComponent::drawFitBadges(juce::Graphics& g, juce::Recta
         const int value = (chord ? fit.chord : fit.scale).percent();
         const juce::Colour accent(value < 0 ? 0xffb5c0cb : value < 50 ? 0xffff91a4 : value < 75 ? 0xffffb06d :
                                   value < 90 ? 0xffffdf77 : 0xff8ce8ce);
-        g.setColour(juce::Colour(0xff0b131b));
+        const juce::Colour backing(0xff0b131b);
+        g.setColour(global ? backing.interpolatedWith(accent, .23f) : backing);
         g.fillRoundedRectangle(bounds.toFloat(), 3.f);
         g.setColour(accent);
         g.drawRoundedRectangle(bounds.toFloat().reduced(.75f), 2.5f, 1.35f);
@@ -5792,8 +5762,8 @@ juce::Rectangle<int> MainComponent::drawFitBadges(juce::Graphics& g, juce::Recta
         auto label = value < 0 ? juce::String::charToString(0x2014) : juce::String(value);
         if (value >= 0 && width >= 30) label += "%";
         if (width >= 77) label = juce::translate(chord ? "Chord" : "Scale") + " " + label;
-        else if (width >= 48) label = juce::String(chord ? "C " : "S ") + label;
-        g.setColour(juce::Colours::white);
+        else if (!global && width >= 48) label = juce::String(chord ? "C " : "S ") + label;
+        g.setColour(global ? accent : juce::Colours::white);
         g.setFont(juce::FontOptions(width < 30 ? 10.f : width < 55 ? 11.f : 13.f, juce::Font::bold));
         g.drawText(label, bounds.reduced(2, 0), juce::Justification::centred);
     }
@@ -5819,6 +5789,25 @@ juce::String MainComponent::getTooltip() {
         }
     }
     if (!rowOverlay_.getBounds().contains(p)) return {};
+    if (theory_ && p.x >= rowOverlay_.getX() + trackHeaderWidth) {
+        const auto kind = globalLaneAt(p);
+        if ((kind == TimelineLane::chord && chordFitVisible_) || (kind == TimelineLane::scale && scaleFitVisible_)) {
+            const double bar = 1. + double(arrangementTickAt(p.x)) / project_->ticksPerBar;
+            juce::StringArray readings;
+            for (const auto& lane : project_->globalLanes) {
+                if (lane.kind != *kind) continue;
+                for (size_t i = 0; i < lane.regions.size(); ++i) {
+                    const auto& r = lane.regions[i];
+                    const auto span = r.exactBars.value_or(ostfstudio::TimelineExtent{double(r.bars.firstBar), double(r.bars.endBar)});
+                    if (bar < span.start || bar >= span.end) continue;
+                    const int value = globalFit(*kind, i).percent();
+                    readings.add(juce::String::fromUTF8(r.label) + "  " + TRANS("Fit across tracks") + "  "
+                                 + (value < 0 ? juce::String::charToString(0x2014) : juce::String(value) + "%"));
+                }
+            }
+            return readings.joinIntoString("\n");
+        }
+    }
     if (theoryVisible_ && theory_ && functionRow_.contains(p)) {
         const auto range = horizontalRange();
         const double tick = (range.start - 1 + double(p.x - functionRow_.getX()) / functionRow_.getWidth()
@@ -5883,7 +5872,7 @@ void MainComponent::previewNoteFit(const std::vector<ostfstudio::NoteEdit>& edit
         else replacements[e.note.id] = &e.note;
     }
     for (auto& note : notes) if (auto it = replacements.find(note.id); it != replacements.end()) note = *it->second;
-    previewFits_ = theory_->analyse(track, notes, scaleReference_, &previewClipFits_);
+    previewFits_ = theory_->analyse(track, notes, scaleReference_, &previewClipFits_, &previewRegionFits_);
     pianoGrid_.setDescription(noteFitReading());
     repaint();
 }
@@ -6957,6 +6946,12 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                 g.setColour(juce::Colours::white);
             }
             auto caption = bounds.reduced(std::min(4, bounds.getWidth() / 6), 0);
+            if (theory_ && !track && ((lane.kind == TimelineLane::chord && chordFitVisible_)
+                                  || (lane.kind == TimelineLane::scale && scaleFitVisible_))) {
+                ostfstudio::TheoryGuide::ClipFit fit;
+                (lane.kind == TimelineLane::chord ? fit.chord : fit.scale) = globalFit(lane.kind, size_t(&region - lane.regions.data()));
+                caption = drawFitBadges(g, caption, fit, lane.kind);
+            }
             const auto* id = region.clipId ? region.clipId : region.fitId;
             if (id && track && theory_ && *track < clipFits_.size() && (chordFitVisible_ || scaleFitVisible_) &&
                 project_->trackKinds[*track] == ostfstudio::TrackKind::pitched) {

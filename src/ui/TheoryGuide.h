@@ -29,6 +29,7 @@ public:
         int percent() const { return total == 0 ? -1 : juce::roundToInt(100 * inside / total); }
     };
     struct ClipFit { Fit chord, scale; };
+    struct RegionFits { std::vector<Fit> chords, scales; };
     using ChordFits = std::map<std::size_t, ClipFit>; // First analysis cell in each chord interval.
     using ClipFits = std::map<juce::String, ChordFits>;
     struct TrackCell {
@@ -51,7 +52,8 @@ public:
         return static_cast<std::size_t>(std::partition_point(cells.begin(), cells.end(),
             [tick](const Cell& cell) { return double(cell.end) <= tick; }) - cells.begin());
     }
-    std::vector<TrackCell> analyse(std::size_t track, const std::vector<PitchedNote>& notes, int reference = -1, ClipFits* clips = nullptr) const;
+    std::vector<TrackCell> analyse(std::size_t track, const std::vector<PitchedNote>& notes, int reference = -1,
+                                   ClipFits* clips = nullptr, RegionFits* regions = nullptr) const;
     int scaleForNote(const TrackCell&, const PitchedNote&) const;
     enum class Tone { unknown, root, guide, fifth, chord, tension, avoid, scale, outside };
     static Tone tone(int pitch, const Chord* chord, int scaleMask);
@@ -61,6 +63,8 @@ private:
     struct Key { int root; juce::String mode; };
     std::vector<Key> keys;
     int songScale = -1;
+    int timedScaleCount = 0;
+    std::vector<std::set<juce::String>> disabledClips;
     void buildFunctions();
 };
 }

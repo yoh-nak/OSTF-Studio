@@ -2,18 +2,46 @@
 #include <BinaryData.h>
 #include "ui/MainComponent.h"
 #include "ui/StudioLanguage.h"
-#include "ui/PluginRoles.h"
+#include "ui/PluginLibrary.h"
 #include <cmath>
 
 int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>, std::unique_ptr<juce::AudioPluginInstance>);
 
 namespace {
-int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const juce::String& arrangerPath) {
+int checkGmPlugin(const juce::String& plugin, const juce::String& bank) {
     juce::AudioPluginFormatManager formats;
     formats.addFormat(std::make_unique<juce::VST3PluginFormat>());
     juce::OwnedArray<juce::PluginDescription> descriptions;
     formats.getFormat(0)->findAllTypesForFile(descriptions, juce::File(plugin).getFullPathName());
     if (descriptions.size() != 1) return 1;
+    // A scanned system copy and its portable copy have distinct JUCE path identifiers.
+    auto installed = *descriptions[0], portable = installed, otherClass = installed, retired = installed;
+    juce::TemporaryFile portableFile(".vst3");
+    if (!portableFile.getFile().create().wasOk()) return 71;
+    portable.fileOrIdentifier = portableFile.getFile().getFullPathName();
+    otherClass.uniqueId ^= 1;
+    retired.name = "OSTF Arranger";
+    retired.uniqueId ^= 2;
+    for (bool reverse : {false, true}) {
+        const auto catalog = pluginCatalog({reverse ? portable : installed, reverse ? installed : portable, otherClass, retired},
+                                           portableFile.getFile().getParentDirectory());
+        if (catalog.size() != 2 || catalog[0].fileOrIdentifier != portable.fileOrIdentifier
+            || catalog[1].uniqueId != otherClass.uniqueId) return 72;
+    }
+    // Exercise the actual browser (including an existing system cache) in a portable distribution.
+    const auto appDirectory = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory();
+    if (appDirectory.getChildFile("OSTF Chorus.vst3").isDirectory()) {
+        PluginBrowser browser;
+        for (const auto& bundle : appDirectory.findChildFiles(juce::File::findDirectories, false, "OSTF *.vst3")) {
+            const auto matches = std::count_if(browser.types().begin(), browser.types().end(), [&](const auto& type) {
+                return type.manufacturerName == "OSTF Studio" && type.name == bundle.getFileNameWithoutExtension();
+            });
+            if (matches != 1 || std::none_of(browser.types().begin(), browser.types().end(), [&](const auto& type) {
+                return type.fileOrIdentifier == bundle.getFullPathName();
+            })) return 73;
+        }
+        if (std::any_of(browser.types().begin(), browser.types().end(), isOstfArranger)) return 74;
+    }
     juce::MemoryInputStream demo(BinaryData::neonplatforms_ostfp, BinaryData::neonplatforms_ostfpSize, false);
     std::unique_ptr<ostfstudio::OstfpPreview> score;
     if (ostfstudio::readOstfpPreview(demo, score).failed() || !score->savedMix || score->savedMix->instruments.empty()
@@ -141,43 +169,7 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const ju
     if (noteSounds(1) || !noteSounds(3)) return 42;
     part->setAttribute("c6", 0);
     applyState(state);
-    juce::XmlElement arrangerState("OSTFArranger");
-    arrangerState.addChildElement(descriptions[0]->createXml().release());
-    juce::MemoryBlock hostedState;
-    instance->getStateInformation(hostedState);
-    arrangerState.setAttribute("instrument", hostedState.toBase64Encoding());
-    class PlayingHead final : public juce::AudioPlayHead {
-        juce::Optional<PositionInfo> getPosition() const override {
-            PositionInfo position;
-            position.setTimeInSamples(0);
-            position.setPpqPosition(0);
-            position.setIsPlaying(true);
-            position.setBpm(120);
-            return position;
-        }
-    } playhead;
-    juce::AudioBuffer<float> audio(2, 256);
-    juce::MidiBuffer destination;
     instance->releaseResources();
-    descriptions.clear();
-    formats.getFormat(0)->findAllTypesForFile(descriptions, juce::File(arrangerPath).getFullPathName());
-    if (descriptions.size() != 1 || !isOstfArranger(*descriptions[0])) return 35;
-    auto arranger = formats.createPluginInstance(*descriptions[0], 44100, 256, error);
-    if (!arranger || !PreviewTransport::supportsInstrument(*arranger)) return 36;
-    juce::AudioProcessor::copyXmlToBinary(arrangerState, component);
-    vst3State.getChildByName("IComponent")->deleteAllChildElements();
-    vst3State.getChildByName("IComponent")->addTextElement(component.toBase64Encoding());
-    juce::AudioProcessor::copyXmlToBinary(vst3State, binary);
-    arranger->setStateInformation(binary.getData(), static_cast<int>(binary.getSize()));
-    arranger->prepareToPlay(44100, 256);
-    arranger->setPlayHead(&playhead);
-    audio.clear();
-    destination.clear();
-    arranger->processBlock(audio, destination);
-    const bool hostedSounds = audio.getMagnitude(0, 256) > 0.001f;
-    arranger->releaseResources();
-    arranger->setPlayHead(nullptr);
-    if (!hostedSounds) return 37;
     const int failures = (!channel1 ? 1 : 0) | (channel2 ? 2 : 0) | (!channel3 ? 4 : 0) | (drums ? 8 : 0);
     return failures == 0 ? 0 : 16 + failures;
 }
@@ -308,9 +300,9 @@ public:
             quit();
             return;
         }
-        if (args.size() == 4 && args[0] == "--gm-plugin-smoke") {
+        if (args.size() == 3 && args[0] == "--gm-plugin-smoke") {
             juce::MessageManager::callAsync([this, args] {
-                setApplicationReturnValue(checkGmPlugin(args[1], args[2], args[3]));
+                setApplicationReturnValue(checkGmPlugin(args[1], args[2]));
                 quit();
             });
             return;

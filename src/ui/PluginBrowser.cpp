@@ -172,8 +172,11 @@ void PluginBrowser::resized() {
 }
 
 std::optional<juce::PluginDescription> PluginBrowser::find(const juce::String& identifier) const {
-    for (const auto& plugin : plugins_.getTypes())
+    for (const auto& plugin : catalog_)
         if (plugin.createIdentifierString() == identifier) return plugin;
+    if (const auto saved = plugins_.getTypeForIdentifierString(identifier))
+        for (const auto& plugin : catalog_)
+            if (sameVst3Class(*saved, plugin)) return plugin;
     return std::nullopt;
 }
 
@@ -342,17 +345,18 @@ int PluginBrowser::runScanWorker(const juce::String& token, const juce::String& 
 }
 
 void PluginBrowser::registerBundledPlugins() {
-    for (const auto* file : {"OSTF Arranger.vst3", "OSTF GM Sound Module.vst3"})
-        registerBundledVst3(plugins_, file);
+    registerBundledVst3(plugins_, "OSTF GM Sound Module.vst3");
     for (const auto& instrument : ostfstudio::stockInstruments) registerBundledVst3(plugins_, juce::String(instrument.name) + ".vst3");
     for (const auto& fx : ostfstudio::stockEffects) registerBundledVst3(plugins_, juce::String(fx.name) + ".vst3");
+    catalog_ = pluginCatalog(plugins_.getTypes(),
+        juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory());
 }
 
 void PluginBrowser::refreshTree() {
-    auto types = plugins_.getTypes();
+    auto types = catalog_;
     const auto filter = filter_.getSelectedId();
     for (int i = types.size(); --i >= 0;)
-        if (isOstfGenerator(types.getReference(i)) || (filter != 1 && browserCategory(types.getReference(i)) != filter))
+        if (filter != 1 && browserCategory(types.getReference(i)) != filter)
             types.remove(i);
     auto next = std::make_unique<Item>("VST3");
     juce::StringArray manufacturers;

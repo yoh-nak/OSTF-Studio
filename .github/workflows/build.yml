@@ -92,32 +92,32 @@ jobs:
         run: |
           $oldRoot = Join-Path $env:LOCALAPPDATA 'Programs/Common/VST3'
           $null = New-Item -ItemType Directory -Force -Path $oldRoot
-          Copy-Item -Recurse -LiteralPath 'build/OSTFArranger_artefacts/Release/VST3/OSTF Arranger.vst3' -Destination $oldRoot
+          Copy-Item -Recurse -LiteralPath 'build/OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3' -Destination $oldRoot
           $other = New-Item -ItemType Directory -Path (Join-Path $oldRoot 'Third Party Test.vst3')
           $setup = (Resolve-Path 'dist/OSTF_Studio_Windows_x64_Setup.exe').Path
           function Install-Studio([string] $tasks) {
             $install = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- $tasks" -WindowStyle Hidden -PassThru
             if (-not $install.WaitForExit(240000) -or $install.ExitCode -ne 0) { throw "Setup failed with $tasks" }
           }
-          $shared = Join-Path $env:CommonProgramFiles 'VST3/OSTF Studio/OSTF Arranger.vst3/Contents'
+          $shared = Join-Path $env:CommonProgramFiles 'VST3/OSTF Studio/OSTF GM Sound Module.vst3/Contents'
           $dir = New-Item -ItemType Directory -Force -Path (Join-Path $shared 'x86_64-win')
-          $dll = Join-Path $dir.FullName 'OSTF Arranger.vst3'
-          Copy-Item -LiteralPath (Join-Path $oldRoot 'OSTF Arranger.vst3/Contents/x86_64-win/OSTF Arranger.vst3') -Destination $dll
+          $dll = Join-Path $dir.FullName 'OSTF GM Sound Module.vst3'
+          Copy-Item -LiteralPath (Join-Path $oldRoot 'OSTF GM Sound Module.vst3/Contents/x86_64-win/OSTF GM Sound Module.vst3') -Destination $dll
           $metadata = Join-Path $shared 'Resources/moduleinfo.json'
           $lock = [IO.File]::Open($dll, 'Open', 'Read', 'Read')
           try {
             Install-Studio '/MERGETASKS=!sharedvst3'
             if (!(Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs/OSTF Studio/OSTF Studio.exe')) -or
-                (Test-Path -LiteralPath $metadata) -or !(Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF Arranger.vst3'))) {
+                (Test-Path -LiteralPath $metadata) -or !(Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF GM Sound Module.vst3'))) {
               throw 'App-only setup touched plug-ins or failed to install Studio'
             }
             Install-Studio '/TASKS=sharedvst3'
             if (!(Test-Path -LiteralPath $metadata)) { throw 'Setup did not repair the incomplete locked bundle' }
           } finally { $lock.Dispose() }
-          if ((Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF Arranger.vst3')) -or
-              -not (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'OSTF Studio/Previous VST3/OSTF Arranger.vst3')) -or
+          if ((Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF GM Sound Module.vst3')) -or
+              -not (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'OSTF Studio/Previous VST3/OSTF GM Sound Module.vst3')) -or
               -not (Test-Path -LiteralPath $other.FullName)) { throw 'Unexpected legacy VST3 migration' }
-          $names = @('OSTF Arranger', 'OSTF GM Sound Module') + @((Get-Content src/plugins/effects/catalog.json -Raw | ConvertFrom-Json).name) + @((Get-Content src/plugins/instruments/catalog.json -Raw | ConvertFrom-Json).name)
+          $names = @('OSTF GM Sound Module') + @((Get-Content src/plugins/effects/catalog.json -Raw | ConvertFrom-Json).name) + @((Get-Content src/plugins/instruments/catalog.json -Raw | ConvertFrom-Json).name)
           foreach ($name in $names) {
             $path = Join-Path $env:CommonProgramFiles "VST3/OSTF Studio/$name.vst3/Contents/x86_64-win/$name.vst3"
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Shared VST3 is missing: $path" }
@@ -137,13 +137,10 @@ jobs:
           ln -s /Applications "$staging/Applications"
           gm='build/OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3'
           lipo "$gm/Contents/MacOS/OSTF GM Sound Module" -verify_arch arm64
-          arranger='build/OSTFArranger_artefacts/Release/VST3/OSTF Arranger.vst3'
-          lipo "$arranger/Contents/MacOS/OSTF Arranger" -verify_arch arm64
           pkgroot=$(mktemp -d)
           mkdir -p "$pkgroot/Applications" "$pkgroot/Library/Audio/Plug-Ins/VST3"
           ditto "$app" "$pkgroot/Applications/OSTF Studio.app"
           ditto "$gm" "$pkgroot/Library/Audio/Plug-Ins/VST3/OSTF GM Sound Module.vst3"
-          ditto "$arranger" "$pkgroot/Library/Audio/Plug-Ins/VST3/OSTF Arranger.vst3"
           while IFS= read -r name; do
             bundle="build/StudioEffects/Release/$name.vst3"
             lipo "$bundle/Contents/MacOS/$name" -verify_arch arm64
@@ -170,7 +167,7 @@ jobs:
           sudo installer -pkg "$staging/Install OSTF Studio and VST3.pkg" -target /
           while IFS= read -r name; do
             lipo "/Library/Audio/Plug-Ins/VST3/$name.vst3/Contents/MacOS/$name" -verify_arch arm64
-          done < <(jq -sr '["OSTF Arranger", "OSTF GM Sound Module", (.[][] | .name)][]' src/plugins/effects/catalog.json src/plugins/instruments/catalog.json)
+          done < <(jq -sr '["OSTF GM Sound Module", (.[][] | .name)][]' src/plugins/effects/catalog.json src/plugins/instruments/catalog.json)
           hdiutil create -volname 'OSTF Studio' -srcfolder "$staging" -format UDZO "$dmg"
           hdiutil verify "$dmg"
       - name: Package corresponding source and build inputs

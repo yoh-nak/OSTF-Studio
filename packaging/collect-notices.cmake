@@ -42,6 +42,6 @@ function(ostf_attach_notices target)
     endif()
 endfunction()
 
-foreach(target IN ITEMS OSTFStudio OSTFArranger_VST3 OSTFGMSoundModule_VST3)
+foreach(target IN ITEMS OSTFStudio OSTFGMSoundModule_VST3)
     ostf_attach_notices(${target})
 endforeach()

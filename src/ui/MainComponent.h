@@ -271,8 +271,12 @@ private:
     void refreshTrackTheory(std::size_t track);
     std::vector<ostfstudio::TheoryGuide::ClipFits> clipFits_;
     ostfstudio::TheoryGuide::ClipFits previewClipFits_;
+    std::vector<ostfstudio::TheoryGuide::RegionFits> regionFits_;
+    ostfstudio::TheoryGuide::RegionFits previewRegionFits_;
+    ostfstudio::TheoryGuide::Fit globalFit(ostfstudio::TimelineLane, size_t region) const;
     const ostfstudio::TheoryGuide::ClipFit& clipFit(size_t, const char*, size_t chordBegin) const;
-    juce::Rectangle<int> drawFitBadges(juce::Graphics&,juce::Rectangle<int>,const ostfstudio::TheoryGuide::ClipFit&) const;
+    juce::Rectangle<int> drawFitBadges(juce::Graphics&,juce::Rectangle<int>,const ostfstudio::TheoryGuide::ClipFit&,
+                                       ostfstudio::TimelineLane lane = ostfstudio::TimelineLane::none) const;
     bool pitchedSelection() const;
     void drawTheoryRows(juce::Graphics&, juce::Rectangle<int>, int labelWidth) const;
     bool theoryVisible_ = false, chordFitVisible_ = true, scaleFitVisible_ = true;

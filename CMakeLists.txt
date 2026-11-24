@@ -82,21 +82,6 @@ if (OSTF_STUDIO_BUILD_GUI)
     target_link_libraries(ostf_effect_dsp PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_recommended_config_flags)
     target_include_directories(ostf_effect_dsp INTERFACE "$<TARGET_PROPERTY:juce::juce_core,INTERFACE_JUCE_MODULE_PATH>")
 
-    juce_add_plugin(OSTFArranger
-        COMPANY_NAME "OSTF Studio"
-        BUNDLE_ID "org.ostf.arranger"
-        PLUGIN_MANUFACTURER_CODE Ostf
-        PLUGIN_CODE Oar1
-        PRODUCT_NAME "OSTF Arranger"
-        FORMATS VST3
-        IS_SYNTH TRUE
-        VST3_CATEGORIES Instrument Tools
-    )
-    target_sources(OSTFArranger PRIVATE src/plugins/Arranger.cpp)
-    target_include_directories(OSTFArranger PRIVATE src)
-    target_compile_definitions(OSTFArranger PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_USE_CURL=0)
-    target_link_libraries(OSTFArranger PRIVATE juce::juce_audio_processors juce::juce_recommended_config_flags)
-
     juce_add_plugin(OSTFGMSoundModule
         COMPANY_NAME "OSTF Studio"
         BUNDLE_ID "org.ostf.gmsoundmodule"
@@ -240,8 +225,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         add_test(NAME ostf_studio_gm_plugin
             COMMAND OSTFStudio --gm-plugin-smoke
             "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../.."
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tinysoundfont-saw.sf2"
-            "$<TARGET_FILE_DIR:OSTFArranger_VST3>/../..")
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tinysoundfont-saw.sf2")
         set_tests_properties(ostf_studio_gm_plugin PROPERTIES TIMEOUT 45)
         add_test(NAME ostf_studio_instruments COMMAND OSTFStudio --studio-instruments-smoke
             "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/first-light-vector.ostfp")

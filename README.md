@@ -1,5 +1,9 @@
 # OSTF Studio
 
+Enable **Chord fit** or **Scale fit** in View to see a colour-coded percentage on each corresponding global timeline region. The denominator is the total pitched note duration sounding within that region across tracks. A targeted scale counts the notes to which it applies. Hover over short regions for a numeric reading.
+
+The VST3 browser lists a scanned component class once across installation paths and prefers a bundled copy in a portable build. The fixed-phrase OSTF Arranger preview has been retired.
+
 Editing note pitch or timing opens chord review for the affected intervals. Candidate percentages show how much of the selected track's sounding note duration fits each chord. The lane closes after the last decision. The footer provides Undo, Redo and Edit history for score and clip edits. The CPU and RAM meters show system-wide usage. Hover over them for physical memory in use and total capacity.
 
 In **Paper Lantern Replies**, bar 5 pairs the lead-sheet text 雨の音が with Am9. The lead singer articulates the kana on the melody notes. The backing singer enters in bar 18 on its own track. Use **First lyric** on either part to locate its entrance and **Overlay vocal parts** to view both melodies. The factory singer uses offline Japanese syllable samples generated from MMDAgent's Mei voice.
@@ -166,11 +170,7 @@ On another track, choose **Instrument → Instrument destination** and select th
 
 In OSTF Studio, open a supported `.ostfp` and drag the name of an arrangement track with pitched notes onto a MIDI track in another DAW. **Drag MIDI to another DAW**, at the right edge of the Piano Roll toolbar, does the same for the selected track. The Standard MIDI File keeps the notes' project-relative start, duration and pitch and uses a fixed velocity. The source project stays in OSTF format.
 
-When Studio opens **OSTF Arranger**, the editor also displays **Drag notes to an OSTF Studio track**. Drop it at the desired bar to add the pattern to the current session. The VST3's **Drag MIDI clip to a DAW track** control exports that pattern as a MIDI file for external hosts.
-
-### OSTF Arranger and piano-roll performance lanes
-
-In the proposed design, Composer and each part arranger share chord analysis and progression generation. An arranger can use the chords accompanying an OSTF phrase, analyse unlabelled notes or suggest new harmony. The native editor lets the player try another ending, compare it on the same loop and keep the chosen take. [Arranger design (Japanese)](docs/ARRANGER_PHRASE_EXCHANGE.ja.md)
+### Piano-roll performance lanes
 
 Choose **View → Theory Guide → Show Theory Guide** to see separate degree, function and progression lanes. T, S and D mark tonic, subdominant and dominant. An apostrophe marks a substitute. In C major, Dm7–D♭7–C appears as ii–subV–I. Every pitched track, including the voicing row, shows separate chord-tone and scale membership percentages weighted by sounding duration. Red marks under 50%, orange 50–74%, amber 75–89% and green 90–100%. A dash means there is no measurable material or reference. Drums and audio show “Not applicable”.
 
@@ -185,8 +185,6 @@ Open the **Velocity** selector next to the track name to edit CC, pitch bend, ch
 In the piano inspector, turn on **Pencil** to click in a note at the current grid size or drag right to draw its length. Press **B** in the roll to toggle the pencil. Alt/Option-drag paints a row of repeated hits, including on a triplet grid. Shift-drag selects a group. **Split into triplets** fits three retriggers inside each selected note, including drum hits. To play a chord as a strum, select its simultaneous notes, choose low to high, high to low or alternating strokes, set the spread as a percentage of a quarter note, and click **Strum chords**. One Undo restores the selection's original timing. Choose **Settings → Colour theme** to switch between Studio Blue (default) and Harmonic colours. The preference applies to the arrangement and piano roll across projects.
 
 Double-click an empty cell to add a note. Drag its body to move it, either edge to trim it, or Alt/Option-drag to copy it. Shift-click or drag a selection box to edit several notes together. Ctrl/Command-drag vertically to adjust velocity. Choose a snap division in the piano-roll footer. Delete removes the selection, and Ctrl/Command+Z undoes the last note edit. The Help menu lists the shortcuts.
-
-In Studio, drag **OSTF Studio → OSTF Arranger** from the Plug-in Browser to the regular Instrument slot. In an external DAW, load **OSTF Arranger** on an instrument track. In either host, open the Arranger editor and click **Choose instrument**. It lists VST3 instruments from the OSTF Studio scan cache by manufacturer. Use **Browse for VST3 file** for an unlisted instrument and **Edit instrument** to open the loaded instrument controls. The preview generates C–E–G–E from the host transport and returns stereo audio. The plug-in state stores the hosted instrument reference and settings. The hosted instrument must remain installed. The preview hosts one mono or stereo MIDI-capable VST3 instrument without audio inputs. External DAW interoperability remains to be tested.
 
 The scissors and join tools in the toolbar act on the arrangement clip you click. Click the active tool again to return to selection. In a global lane, splitting preserves both values and joining combines adjacent intervals. Right-click the lane to choose which value survives. Section and meter cuts snap to a bar line.
 

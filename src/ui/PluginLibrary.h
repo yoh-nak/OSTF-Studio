@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "ui/PluginRoles.h"
 
 // The Windows native dialog cannot select both single files and VST3 bundle folders.
 #if JUCE_WINDOWS
@@ -12,6 +13,31 @@ inline constexpr bool useNativeVst3Chooser = true;
 
 inline juce::File pluginDataDirectory() {
     return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("OSTF Studio");
+}
+
+inline bool sameVst3Class(const juce::PluginDescription& a, const juce::PluginDescription& b) {
+    if (a.pluginFormatName != "VST3" || b.pluginFormatName != "VST3" || a.manufacturerName != b.manufacturerName)
+        return false;
+    if (a.uniqueId && b.uniqueId) return a.uniqueId == b.uniqueId;
+    return a.deprecatedUid && a.deprecatedUid == b.deprecatedUid;
+}
+
+inline juce::Array<juce::PluginDescription> pluginCatalog(const juce::Array<juce::PluginDescription>& scanned,
+                                                          const juce::File& appDirectory) {
+    juce::Array<juce::PluginDescription> result;
+    auto priority = [&](const juce::PluginDescription& type) {
+        const juce::File file(type.fileOrIdentifier);
+        if (!file.exists()) return 0;
+        const auto parent = file.getParentDirectory();
+        return parent == appDirectory || parent == appDirectory.getChildFile("OSTF Studio Effects") ? 2 : 1;
+    };
+    for (const auto& type : scanned) {
+        if (isOstfGenerator(type) || isOstfArranger(type)) continue;
+        auto* previous = std::find_if(result.begin(), result.end(), [&](const auto& p) { return sameVst3Class(p, type); });
+        if (previous == result.end()) result.add(type);
+        else if (priority(type) > priority(*previous)) *previous = type;
+    }
+    return result;
 }
 
 inline void registerBundledVst3(juce::KnownPluginList& library, const juce::String& filename) {

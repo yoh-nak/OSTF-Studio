@@ -7,7 +7,7 @@ int modelChecks() {
     // C major, mid-measure ii-V-I, F held over V-I. Scales and keys have independent boundaries.
     auto score = juce::JSON::parse(R"({
       "song":{"key":{"state":"tonal","tonic":{"step":"C"},"mode":"major"}},
-      "tracks":[{"id":"solo"},{"id":"keys"}],
+      "tracks":[{"id":"solo","clips":[{"id":"off","enabled":false}]},{"id":"keys"}],
       "harmony":{"chords":[
         {"id":"a","label":"Dm7","root":{"step":"D"},"intervals":[0,3,7,10],"start":0,"duration":10},
         {"id":"b","label":"G7","root":{"step":"G"},"intervals":[0,4,7,10],"start":10,"duration":10},
@@ -17,6 +17,19 @@ int modelChecks() {
         {"id":"local","tonic":{"step":"A"},"intervals":[0,3,5,7,10],"start":22,"duration":2,
          "targets":[{"type":"track","id":"solo"}]}]}})");
     TheoryGuide guide(score, 40);
+    TheoryGuide::RegionFits lead, keys;
+    guide.analyse(0, {{0,20,62}, {0,5,61}, {22,24,65}, {0,20,61,{},true,"note-in-off-clip",false,"off"},
+                      {0,20,61,{},false}, {0,20,61,{},true,{},true}}, -1, nullptr, &lead);
+    guide.analyse(1, {{0,5,65}, {22,24,61}}, 1, nullptr, &keys);
+    TheoryGuide::Fit ensemble {lead.chords[0].inside + keys.chords[0].inside, lead.chords[0].total + keys.chords[0].total};
+    if (ensemble.percent() != 75 || lead.chords[1].total != 10 || lead.chords[1].percent() != 100 ||
+        lead.scales[0].total != 27 || lead.scales[0].inside != 22 || keys.scales[0].total != 7 ||
+        keys.scales[0].inside != 5 || lead.scales[1].percent() != 0 || keys.scales[1].percent() != -1) return 73;
+    auto fallback = score.clone();
+    fallback["song"].getDynamicObject()->setProperty("scale", fallback["harmony"]["scales"][0]);
+    fallback["harmony"].getDynamicObject()->removeProperty("scales");
+    TheoryGuide(fallback, 40).analyse(0, {{0,8,60}, {0,2,61}}, -1, nullptr, &lead);
+    if (lead.scales.size() != 1 || lead.scales[0].percent() != 80 || lead.chords[1].percent() != -1) return 74;
     if (guide.functions.size() != 4 || guide.progressions.size() != 1 || guide.progressions[0].label != "ii-V-I"
         || guide.functions[0].function != "Subdominant" || guide.functions[1].function != "Dominant"
         || guide.functions[2].function != "Tonic" || guide.functions[3].degree.isNotEmpty()) return 1;
@@ -296,6 +309,30 @@ int checkTheoryGuide(const juce::File& demo) {
             scroll->setCurrentRangeStart(13, juce::sendNotificationSync);
     auto* vertical = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-vertical-scroll"));
     if (!vertical) return 62;
+    const auto chordLane = find(*model, TRANS("Chords")), scaleLane = find(*model, TRANS("Scales"));
+    juce::ScopeGuard restoreLanes([&] { set("Chords", chordLane.checked); set("Scales", scaleLane.checked); });
+    set("Chords", true); set("Scales", true);
+    vertical->setCurrentRangeStart(0, juce::sendNotificationSync);
+    // Only global badges use these tinted fills. Both independent View switches must reach the rendered lanes.
+    const auto badgePixels = [&] {
+        const auto picture = main.createComponentSnapshot(main.getLocalBounds());
+        const juce::Colour base(0xff0b131b);
+        int pixels = 0;
+        for (auto accent : {0xffff91a4, 0xffffb06d, 0xffffdf77, 0xff8ce8ce, 0xffb5c0cb}) {
+            const auto fill = base.interpolatedWith(juce::Colour(accent), .23f);
+            for (int y = 0; y < grid->getY(); y += 2)
+                for (int x = grid->getX(); x < grid->getRight(); x += 2)
+                    pixels += picture.getPixelAt(x, y) == fill;
+        }
+        return pixels;
+    };
+    set("Chord fit", false); set("Scale fit", false);
+    const auto noBadges = badgePixels();
+    set("Chord fit", true);
+    if (badgePixels() <= noBadges) return 75;
+    set("Chord fit", false); set("Scale fit", true);
+    if (badgePixels() <= noBadges) return 76;
+    set("Chord fit", true);
     vertical->setCurrentRangeStart(320, juce::sendNotificationSync);
     const juce::String muteName = juce::String::fromUTF8(project->trackLanes[keys].label) + " mute";
     juce::Component* trackMute = nullptr;

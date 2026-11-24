@@ -6,6 +6,8 @@ Formant Singer plays a recorded consonant onset at its source rate, then transit
 
 ## Shared instruments, track ordering and voice processing
 
+The scanner retains file paths for incremental scans. The browser and instrument/FX menus share a catalogue keyed by VST3 component identity and manufacturer. It prefers an existing portable bundle and omits the retired OSTF Arranger preview. During theory analysis, each pitched part caches matching and total note ticks for each global chord and scale event. Combining those ticks yields the ensemble percentage. The derived chord voicing, percussion, audio and disabled events do not enter the ensemble denominator.
+
 Studio creates native editor windows when the user opens an instrument, an effect or Splice Sounds. JUCE associates the window with the Studio workspace so the OS keeps it above its owner. Editing an FX slot dismisses the chain popup before showing the editor. Background audio-device and control-surface setup can initialise without creating a desktop window.
 
 OSTF Harmonizer is a mono/stereo audio insert. Two Signalsmith Stretch processors transpose the same input by separate fixed chromatic intervals. The processor delays the dry signal by the analysis and synthesis latency, reports that latency to the host, and smooths changes to both mix controls. The VST3 state stores both intervals, voice balance and wet level. It uses the existing effect catalog and session state mechanism.
@@ -103,7 +105,7 @@ A new session reads the embedded empty OSTF template through the same reader as 
 
 ## Independent modules
 
-The proposed Composer and part arranger VST3s each embed the same host-independent C++ library for chord analysis and progression generation. Each instance keeps its own working progression. Existing OSTF chords are imported with the selected phrase, including their timing, bass and voicing. Gaps can be analysed from notes or filled with a musical suggestion. The user auditions and accepts the result before generating a part. Placing the chosen progression on Studio’s global chord lane lets multiple arrangers use it through read-only OSTF Plugin Context Exchange snapshots. External hosts can work with OSTF files, MIDI files or captured MIDI. The current preview still generates a fixed phrase. [Arranger workflows and acceptance criteria (Japanese)](ARRANGER_PHRASE_EXCHANGE.ja.md)
+The proposed Composer and part arranger VST3s each embed the same host-independent C++ library for chord analysis and progression generation. Each instance keeps its own working progression. Existing OSTF chords are imported with the selected phrase, including their timing, bass and voicing. Gaps can be analysed from notes or filled with a musical suggestion. The user auditions and accepts the result before generating a part. Placing the chosen progression on Studio’s global chord lane lets multiple arrangers use it through read-only OSTF Plugin Context Exchange snapshots. External hosts can work with OSTF files, MIDI files or captured MIDI. The fixed-phrase preview plug-in has been retired. [Arranger workflows and acceptance criteria (Japanese)](ARRANGER_PHRASE_EXCHANGE.ja.md)
 
 The planned native editor aligns chords and notes on one beat ruler. A part can regenerate a selected range using the surrounding phrase as context. The processor owns the accepted and alternate performances across editor lifetimes and project saves. Analysis and generation run outside audio processing. Playback switches prepared takes at a loop boundary, and both export paths read the accepted notes.
 

@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Plug-in catalogue and global chord and scale fit
+
+Branch `feat/plugin-catalog-global-fit` retires the fixed-phrase OSTF Arranger from the host, CMake targets and Windows/macOS package definitions. The Windows scan cache contained stock components from the shared VST3 directory. Portable startup also registered the same classes beside the executable. The browser and track menus now select a single usable copy for each class, preferring the portable bundle. Previously scanned Arranger entries are hidden.
+
+The corresponding View switches show a percentage at the right of each global chord or scale. Each pitched note contributes its duration inside that interval. A scale with explicit targets counts matching tracks, sections, chords, clips or notes. The generated chord voicing does not duplicate the ensemble's harmonic evidence. Empty intervals display a dash. The model test covers a sustained note across two chords, unequal part durations, independent scale targets, the song scale and disabled clips.
+
+The Windows Release suite passed all 31 tests, with two additional checks in the core-only build. The executable in `dist/windows-global-fit/Portable` passed the actual catalogue check for 34 bundled classes and the chord/scale drawing test. Large unchanged plug-in resources use NTFS hard links to conserve disk space. macOS and installer upgrades were not exercised locally.
+
 ## Chord review, edit history and Japanese singing
 
 Branch `feat/review-performance-history`. The piano roll opens chord review when a pitch or timing edit or a material drop creates pending decisions. The lane collapses after the final decision. The whole ensemble supplies the candidate ranking, while each candidate displays its chord-tone coverage for the selected part, weighted by sounding duration in that interval. Untouched intervals have no decision controls.

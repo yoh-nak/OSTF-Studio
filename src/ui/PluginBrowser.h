@@ -14,7 +14,7 @@ public:
     std::function<void(bool)> onTabChanged;
     static bool supportsSample(const juce::File& file) { return file.hasFileExtension("wav;aif;aiff;flac;mp3;mid;midi;ostf;ostfp"); }
     std::optional<juce::PluginDescription> find(const juce::String& identifier) const;
-    juce::Array<juce::PluginDescription> types() const { return plugins_.getTypes(); }
+    const juce::Array<juce::PluginDescription>& types() const { return catalog_; }
     static int runScanWorker(const juce::String& token, const juce::String& target = {});
 
 private:
@@ -36,6 +36,7 @@ private:
 
     juce::File cache_, scanStatus_;
     juce::KnownPluginList plugins_;
+    juce::Array<juce::PluginDescription> catalog_;
     std::unique_ptr<juce::ChildProcess> scanProcess_;
     juce::Time lastStatusWrite_;
     double progressUpdatedAt_ = 0.0;

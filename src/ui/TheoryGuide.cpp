@@ -75,10 +75,19 @@ TheoryGuide::TheoryGuide(const juce::var& score, Tick end) {
         return index;
     };
     if (song["scale"].isObject()) songScale = addScale(song["scale"], {}, {});
-    each(harmony["scales"], [&](const auto& entry) { addScale(entry, entry, {}); });
+    each(harmony["scales"], [&](const auto& entry) {
+        const auto start = static_cast<Tick>(entry["start"]), length = static_cast<Tick>(entry["duration"]);
+        if (start < 0 || start >= end || length <= 0 || length > end - start) return;
+        addScale(entry, entry, {});
+        ++timedScaleCount;
+    });
     each(score["tracks"], [&](const auto& track) {
         const auto id = track["id"].toString();
         trackIds.push_back(id);
+        auto& disabled = disabledClips.emplace_back();
+        each(track["clips"], [&](const auto& clip) {
+            if (!bool(clip.getProperty("enabled", true))) disabled.insert(clip["id"].toString());
+        });
         each(track["directions"], [&](const auto& dir) {
             const auto source = dir["parameters"]["pitchSource"];
             if (dir["type"].toString() == "improvisation" && source["type"].toString() == "explicitScale")
@@ -259,8 +268,13 @@ int TheoryGuide::scaleForNote(const TrackCell& cell, const PitchedNote& note) co
     return index;
 }
 
-std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, const std::vector<PitchedNote>& notes, int reference, ClipFits* clips) const {
+std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, const std::vector<PitchedNote>& notes,
+                                                        int reference, ClipFits* clips, RegionFits* regions) const {
     if (clips) clips->clear();
+    if (regions) {
+        regions->chords.assign(chords.size(), {});
+        regions->scales.assign(timedScaleCount ? timedScaleCount : int(songScale >= 0), {});
+    }
     std::vector<TrackCell> result(cells.size());
     const auto id = track < trackIds.size() ? trackIds[track] : juce::String{};
     std::set<juce::String> noteIds, clipIds;
@@ -293,7 +307,8 @@ std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, cons
         if (dest.backgroundScale == -1 && (reference < 0 || reference == songScale)) dest.backgroundScale = songScale;
     }
     for (const auto& n : notes) {
-        if (!n.enabled || n.fixedTrigger) continue;
+        if (!n.enabled || n.fixedTrigger || n.pitch < 0 || n.pitch > 127
+            || (track < disabledClips.size() && disabledClips[track].contains(n.clipId))) continue;
         auto* sourceClip = clips && n.clipId.isNotEmpty() ? &(*clips)[n.clipId] : nullptr;
         for (auto i = firstCell(double(n.startTick)); i < cells.size() && cells[i].start < n.endTick; ++i) {
             const auto& c = cells[i];
@@ -305,9 +320,29 @@ std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, cons
             if (const int mask = chordMask(c)) {
                 const bool inside = contains(mask, n.pitch);
                 result[i].chord.add(inside, length);
+                if (regions) regions->chords[size_t(c.chord)].add(inside, length);
                 if (clip) clip->chord.add(inside, length);
             }
             const auto scale = scaleForNote(result[i], n);
+            if (regions) {
+                // Each scale on the global lane is evaluated in its own right, including overlapping events.
+                auto addScaleFit = [&](int index, int region) {
+                    const auto& s = scales[size_t(index)];
+                    if (!s.mask) return;
+                    const bool applies = s.targets.empty() || std::any_of(s.targets.begin(), s.targets.end(), [&](const auto& target) {
+                        return (target.type == "track" && target.id == id) || (target.type == "clip" && target.id == n.clipId)
+                            || (target.type == "note" && target.id == n.id)
+                            || (target.type == "chord" && c.chord >= 0 && target.id == chords[size_t(c.chord)].id)
+                            || (target.type == "section" && std::find(c.sections.begin(), c.sections.end(), target.id) != c.sections.end());
+                    });
+                    if (applies) regions->scales[size_t(region)].add(contains(s.mask, n.pitch), length);
+                };
+                if (timedScaleCount == 0 && songScale >= 0) addScaleFit(songScale, 0);
+                for (int index : c.scales) {
+                    const int region = index - int(songScale >= 0);
+                    if (juce::isPositiveAndBelow(region, timedScaleCount)) addScaleFit(index, region);
+                }
+            }
             if (scale >= 0 && scales[scale].mask) {
                 const bool inside = contains(scales[scale].mask, n.pitch);
                 result[i].scale.add(inside, length);
