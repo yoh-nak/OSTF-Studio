@@ -1,6 +1,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "../../ui/ConsoleLookAndFeel.h"
+#include "CompressorListen.h"
 #include <array>
 #include <cmath>
 
@@ -20,10 +21,11 @@ constexpr Design designs[] {
     {Kind::Amp, "Amp", {{{"Preamp dB", 0, 36, 16}, {"Cabinet tone Hz", 1200, 7000, 3500}, {"Wet %", 0, 100, 65}}}},
 };
 
-class RackEditor final : public juce::AudioProcessorEditor {
+class RackEditor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
-    RackEditor(juce::AudioProcessor& processor, Kind kind, const std::array<juce::AudioParameterFloat*, 3>& params)
-        : AudioProcessorEditor(processor), face(finishFor(kind)), style(face), title(processor.getName()) {
+    RackEditor(juce::AudioProcessor& processor, Kind kind, const std::array<juce::AudioParameterFloat*, 3>& params,
+               ostfstudio::CompressorListen* measurement)
+        : AudioProcessorEditor(processor), face(finishFor(kind)), style(face), title(processor.getName()), listen(measurement), threshold(params[0]), ratio(params[1]) {
         setLookAndFeel(&style);
         for (std::size_t i = 0; i < sliders.size(); ++i) {
             auto& slider = sliders[i];
@@ -40,12 +42,34 @@ public:
             addAndMakeVisible(slider);
             bindings[i] = std::make_unique<juce::SliderParameterAttachment>(*params[i], slider);
         }
-        setSize(456, 230);
+        if (listen) {
+            addAndMakeVisible(learn);
+            addAndMakeVisible(apply);
+            addAndMakeVisible(advice);
+            learn.onClick = [this] { listen->state.store(ostfstudio::CompressorListen::requested); timerCallback(); };
+            apply.onClick = [this] {
+                if (listen->state.load() != ostfstudio::CompressorListen::ready || ratio->get() <= 1.0f) return;
+                threshold->beginChangeGesture();
+                threshold->setValueNotifyingHost(threshold->convertTo0to1(listen->threshold(ratio->get())));
+                threshold->endChangeGesture();
+                listen->state.store(ostfstudio::CompressorListen::idle);
+                timerCallback();
+            };
+            timerCallback();
+            startTimerHz(5);
+        }
+        setSize(456, listen ? 270 : 230);
     }
     ~RackEditor() override { setLookAndFeel(nullptr); }
 
     void resized() override {
         auto panel = getLocalBounds().reduced(18, 12).withTrimmedTop(43);
+        if (listen) {
+            auto row = panel.removeFromBottom(40).reduced(3, 5);
+            learn.setBounds(row.removeFromLeft(110));
+            apply.setBounds(row.removeFromRight(70));
+            advice.setBounds(row);
+        }
         const int width = panel.getWidth() / static_cast<int>(sliders.size());
         for (std::size_t i = 0; i < sliders.size(); ++i) {
             auto bay = panel.removeFromLeft(width).reduced(8, 5);
@@ -82,6 +106,18 @@ public:
         }
     }
 private:
+    void timerCallback() override {
+        using Meter = ostfstudio::CompressorListen;
+        const auto state = listen->state.load();
+        const bool busy = state == Meter::requested || state == Meter::listening;
+        learn.setEnabled(!busy);
+        const bool usable = state == Meter::ready && ratio->get() > 1.0f;
+        apply.setEnabled(usable);
+        const juce::String text = busy ? "Listening to input..." : state == Meter::noSignal ? "No input detected"
+            : usable ? juce::String(listen->threshold(ratio->get()), 1) + " dB threshold"
+            : state == Meter::ready ? "Choose a ratio above 1:1" : "";
+        advice.setText(text, juce::dontSendNotification);
+    }
     static const ostfstudio::console::Finish& finishFor(Kind kind) {
         using namespace ostfstudio::console;
         switch (kind) {
@@ -94,6 +130,10 @@ private:
     const ostfstudio::console::Finish& face;
     ostfstudio::console::LookAndFeel style;
     const juce::String title;
+    ostfstudio::CompressorListen* listen;
+    juce::AudioParameterFloat *threshold, *ratio;
+    juce::TextButton learn{"Listen (3 s)"}, apply{"Apply"};
+    juce::Label advice;
     std::array<juce::Slider, 3> sliders;
     std::array<juce::Label, 3> labels;
     std::array<std::unique_ptr<juce::SliderParameterAttachment>, 3> bindings;
@@ -117,7 +157,7 @@ public:
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     bool hasEditor() const override { return true; }
-    juce::AudioProcessorEditor* createEditor() override { return new RackEditor(*this, design_.kind, params_); }
+    juce::AudioProcessorEditor* createEditor() override { return new RackEditor(*this, design_.kind, params_, design_.kind == Kind::Compressor ? &listen_ : nullptr); }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
@@ -209,6 +249,8 @@ public:
             }
             case Kind::Compressor: case Kind::Limiter: {
                 const bool limit = design_.kind == Kind::Limiter;
+                if (!limit) listen_.beginBlock(rate_);
+                bool measuring = !limit && listen_.state.load() == ostfstudio::CompressorListen::listening;
                 const float threshold = juce::Decibels::decibelsToGain(a);
                 const float input = limit ? juce::Decibels::decibelsToGain(b) : 1.0f;
                 const float attack = limit ? 0.0f : static_cast<float>(std::exp(-1.0 / (rate_ * 0.008)));
@@ -216,6 +258,10 @@ public:
                 for (int i = 0; i < audio.getNumSamples(); ++i) {
                     float peak = 0;
                     for (int ch = 0; ch < audio.getNumChannels(); ++ch) peak = std::max(peak, input * std::abs(audio.getSample(ch, i)));
+                    if (measuring) {
+                        listen_.measure(peak);
+                        measuring = listen_.state.load(std::memory_order_relaxed) == ostfstudio::CompressorListen::listening;
+                    }
                     const float target = peak <= threshold ? 1.0f : limit ? threshold / peak : std::pow(threshold / peak, 1.0f - 1.0f / b);
                     const float smooth = target < reduction_ ? attack : release;
                     reduction_ = target + smooth * (reduction_ - target);
@@ -256,6 +302,7 @@ private:
     std::array<std::array<float, 2>, 2> cabinet_{};
     std::array<float, 2> dc_{};
     float reduction_ = 1;
+    ostfstudio::CompressorListen listen_;
 };
 }
 

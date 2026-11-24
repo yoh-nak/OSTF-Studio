@@ -42,6 +42,9 @@ MIDIのループ録音は各周のノートを重ねます。オーディオは�
 
 「ファイル → 取り込み・採譜」でオーディオ、MIDI、PDF楽譜を選ぶと、解析結果がパート別に表示されます。必要なパートだけを本画面へドラッグするか、一式を同じ本画面で未保存の新規曲として開けます。256小節を越える録音にも対応します。オーディオ解析の仮グリッドは120 BPM・4/4、取り込みの上限は6万ノート・15パートです。
 
+PDF楽譜の「ロジック解析」には、このコンピューターにインストールしたAudiverisを使います。取り込み画面の「Audiverisの入手方法」から公式の案内を開けます。セットアップ後は同じ画面の「このPDFを再試行」を押してください。Windowsでは標準インストール先、ユーザーの `%LOCALAPPDATA%\Programs\Audiveris`、PATH上の実行ファイルを検出します。認識結果は元譜のテンポ、コード、音符と照合してください。原本のMusicXMLがある場合は、そのファイルを直接取り込めます。
+
+
 「ロジック解析」はローカルで動作します。PDFのロジック解析にはAudiverisを使用します。「ファイル → インポートと採譜」でMusicXML（.musicxml / .xml / .mxl）を選び、「新しい未保存の曲としてここに開く」からOSTFに保存できます。「ファイル」メニューから全パートのMusicXMLと、コード・歌詞をまとめたChordProを書き出せます。[8小節の検証用PDF](examples/score-interchange/lantern-walk.pdf)と[比較用MusicXML](examples/score-interchange/lantern-walk.musicxml)をリポジトリの `examples/score-interchange` に用意しました。「AI解析」を使うには、公式Codex CLIを用意し、グローバルトラック左の「ChatGPT に接続…」または「設定 → AI接続…」からブラウザーでChatGPTにログインします。初回はStudio用に認証します。ブラウザーが自動で開かない場合は「認証ページを開く」を押してください。ファイルを選ぶ前に解析方式を指定してください。AIに送るデータは、オーディオでは音高・時刻・音色の測定値、MIDIでは音域や拍ごとの音の分布、PDFでは譜面のページ画像です。結果は取り込み後に編集できます。[ChatGPTの認証](https://developers.openai.com/codex/auth) · [Audiverisの使い方](https://audiveris.github.io/audiveris/_pages/guides/advanced/cli/)
 
 ## alpha 3 で旧版の曲を開く

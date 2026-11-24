@@ -70,6 +70,34 @@ bool checkPerformanceAudio() {
         audio.getSample(1, 95) < .45f)
         return false;
     {
+        OstfpPreview shared;
+        shared.ppq = song.ppq;
+        shared.clock = song.clock;
+        shared.bars = song.bars;
+        shared.ticksPerBar = song.ticksPerBar;
+        shared.trackIds.addArray({"piano", "bass"});
+        shared.trackKinds = {TrackKind::pitched, TrackKind::pitched};
+        shared.pitchedNotes = {{{0, 60, 72, 90}}, {{0, 60, 42, 90}}};
+        shared.programChanges.resize(2);
+        shared.programChanges[1].push_back({0, 33, 1});
+        PerformanceProbe rack;
+        PreviewTransport playback;
+        const std::array<PreviewTransport::TrackSetup, 2> parts{{{{}, &rack, 1}, {0, nullptr, 2}}};
+        if (playback.preparePlayback(shared, parts, {}, 960, 96).failed()) return false;
+        playback.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
+        bool piano = false, bass = false, patch = false;
+        for (const auto entry : rack.received) {
+            const auto message = entry.getMessage();
+            if (message.isNoteOn() && message.getNoteNumber() == 72) piano = message.isForChannel(1);
+            if (message.isNoteOn() && message.getNoteNumber() == 42) bass = message.isForChannel(2);
+            if (message.isProgramChange() && message.getProgramChangeNumber() == 33) {
+                if (!message.isForChannel(2)) return false;
+                patch = true;
+            }
+        }
+        if (!piano || !bass || !patch) return false;
+    }
+    {
         PerformanceProbe padInstrument;
         PreviewTransport capture;
         const std::array<PreviewTransport::TrackSetup, 1> drumRoutes{{{{}, &padInstrument, 10}}};

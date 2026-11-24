@@ -43,6 +43,7 @@ public:
     SoundModule() : AudioProcessor(BusesProperties().withOutput("Main", juce::AudioChannelSet::stereo(), true)) {
         for (int channel = 0; channel < 16; ++channel)
             for (int control = 0; control < controlCount; ++control) setControl(channel, control, defaults[control]);
+        resetBanks();
         loadFactoryBank();
     }
 
@@ -114,6 +115,10 @@ public:
         const auto index = bank_ ? presetIndex(channel, program(channel)) : -1;
         return index >= 0 ? juce::String::fromUTF8(tsf_get_presetname(bank_.get(), index)) : juce::String{};
     }
+    bool isDrum(int ch) const {
+        const juce::ScopedLock lock(bankLock_);
+        return (ch == 9 || ch == 10) && active_[ch].msb == 120;
+    }
     juce::String drumKitName(int program) const {
         const juce::ScopedLock lock(bankLock_);
         const auto index = bank_ ? tsf_get_presetindex(bank_.get(), 128, program) : -1;
@@ -143,10 +148,19 @@ public:
         juce::XmlElement state("OSTF_GM");
         state.setAttribute("bank", file_.getFullPathName());
         state.setAttribute("bankName", bankName_);
+        state.setAttribute("masterVolume", masterVolume_);
+        state.setAttribute("masterFine", masterFine_);
+        state.setAttribute("masterCoarse", masterCoarse_);
         for (int i = 0; i < 16; ++i) {
             state.setAttribute("p" + juce::String(i), program(i));
             auto* part = state.createNewChildElement("part");
             part->setAttribute("channel", i);
+            part->setAttribute("bankMsb", active_[i].msb);
+            part->setAttribute("bankLsb", active_[i].lsb);
+            part->setAttribute("nextMsb", pending_[i].msb);
+            part->setAttribute("nextLsb", pending_[i].lsb);
+            part->setAttribute("coarse", rpn_[i].coarse);
+            part->setAttribute("bendCents", rpn_[i].bendCents);
             for (int id = 0; id < controlCount; ++id) part->setAttribute("c" + juce::String(id), control(i, id));
         }
         copyXmlToBinary(state, block);
@@ -154,15 +168,27 @@ public:
     void setStateInformation(const void* data, int size) override {
         const auto state = getXmlFromBinary(data, size);
         if (!state || !state->hasTagName("OSTF_GM")) return;
-        for (int i = 0; i < 16; ++i) {
-            setProgram(i, juce::jlimit(0, 127, state->getIntAttribute("p" + juce::String(i))));
-            for (int id = 0; id < controlCount; ++id) setControl(i, id, defaults[id]);
-        }
-        for (const auto* part : state->getChildIterator()) {
-            const int channel = part->getIntAttribute("channel", -1);
-            if (!part->hasTagName("part") || channel < 0 || channel >= 16) continue;
-            for (int id = 0; id < controlCount; ++id)
-                setControl(channel, id, part->getIntAttribute("c" + juce::String(id), defaults[id]));
+        {
+            const juce::ScopedLock lock(bankLock_);
+            resetBanks();
+            masterVolume_ = juce::jlimit(0, 16383, state->getIntAttribute("masterVolume", 16383));
+            masterFine_ = juce::jlimit(0, 16383, state->getIntAttribute("masterFine", 8192));
+            masterCoarse_ = juce::jlimit(0, 127, state->getIntAttribute("masterCoarse", 64));
+            for (int i = 0; i < 16; ++i) {
+                setProgram(i, juce::jlimit(0, 127, state->getIntAttribute("p" + juce::String(i))));
+                for (int id = 0; id < controlCount; ++id) setControl(i, id, defaults[id]);
+            }
+            for (const auto* part : state->getChildIterator()) {
+                const int channel = part->getIntAttribute("channel", -1);
+                if (!part->hasTagName("part") || channel < 0 || channel >= 16) continue;
+                auto value = [&](const char* name, int fallback) { return juce::jlimit(0, 127, part->getIntAttribute(name, fallback)); };
+                active_[channel] = {value("bankMsb", channel == 9 ? 120 : 121), value("bankLsb", 0)};
+                pending_[channel] = {value("nextMsb", active_[channel].msb), value("nextLsb", active_[channel].lsb)};
+                rpn_[channel].coarse = value("coarse", 64);
+                rpn_[channel].bendCents = value("bendCents", 0);
+                for (int id = 0; id < controlCount; ++id)
+                    setControl(channel, id, part->getIntAttribute("c" + juce::String(id), defaults[id]));
+            }
         }
         const auto path = state->getStringAttribute("bank");
         if (juce::File::isAbsolutePath(path) && loadBank(juce::File(path))) return;
@@ -193,10 +219,47 @@ public:
     }
 
 private:
+    struct BankAddress { int msb{}, lsb{}; };
+    void resetBanks() {
+        for (int i = 0; i < 16; ++i) pending_[i] = active_[i] = {i == 9 ? 120 : 121, 0};
+        current_.fill(-1);
+        rpn_.fill({});
+    }
+
     int presetIndex(int channel, int program) const {
-        auto preset = tsf_get_presetindex(bank_.get(), channel == 9 ? 128 : 0, program);
-        if (preset < 0 && channel == 9) preset = tsf_get_presetindex(bank_.get(), 128, 0);
+        const auto address = active_[channel];
+        const bool drums = (channel == 9 || channel == 10) && address.msb == 120;
+        int bank = drums ? 128 : address.lsb;
+        if (!drums && file_ == juce::File{} && address.msb == 121 && address.lsb != 0) {
+            // Match GM2 variations to their FluidR3 SF2 banks. Missing variations use the base timbre.
+            bank = 0;
+            if (address.lsb == 1) {
+                switch (program) {
+                    case 4: case 5: case 16: case 17: case 24: case 25: case 28: case 30: case 31:
+                    case 38: case 39: case 40: case 115: case 116: case 117: case 118: bank = 8; break;
+                }
+            } else if (address.lsb == 2 && program == 25) bank = 16;
+            else if (address.lsb == 2 && program == 80) bank = 8;
+        }
+        auto preset = tsf_get_presetindex(bank_.get(), bank, program);
+        if (preset < 0) preset = tsf_get_presetindex(bank_.get(), drums ? 128 : 0, drums ? 0 : program);
         return preset;
+    }
+
+    void systemOn() {
+        resetBanks();
+        masterVolume_ = 16383;
+        masterFine_ = 8192;
+        masterCoarse_ = 64;
+        for (int ch = 0; ch < 16; ++ch) {
+            tsf_channel_sounds_off_all(bank_.get(), ch);
+            tsf_channel_midi_control(bank_.get(), ch, 121, 0);
+            tsf_channel_set_pitchwheel(bank_.get(), ch, 8192);
+            for (int id = 0; id <= sustain; ++id) setControl(ch, id, defaults[id]);
+            setProgram(ch, 0);
+            selectProgram(ch, 0);
+            applyControls(ch);
+        }
     }
 
     void applyControls(int channel) {
@@ -206,8 +269,9 @@ private:
         const auto level = control(channel, volume) * control(channel, expression) / 16129.0f;
         tsf_channel_set_volume(bank_.get(), channel, audible ? level * level : 0.0f);
         tsf_channel_set_pan(bank_.get(), channel, control(channel, pan) / 127.0f);
-        tsf_channel_set_tuning(bank_.get(), channel, control(channel, tuning) / 100.0f);
-        tsf_channel_set_pitchrange(bank_.get(), channel, static_cast<float>(control(channel, bendRange)));
+        tsf_channel_set_tuning(bank_.get(), channel, control(channel, tuning) / 100.0f
+                               + (rpn_[channel].coarse - 64) + (masterCoarse_ - 64) + (masterFine_ - 8192) / 8192.f);
+        tsf_channel_set_pitchrange(bank_.get(), channel, control(channel, bendRange) + rpn_[channel].bendCents / 100.f);
         tsf_channel_set_sustain(bank_.get(), channel, control(channel, sustain));
     }
 
@@ -225,6 +289,21 @@ private:
         const int first = event.data[1];
         const int second = event.numBytes >= 3 ? event.data[2] : 0;
         auto* bank = bank_.get();
+        if (status == 0xf0 && event.data[event.numBytes - 1] == 0xf7 && event.numBytes >= 6
+            && (event.data[2] == 0x7f || event.data[2] == 0)) {
+            if (event.numBytes == 6 && first == 0x7e && event.data[3] == 9
+                && (event.data[4] == 1 || event.data[4] == 3)) systemOn();
+            if (event.numBytes == 8 && first == 0x7f && event.data[3] == 4) {
+                const int value = (event.data[5] & 127) | ((event.data[6] & 127) << 7);
+                if (event.data[4] == 1) masterVolume_ = value;
+                if (event.data[4] == 3 || event.data[4] == 4) {
+                    if (event.data[4] == 3) masterFine_ = value;
+                    else masterCoarse_ = value >> 7;
+                    for (int i = 0; i < 16; ++i) applyControls(i);
+                }
+            }
+            return;
+        }
         switch (status & 0xf0) {
             case 0x80: tsf_channel_note_off(bank, channel, first); break;
             case 0x90:
@@ -236,12 +315,32 @@ private:
                 break;
             case 0xb0:
                 switch (first) {
+                    case 0: pending_[channel].msb = second; return;
+                    case 32: pending_[channel].lsb = second; return;
+                    case 101: rpn_[channel].msb = second; return;
+                    case 100: rpn_[channel].lsb = second; return;
+                    case 98: case 99: rpn_[channel].msb = rpn_[channel].lsb = 127; return;
+                    case 6: case 38: {
+                        auto& edit = rpn_[channel];
+                        if (edit.msb != 0) return;
+                        if (edit.lsb == 0) {
+                            if (first == 6) setControl(channel, bendRange, second);
+                            else edit.bendCents = std::min(99, second);
+                        } else if (edit.lsb == 1) {
+                            edit.fine = first == 6 ? (second << 7) | (edit.fine & 127) : (edit.fine & 16256) | second;
+                            setControl(channel, tuning, juce::roundToInt((edit.fine - 8192) * 100.0 / 8192));
+                        } else if (edit.lsb == 2 && first == 6) edit.coarse = second;
+                        break;
+                    }
                     case 7: setControl(channel, volume, second); break;
                     case 10: setControl(channel, pan, second); break;
                     case 11: setControl(channel, expression, second); break;
                     case 64: setControl(channel, sustain, second >= 64); break;
                     case 121:
-                        for (int id = 0; id <= sustain; ++id) setControl(channel, id, defaults[id]);
+                        setControl(channel, expression, defaults[expression]);
+                        setControl(channel, sustain, 0);
+                        rpn_[channel].msb = rpn_[channel].lsb = 127;
+                        tsf_channel_set_pitchwheel(bank, channel, 8192);
                         tsf_channel_midi_control(bank, channel, first, second);
                         break;
                     default:
@@ -250,19 +349,26 @@ private:
                 }
                 applyControls(channel);
                 break;
-            case 0xc0: setProgram(channel, first); selectProgram(channel, first); break;
+            case 0xc0:
+                active_[channel] = pending_[channel];
+                // Older GM scores often send bank 0 to every part, including the standard drum channel.
+                if (channel == 9 && active_[channel].msb == 0) active_[channel].msb = 120;
+                setProgram(channel, first);
+                selectProgram(channel, first);
+                break;
             case 0xe0: tsf_channel_set_pitchwheel(bank, channel, first | (second << 7)); break;
             default: break;
         }
     }
 
     void render(juce::AudioBuffer<float>& audio, int start, int end) {
+        const float master = masterVolume_ / 16383.f;
         while (start < end) {
             const auto count = std::min(512, end - start);
             tsf_render_float(bank_.get(), scratch_.data(), count, 0);
             for (int channel = 0; channel < 2; ++channel) {
                 auto* out = audio.getWritePointer(channel, start);
-                for (int i = 0; i < count; ++i) out[i] = scratch_[2 * i + channel];
+                for (int i = 0; i < count; ++i) out[i] = scratch_[2 * i + channel] * master;
             }
             start += count;
         }
@@ -275,6 +381,10 @@ private:
     std::array<std::atomic<int>, 16> programs_ {};
     std::array<std::array<std::atomic<int>, controlCount>, 16> controls_ {};
     std::array<std::atomic<juce::uint32>, 16> activity_ {};
+    std::array<BankAddress, 16> active_{}, pending_{};
+    struct RegisteredParameter { int msb = 127, lsb = 127, fine = 8192, coarse = 64, bendCents = 0; };
+    std::array<RegisteredParameter, 16> rpn_{};
+    int masterVolume_ = 16383, masterFine_ = 8192, masterCoarse_ = 64;
     std::array<int, 16> current_ {};
     std::array<bool, 16> valid_ {};
     std::array<float, 1024> scratch_ {};
@@ -385,15 +495,11 @@ public:
     }
 
 private:
-    static juce::String programName(int channel, int program) {
-        if (channel == 9) return program == 0 ? "Standard Kit" : "Drum Kit " + juce::String(program + 1);
-        return juce::MidiMessage::getGMInstrumentName(program);
-    }
-
     void refreshPrograms() {
+        showingDrums_ = module_.isDrum(selected_);
         program_.clear(juce::dontSendNotification);
         for (int i = 0; i < 128; ++i) {
-            const auto name = selected_ == 9 ? module_.drumKitName(i) : programName(selected_, i);
+            const auto name = showingDrums_ ? module_.drumKitName(i) : juce::String(juce::MidiMessage::getGMInstrumentName(i));
             if (name.isNotEmpty()) program_.addItem(juce::String(i + 1).paddedLeft('0', 3) + "  " + name, i + 1);
         }
         program_.setTitle("GM program for the selected MIDI channel");
@@ -412,15 +518,16 @@ private:
     }
 
     void timerCallback() override {
+        if (showingDrums_ != module_.isDrum(selected_)) refreshPrograms();
         for (int i = 0; i < 16; ++i) {
-            auto name = i == 9 ? module_.presetName(i) : programName(i, module_.program(i));
+            auto name = module_.presetName(i);
             const auto tooltip = name;
             if (name.length() > 15) name = name.substring(0, 13) + "...";
             channels_[i].setButtonText(juce::String(i + 1).paddedLeft('0', 2) + "\n" + name);
             channels_[i].setTooltip(tooltip);
             channels_[i].setToggleState(i == selected_, juce::dontSendNotification);
         }
-        part_.setText(selected_ == 9 ? "CH 10 / PERCUSSION" : "MIDI CHANNEL " + juce::String(selected_ + 1),
+        part_.setText("MIDI CHANNEL " + juce::String(selected_ + 1) + (showingDrums_ ? " / PERCUSSION" : ""),
                       juce::dontSendNotification);
         bank_.setText(module_.bankName(), juce::dontSendNotification);
         const auto preset = module_.presetName(selected_);
@@ -437,6 +544,7 @@ private:
     struct PartControl { juce::Label label; juce::Slider slider; juce::ToggleButton toggle; };
     ostfstudio::console::LookAndFeel consoleStyle_ {ostfstudio::console::finishFor(ostfstudio::console::Theme::harmonic)};
     SoundModule& module_;
+    bool showingDrums_ = false;
     std::array<juce::TextButton, 16> channels_;
     std::array<PartControl, SoundModule::controlCount> controls_;
     juce::Label heading_, bank_, part_, preset_;

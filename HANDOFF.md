@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## PDF recognition, shared instruments and the warp demo
+
+The Windows import panel finds the Audiveris per-user installation under LocalAppData/Programs. When the executable is missing it offers the official installation instructions and retries the selected PDF after setup. The Windows x64 Release import ran with Audiveris 5.11.0 plus English OCR data. On the eight-bar Lantern Walk sample the 23 pitches, starts and durations matched the source MusicXML. Recognition took the subtitle as title, supplied 120 BPM (source 96), and recognised the last four of eight chords. The unedited result is in `examples/score-interchange/lantern-walk-from-pdf.ostf`.
+
+Logic Pro's [New Track with Next Channel](https://support.apple.com/guide/logicpro/lgcp4369dca8/mac) shares an instrument among tracks. [Cubase's MIDI channel and output controls](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/recording/recording_setting_the_midi_channel_and_output_t.html) select the receiving part. Studio's instrument destination menu now pairs a loaded track instrument with a channel. An in-process playback test sends two tracks and a channel-explicit patch to a single instrument on different channels. The GM VST3 test plays separate kits on channels 10 and 11, then switches channel 10 to piano and selects an electric-piano variation. GM2 sound-set and controller/effect coverage is incomplete. The official logo is absent.
+
+First Light Vector repeats the warped Transition Sweep three times from bar 8 beat 3. The standalone score, manifest and production document passed the official release schemas. The packed member hashes matched. The gallery regression reads the warped source frame positions in each cycle and after saving both formats. No OSTF version increase was needed for the Studio extension.
+
+The compressor suggests a threshold from local peak measurements. Windows core tests passed 2/2. All 26 Windows Release tests passed, and the optional PDF fixture also passed in a fresh output directory. macOS and hands-on third-party multitimbral instrument playback were not tested on this change.
+
 ## Console controls and colour themes
 
 Branch `feature/console-controls-themes` updates the mixer, GM Sound Module and the nine stock effects with numeric parameters. Settings → Colour theme selects one of seven finishes. Workspace finish keys live in the existing local view preferences. Each effect editor binds to the same three parameter IDs used by existing sessions and other VST3 hosts.

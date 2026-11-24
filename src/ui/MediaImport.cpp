@@ -467,11 +467,9 @@ juce::Result analyseNoteEvidence(ImportSong& song, List& chords, const AnalysisP
 juce::Result analysePdf(const juce::File& file, ImportSong& song, List& chords, const AnalysisConnection& ai) {
     AnalysisWorkspace work;
     if (auto r = work.dir.createDirectory(); r.failed()) return r;
-    auto apps = juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory);
     if (!ai) {
-        auto omr = analysisTool("Audiveris", {apps.getChildFile("Audiveris/Audiveris.exe").getFullPathName(),
-                                               "/Applications/Audiveris.app/Contents/MacOS/Audiveris"});
-        if (!omr.existsAsFile()) return fail("Local PDF analysis requires Audiveris.");
+        const auto omr = findAudiveris();
+        if (!omr.existsAsFile()) return fail("Install Audiveris for local PDF recognition, then retry this PDF.");
         const auto pdf = work.dir.getChildFile("score.pdf");
         if (!file.copyFileTo(pdf)) return fail("Could not read the selected PDF.");
         if (auto r = runAnalysisTool({omr.getFullPathName(), "-batch", "-transcribe", "-export", "-output",
@@ -526,6 +524,22 @@ juce::Result analysePdf(const juce::File& file, ImportSong& song, List& chords, 
     return juce::Result::ok();
 }
 }
+juce::File findAudiveris() {
+    juce::StringArray paths;
+#if JUCE_WINDOWS
+    const auto apps = juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory);
+    paths.add(apps.getChildFile("Audiveris/Audiveris.exe").getFullPathName());
+    const auto local = juce::SystemStats::getEnvironmentVariable("LOCALAPPDATA", {});
+    if (juce::File::isAbsolutePath(local))
+        paths.add(juce::File(local).getChildFile("Programs/Audiveris/Audiveris.exe").getFullPathName());
+#elif JUCE_MAC
+    paths.add("/Applications/Audiveris.app/Contents/MacOS/Audiveris");
+    paths.add(juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+        .getChildFile("Applications/Audiveris.app/Contents/MacOS/Audiveris").getFullPathName());
+#endif
+    return analysisTool("Audiveris", paths);
+}
+
 juce::String scoreImportFileFilter() {
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();

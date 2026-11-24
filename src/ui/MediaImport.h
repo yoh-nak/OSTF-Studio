@@ -3,6 +3,7 @@
 #include "ui/AnalysisService.h"
 
 namespace ostfstudio {
+juce::File findAudiveris();
 juce::String scoreImportFileFilter();
 juce::Result analyseScoreImport(const juce::File&, std::unique_ptr<OstfpPreview>&, juce::String& summary,
                                AnalysisConnection provider = {});

@@ -2628,6 +2628,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
         for (std::size_t i = 0; i < std::min(trackControls_.size(), saved->midiRoutes.size()); ++i) {
             trackControls_[i]->midiChannel = saved->midiRoutes[i].channel;
             trackControls_[i]->outputTrack = saved->midiRoutes[i].destination;
+            updatePresetLabel(i);
         }
         for (std::size_t i = 0; i < outputControls_.size(); ++i) {
             auto ids = saved->outputEffects[i];
@@ -3415,6 +3416,7 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
     juce::PopupMenu menu;
     constexpr int channelId = 100;
     constexpr int outputId = 200;
+    constexpr int sharedId = 20000;
     juce::PopupMenu channels;
     for (int channel = 1; channel <= 16; ++channel)
         channels.addItem(channelId + channel, juce::String(channel), true, control.midiChannel == channel);
@@ -3423,10 +3425,14 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
     outputs.addItem(outputId, TRANS("This track"), true, !control.outputTrack);
     const auto sourceLimit = std::min(PreviewTransport::maxTracks, trackControls_.size());
     for (std::size_t i = 0; i < sourceLimit; ++i) {
-        if (i != index && i < project_->sourceTrackCount() && trackControls_[i]->playableInstrument && trackControls_[i]->instance->acceptsMidi())
-            outputs.addItem(outputId + 1 + static_cast<int>(i),
-                            juce::String::fromUTF8(project_->trackLanes[i].label) + " / "
-                            + trackControls_[i]->instance->getName(), true, control.outputTrack == i);
+        const auto& target = *trackControls_[i];
+        if (i == index || i >= project_->sourceTrackCount() || !target.playableInstrument || !target.instance
+            || !target.instance->acceptsMidi() || midiOutputs_.contains(project_->trackIds[int(i)])) continue;
+        juce::PopupMenu parts;
+        for (int part = 1; part <= 16; ++part)
+            parts.addItem(sharedId + static_cast<int>(i) * 16 + part - 1, "Ch " + juce::String(part),
+                          true, control.outputTrack == i && control.midiChannel == part);
+        outputs.addSubMenu(juce::String::fromUTF8(project_->trackLanes[i].label) + " / " + target.instance->getName(), parts);
     }
     const auto ports = juce::MidiOutput::getAvailableDevices();
     const auto id = project_->trackIds[int(index)];
@@ -3437,14 +3443,16 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
         hardware.addItem(1001 + p, ports[p].name, true, stored != midiOutputs_.end() && ports[p].identifier == stored->second.identifier);
     if (index < project_->sourceTrackCount() && project_->trackKinds[index] != ostfstudio::TrackKind::audio)
         menu.addSubMenu(stored == midiOutputs_.end() ? juce::String("MIDI OUT") : "MIDI OUT / " + stored->second.name, hardware);
-    menu.addSubMenu(TRANS("Instrument destination"), outputs);
+    menu.addSubMenu(TRANS("Instrument destination and channel"), outputs);
     menu.addItem(9, TRANS("Initial MIDI patch..."), index < project_->sourceTrackCount());
     menu.addSeparator();
     menu.addItem(8, TRANS("Link WAV on this track..."), !control.loading && index < project_->sourceTrackCount());
     menu.addItem(1, TRANS("Choose plug-in file..."), !control.loading);
     menu.addItem(3, TRANS("Choose plug-in bundle folder..."), !control.loading);
     menu.addItem(4, TRANS("Load selected VST3"), control.candidatePath.hasFileExtension("vst3") && !control.loading);
-    menu.addItem(5, TRANS("Open plug-in editor"), control.instance != nullptr && !control.loading);
+    const auto editorTrack = control.outputTrack.value_or(index);
+    menu.addItem(5, control.outputTrack ? TRANS("Open shared instrument") : TRANS("Open plug-in editor"),
+                 editorTrack < trackControls_.size() && trackControls_[editorTrack]->instance != nullptr);
     menu.addSeparator();
     menu.addItem(2, TRANS("Clear assignment"), (control.pluginPath != juce::File{} || control.instrumentAssignment.isObject()) && !control.loading);
     menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&control.plugin),
@@ -3452,15 +3460,16 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
             if (self == nullptr || self->projectGeneration_ != generation) return;
             if (selection == 1 || selection == 3) self->chooseTrackPlugin(index, selection == 3);
             if (selection == 4) self->scanTrackPlugin(index);
-            if (selection == 5) self->openTrackPluginEditor(index);
+            if (selection == 5) self->openTrackPluginEditor(self->trackControls_[index]->outputTrack.value_or(index));
             if (selection == 8) self->linkAudio(index);
             if (selection == 9) self->showPatch(index, 0);
             if (selection > channelId && selection <= channelId + 16) {
                 self->stopTransport();
                 if (self->trackControls_[index]->midiChannel != selection - channelId) self->markSessionEdited();
                 self->trackControls_[index]->midiChannel = selection - channelId;
+                self->updatePresetLabel(index);
             }
-            if (selection >= 1000) {
+            if (selection >= 1000 && selection < sharedId) {
                 self->stopTransport();
                 if (selection == 1000) self->midiOutputs_.erase(id);
                 else if (juce::isPositiveAndBelow(selection - 1001, ports.size())) self->midiOutputs_[id] = ports[selection - 1001];
@@ -3468,14 +3477,19 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
                 self->refreshMidiRoutes();
                 return;
             }
-            if (selection >= outputId) {
+            if (selection == outputId || selection >= sharedId) {
                 self->midiOutputs_.erase(id);
                 self->saveMidiRoutes();
                 self->stopTransport();
                 auto& route = self->trackControls_[index]->outputTrack;
-                const auto next = selection == outputId ? std::nullopt : std::optional<std::size_t>(selection - outputId - 1);
-                if (route != next) self->markSessionEdited();
+                const auto next = selection == outputId ? std::nullopt : std::optional<std::size_t>((selection - sharedId) / 16);
+                auto& channel = self->trackControls_[index]->midiChannel;
+                const int part = next ? 1 + (selection - sharedId) % 16 : channel;
+                if (route != next || channel != part) self->markSessionEdited();
                 route = next;
+                channel = part;
+                self->refreshMidiRoutes();
+                self->updatePresetLabel(index);
             }
             if (selection == 2) {
                 self->stopTransport();
@@ -3727,7 +3741,9 @@ void MainComponent::openTrackPluginEditor(std::size_t index) {
 void MainComponent::updatePresetLabel(std::size_t index) {
     auto& strip = *trackControls_[index];
     juce::String label;
-    if (auto* instance = strip.instance.get()) {
+    if (strip.outputTrack && *strip.outputTrack < project_->trackLanes.size()) {
+        label = juce::String::fromUTF8(project_->trackLanes[*strip.outputTrack].label) + " / Ch " + juce::String(strip.midiChannel);
+    } else if (auto* instance = strip.instance.get()) {
         if (const auto program = instance->getCurrentProgram(); program >= 0 && program < instance->getNumPrograms()) {
             label = instance->getProgramName(program);
         }

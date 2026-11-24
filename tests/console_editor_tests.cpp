@@ -1,10 +1,19 @@
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "../src/plugins/effects/CompressorListen.h"
 #include <cmath>
 #include <iostream>
 
 juce::AudioProcessor* makeStudioEffect(const char*, const char*);
 
 int main(int argc, char** argv) {
+    ostfstudio::CompressorListen meter;
+    for (float magnitude : {0.f, .1f, .5f}) {
+        meter.state.store(meter.requested);
+        meter.beginBlock(1000);
+        for (int i = 0; i < 3000; ++i) meter.measure(magnitude);
+        if (magnitude == 0 ? meter.state.load() != meter.noSignal :
+            meter.state.load() != meter.ready || std::abs(meter.threshold(4) - (magnitude == .1f ? -24.f : -10.f)) > .01f) return 8;
+    }
     juce::ScopedJuceInitialiser_GUI gui;
     for (const auto* type : {"Reverb", "Chorus", "EQ", "Compressor", "Limiter", "Phaser", "Flanger", "Distortion", "Amp"}) {
         const auto title = juce::String("OSTF ") + type;

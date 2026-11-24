@@ -1003,3 +1003,9 @@ countries: jp
 "Local PDF analysis requires Audiveris." = "PDFのローカル変換にはAudiverisが必要です。"
 "The song has no chords or lyrics to export." = "書き出すコードまたは歌詞がありません。"
 "Studio requires pitched notes and percussion on separate parts outside channel 10 for pitched notes." = "旋律と打楽器を別パートに分け、旋律には10以外のチャンネルを指定してください。"
+
+"Install Audiveris for local PDF recognition, then retry this PDF." = "ローカルで楽譜を読み取るにはAudiverisが必要です。インストール後、「このPDFを再試行」を押してください。"
+"Get Audiveris" = "Audiverisの入手方法"
+"Retry PDF" = "このPDFを再試行"
+"Instrument destination and channel" = "音源の出力先とMIDIチャンネル"
+"Open shared instrument" = "共有音源の画面を開く"

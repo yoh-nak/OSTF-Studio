@@ -189,6 +189,17 @@ static int checkGallery(const juce::File& directory) {
                 || reopened->savedMix->outputNames != mix.outputNames
                 || reopened->savedMix->outputEffects != mix.outputEffects
                 || reopened->savedMix->stockEffectStates != mix.stockEffectStates) return 1;
+            if (std::string_view(expected.file) == "first-light-vector.ostfp") {
+                for (const auto* copy : {project.get(), fromScore.get(), reopened.get()}) {
+                    const auto& sweep = copy->audio.front();
+                    const auto& timing = sweep.timing;
+                    if (!timing.loop || timing.cycleTicks != 3840 || sweep.durationTicks != 3 * timing.cycleTicks
+                        || timing.markers.size() != 2) return 1;
+                    for (int pass = 0; pass < 3; ++pass)
+                        if (timing.frameAt(0, (pass + .25) * timing.cycleTicks, 800) != 100
+                            || timing.frameAt(0, (pass + .625) * timing.cycleTicks, 800) != 600) return 1;
+                }
+            }
             for (std::size_t i = 0; i < index; ++i)
                 if (reopened->savedMix->trackEffects[i] != mix.trackEffects[i]
                     || reopened->savedMix->tracks[i].outputBus != mix.tracks[i].outputBus

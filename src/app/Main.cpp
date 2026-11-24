@@ -77,6 +77,26 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const ju
     if (piano.getMagnitude(0, 2048) < 0.003f || bass.getMagnitude(0, 2048) < 0.003f || !differs(piano, bass)
         || kick.getMagnitude(0, 2048) < 0.003f || snare.getMagnitude(0, 2048) < 0.003f || !differs(kick, snare))
         return 38;
+    // Verify bank latching and the optional second percussion channel through the VST3 host.
+    instance->prepareToPlay(44100, 2048);
+    const auto bankEvents = [&](int channel, int msb, int lsb) {
+        juce::AudioBuffer<float> empty(2, 16);
+        juce::MidiBuffer messages;
+        messages.addEvent(juce::MidiMessage::controllerEvent(channel, 0, msb), 0);
+        messages.addEvent(juce::MidiMessage::controllerEvent(channel, 32, lsb), 1);
+        instance->processBlock(empty, messages);
+    };
+    bankEvents(11, 120, 0);
+    const auto secondKick = renderPreview(11, 0, 36);
+    if (secondKick.getMagnitude(0, 2048) < .003f || differs(secondKick, kick)) return 56;
+    bankEvents(10, 121, 0);
+    if (differs(renderPreview(10, 0, 60), piano)) return 57;
+    if (fluid.existsAsFile()) {
+        const auto electric = renderPreview(2, 4, 60);
+        bankEvents(2, 121, 1);
+        if (!differs(electric, renderPreview(2, 4, 60))) return 58;
+    }
+    instance->releaseResources();
     juce::XmlElement state("OSTF_GM");
     state.setAttribute("bank", bank);
     state.setAttribute("p1", 1); // The test bank contains program 0 only.

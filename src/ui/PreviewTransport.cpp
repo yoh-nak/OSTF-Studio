@@ -329,7 +329,7 @@ juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview&
             if (k.type.isEmpty() || k.type == "programChange" || !curve.enabled) continue;
             const bool bank = k.type == "controlChange" && (k.number == 0 || k.number == 32);
             if ((patchesOnly || !instrument) && !bank) continue;
-            const int ch = k.channel ? k.channel : setup.midiChannel;
+            const int ch = setup.outputTrack || !k.channel ? setup.midiChannel : k.channel;
             for (const auto& p : curve.points) {
                 const int v = juce::roundToInt(p.value * k.maximum());
                 auto msg = k.type == "pitchBend" ? juce::MidiMessage::pitchWheel(ch, v)
@@ -341,7 +341,7 @@ juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview&
             }
         }
         if (track < project.programChanges.size()) for (const auto& pc : project.programChanges[track])
-            patches.push_back({pc.tick, pc.order, pc.ordinal, juce::MidiMessage::programChange(pc.channel.value_or(setup.midiChannel), pc.program)});
+            patches.push_back({pc.tick, pc.order, pc.ordinal, juce::MidiMessage::programChange(setup.outputTrack ? setup.midiChannel : pc.channel.value_or(setup.midiChannel), pc.program)});
         std::stable_sort(patches.begin(), patches.end(), [](const auto& a, const auto& b) {
             return std::tie(a.tick, a.order, a.ordinal) < std::tie(b.tick, b.order, b.ordinal);
         });
@@ -364,7 +364,7 @@ juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview&
         if (track < project.drumNotes.size())
             for (const auto& note : project.drumNotes[track])
                 if (note.enabled && !addNote(note.startTick, note.endTick, note.pitch, note.velocity.value_or(92),
-                                             outputTrack < tracks.size() && tracks[outputTrack].external ? setup.midiChannel : 10))
+                                             setup.outputTrack || (outputTrack < tracks.size() && tracks[outputTrack].external) ? setup.midiChannel : 10))
                     return juce::Result::fail("Preview transport supports up to 20,000 notes.");
     }
     return juce::Result::ok();

@@ -25599,7 +25599,7 @@
             "channelId": "foley-strip",
             "sourceAssetId": "transition-sweep",
             "startTick": 28800,
-            "durationTicks": 4416,
+            "durationTicks": 11520,
             "sourceStartFrame": 0,
             "sourceFrameCount": 48000,
             "playbackMode": "native",
@@ -25653,6 +25653,30 @@
             "playbackMode": "native",
             "gainDb": 0,
             "mute": false
+          }
+        ],
+        "hostExtensions": [
+          {
+            "namespace": "org.ostf.studio",
+            "version": "1.0",
+            "data": {
+              "clipTiming": {
+                "foley-cue": {
+                  "loop": true,
+                  "cycleTicks": 3840,
+                  "markers": [
+                    {
+                      "position": 0.25,
+                      "source": 0.125
+                    },
+                    {
+                      "position": 0.625,
+                      "source": 0.75
+                    }
+                  ]
+                }
+              }
+            }
           }
         ]
       }

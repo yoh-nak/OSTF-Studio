@@ -987,6 +987,13 @@ def production_session(song, cues):
         production.setdefault("audioRegions", []).append({"id": identifier + "-cue", "channelId": strip["id"], "sourceAssetId": asset["id"],
             "startTick": start, "durationTicks": length, "sourceStartFrame": 0,
             "sourceFrameCount": asset["frameCount"], "playbackMode": "native", "gainDb": 0, "mute": False})
+    if song["song"]["title"] == "First Light Vector":
+        sweep = next(region for region in production["audioRegions"] if region["id"] == "foley-cue")
+        cycle = 4 * PPQ
+        sweep["durationTicks"] = 3 * cycle
+        production["hostExtensions"] = [{"namespace": "org.ostf.studio", "version": "1.0", "data": {
+            "clipTiming": {sweep["id"]: {"loop": True, "cycleTicks": cycle,
+                "markers": [{"position": 0.25, "source": 0.125}, {"position": 0.625, "source": 0.75}]}}}}]
     if song["song"]["title"] == "Copper Mile":
         sections = {s["name"]: s["start"] for s in song["timeline"]["sections"]}
         solo, bridge, refrain = (sections[name] for name in ("Guitar Solo", "Half-time Break", "Final Refrain"))

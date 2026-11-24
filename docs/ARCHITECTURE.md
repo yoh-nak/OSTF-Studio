@@ -161,3 +161,13 @@ The recorder resolves a physical channel against the current active input mask b
 Initial and timed patches are OSTF clip MIDI events. The patch dialog writes CC 0, CC 32 and Program Change with same-tick ordering. At a seek or loop boundary the host replays the bank in effect at the last program change, followed by any subsequently staged bank. MIDI-capable track inserts receive independent copies of the patch messages. Cue switches use the existing mixer send. The tempo graph shares the arrangement ruler bounds and its visible bar range.
 
 AI focus and model selection live in Studio preferences. Each focus supplies musical guidance to the existing schema-constrained import analysis. Refresh uses the official CLI model catalog with the isolated Studio sign-in.
+
+### Shared MIDI instruments and clip timing
+
+A MIDI track's instrument menu selects an existing instrument track and a MIDI channel together. The source track sends its notes, patch changes and controllers to that part. Open shared instrument opens the destination editor. The instrument returns its stereo audio on the hosting track. Each source retains its own notes. Studio saves the destination track ID and channel in the session mix.
+
+First Light Vector uses the Studio clip timing extension on the Transition Sweep region. The cycle is four quarter notes and the region repeats three times. Two interior warp points define the same source mapping on every cycle. OSTF 5.0 carries these settings in the Studio extension. The OSTFP Production Session 0.3 document carries them in its Studio host extension. A host must understand that extension to reproduce the non-linear timing.
+
+The GM Sound Module accepts bank MSB/LSB followed by program change, including melodic selection on channel 10 and percussion on channels 10 and 11. It handles GM System On, GM2 System On, master volume/tuning and part tuning controls. The bundled FluidR3 bank supplies a subset of GM2 variations. Unavailable variations fall back to the base program. The module makes no GM2 conformance claim. Full sound-set coverage, controller destinations and effects require additional implementation and verification.
+
+The compressor's Listen button measures three seconds of local input. Its proposed threshold targets three dB of static reduction at the 90th percentile of active 20 ms peaks, using the current ratio. Apply updates the existing threshold parameter. Silence produces no suggestion.

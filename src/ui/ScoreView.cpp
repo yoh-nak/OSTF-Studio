@@ -339,6 +339,10 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
             addAndMakeVisible(c);
         addAndMakeVisible(mode);
         addAndMakeVisible(disclosure);
+        addChildComponent(installOmr);
+        addChildComponent(retryPdf);
+        installOmr.onClick = [] { juce::URL("https://audiveris.github.io/audiveris/_pages/tutorials/install/binaries/").launchInDefaultBrowser(); };
+        retryPdf.onClick = [this] { analyse(lastFile); };
         addChildComponent(cancel);
         cancel.onClick = [this] {
             ++analysisId;
@@ -397,6 +401,11 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
         if (cancel.isVisible()) cancel.setBounds(controls.removeFromRight(92));
         disclosure.setBounds(controls);
         summary.setBounds(area.removeFromTop(52));
+        if (retryPdf.isVisible()) {
+            auto actions = area.removeFromTop(32);
+            installOmr.setBounds(actions.removeFromLeft(165).reduced(2));
+            retryPdf.setBounds(actions.removeFromLeft(135).reduced(2));
+        }
         openSong.setBounds(area.removeFromBottom(38));
         area.reduce(0, 6);
         viewport.setBounds(area);
@@ -413,6 +422,9 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
         chooseFile.setEnabled(true);
         mode.setEnabled(true);
         cancel.setVisible(false);
+        const bool missingOmr = result.getErrorMessage() == TRANS("Install Audiveris for local PDF recognition, then retry this PDF.");
+        installOmr.setVisible(missingOmr);
+        retryPdf.setVisible(missingOmr);
         resized();
         if (result.failed() || !parsed) {
             summary.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
@@ -441,28 +453,36 @@ class ImportPanel final : public juce::Component, public juce::DragAndDropContai
             [safe = juce::Component::SafePointer<ImportPanel>(this)](const auto& fc) {
                 const auto source = fc.getResult();
                 if (!safe || source == juce::File{}) return;
-                safe->items.clear();
-                safe->project.reset();
-                safe->chooseFile.setEnabled(false);
-                safe->mode.setEnabled(false);
-                safe->cancel.setVisible(true);
-                safe->openSong.setEnabled(false);
-                safe->heading.setText(source.getFileName(), juce::dontSendNotification);
-                safe->summary.setText(TRANS("Analysing source..."), juce::dontSendNotification);
-                safe->resized();
-                const int index = safe->mode.getSelectedId() - 2;
-                AnalysisConnection ai = index >= 0 && index < int(safe->providers.size()) ? safe->providers[size_t(index)] : nullptr;
-                const int id = ++safe->analysisId;
-                safe->worker.addJob([safe, source, ai, id] {
-                    std::unique_ptr<OstfpPreview> score;
-                    juce::String info;
-                    auto result = analyseScoreImport(source, score, info, ai);
-                    juce::MessageManager::callAsync([safe, result, info, id, score = std::move(score)]() mutable {
-                        if (safe && safe->analysisId == id) safe->showResult(std::move(score), result, info);
-                    });
-                });
+                safe->analyse(source);
             });
     }
+    void analyse(juce::File source) {
+        lastFile = source;
+        installOmr.setVisible(false);
+        retryPdf.setVisible(false);
+        items.clear();
+        project.reset();
+        chooseFile.setEnabled(false);
+        mode.setEnabled(false);
+        cancel.setVisible(true);
+        openSong.setEnabled(false);
+        heading.setText(source.getFileName(), juce::dontSendNotification);
+        summary.setText(TRANS("Analysing source..."), juce::dontSendNotification);
+        resized();
+        const int index = mode.getSelectedId() - 2;
+        AnalysisConnection ai = index >= 0 && index < int(providers.size()) ? providers[size_t(index)] : nullptr;
+        const int id = ++analysisId;
+        worker.addJob([safe = juce::Component::SafePointer<ImportPanel>(this), source, ai, id] {
+            std::unique_ptr<OstfpPreview> score;
+            juce::String info;
+            auto result = analyseScoreImport(source, score, info, ai);
+            juce::MessageManager::callAsync([safe, result, info, id, score = std::move(score)]() mutable {
+                if (safe && safe->analysisId == id) safe->showResult(std::move(score), result, info);
+            });
+        });
+    }
+    juce::File lastFile;
+    juce::TextButton installOmr{TRANS("Get Audiveris")}, retryPdf{TRANS("Retry PDF")};
     int analysisId = 0;
     std::vector<AnalysisConnection> providers;
     juce::ComboBox mode;
