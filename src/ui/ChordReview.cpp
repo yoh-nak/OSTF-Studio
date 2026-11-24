@@ -11,13 +11,39 @@ static ReviewRange chordRange(const juce::var& event) {
     return {start, start + Tick(event["duration"])};
 }
 
-juce::StringArray rankChords(const std::vector<PitchedNote>& notes, ReviewRange range) {
+ChordAnalysis::ChordAnalysis(const OstfpPreview& song)
+    : project(song), score(juce::JSON::parse(song.sourceScore.toString())) {
+    const auto tracks = score["tracks"];
+    for (size_t i = 0; i < song.sourceTrackCount(); ++i) {
+        if (song.trackKinds[i] != TrackKind::pitched)
+            continue;
+        std::set<juce::String> disabledClips;
+        const auto clips = i < size_t(tracks.size()) ? tracks[int(i)]["clips"] : juce::var{};
+        if (const auto* list = clips.getArray())
+            for (const auto& clip : *list)
+                if (!bool(clip.getProperty("enabled", true)))
+                    disabledClips.insert(clip["id"].toString());
+        for (const auto& n : song.pitchedNotes[i])
+            if (n.enabled && !n.fixedTrigger && n.pitch >= 0 && n.pitch <= 127 &&
+                n.startTick < n.endTick && !disabledClips.contains(n.clipId))
+                notes.push_back({n.startTick, n.endTick, n.endTick, n.pitch});
+    }
+    std::sort(notes.begin(), notes.end(), [](const Note& a, const Note& b) { return a.start < b.start; });
+    // The prefix maximum preserves sustained notes when seeking to a later chord.
+    for (size_t i = 1; i < notes.size(); ++i)
+        notes[i].latestEnd = std::max(notes[i].end, notes[i - 1].latestEnd);
+}
+
+juce::StringArray ChordAnalysis::rank(ReviewRange range) const {
     std::array<double, 12> weights{};
     int bass = 128;
     double total = 0;
-    for (const auto& note : notes) {
-        const auto duration = range.getIntersectionWith({note.startTick, note.endTick}).getLength();
-        if (!note.enabled || note.fixedTrigger || duration <= 0 || note.pitch < 0 || note.pitch > 127)
+    const auto first = std::upper_bound(notes.begin(), notes.end(), range.getStart(),
+                                        [](Tick tick, const Note& n) { return tick < n.latestEnd; });
+    for (auto it = first; it != notes.end() && it->start < range.getEnd(); ++it) {
+        const auto& note = *it;
+        const auto duration = range.getIntersectionWith({note.start, note.end}).getLength();
+        if (duration <= 0)
             continue;
         weights[note.pitch % 12] += duration;
         bass = std::min(bass, note.pitch);
@@ -76,14 +102,12 @@ std::vector<ReviewRange> changedNoteRanges(const std::vector<PitchedNote>& oldNo
     return ranges;
 }
 
-ChordDecisions analyseChordRanges(const OstfpPreview& project, std::optional<size_t> track,
-                                  const std::vector<ReviewRange>& affected, const juce::Array<juce::var>& imported,
-                                  bool crop, Tick end) {
+ChordDecisions ChordAnalysis::review(const std::vector<ReviewRange>& affected, bool includeScoreChords,
+                                     const juce::Array<juce::var>& imported, bool crop, Tick end) const {
     const Tick limit = std::max(project.durationTicks, end);
     ChordDecisions result;
     if (affected.empty())
         return result;
-    const auto score = juce::JSON::parse(project.sourceScore.toString());
     const auto chords = score["harmony"]["chords"];
     std::set<Tick> edges{0, limit};
     if (auto* list = chords.getArray())
@@ -114,13 +138,14 @@ ChordDecisions analyseChordRanges(const OstfpPreview& project, std::optional<siz
     }
     for (auto i = edges.begin(), j = std::next(i); j != edges.end(); ++i, ++j) {
         const ReviewRange interval(*i, *j);
-        if (*i < 0 || *j > limit ||
-            !std::any_of(affected.begin(), affected.end(), [&](auto r) { return r.intersects(interval); }))
+        if (*i < 0 || *j > limit)
             continue;
         const auto old = globalEventAt(score, TimelineLane::chord, *i);
+        if (!(includeScoreChords && old.isObject()) &&
+            !std::any_of(affected.begin(), affected.end(), [&](auto r) { return r.intersects(interval); }))
+            continue;
         ChordDecision item{interval, old["label"].toString()};
-        if (track && *track < project.pitchedNotes.size())
-            item.candidates = rankChords(project.pitchedNotes[*track], interval);
+        item.candidates = rank(interval);
         for (const auto& source : imported)
             if (chordRange(source).contains(*i)) {
                 item.sourceChord = source;
@@ -452,8 +477,7 @@ void MainComponent::resolveChordReview(bool all, bool keep) {
     refreshChordReview();
 }
 
-void MainComponent::reviewDroppedChords(const ostfstudio::OstfpPreview& source, int index, std::optional<size_t> track,
-                                        juce::int64 tick) {
+void MainComponent::reviewDroppedChords(const ostfstudio::OstfpPreview& source, int index, juce::int64 tick) {
     using Range = ostfstudio::ReviewRange;
     using Tick = juce::int64;
     auto convert = [&](Tick at) -> Tick {
@@ -507,8 +531,8 @@ void MainComponent::reviewDroppedChords(const ostfstudio::OstfpPreview& source, 
         else
             spans.push_back(r);
     }
-    pendingReview_ = ostfstudio::analyseChordRanges(*project_, track, spans, imported, true,
-                                                    spans.empty() ? 0 : spans.back().getEnd());
+    pendingReview_ = ostfstudio::ChordAnalysis(*project_).review(spans, false, imported, true,
+                                                                spans.empty() ? 0 : spans.back().getEnd());
     if (pendingReview_.empty())
         statusLabel_.setText(TRANS("No chord regions to place."), juce::dontSendNotification);
     refreshChordReview();

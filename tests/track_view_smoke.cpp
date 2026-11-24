@@ -358,15 +358,46 @@ int checkSamplePlacement(const juce::File& file) {
             || int(insert[0]["duration"])!=120 || int(insert[1]["start"])!=120 || int(insert[1]["duration"])!=360
             || insert[0]["id"]==insert[1]["id"]) return 210;
         const std::vector<PitchedNote> notes{{0,480,62,90},{0,480,65,90},{0,480,69,90}};
-        if(rankChords(notes,{0,480})[0]!="Dm" || !rankChords(notes,{480,960}).isEmpty()) return 211;
+        OstfpPreview single;
+        single.trackLanes.resize(1);
+        single.trackKinds = {TrackKind::pitched};
+        single.pitchedNotes = {notes};
+        const ChordAnalysis singlePart(single);
+        if (singlePart.rank({0,480})[0] != "Dm" || !singlePart.rank({480,960}).isEmpty()) return 211;
         OstfpPreview overlap;
-        const auto json=juce::JSON::toString(score);
+        auto withTracks = score.clone();
+        withTracks.getDynamicObject()->setProperty("tracks", juce::JSON::parse(
+            R"([{"clips":[{"id":"disabled-clip","enabled":false}]},{"clips":[]},{"clips":[]}])"));
+        const auto json=juce::JSON::toString(withTracks);
         overlap.sourceScore=juce::MemoryBlock(json.toRawUTF8(),json.getNumBytesAsUTF8());
         overlap.durationTicks=1440; overlap.ticksPerBar=1440;
-        overlap.pitchedNotes={{{0,1440,60},{0,480,64},{0,480,67},{480,1440,65},{480,1440,69}}};
-        const auto decisions=analyseChordRanges(overlap,0,{{0,1440}});
+        // The melody sustains C while the bass and keys supply C major, then F major.
+        overlap.trackLanes.resize(6);
+        overlap.trackKinds = {TrackKind::pitched, TrackKind::pitched, TrackKind::pitched,
+                              TrackKind::drum, TrackKind::audio, TrackKind::pitched};
+        overlap.chordVoicingTrack = 5;
+        overlap.pitchedNotes = {{{0,1440,60}}, {{0,480,48},{480,1440,41}},
+                                {{480,1440,69},{0,480,64},{0,480,67}}, {}, {}, {}};
+        const auto clean = ChordAnalysis(overlap).review({{0,1440}}, true);
+        PitchedNote noise{0,1920,37,100};
+        for (const auto i : {3,4,5}) overlap.pitchedNotes[i].push_back(noise);
+        noise.fixedTrigger = true;
+        overlap.pitchedNotes[0].push_back(noise);
+        noise.fixedTrigger = false;
+        noise.enabled = false;
+        overlap.pitchedNotes[0].push_back(noise);
+        noise.enabled = true;
+        noise.clipId = "disabled-clip";
+        overlap.pitchedNotes[0].push_back(noise);
+        const ChordAnalysis ensemble(overlap);
+        const auto decisions=ensemble.review({{0,1440}}, true);
         if(decisions.size()!=2 || decisions[0].range!=ReviewRange(0,480) || decisions[1].range!=ReviewRange(480,1440)
             || decisions[0].candidates[0]!="C" || decisions[1].candidates[0]!="F") return 218;
+        if (clean.size() != 2 || clean[0].candidates != decisions[0].candidates ||
+            clean[1].candidates != decisions[1].candidates || !ensemble.rank({1440,1920}).isEmpty()) return 220;
+        const auto cropped = ensemble.review({{420,510}}, false, {}, true);
+        if (cropped.size() != 2 || cropped[0].candidates != decisions[0].candidates ||
+            cropped[1].candidates != decisions[1].candidates) return 221;
         ChordReviewLane lane;
         lane.timeline=[] {return std::pair{juce::Rectangle<int>(40,0,144,42),juce::Range<double>(0,1440)};};
         lane.setBounds(0,0,184,44);lane.display(decisions,*main.project_);

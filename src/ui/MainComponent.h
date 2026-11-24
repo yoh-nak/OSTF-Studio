@@ -134,7 +134,7 @@ private:
     void refreshChordReview();
     bool chordReviewBlocksSwitch();
     void resolveChordReview(bool all, bool keep);
-    void reviewDroppedChords(const ostfstudio::OstfpPreview&, int index, std::optional<size_t> track, juce::int64 tick);
+    void reviewDroppedChords(const ostfstudio::OstfpPreview&, int index, juce::int64 tick);
     int chordReviewHeight(int width) const { return pendingReview_.empty() ? 0 : chordReview_.preferredHeight(width); }
     enum class ClipTool { select, split, join };
     ClipTool clipTool_ = ClipTool::select;

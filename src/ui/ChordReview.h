@@ -13,12 +13,24 @@ struct ChordDecision {
     int choice = 0;
 };
 using ChordDecisions = std::vector<ChordDecision>;
-juce::StringArray rankChords(const std::vector<PitchedNote>& notes, ReviewRange range);
+class ChordAnalysis {
+  public:
+    explicit ChordAnalysis(const OstfpPreview&);
+    juce::StringArray rank(ReviewRange) const;
+    ChordDecisions review(const std::vector<ReviewRange>& affected, bool includeScoreChords,
+                          const juce::Array<juce::var>& imported = {}, bool crop = false, juce::int64 end = 0) const;
+
+  private:
+    struct Note {
+        juce::int64 start, end, latestEnd;
+        int pitch;
+    };
+    const OstfpPreview& project;
+    const juce::var score;
+    std::vector<Note> notes;
+};
 std::vector<ReviewRange> changedNoteRanges(const std::vector<PitchedNote>& oldNotes,
                                            const std::vector<NoteEdit>& edits);
-ChordDecisions analyseChordRanges(const OstfpPreview&, std::optional<size_t> track,
-                                  const std::vector<ReviewRange>& ranges, const juce::Array<juce::var>& imported = {},
-                                  bool crop = false, juce::int64 end = 0);
 juce::Result chordDecisionEdits(const juce::var& score, const ChordDecisions&, juce::Array<juce::var>& remove,
                                 juce::Array<juce::var>& insert);
 } // namespace ostfstudio

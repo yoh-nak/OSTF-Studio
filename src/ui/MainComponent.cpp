@@ -1835,7 +1835,7 @@ void MainComponent::placeResult(ImportResultRow& row, std::optional<std::size_t>
         stopTransport();
     juce::MemoryBlock before;
     if (review && row.index < 0) {
-        reviewDroppedChords(row.source,row.index,track,tick);
+        reviewDroppedChords(row.source,row.index,tick);
         if (playing) startTransport(false);
         return;
     }
@@ -1854,7 +1854,7 @@ void MainComponent::placeResult(ImportResultRow& row, std::optional<std::size_t>
             selectTrack(*track);
         finishNoteEdit(playing);
         if (review) {
-            reviewDroppedChords(row.source,row.index,track,tick);
+            reviewDroppedChords(row.source,row.index,tick);
             if (row.index >= 0 && row.source.trackKinds[row.index] != ostfstudio::TrackKind::audio && !noteHistory_.empty()) {
                 noteHistory_.back().reviewBefore = ostfstudio::ChordDecisions{};
                 noteHistory_.back().reviewAfter = pendingReview_;
@@ -3888,7 +3888,7 @@ void MainComponent::filesDropped(const juce::StringArray& files, int x, int y) {
             else if (safe->canEditTracks()) {
                 const auto index = safe->project_->sourceTrackCount();
                 safe->editTracks(held->trackKinds[partIndex], {}, {}, held->mixerGroups[partIndex], &part, tickAtDrop);
-                if (review && safe->project_->sourceTrackCount() > index) safe->reviewDroppedChords(*held,partIndex,index,tickAtDrop);
+                if (review && safe->project_->sourceTrackCount() > index) safe->reviewDroppedChords(*held,partIndex,tickAtDrop);
             }
         };
         if (chords) place(-1);
@@ -5605,16 +5605,8 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
         auto& revision = noteHistory_.back();
         revision.reviewBefore = pendingReview_;
         revision.reviewTrack = selectedTrack_;
-        auto reviewRanges = affected;
-        if (pendingReview_.empty()) {
-            const auto score = juce::JSON::parse(project_->sourceScore.toString());
-            if (const auto* chords = score["harmony"]["chords"].getArray())
-                for (const auto& chord : *chords) {
-                    const auto first = juce::int64(chord["start"]);
-                    reviewRanges.emplace_back(first, first + juce::int64(chord["duration"]));
-                }
-        }
-        auto changes = ostfstudio::analyseChordRanges(*project_,selectedTrack_,reviewRanges);
+        const ostfstudio::ChordAnalysis harmony(*project_);
+        auto changes = harmony.review(affected, pendingReview_.empty());
         for (auto& change : changes) {
             auto position = change.range.getStart();
             ostfstudio::ChordDecisions gaps;
@@ -5623,7 +5615,7 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
                 auto part = change;
                 part.range = {position,end};
                 if (part.range != change.range)
-                    part.candidates = ostfstudio::rankChords(project_->pitchedNotes[*selectedTrack_], part.range);
+                    part.candidates = harmony.rank(part.range);
                 const bool touched = std::any_of(affected.begin(),affected.end(),[&](auto r){return r.intersects(part.range);});
                 part.choice = touched && !part.candidates.isEmpty() ? 1 : 0;
                 gaps.push_back(std::move(part));
@@ -5632,7 +5624,7 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
                 appendGap(row.range.getStart());
                 position = row.range.getEnd();
                 row.candidates = row.range == change.range ? change.candidates
-                    : ostfstudio::rankChords(project_->pitchedNotes[*selectedTrack_], row.range);
+                    : harmony.rank(row.range);
                 if (row.choice != 4) row.choice = row.candidates.isEmpty() ? 0 : 1;
             }
             appendGap(change.range.getEnd());

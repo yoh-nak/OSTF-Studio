@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Whole-score chord analysis
+
+Branch `feature/whole-score-chord-analysis`. Chord review after piano edits and material drops ranks each interval using all pitched score tracks. The track that initiated an edit determines which intervals need a decision. Clip fit percentages continue to describe each individual clip. The track-view regression uses a sustained C melody over bass and keys changing from C major to F major, including disabled events and generated voicing as exclusion cases.
+
+Local Windows x64 Release compiled. The track-view, piano-edit and theory-guide tests all passed. macOS and real-device interaction were not tested in this change.
+
 ## Mixing, shared instruments and vocal playback
 
 Branch `feature/stock-rigs-vocal-shared-arrangement`. The effects catalog contains independent VST3 identities for the mixing processors and guitar/bass rigs. `OSTF Formant Singer` renders aligned lyric units locally using formant synthesis. The Studio transport delivers articulation with the pitched track timeline and restores it on seek. The file player stores its OSTF source and selected part in plugin state and follows host PPQ. Its initial dictionary covers five vowels, limited consonants and kana. File playback takes one melodic line per part. Expressive vocal curves, native SVP conversion and third-party DAW/device validation remain open.

@@ -4,7 +4,7 @@ The mixing collection adds 8-band, dynamic, graphic and parametric EQ, multimode
 
 Neon Platforms routes Electric Guitar Hook and Electric Piano Comp to channels 1 and 2 of one GM module. Either instrument button opens the same editor. In the arrangement, right-click a track header to move it up or down within its group. The primary melody stays above the backing vocals.
 
-After editing pitched notes, review the chords directly above the piano keys at their timeline positions. Notes spanning a boundary contribute to each chord for the duration of their overlap. Click a narrow interval for its choices or use the interval list. Confirm individual intervals or the whole track before opening another track. Clip headers display separate duration-weighted chord and scale fit badges. Both are enabled by default and have independent toolbar and View menu switches.
+After editing pitched notes, review the chords directly above the piano keys at their timeline positions. Candidates use notes from all pitched score tracks, weighted by how long each note overlaps the interval. For example, the bass and piano can establish a chord under a single sustained melody note. Disabled clips and notes, drum triggers, and the voicing generated from the existing chord are excluded. Click a narrow interval for its choices or use the interval list. Confirm individual intervals or the whole track before opening another track. Clip headers display separate duration-weighted chord and scale fit badges for that clip. Both are enabled by default and have independent toolbar and View menu switches.
 
 **English** · [日本語](README.ja.md)
 
