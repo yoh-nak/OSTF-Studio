@@ -205,6 +205,8 @@ Pending work includes full OSTFP conformance, SVP export, network sync, AI-assis
 
 ## Stock effects and mixed demos in alpha 3
 
+Insert **OSTF Harmonizer** on a track to mix its original audio with two pitch-shifted voices. **Voice A (st)** and **Voice B (st)** set fixed intervals from −12 to +12 semitones. **A / B blend %** selects the balance between the voices (0% is A only), and **Wet %** mixes the harmony with the original. The default intervals are a perfect fifth and an octave above the input.
+
 Alpha 3 includes nine stereo VST3 effects by OSTF Studio. Open **File → Demo songs → Paper Lantern Replies** and inspect the lead vocal's **EQ → Compressor** chain. Drums and bass share Bus A. Accompaniment shares Bus B. Individual post-fader sends feed a fully wet reverb on Return 1, which returns to Master. Both file formats recall the mix. The demo gallery lists starting points for listening and testing each song. [Demo mixes](examples/demo-songs/README.md)
 
 ## Resume development from GitHub

@@ -2,6 +2,7 @@
 #include "ui/PreviewTransport.h"
 #include "ui/PluginRoles.h"
 #include <cmath>
+#include <complex>
 #include <iostream>
 
 namespace {
@@ -15,10 +16,97 @@ Instance load(juce::AudioPluginFormatManager& formats, const juce::File& bundle)
     return {};
 }
 
+bool checkHarmonizer(juce::AudioPluginInstance& fx) {
+    const auto& params = fx.getParameters();
+    if (params.size() < 4 || !fx.hasEditor()) { std::cerr << "Missing harmonizer controls\n"; return false; }
+    std::unique_ptr<juce::AudioProcessorEditor> editor(fx.createEditorIfNeeded());
+    if (!editor) { std::cerr << "Harmonizer editor failed to open\n"; return false; }
+    constexpr double rate = 48000;
+    const std::array<float, 4> settings{19.f / 24.f, 0.f, .5f, .6f};  // +7 and -12 semitones
+    for (int i = 0; i < 4; ++i) params[i]->setValueNotifyingHost(settings[i]);
+    juce::MemoryBlock state;
+    fx.getStateInformation(state);
+    for (int i = 0; i < 4; ++i) params[i]->setValueNotifyingHost(1.f);
+    fx.setStateInformation(state.getData(), int(state.getSize()));
+    for (int i = 0; i < 4; ++i) if (std::abs(params[i]->getValue() - settings[i]) > .001f) {
+        std::cerr << "Recall: " << params[i]->getName(64) << " = " << params[i]->getValue() << ", expected " << settings[i] << '\n';
+        return false;
+    }
+
+    fx.setRateAndBufferSizeDetails(rate, 256);
+    fx.prepareToPlay(rate, 256);
+    juce::MidiBuffer midi;
+    const std::array<double, 3> frequencies{440., 440. * std::exp2(7. / 12.), 220.};
+    // Compare the three expected pitches with their neighbouring semitones. Measure
+    // short windows separately so phase changes across synthesis frames do not cancel.
+    std::array<std::array<double, 3>, 3> magnitude{};
+    std::array<std::array<std::complex<double>, 3>, 3> spectrum{};
+    const std::array<double, 3> offsets{std::exp2(-1. / 12.), 1., std::exp2(1. / 12.)};
+    constexpr int blockSize = 193;
+    constexpr int windowSize = 40 * blockSize;
+    juce::AudioBuffer<float> block(2, blockSize);
+    for (int b = 0; b < 260; ++b) {
+        block.clear();
+        for (int n = 0; n < blockSize; ++n)
+            block.setSample(0, n, float(.4 * std::sin(juce::MathConstants<double>::twoPi * 440 * (b * blockSize + n) / rate)));
+        fx.processBlock(block, midi);
+        if (block.getMagnitude(1, 0, blockSize) > .0001f) { std::cerr << "Leakage on silent channel\n"; return false; }
+        if (b < 100) continue;
+        for (int n = 0; n < blockSize; ++n) {
+            const double sample = block.getSample(0, n);
+            if (!std::isfinite(sample)) return false;
+            const int position = ((b - 100) % 40) * blockSize + n;
+            const double window = .5 - .5 * std::cos(juce::MathConstants<double>::twoPi * position / windowSize);
+            const double phase = -juce::MathConstants<double>::twoPi * position / rate;
+            for (size_t f = 0; f < frequencies.size(); ++f)
+                for (size_t k = 0; k < offsets.size(); ++k)
+                    spectrum[f][k] += sample * window * std::polar(1., phase * frequencies[f] * offsets[k]);
+        }
+        if ((b - 99) % 40 == 0) {
+            for (size_t f = 0; f < frequencies.size(); ++f)
+                for (size_t k = 0; k < offsets.size(); ++k)
+                    magnitude[f][k] += std::abs(spectrum[f][k]) / windowSize;
+            spectrum = {};
+        }
+    }
+    fx.releaseResources();
+    for (size_t f = 0; f < frequencies.size(); ++f) {
+        const auto& band = magnitude[f];
+        if (band[1] < .025 || band[1] < 3 * std::max(band[0], band[2])) {
+            std::cerr << frequencies[f] << " Hz (below/centre/above): " << band[0] << ", " << band[1] << ", " << band[2] << '\n';
+            return false;
+        }
+    }
+
+    if (!fx.setBusesLayout({{juce::AudioChannelSet::mono()}, {juce::AudioChannelSet::mono()}})) {
+        std::cerr << "Mono layout rejected\n"; return false;
+    }
+    params[3]->setValueNotifyingHost(0.f);
+    fx.setRateAndBufferSizeDetails(44100, 128);
+    fx.prepareToPlay(44100, 128);
+    const int latency = fx.getLatencySamples();
+    if (latency <= 0 || latency > 44100) { std::cerr << "Reported latency: " << latency << '\n'; return false; }
+    juce::AudioBuffer<float> mono(1, 97);
+    for (int start = 0; start <= latency + 194; start += 97) {
+        mono.clear();
+        if (start == 0) mono.setSample(0, 11, .5f);
+        fx.processBlock(mono, midi);
+        for (int i = 0; i < 97; ++i) {
+            const float expected = start + i == latency + 11 ? .5f : 0.f;
+            if (std::abs(mono.getSample(0, i) - expected) > .00001f) {
+                std::cerr << "Dry impulse at " << start + i << ": " << mono.getSample(0, i) << ", latency " << latency << '\n'; return false;
+            }
+        }
+    }
+    fx.releaseResources();
+    return true;
+}
+
 bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEffect& fx) {
     const auto desc = instance.getPluginDescription();
     if (!PreviewTransport::supportsInsert(instance) || desc.manufacturerName != "OSTF Studio"
         || fx.chainId() != "VST3|OSTF Studio|" + desc.name + "|" + juce::String(desc.uniqueId)) return false;
+    if (desc.name == "OSTF Harmonizer") return checkHarmonizer(instance);
     instance.setRateAndBufferSizeDetails(48000, 256);
     instance.prepareToPlay(48000, 256);
     // The multiband EQs intentionally load flat. Boost a mid band before measuring processing.

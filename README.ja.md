@@ -121,6 +121,8 @@ Windows は Setup.exe を実行するか、Portable ZIP を展開してくださ
 
 ## 音源・エフェクト・ミキサー
 
+トラックのFXに **OSTF Harmonizer** を挿すと、ボーカルや楽器の原音に2声のハーモニーを重ねられます。**Voice A (st)** と **Voice B (st)** はそれぞれ−12〜＋12半音、**A / B blend %** は2声の比率（0%でAのみ）、**Wet %** は原音に対するハーモニーの割合です。初期設定では完全5度上と1オクターブ上が重なります。
+
 alpha 3 は、120 BPM・4/4・32小節の空の新規プロジェクトで起動します。「トラック」から最初のパートを追加できます。「ファイル → デモソング」にはロックの Copper Mile、トランスの First Light Vector を含む6曲があります。
 
 開発ビルドには音を加工する9種類のエフェクトと、解析用VST3の **OSTF Wave Analyzer** を同梱します。解析器をマスターまたは個別トラックのFXに挿すと、左右の波形とスペクトル、ピークとRMS、位相相関、3種類のLUFS、最大トゥルーピークを確認できます。スペクトルにカーソルを置くと周波数とレベルを表示します。Freezeで表示を固定し、Reset metersで積算をやり直せます。**File → Demo songs → Paper Lantern Replies** を開くと、リードボーカルの **EQ → Compressor**、ドラムとベースの Bus A、伴奏の Bus B、Return 1 のリバーブを確認できます。トラックのセンド量、パン、フェーダー、エフェクトの順番を `.ostf` と `.ostfp` の両方で復元します。[デモ曲ごとの試聴手順](examples/demo-songs/README.md)

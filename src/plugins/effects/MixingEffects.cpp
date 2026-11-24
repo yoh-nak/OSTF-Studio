@@ -1,6 +1,6 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
-#include "../../ui/ConsoleLookAndFeel.h"
+#include "EffectControlPanel.h"
 #include <array>
 #include <cmath>
 #include <vector>
@@ -43,54 +43,6 @@ constexpr std::pair<const char*, Mode> modes[] = {{"EightBandEQ", Mode::eight},
 using Parameter = juce::AudioParameterFloat;
 using Coeff = juce::dsp::IIR::ArrayCoefficients<float>;
 using Biquad = juce::dsp::IIR::Filter<float>;
-
-class Panel final : public juce::AudioProcessorEditor {
-  public:
-    Panel(juce::AudioProcessor& processor, const std::vector<Parameter*>& params, bool graphic)
-        : AudioProcessorEditor(processor), look(ostfstudio::console::finishFor(ostfstudio::console::Theme::forest)) {
-        setLookAndFeel(&look);
-        for (auto* p : params) {
-            auto* slider = sliders.add(new juce::Slider);
-            slider->setName(p->getName(64));
-            slider->setTitle(slider->getName());
-            slider->setSliderStyle(graphic ? juce::Slider::LinearVertical : juce::Slider::RotaryHorizontalVerticalDrag);
-            slider->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 74, 20);
-            addAndMakeVisible(slider);
-            auto* label = labels.add(new juce::Label({}, slider->getName()));
-            label->setJustificationType(juce::Justification::centred);
-            addAndMakeVisible(label);
-            attachments.push_back(std::make_unique<juce::SliderParameterAttachment>(*p, *slider));
-        }
-        columns = graphic ? 10 : (params.size() >= 12 ? 6 : std::min(5, sliders.size()));
-        setSize(30 + columns * 110, 58 + ((sliders.size() + columns - 1) / columns) * (graphic ? 185 : 112));
-    }
-    ~Panel() override { setLookAndFeel(nullptr); }
-    void resized() override {
-        auto area = getLocalBounds().reduced(12, 8).withTrimmedTop(40);
-        const int rows = (sliders.size() + columns - 1) / columns;
-        for (int i = 0; i < sliders.size(); ++i) {
-            auto cell = juce::Rectangle<int>(area.getX() + area.getWidth() * (i % columns) / columns,
-                                             area.getY() + area.getHeight() * (i / columns) / rows,
-                                             area.getWidth() / columns, area.getHeight() / rows)
-                            .reduced(3);
-            labels[i]->setBounds(cell.removeFromTop(22));
-            sliders[i]->setBounds(cell);
-        }
-    }
-    void paint(juce::Graphics& g) override {
-        g.fillAll(juce::Colour(0xff26383a));
-        g.setColour(juce::Colours::white);
-        g.setFont(juce::FontOptions(21.f, juce::Font::bold));
-        g.drawText(getAudioProcessor()->getName(), 18, 5, getWidth() - 36, 34, juce::Justification::centredLeft);
-    }
-
-  private:
-    ostfstudio::console::LookAndFeel look;
-    juce::OwnedArray<juce::Slider> sliders;
-    juce::OwnedArray<juce::Label> labels;
-    std::vector<std::unique_ptr<juce::SliderParameterAttachment>> attachments;
-    int columns = 1;
-};
 
 class MixingEffect final : public juce::AudioProcessor {
   public:
@@ -186,7 +138,7 @@ class MixingEffect final : public juce::AudioProcessor {
     const juce::String getProgramName(int) override { return "Default"; }
     void changeProgramName(int, const juce::String&) override {}
     bool hasEditor() const override { return true; }
-    juce::AudioProcessorEditor* createEditor() override { return new Panel(*this, params, mode == Mode::graphic); }
+    juce::AudioProcessorEditor* createEditor() override { return new ostfstudio::EffectControlPanel(*this, params, mode == Mode::graphic); }
     bool isBusesLayoutSupported(const BusesLayout& b) const override {
         const auto in = b.getMainInputChannelSet();
         return in == b.getMainOutputChannelSet() &&

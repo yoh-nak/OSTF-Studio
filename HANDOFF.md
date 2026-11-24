@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Two-voice harmonizer
+
+On `feature/harmonizer-effect`, insert **OSTF Harmonizer** in a track's FX chain. The two fixed chromatic intervals each span −12 to +12 semitones. The default adds a perfect fifth and an octave above the input. A/B blend sets the relative voice levels and Wet sets their combined level against the time-aligned original. Both mono and stereo layouts report the pitch shifter's latency to the host.
+
+The Windows Release `ostf_studio_stock_effects` test loads the actual VST3, opens its editor, recalls its four parameters, and measures the original, upper fifth and lower octave against neighbouring pitches. It also checks stereo channel isolation and the dry impulse position at the reported latency after switching to mono at a different sample rate. It passed three consecutive runs and the full Windows suite passed 30/30. The extracted application under `dist/windows-harmonizer/Portable` passed the hosted FX test using the shipped bundles. macOS and listening through physical audio hardware remain unverified.
+
 ## Two GM instances in Neon Platforms
 
 On `feature/two-gm-demo-routing`, the gallery's first song stores eight MIDI parts on two independent GM devices. Open the guitar and bass instrument buttons at bar 17 to compare their editors. Guitar (#1) takes channels 1, 2, 5, 7 and 8. Bass (#3) takes channels 3, 6 and 10. Both the standalone score and the packaged project carry the routes. The Sharing dropdown starts with the relevant detach actions and preserves musical tracks.

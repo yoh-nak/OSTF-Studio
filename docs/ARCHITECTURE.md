@@ -2,6 +2,8 @@
 
 ## Shared instruments, track ordering and voice processing
 
+OSTF Harmonizer is a mono/stereo audio insert. Two Signalsmith Stretch processors transpose the same input by separate fixed chromatic intervals. The processor delays the dry signal by the analysis and synthesis latency, reports that latency to the host, and smooths changes to both mix controls. The VST3 state stores both intervals, voice balance and wet level. It uses the existing effect catalog and session state mechanism.
+
 The session stores display order as a list of stable source track IDs in its Studio host extension. Sorting occurs within the fixed timeline groups. A reorder therefore leaves MIDI destinations, audio routing, automation and source clips attached to their original tracks. Opening a shared part resolves its instrument owner before looking up an editor. The owner alone renders the merged channel-specific MIDI streams.
 
 The drag handle and the header menu use the same placement rules. The primary melody precedes the generated voicing and other global note rows. Only backing vocals move within the global group. Each shared member opens the owner's editor from its instrument button, with routing on the adjacent arrow. Loading the current instrument from the browser or file picker reuses the shared instance. Replacing it from a member requires confirmation and targets the owner.
