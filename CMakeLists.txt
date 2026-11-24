@@ -246,5 +246,8 @@ if (OSTF_STUDIO_BUILD_GUI)
             "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../.."
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/blue-hour-waltz.ostfp")
         set_tests_properties(ostf_studio_stock_effects PROPERTIES TIMEOUT 90)
+        add_test(NAME ostf_studio_plugin_focus COMMAND OSTFStudio --plugin-focus-smoke
+            "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF Harmonizer.vst3")
+        set_tests_properties(ostf_studio_plugin_focus PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
     endif()
 endif()

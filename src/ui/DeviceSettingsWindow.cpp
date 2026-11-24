@@ -172,7 +172,7 @@ private:
 }
 
 DeviceSettingsWindow::DeviceSettingsWindow()
-    : DocumentWindow(TRANS("Audio / MIDI Settings"), juce::Colour(0xff1b2734), DocumentWindow::closeButton) {
+    : DocumentWindow(TRANS("Audio / MIDI Settings"), juce::Colour(0xff1b2734), DocumentWindow::closeButton, false) {
     setUsingNativeTitleBar(true);
     setContentOwned(new DeviceSettingsContent(), true);
     setResizable(true, true);

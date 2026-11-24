@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Plug-in editor focus
+
+Branch `fix/plugin-editor-focus`. Track instruments, track/output FX and Splice open in desktop windows associated with the Studio workspace. Their native peers are created on explicit open. The FX chain's Edit action exits its modal callout before showing the editor. Audio-device setup and Mackie port discovery can run with their settings windows off the desktop.
+
+The `ostf_studio_plugin_focus` regression opens the real OSTF Harmonizer from the master FX chain. It checks the editor following an idle period and during off-device transport playback, then activates the arrangement and closes and reopens the effect. On Windows it also checks the OS owner, keyboard focus and window stacking order.
+
+The Windows x64 desktop regression passed three times in succession, including 16 seconds without input in each run. The final Release suite passed all 31 tests. The executable and Harmonizer in `dist/windows-plugin-focus/Portable` also passed the focus regression together. macOS window behavior has not been exercised locally.
+
 ## Japanese Formant Singer and local voices
 
 Branch `feature/japanese-formant-singer`. In the demo gallery, select **Paper Lantern Replies** and play bar 5. The two verses use Japanese morae aligned to melody notes. The singer reads kana or the optional OSTF 5.0 lyric pronunciation field and supports note-targeted scoop and vibrato. Studio also sends pitch bend and expression to the instrument. In other hosts the VST3 file player follows the selected melodic part.

@@ -2,6 +2,8 @@
 
 ## Shared instruments, track ordering and voice processing
 
+Studio creates native editor windows when the user opens an instrument, an effect or Splice Sounds. JUCE associates the window with the Studio workspace so the OS keeps it above its owner. Editing an FX slot dismisses the chain popup before showing the editor. Background audio-device and control-surface setup can initialise without creating a desktop window.
+
 OSTF Harmonizer is a mono/stereo audio insert. Two Signalsmith Stretch processors transpose the same input by separate fixed chromatic intervals. The processor delays the dry signal by the analysis and synthesis latency, reports that latency to the host, and smooths changes to both mix controls. The VST3 state stores both intervals, voice balance and wet level. It uses the existing effect catalog and session state mechanism.
 
 The session stores display order as a list of stable source track IDs in its Studio host extension. Sorting occurs within the fixed timeline groups. A reorder therefore leaves MIDI destinations, audio routing, automation and source clips attached to their original tracks. Opening a shared part resolves its instrument owner before looking up an editor. The owner alone renders the merged channel-specific MIDI streams.

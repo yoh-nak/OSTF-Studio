@@ -145,10 +145,19 @@ static_assert(std::size(selectableTimelineLanes) == std::size(timelineMenuLabels
 
 constexpr unsigned laneBit(TimelineLane kind) { return 1u << static_cast<unsigned>(kind); }
 
+void showStudioWindow(juce::DocumentWindow& window, juce::Component& owner) {
+    if (!window.isOnDesktop()) {
+        window.setAssociatedComponent(&owner);
+        window.addToDesktop();
+    }
+    window.setVisible(true);
+    window.toFront(true);
+}
+
 class PluginWindow final : public juce::DocumentWindow {
 public:
     explicit PluginWindow(const juce::String& name)
-        : DocumentWindow(name, juce::Colour(panel), DocumentWindow::closeButton) {
+        : DocumentWindow(name, juce::Colour(panel), DocumentWindow::closeButton, false) {
         setUsingNativeTitleBar(true);
     }
     std::function<void()> onClosed;
@@ -188,7 +197,13 @@ public:
             row.name.setJustificationType(juce::Justification::centredLeft);
             row.up.setTitle("Move effect " + juce::String(index + 1) + " up");
             row.down.setTitle("Move effect " + juce::String(index + 1) + " down");
-            row.open.onClick = [edit, index] { edit(index); };
+            row.open.onClick = [this, edit, index] {
+                if (auto* popup = findParentComponentOfClass<juce::CallOutBox>()) {
+                    popup->exitModalState(0);
+                    popup->setVisible(false);
+                }
+                edit(index);
+            };
             row.remove.onClick = [this, remove, index] { remove(index); refresh(); };
             row.up.onClick = [this, index] { moveRow(index, index - 1); };
             row.down.onClick = [this, index] { moveRow(index, index + 1); };
@@ -1418,8 +1433,7 @@ void MainComponent::menuItemSelected(int item, int) {
         case showDevices:
             if (!deviceSettings_) deviceSettings_ = std::make_unique<DeviceSettingsWindow>();
             deviceSettings_->devices();
-            deviceSettings_->setVisible(true);
-            deviceSettings_->toFront(true);
+            showStudioWindow(*deviceSettings_, *this);
             break;
         case showSamplesPane: togglePluginBrowser(true); break;
         case showPlugins: togglePluginBrowser(); break;
@@ -1945,10 +1959,7 @@ void MainComponent::openController(bool show) {
         restore();
         surfaceDevices_ = juce::MidiDeviceListConnection::make(restore);
     }
-    if (show) {
-        surfaceWindow_->setVisible(true);
-        surfaceWindow_->toFront(true);
-    }
+    if (show) showStudioWindow(*surfaceWindow_, *this);
 }
 
 void MainComponent::connectController(juce::MidiDeviceInfo port) {
@@ -4278,8 +4289,7 @@ void MainComponent::openTrackPluginEditor(std::size_t index) {
         window->onClosed = [this, index] { updatePresetLabel(index); };
         pluginEditor = std::move(window);
     }
-    pluginEditor->setVisible(true);
-    pluginEditor->toFront(true);
+    showStudioWindow(*pluginEditor, *this);
     statusLabel_.setText(strip.playableInstrument ? TRANS("Instrument ready for track playback")
                                                  : TRANS("Plug-in editor ready / audio routing unavailable for this plug-in"),
                          juce::dontSendNotification);
@@ -4298,7 +4308,7 @@ void MainComponent::offerInstrumentProgram(std::size_t owner, int channel, int p
     }
     if (choices.isEmpty()) return;
     auto dialog = std::make_unique<juce::AlertWindow>(TRANS("Write instrument preset to the track?"),
-        TRANS("MIDI program (0-127)") + "  " + juce::String(program), juce::MessageBoxIconType::QuestionIcon, this);
+        TRANS("MIDI program (0-127)") + "  " + juce::String(program), juce::MessageBoxIconType::QuestionIcon, trackControls_[owner]->editor.get());
     dialog->addComboBox("track", choices, TRANS("Track"));
     const auto cursor = juce::jlimit<juce::int64>(0, project_->playbackEndTick() - 1, cursorTick_);
     juce::StringArray positions{TRANS("Song start")};
@@ -4912,8 +4922,7 @@ void MainComponent::editLinkTempo() {
 
 void MainComponent::openSplice() {
     if (spliceWindow_) {
-        spliceWindow_->setVisible(true);
-        spliceWindow_->toFront(true);
+        showStudioWindow(*spliceWindow_, *this);
         updateSplicePlayback();
         return;
     }
@@ -4944,8 +4953,7 @@ void MainComponent::openSplice() {
                 window->centreAroundComponent(safe.getComponent(), window->getWidth(), window->getHeight());
                 window->onClosed = [safe] { if (safe) safe->updateSplicePlayback(); };
                 safe->spliceWindow_ = std::move(window);
-                safe->spliceWindow_->setVisible(true);
-                safe->spliceWindow_->toFront(true);
+                showStudioWindow(*safe->spliceWindow_, *safe);
                 safe->statusLabel_.setText("Splice Sounds", juce::dontSendNotification);
                 safe->updateSplicePlayback();
             });
@@ -4972,8 +4980,7 @@ void MainComponent::openEffectEditor(bool output, std::size_t index, std::size_t
         window->centreWithSize(window->getWidth(), window->getHeight());
         slot.editor = std::move(window);
     }
-    slot.editor->setVisible(true);
-    slot.editor->toFront(true);
+    showStudioWindow(*slot.editor, *this);
 }
 
 void MainComponent::appendEffect(bool output, std::size_t index, const juce::PluginDescription& description) {

@@ -3,6 +3,7 @@
 #include "ui/PluginRoles.h"
 #include "ui/MediaImport.h"
 #include <BinaryData.h>
+#include <iostream>
 #if JUCE_WINDOWS
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -191,7 +192,7 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     studio.trackControls_[2]->plugin.onClick();
     const auto* sharedWindow = studio.trackControls_[0]->editor.get();
     studio.trackControls_[3]->plugin.onClick();
-    if (!sharedWindow || studio.trackControls_[0]->editor.get() != sharedWindow || studio.trackControls_[2]->editor || studio.trackControls_[3]->editor) return 197;
+    if (!sharedWindow || sharedWindow->getAssociatedComponent() != &studio || studio.trackControls_[0]->editor.get() != sharedWindow || studio.trackControls_[2]->editor || studio.trackControls_[3]->editor) return 197;
     studio.loadTrackPlugin(2, original->getPluginDescription());
     if (studio.trackControls_[2]->loading || studio.trackControls_[2]->instance || studio.trackControls_[2]->outputTrack != 0) return 202;
     studio.trackControls_[0]->plugin.onClick();
@@ -266,6 +267,124 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     if (studio.trackControls_[5]->outputTrack || studio.hasSharedParts(1) || !studio.hasSharedParts(0)
         || studio.trackControls_[2]->outputTrack != 0 || studio.project_->sourceTrackCount() != 7) return 220;
     return 0;
+}
+
+class PluginFocusProbe final : public juce::Timer {
+public:
+    PluginFocusProbe(const juce::File& bundle, std::function<void(int)> done)
+        : file(bundle), finished(std::move(done)) {
+        studio.setBounds(-10000, -10000, 1440, 900);
+        studio.addToDesktop(juce::ComponentPeer::windowHasTitleBar);
+        studio.setVisible(true);
+        studio.newProject();
+        startTimer(150);
+    }
+private:
+    int openFromChain() {
+        juce::OwnedArray<juce::PluginDescription> types;
+        studio.pluginFormats_.getFormat(0)->findAllTypesForFile(types, file.getFullPathName());
+        if (types.size() != 1) return 1;
+        auto& chain = studio.effectChain(true, 0);
+        juce::String error;
+        auto& slot = chain.slots.emplace_back();
+        slot.effect = studio.pluginFormats_.createPluginInstance(*types[0], 48000, 256, error);
+        if (!slot.effect) return 2;
+        studio.showEffects(true, 0);
+        auto* box = dynamic_cast<juce::CallOutBox*>(juce::Component::getCurrentlyModalComponent());
+        if (!box || !box->getChildComponent(0)) return 3;
+        for (auto* child : box->getChildComponent(0)->getChildren()) {
+            auto* edit = dynamic_cast<juce::TextButton*>(child);
+            if (!edit || edit->getButtonText() != TRANS("Edit") || !edit->isShowing()) continue;
+            edit->onClick();
+            editor = slot.editor.get();
+            if (!editor || box->isCurrentlyModal() || editor->isCurrentlyBlockedByAnotherModalComponent()
+                || editor->getAssociatedComponent() != &studio || !editor->isShowing()) return 4;
+            editor->setTopLeftPosition(-9500, -9500);
+            return 0;
+        }
+        return 5;
+    }
+
+    bool editorFocused() const {
+#if JUCE_WINDOWS
+        const auto handle = static_cast<HWND>(editor->getPeer()->getNativeHandle());
+        const auto owner = GetWindow(handle, GW_OWNER);
+        const auto host = studio.getPeer()->getNativeHandle();
+        const auto focusedRoot = GetAncestor(GetFocus(), GA_ROOT);
+        DWORD foregroundProcess = 0;
+        GetWindowThreadProcessId(GetForegroundWindow(), &foregroundProcess);
+        // Windows can leave an unattended test in the background. Studio must respect that too.
+        const bool studioInactive = focusedRoot == nullptr && GetActiveWindow() == nullptr
+            && foregroundProcess != GetCurrentProcessId();
+        const bool correctFocus = focusedRoot == handle || studioInactive;
+        const bool correctStack = owner == host && (GetWindowLongPtrW(handle, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0;
+        if (!correctFocus || !correctStack)
+            std::cerr << "Focused root " << focusedRoot << ", editor " << handle << ", owner " << owner
+                      << ", workspace " << host << ", foreground PID " << foregroundProcess
+                      << ", Studio PID " << GetCurrentProcessId() << '\n';
+        return correctFocus && correctStack;
+#else
+        return editor->getPeer()->isFocused();
+#endif
+    }
+    int advance() {
+        if (tick == 0) {
+            const int result = openFromChain();
+            // Leave the editor alone across Studio's 15-second prompt guide refresh.
+            startTimer(16000);
+            return result;
+        }
+        if (!editor || !editorFocused()) {
+            std::cerr << "Plug-in focus lost at check " << tick << '\n';
+            return 6;
+        }
+        if (tick == 1) {
+            if (studio.surfaceWindow_ && studio.surfaceWindow_->isOnDesktop()) return 12;
+            if (studio.deviceSettings_ && studio.deviceSettings_->isOnDesktop()) return 13;
+            startTimer(150);
+        }
+        if (tick == 3) {
+            PreviewTransport::Inserts inserts{};
+            inserts[0][0] = studio.effectChain(true, 0).slots.front().effect.get();
+            if (studio.transport_.preparePlayback(*studio.project_, {}, inserts, 48000, 256).failed()) return 7;
+            studio.transportActive_ = true;
+            studio.startTimerHz(24);
+        }
+        if (studio.transportActive_) {
+            juce::AudioBuffer<float> block(2, 256);
+            studio.transport_.renderBlock(block.getArrayOfWritePointers(), 2, 256);
+        }
+        if (tick == 7) {
+            if (studio.cursorTick_ <= 0) return 8;
+            studio.stopTransport();
+            studio.getPeer()->toFront(true);
+            studio.grabKeyboardFocus();
+#if JUCE_WINDOWS
+            auto hwnd = static_cast<HWND>(studio.getPeer()->getNativeHandle());
+            const auto child = editor->getPeer()->getNativeHandle();
+            while (hwnd && hwnd != child) hwnd = GetWindow(hwnd, GW_HWNDPREV);
+            if (!hwnd) return 9;
+#endif
+            editor->closeButtonPressed();
+            if (editor->isVisible()) return 10;
+            studio.openEffectEditor(true, 0, 0);
+            if (editor != studio.effectChain(true, 0).slots.front().editor.get() || !editor->isShowing()) return 11;
+        }
+        return 0;
+    }
+    void timerCallback() override {
+        const int result = advance();
+        if (result != 0 || ++tick == 9) { stopTimer(); finished(result); }
+    }
+    juce::File file;
+    std::function<void(int)> finished;
+    MainComponent studio;
+    juce::Component::SafePointer<juce::DocumentWindow> editor;
+    int tick = 0;
+};
+
+std::unique_ptr<juce::Timer> startPluginFocusCheck(const juce::File& bundle, std::function<void(int)> done) {
+    return std::make_unique<PluginFocusProbe>(bundle, std::move(done));
 }
 
 // Optional integration check using the user's installed VST3 and its real native editor.

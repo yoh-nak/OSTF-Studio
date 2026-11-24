@@ -229,6 +229,7 @@ int checkStockEffects(const juce::StringArray&);
 int checkStudioInstruments(const juce::StringArray&);
 int checkTrackView(const juce::File&);
 std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)>);
+std::unique_ptr<juce::Timer> startPluginFocusCheck(const juce::File&, std::function<void(int)>);
 int checkPianoEdits(const juce::File&);
 int checkTheoryGuide(const juce::File&);
 int checkNotation(const juce::File&, const juce::File&);
@@ -242,11 +243,13 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
-        if (args.size() == 1 && (args[0] == "--splice-window-smoke" || args[0] == "--splice-pane-smoke")) {
-            spliceCheck_ = startSpliceWindowCheck([this](int result) {
+        const bool spliceCheck = args.size() == 1 && (args[0] == "--splice-window-smoke" || args[0] == "--splice-pane-smoke");
+        if (spliceCheck || (args.size() == 2 && args[0] == "--plugin-focus-smoke")) {
+            auto finished = [this](int result) {
                 setApplicationReturnValue(result);
                 quit();
-            });
+            };
+            windowCheck_ = spliceCheck ? startSpliceWindowCheck(finished) : startPluginFocusCheck(juce::File(args[1]), finished);
             return;
         }
 #if JUCE_WINDOWS && defined(_MSC_VER)
@@ -341,7 +344,7 @@ public:
         }
     }
     void shutdown() override {
-        spliceCheck_.reset();
+        windowCheck_.reset();
         startup_.reset();
         mainWindow_.reset();
     }
@@ -391,7 +394,7 @@ private:
     }
     std::unique_ptr<MainWindow> mainWindow_;
     std::unique_ptr<StartupScreen> startup_;
-    std::unique_ptr<juce::Timer> spliceCheck_;
+    std::unique_ptr<juce::Timer> windowCheck_;
     juce::File queuedDocument_;
 };
 

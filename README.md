@@ -1,5 +1,7 @@
 # OSTF Studio
 
+Instrument and FX editors stay visible above the Studio arrangement while you work. Click **Edit** in an FX chain to open its controls directly. Click the arrangement to give it keyboard focus while keeping the editor in view.
+
 The mixing collection adds 8-band, dynamic, graphic and parametric EQ, multimode and high/low-pass filters, gate, delay, de-esser, three compressor configurations and dedicated electric-guitar, acoustic-guitar and bass rigs. Each is a separate VST3.
 
 **OSTF Formant Singer** sings both Japanese verses of **Paper Lantern Replies** locally. The lead enters at bar 5. The instrument reads aligned kana or a lyric unit’s pronunciation and renders consonants, vowels, scoops and vibrato. Choose **Load voice folder...** to use your own kana-named WAV recordings or a Japanese UTAU single-pitch CV folder containing `oto.ini`. **Use built-in voice** restores the synthesized voice. In another VST3 host, open an `.ostf` inside the instrument, select a part and play the host transport. Its file player follows one melodic line. Use MusicXML for score/lyric exchange with Synthesizer V Studio 2 Pro.
