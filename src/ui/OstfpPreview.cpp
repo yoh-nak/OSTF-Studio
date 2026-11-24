@@ -478,20 +478,61 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             std::stable_sort(curve.points.begin(), curve.points.end(), [](const auto& a, const auto& b) { return a.tick < b.tick; });
         if (group == MixerTrackGroup::other && !notes.empty()) group = MixerTrackGroup::pitched;
     }
+    // The lyric document can be displayed even when no singing instrument or notes exist.
+    out->displayDocument = score["song"]["primaryLyricDocumentId"].toString();
+    if (lyrics["voices"].isArray())
+        for (const auto& voice : array(lyrics["voices"]))
+            out->trackLyricDocuments[voice["trackId"].toString()].addIfNotAlreadyThere(voice["documentId"].toString());
+    if (out->displayDocument.isEmpty() && out->primaryMelodyTrack) {
+        const auto docs = out->trackLyricDocuments.find(out->trackIds[int(*out->primaryMelodyTrack)]);
+        if (docs != out->trackLyricDocuments.end()) out->displayDocument = docs->second[0];
+    }
+    if (out->displayDocument.isEmpty() && lyrics["documents"].size())
+        out->displayDocument = lyrics["documents"][0]["id"].toString();
+    std::map<juce::String, juce::Range<juce::int64>> noteRanges, phraseRanges;
+    for (const auto& part : out->pitchedNotes)
+        for (const auto& note : part)
+            if (out->vocalNotes.contains(note.id)) noteRanges[note.id] = {note.startTick,note.endTick};
+    auto extendPhrase = [&](const juce::var& unit, juce::Range<juce::int64> range) {
+        auto& span = phraseRanges[unit["phraseId"].toString()];
+        span = span.isEmpty() ? range : span.getUnionWith(range);
+    };
+    for (const auto& [id, unit] : lyricUnits)
+        if (unit.hasProperty("start"))
+            extendPhrase(unit, juce::Range<juce::int64>::withStartAndLength(integer(unit["start"]), integer(unit["duration"])));
+    if (lyrics["alignments"].isArray())
+        for (const auto& alignment : array(lyrics["alignments"]))
+            for (const auto& unitId : array(alignment["unitIds"])) {
+                const auto unit = lyricUnits.find(unitId.toString());
+                if (unit == lyricUnits.end() || unit->second.hasProperty("start")) continue;
+                for (const auto& id : array(alignment["noteIds"]))
+                    if (auto n = noteRanges.find(id.toString()); n != noteRanges.end()) extendPhrase(unit->second,n->second);
+            }
+    if (lyrics["phrases"].isArray())
+        for (const auto& phrase : array(lyrics["phrases"])) {
+            auto span = phraseRanges[phrase["id"].toString()];
+            if (phrase.hasProperty("start"))
+                span = juce::Range<juce::int64>::withStartAndLength(integer(phrase["start"]), integer(phrase["duration"]));
+            if (!span.isEmpty() && phrase["text"].toString().isNotEmpty())
+                out->displayPhrases.push_back({span.getStart(),span.getEnd(),phrase["text"].toString(),
+                                               phrase["pronunciation"].toString(),phrase["documentId"].toString()});
+        }
+    std::stable_sort(out->displayPhrases.begin(),out->displayPhrases.end(),[](const auto& a,const auto& b){return a.start < b.start;});
+    std::vector<ArrangementRegion> words, readings;
+    for (const auto& phrase : out->displayPhrases)
+        if (phrase.document == out->displayDocument) words.push_back(region(phrase.start,phrase.end,phrase.text));
     if (!out->lyricTrackIds.isEmpty()) {
         const auto firstVocal = static_cast<size_t>(out->trackIds.indexOf(out->lyricTrackIds[0]));
         auto lead = out->primaryMelodyTrack.value_or(firstVocal);
         if (!out->lyricTrackIds.contains(out->trackIds[int(lead)])) lead = firstVocal;
-        std::vector<ArrangementRegion> words, readings;
         for (const auto& note : out->pitchedNotes[lead]) {
             const auto found = out->vocalNotes.find(note.id);
-            if (found == out->vocalNotes.end() || found->second.text.isEmpty()) continue;
-            words.push_back(region(note.startTick, note.endTick, found->second.text));
+            if (found == out->vocalNotes.end() || found->second.pronunciation.isEmpty()) continue;
             readings.push_back(region(note.startTick, note.endTick, found->second.pronunciation));
         }
-        addLane(out->globalLanes, "Display lyrics", std::move(words), TimelineLane::displayLyrics);
-        addLane(out->globalLanes, "Pronunciation", std::move(readings), TimelineLane::pronunciation);
     }
+    if (!words.empty()) addLane(out->globalLanes, "Display lyrics", std::move(words), TimelineLane::displayLyrics);
+    if (!readings.empty()) addLane(out->globalLanes, "Pronunciation", std::move(readings), TimelineLane::pronunciation);
     if (!voicingNotes.empty() || retainVoicingRow) {
         out->chordVoicingTrack = out->trackLanes.size();
         addLane(out->trackLanes, "Chord Voicing", std::move(voicings), TimelineLane::voicing);
@@ -2223,21 +2264,6 @@ juce::Result OstfpPreview::editVocalNote(size_t track, const juce::String& id, c
                 [&](const auto& other) { return array(other["unitIds"]).contains(unit["id"]); }) > 1;
             require(unit.isObject() && !shared && array(alignment["noteIds"]).size() == 1 && array(alignment["unitIds"]).size() == 1,
                     "This lyric is shared by multiple notes or units.");
-            // Keep any spacing and punctuation in the authored phrase when the units line up.
-            if (phrase.isObject() && unit["text"] != edit.text) {
-                const auto line = phrase["text"].toString();
-                int cursor = 0, replaceAt = -1;
-                for (const auto& u : array(lyrics["units"])) {
-                    if (u["phraseId"] != phrase["id"]) continue;
-                    const auto word = u["text"].toString();
-                    const int start = line.indexOf(cursor,word);
-                    if (start < 0) { replaceAt = -1; break; }
-                    if (u["id"] == unit["id"]) replaceAt = start;
-                    cursor = start + word.length();
-                }
-                if (replaceAt >= 0) phrase.getDynamicObject()->setProperty("text",
-                    line.replaceSection(replaceAt,unit["text"].toString().length(),edit.text));
-            }
             unit.getDynamicObject()->setProperty("text", edit.text);
         }
         if (reading != edit.text) unit.getDynamicObject()->setProperty("pronunciation", reading);

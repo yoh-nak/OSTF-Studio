@@ -34,6 +34,7 @@ struct VoiceBank {
     juce::File portrait;
     std::map<int, RecordedMora> sounds;
     static std::unique_ptr<VoiceBank> load(const juce::File& directory, juce::String& error);
+    static const VoiceBank& factory();
     const RecordedMora* find(Phone p) const {
         auto it = sounds.find(p.sampleKey());
         return it == sounds.end() ? nullptr : &it->second;

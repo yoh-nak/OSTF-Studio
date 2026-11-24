@@ -1,4 +1,4 @@
-﻿#include "../src/plugins/instruments/SingingScore.h"
+#include "../src/plugins/instruments/SingingScore.h"
 #include "../src/plugins/instruments/VoiceBank.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <cmath>
@@ -104,6 +104,9 @@ int main(int argc, char** argv) {
     if (morae.size() != 5 || morae[0].glide != 1 || morae[0].onset != velar || morae[1].onset != closure
         || morae[2].onset != sh || morae[3].vowel != 1 || morae[4].onset != moraN) return 8;
     if (!testRecordedVoice()) return 9;
+    const auto& factory = VoiceBank::factory();
+    if (factory.sounds.size() < 90 || !factory.find({0,vowelOnly}) || !factory.find({1,sh})
+        || !factory.find({3,m}) || !factory.find({4,n}) || !factory.find({4,velar,1})) return 16;
     bool hasScoop = false, hasVibrato = false, hasClosure = false;
     for (const auto& syllable : parts.front().syllables) {
         hasScoop |= syllable.phone.delivery == scoop && syllable.phone.intensity > 0;
@@ -124,6 +127,14 @@ int main(int argc, char** argv) {
         return juce::AudioBuffer<float>(audio);
     };
     const auto a = render({0,0}), i = render({1,0}), scooped = render({0,0,0,scoop,100});
+    // Verify that a default MIDI note really uses the factory vowel waveform.
+    const auto* vowelA = factory.find({0,vowelOnly});
+    double position = 0;
+    const double step = juce::MidiMessage::getMidiNoteInHertz(60) * vowelA->period / 48000;
+    for (int n=0; n<a.getNumSamples(); ++n) {
+        const auto expected = vowelA->read(position,step) * (105.f/127);
+        if (n >= 512 && std::abs(a.getSample(0,n)-std::tanh(expected)) > .002f) return 17;
+    }
     double difference = 0;
     for (int n = 0; n < audio.getNumSamples(); ++n) difference += std::abs(a.getSample(0,n) - i.getSample(0,n));
     if (!std::isfinite(difference) || difference < 1) return 4;

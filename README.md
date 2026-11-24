@@ -1,12 +1,14 @@
 # OSTF Studio
 
+In **Paper Lantern Replies**, bar 5 pairs the lead-sheet text 雨の音が with Am9. The lead singer articulates the kana on the melody notes. The backing singer enters in bar 18 on its own track. Use **First lyric** on either part to locate its entrance and **Overlay vocal parts** to view both melodies. The factory singer uses offline Japanese syllable samples generated from MMDAgent's Mei voice.
+
 Instrument and FX editors stay visible above the Studio arrangement while you work. Click **Edit** in an FX chain to open its controls directly. Click the arrangement to give it keyboard focus while keeping the editor in view.
 
 The mixing collection adds 8-band, dynamic, graphic and parametric EQ, multimode and high/low-pass filters, gate, delay, de-esser, three compressor configurations and dedicated electric-guitar, acoustic-guitar and bass rigs. Each is a separate VST3.
 
 Open **File → Demo songs → Paper Lantern Replies**, select **Lead Vocal**, click **First lyric**, then press **Play**. The lead enters at bar 5. The lead and backing singers receive their own notes, syllables and expression from Studio. The arrangement shows the lead's written lyrics and pronunciation. Select a vocal track to see its readings above the notes and its note-level pitch contours. Click a lyric cell or double-click a note to edit words, pronunciation, scoop or vibrato. The parameter lane also edits the depth of each technique.
 
-**OSTF Formant Singer** includes an offline synthetic voice. Choose **Load voice folder...** to use your own kana-named WAVs or a Japanese UTAU single-pitch CV folder with `oto.ini`. The editor displays the singer name and portrait if supplied in `character.txt`. **Use built-in voice** restores the synthesized voice. In other VST3 hosts, open an `.ostf` in the instrument and choose a part to follow the host transport.
+**OSTF Formant Singer** includes an offline synthetic voice. Choose **Load voice folder...** to use your own kana-named WAVs or a Japanese UTAU single-pitch CV folder with `oto.ini`. The editor displays the singer name and portrait if supplied in `character.txt`. **Use built-in voice** restores the embedded Mei voice. In other VST3 hosts, open an `.ostf` in the instrument and choose a part to follow the host transport.
 
 The first demo, **Neon Platforms**, plays eight tracks through two GM Sound Modules. At bar 17, open **GM #1** from Electric Guitar Hook and **GM #3** from Bass to compare their channel meters during the chorus. The number after # identifies the track hosting that instrument. Each part opens its own group's editor. **Sharing ▾** lets you disconnect the current part, or choose one or all parts from the host. Disconnecting preserves the tracks and clips.
 

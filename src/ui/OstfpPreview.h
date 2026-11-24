@@ -208,6 +208,10 @@ struct OstfpPreview {
     std::vector<ArrangementLane> globalLanes, trackLanes;
     std::vector<std::vector<PitchedNote>> pitchedNotes, drumNotes;
     std::map<juce::String, VocalNote> vocalNotes;
+    struct DisplayPhrase { juce::int64 start, end; juce::String text, reading, document; };
+    juce::String displayDocument;
+    std::map<juce::String, juce::StringArray> trackLyricDocuments;
+    std::vector<DisplayPhrase> displayPhrases;
     juce::StringArray lyricTrackIds;
     juce::Result editVocalNote(size_t track, const juce::String& noteId, const VocalNote&, juce::MemoryBlock& before);
     struct ProgramChange { juce::int64 tick; int program; std::optional<int> channel; juce::int64 order = 1; size_t ordinal = 0; };

@@ -454,6 +454,10 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
         return 1;
     if (!checkInterchange(fixture,dir)) return 48;
     auto s = notationScore(*p);
+    juce::MemoryOutputStream leadSheet;
+    if (writeChordPro(leadSheet,s).failed() ||
+        !leadSheet.toString().contains(juce::String::fromUTF8("[Am9]雨の音が")) ||
+        leadSheet.toString().contains("Ah")) return 41;
     const auto ensemble = dir.getChildFile("ensemble.musicxml");
     std::unique_ptr<OstfpPreview> ensembleImport;
     juce::String ensembleInfo;

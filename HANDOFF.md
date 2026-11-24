@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Japanese factory voice and lead-sheet lyrics
+
+Branch `fix/vocal-lyrics-and-chorus`. Paper Lantern Replies opens with two independent Formant Singer instances. Its lead enters in bar 5 and its backing vocal enters in bar 18. The demo's Japanese verses have timed written phrases and separate note-level readings. Studio uses the same written phrases in the arrangement, piano roll, lead sheet and ChordPro. The compact vocal header exposes the instrument. Overlaying the other singing parts in the piano roll affects display only.
+
+The VST3 embeds a local syllable bank derived from MMDAgent's Mei voice. Its source notice and the offline generator are under `assets/voices`. The singing regression checks the factory vowel against the samples emitted by the processor. The hosted `--vocal-track-smoke` checks the two instruments, the written phrase and the first simultaneous lead and harmony notes. Pass a third argument to render the lead verse as a WAV file.
+
+Both the packaged and standalone demo passed the portable host check on Windows x64. Rendering the lead verse produced a 12.308-second stereo WAV at 48 kHz. Changing only the second note reading from め to し changed the PCM at that note and left the preceding and subsequent notes sample-identical. At tick 66720, the lead F4 and backing D4 overlap and both independent singer channels register output. The seven demo scores and projects passed the pinned official format checks. All 31 CTest cases passed in the Windows Release build. The verified executable, corresponding portable ZIP and lead-only WAV are in `dist/windows-vocal-parts`. Physical-speaker listening and macOS playback remain unverified.
+
 ## Cue monitoring
 
 Branch `fix/cue-monitor-routing`. Track headphone switches feed a stereo Cue bus independently of the number of device outputs. The Cue strip meters the sum after its fader. With four enabled outputs the second pair carries Cue. **Listen on 1-2** auditions the same bus on the primary pair, and a second click restores Master. The strip reports the active destination when the audio device opens or changes.

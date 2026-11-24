@@ -83,6 +83,10 @@ NotationScore notationScore(const OstfpPreview& project) {
     s.barTicks = project.ticksPerBar;
     s.bars = project.bars.endBar - project.bars.firstBar;
     const auto doc = juce::JSON::parse(project.sourceScore.toString());
+    s.displayPhrases = project.displayPhrases;
+    s.primaryDocument = project.displayDocument;
+    for (const auto& voice : items(doc["lyrics"]["voices"]))
+        s.voiceDocuments[voice["id"].toString()] = voice["documentId"].toString();
     const auto timeline = doc["timeline"];
     const auto meter = timeline["meterChanges"][0];
     s.beats = static_cast<int>(meter["numerator"]);
@@ -146,7 +150,7 @@ NotationScore notationScore(const OstfpPreview& project) {
         if (mark.at >= 0 && mark.text.isNotEmpty())
             s.lyrics.push_back(std::move(mark));
     }
-    if (s.lyrics.empty())
+    if (s.lyrics.empty() && s.displayPhrases.empty())
         for (const auto& phrase : items(doc["lyrics"]["phrases"]))
             if (auto text = phrase["text"].toString().trim(); text.isNotEmpty()) s.unalignedPhrases.add(text);
     std::stable_sort(s.lyrics.begin(), s.lyrics.end(), [](const auto& a, const auto& b) { return a.at < b.at; });
@@ -507,7 +511,7 @@ juce::Result writeSongXml(juce::OutputStream &out, const NotationScore &s) {
 }
 
 juce::Result writeChordPro(juce::OutputStream &out, const NotationScore &s) {
-    if (s.chords.empty() && s.lyrics.empty() && s.unalignedPhrases.isEmpty())
+    if (s.chords.empty() && s.lyrics.empty() && s.displayPhrases.empty() && s.unalignedPhrases.isEmpty())
         return juce::Result::fail("The song has no chords or lyrics to export.");
     auto clean = [](juce::String text) { return text.replaceCharacters("\r\n{}[]", "      ").trim(); };
     juce::String text = "{title: " + clean(s.title) + "}\n";
@@ -519,8 +523,12 @@ juce::Result writeChordPro(juce::OutputStream &out, const NotationScore &s) {
     std::map<Tick, juce::String> lines, sections;
     for (const auto &chord : s.chords)
         lines[chord.at] += "[" + clean(chord.text) + "]";
-    for (const auto &lyric : s.lyrics)
-        lines[lyric.at] += clean(lyric.text) + " ";
+    if (s.displayPhrases.empty()) {
+        for (const auto &lyric : s.lyrics) lines[lyric.at] += clean(lyric.text) + " ";
+    } else {
+        for (const auto& phrase : s.displayPhrases)
+            if (phrase.document == s.primaryDocument) lines[phrase.start] += clean(phrase.text) + " ";
+    }
     for (const auto &section : s.sections) {
         sections[section.at] = clean(section.text);
         lines.try_emplace(section.at);
@@ -715,13 +723,31 @@ void drawLeadContents(juce::Graphics& g, const NotationScore& song, Tick from, j
                  live ? 15.f : 10.f, false);
     if (!options.showLyrics || area.isEmpty())
         return;
+    if (options.lyricDisplay != LyricDisplay::pronunciation && !song.displayPhrases.empty()) {
+        const auto voice = song.voiceDocuments.find(options.lyricVoice);
+        const auto& document = voice == song.voiceDocuments.end() ? song.primaryDocument : voice->second;
+        for (const auto& phrase : song.displayPhrases) {
+            if (phrase.start >= to) break;
+            if (phrase.start < from || phrase.document != document) continue;
+            const float x = area.getX() + area.getWidth() * float(double(phrase.start-from)/song.barTicks);
+            const float w = area.getWidth() * float(double(std::min(to,phrase.end)-phrase.start)/song.barTicks);
+            auto wording = phrase.text;
+            if (options.lyricDisplay == LyricDisplay::both && phrase.reading.isNotEmpty() && phrase.reading != wording)
+                wording += " (" + phrase.reading + ")";
+            g.setColour(live ? juce::Colours::white : ink);
+            text(g,wording,x+2,area.getY(),std::max(1.f,w-3),area.getHeight(),live ? 16.f : 10.f,false);
+        }
+        return;
+    }
     juce::AttributedString line;
     const auto normal = live ? juce::Colour(0xffced9e3) : soft;
     const juce::Font font(juce::FontOptions(live ? 16.f : 10.f));
     for (const auto& unit : song.lyrics) {
         if (unit.at >= to)
             break;
-        if (unit.end <= from || (!options.lyricVoice.isEmpty() && unit.voice != options.lyricVoice))
+        const auto docForVoice = song.voiceDocuments.find(unit.voice);
+        if (unit.end <= from || (!options.lyricVoice.isEmpty() ? unit.voice != options.lyricVoice
+            : docForVoice != song.voiceDocuments.end() && docForVoice->second != song.primaryDocument))
             continue;
         auto wording = unit.text;
         if (options.lyricDisplay != LyricDisplay::text && unit.pronunciation.isNotEmpty()) {

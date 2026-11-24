@@ -1909,135 +1909,135 @@
             {
               "id": "vocal-part-2-line-1-note-1",
               "start": 480,
-              "duration": 660,
+              "duration": 500,
               "pitch": 69,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-1-note-2",
-              "start": 1200,
-              "duration": 660,
+              "start": 1040,
+              "duration": 500,
               "pitch": 71,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-1-note-3",
-              "start": 1920,
-              "duration": 420,
+              "start": 1600,
+              "duration": 500,
               "pitch": 69,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-1-note-4",
-              "start": 2400,
-              "duration": 420,
+              "start": 2160,
+              "duration": 500,
               "pitch": 67,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-1-note-5",
-              "start": 2880,
-              "duration": 420,
+              "start": 2720,
+              "duration": 500,
               "pitch": 71,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-1-note-6",
-              "start": 3360,
-              "duration": 900,
+              "start": 3280,
+              "duration": 500,
               "pitch": 69,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-1-note-7",
-              "start": 4320,
-              "duration": 660,
+              "start": 3840,
+              "duration": 1620,
               "pitch": 69,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-1-note-8",
-              "start": 5040,
-              "duration": 2268,
+              "start": 5520,
+              "duration": 1788,
               "pitch": 65,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-2-note-1",
-              "start": 8400,
-              "duration": 420,
+              "start": 8160,
+              "duration": 500,
               "pitch": 65,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-2-note-2",
-              "start": 8880,
-              "duration": 660,
+              "start": 8720,
+              "duration": 500,
               "pitch": 65,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-2-note-3",
-              "start": 9600,
-              "duration": 660,
+              "start": 9280,
+              "duration": 500,
               "pitch": 65,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-2-note-4",
-              "start": 10320,
-              "duration": 180,
+              "start": 9840,
+              "duration": 500,
               "pitch": 64,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-2-note-5",
-              "start": 10560,
-              "duration": 420,
+              "start": 10400,
+              "duration": 500,
               "pitch": 69,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-2-note-6",
-              "start": 11040,
-              "duration": 1140,
+              "start": 10960,
+              "duration": 500,
               "pitch": 64,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-2-note-7",
-              "start": 12240,
-              "duration": 420,
+              "start": 11520,
+              "duration": 1060,
               "pitch": 68,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-2-note-8",
-              "start": 12720,
-              "duration": 420,
+              "start": 12640,
+              "duration": 1060,
               "pitch": 68,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-2-note-9",
-              "start": 13200,
-              "duration": 1788,
+              "start": 13760,
+              "duration": 1228,
               "pitch": 64,
               "velocity": 79,
               "releaseVelocity": 33
@@ -2045,135 +2045,135 @@
             {
               "id": "vocal-part-2-line-3-note-1",
               "start": 15840,
-              "duration": 660,
+              "duration": 612,
               "pitch": 69,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-3-note-2",
-              "start": 16560,
-              "duration": 660,
+              "start": 16512,
+              "duration": 612,
               "pitch": 71,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-3-note-3",
-              "start": 17280,
-              "duration": 420,
+              "start": 17184,
+              "duration": 612,
               "pitch": 69,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-3-note-4",
-              "start": 17760,
-              "duration": 420,
+              "start": 17856,
+              "duration": 612,
               "pitch": 67,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-3-note-5",
-              "start": 18240,
-              "duration": 420,
+              "start": 18528,
+              "duration": 612,
               "pitch": 71,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-3-note-6",
-              "start": 18720,
-              "duration": 900,
-              "pitch": 69,
+              "start": 19200,
+              "duration": 1060,
+              "pitch": 67,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-3-note-7",
-              "start": 19680,
-              "duration": 660,
+              "start": 20320,
+              "duration": 1060,
               "pitch": 69,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-3-note-8",
-              "start": 20400,
-              "duration": 2268,
+              "start": 21440,
+              "duration": 1228,
               "pitch": 65,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-4-note-1",
-              "start": 23760,
-              "duration": 420,
+              "start": 23520,
+              "duration": 500,
               "pitch": 65,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-4-note-2",
-              "start": 24240,
-              "duration": 660,
+              "start": 24080,
+              "duration": 500,
               "pitch": 65,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-4-note-3",
-              "start": 24960,
-              "duration": 660,
+              "start": 24640,
+              "duration": 500,
               "pitch": 65,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-4-note-4",
-              "start": 25680,
-              "duration": 180,
+              "start": 25200,
+              "duration": 500,
               "pitch": 64,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-4-note-5",
-              "start": 25920,
-              "duration": 420,
+              "start": 25760,
+              "duration": 500,
               "pitch": 69,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-4-note-6",
-              "start": 26400,
-              "duration": 1140,
+              "start": 26320,
+              "duration": 500,
               "pitch": 64,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-4-note-7",
-              "start": 27600,
-              "duration": 420,
+              "start": 26880,
+              "duration": 1060,
               "pitch": 68,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-4-note-8",
-              "start": 28080,
-              "duration": 420,
+              "start": 28000,
+              "duration": 1060,
               "pitch": 68,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-2-line-4-note-9",
-              "start": 28560,
-              "duration": 1788,
+              "start": 29120,
+              "duration": 1228,
               "pitch": 64,
               "velocity": 79,
               "releaseVelocity": 33
@@ -2202,7 +2202,7 @@
             },
             {
               "id": "vocal-part-2-line-1-note-1-pressure",
-              "start": 680,
+              "start": 646,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-2-line-1-note-1",
               "pitch": 69,
@@ -2210,32 +2210,32 @@
             },
             {
               "id": "vocal-part-2-line-1-note-1-aftertouch",
-              "start": 680,
+              "start": 646,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-2-line-1-note-1-bend-reset",
-              "start": 680,
+              "start": 646,
               "type": "pitchBend",
               "value14": 8192
             },
             {
               "id": "vocal-part-2-line-1-note-8-cc",
-              "start": 5040,
+              "start": 5520,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-2-line-1-note-8-bend",
-              "start": 5041,
+              "start": 5521,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-2-line-1-note-8-pressure",
-              "start": 5240,
+              "start": 5720,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-2-line-1-note-8",
               "pitch": 65,
@@ -2243,32 +2243,32 @@
             },
             {
               "id": "vocal-part-2-line-1-note-8-aftertouch",
-              "start": 5240,
+              "start": 5720,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-2-line-1-note-8-bend-reset",
-              "start": 5240,
+              "start": 5720,
               "type": "pitchBend",
               "value14": 8192
             },
             {
               "id": "vocal-part-2-line-2-note-1-cc",
-              "start": 8400,
+              "start": 8160,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-2-line-2-note-1-bend",
-              "start": 8401,
+              "start": 8161,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-2-line-2-note-1-pressure",
-              "start": 8540,
+              "start": 8326,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-2-line-2-note-1",
               "pitch": 65,
@@ -2276,32 +2276,32 @@
             },
             {
               "id": "vocal-part-2-line-2-note-1-aftertouch",
-              "start": 8540,
+              "start": 8326,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-2-line-2-note-1-bend-reset",
-              "start": 8540,
+              "start": 8326,
               "type": "pitchBend",
               "value14": 8192
             },
             {
               "id": "vocal-part-2-line-2-note-9-cc",
-              "start": 13200,
+              "start": 13760,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-2-line-2-note-9-bend",
-              "start": 13201,
+              "start": 13761,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-2-line-2-note-9-pressure",
-              "start": 13400,
+              "start": 13960,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-2-line-2-note-9",
               "pitch": 64,
@@ -2309,13 +2309,13 @@
             },
             {
               "id": "vocal-part-2-line-2-note-9-aftertouch",
-              "start": 13400,
+              "start": 13960,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-2-line-2-note-9-bend-reset",
-              "start": 13400,
+              "start": 13960,
               "type": "pitchBend",
               "value14": 8192
             },
@@ -2354,20 +2354,20 @@
             },
             {
               "id": "vocal-part-2-line-3-note-8-cc",
-              "start": 20400,
+              "start": 21440,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-2-line-3-note-8-bend",
-              "start": 20401,
+              "start": 21441,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-2-line-3-note-8-pressure",
-              "start": 20600,
+              "start": 21640,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-2-line-3-note-8",
               "pitch": 65,
@@ -2375,32 +2375,32 @@
             },
             {
               "id": "vocal-part-2-line-3-note-8-aftertouch",
-              "start": 20600,
+              "start": 21640,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-2-line-3-note-8-bend-reset",
-              "start": 20600,
+              "start": 21640,
               "type": "pitchBend",
               "value14": 8192
             },
             {
               "id": "vocal-part-2-line-4-note-1-cc",
-              "start": 23760,
+              "start": 23520,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-2-line-4-note-1-bend",
-              "start": 23761,
+              "start": 23521,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-2-line-4-note-1-pressure",
-              "start": 23900,
+              "start": 23686,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-2-line-4-note-1",
               "pitch": 65,
@@ -2408,32 +2408,32 @@
             },
             {
               "id": "vocal-part-2-line-4-note-1-aftertouch",
-              "start": 23900,
+              "start": 23686,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-2-line-4-note-1-bend-reset",
-              "start": 23900,
+              "start": 23686,
               "type": "pitchBend",
               "value14": 8192
             },
             {
               "id": "vocal-part-2-line-4-note-9-cc",
-              "start": 28560,
+              "start": 29120,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-2-line-4-note-9-bend",
-              "start": 28561,
+              "start": 29121,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-2-line-4-note-9-pressure",
-              "start": 28760,
+              "start": 29320,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-2-line-4-note-9",
               "pitch": 64,
@@ -2441,13 +2441,13 @@
             },
             {
               "id": "vocal-part-2-line-4-note-9-aftertouch",
-              "start": 28760,
+              "start": 29320,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-2-line-4-note-9-bend-reset",
-              "start": 28760,
+              "start": 29320,
               "type": "pitchBend",
               "value14": 8192
             }
@@ -2504,7 +2504,7 @@
                       "value": -24
                     },
                     {
-                      "at": 680,
+                      "at": 646,
                       "value": 0
                     }
                   ]
@@ -2516,11 +2516,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 5040,
+                      "at": 5520,
                       "value": -12
                     },
                     {
-                      "at": 5240,
+                      "at": 5720,
                       "value": 0
                     }
                   ]
@@ -2532,11 +2532,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 8400,
+                      "at": 8160,
                       "value": -24
                     },
                     {
-                      "at": 8540,
+                      "at": 8326,
                       "value": 0
                     }
                   ]
@@ -2548,11 +2548,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 13200,
+                      "at": 13760,
                       "value": -12
                     },
                     {
-                      "at": 13400,
+                      "at": 13960,
                       "value": 0
                     }
                   ]
@@ -2580,11 +2580,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 20400,
+                      "at": 21440,
                       "value": -12
                     },
                     {
-                      "at": 20600,
+                      "at": 21640,
                       "value": 0
                     }
                   ]
@@ -2596,11 +2596,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 23760,
+                      "at": 23520,
                       "value": -24
                     },
                     {
-                      "at": 23900,
+                      "at": 23686,
                       "value": 0
                     }
                   ]
@@ -2612,11 +2612,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 28560,
+                      "at": 29120,
                       "value": -12
                     },
                     {
-                      "at": 28760,
+                      "at": 29320,
                       "value": 0
                     }
                   ]
@@ -2626,31 +2626,31 @@
                 {
                   "id": "vocal-part-2-line-1-note-1-technique",
                   "start": 480,
-                  "duration": 660,
+                  "duration": 500,
                   "kind": "scoop",
                   "targetNoteId": "vocal-part-2-line-1-note-1",
                   "intensity": 0.29
                 },
                 {
                   "id": "vocal-part-2-line-1-note-8-technique",
-                  "start": 5040,
-                  "duration": 2268,
+                  "start": 5520,
+                  "duration": 1788,
                   "kind": "vibrato",
                   "targetNoteId": "vocal-part-2-line-1-note-8",
                   "intensity": 0.29
                 },
                 {
                   "id": "vocal-part-2-line-2-note-1-technique",
-                  "start": 8400,
-                  "duration": 420,
+                  "start": 8160,
+                  "duration": 500,
                   "kind": "scoop",
                   "targetNoteId": "vocal-part-2-line-2-note-1",
                   "intensity": 0.29
                 },
                 {
                   "id": "vocal-part-2-line-2-note-9-technique",
-                  "start": 13200,
-                  "duration": 1788,
+                  "start": 13760,
+                  "duration": 1228,
                   "kind": "vibrato",
                   "targetNoteId": "vocal-part-2-line-2-note-9",
                   "intensity": 0.29
@@ -2658,31 +2658,31 @@
                 {
                   "id": "vocal-part-2-line-3-note-1-technique",
                   "start": 15840,
-                  "duration": 660,
+                  "duration": 612,
                   "kind": "scoop",
                   "targetNoteId": "vocal-part-2-line-3-note-1",
                   "intensity": 0.29
                 },
                 {
                   "id": "vocal-part-2-line-3-note-8-technique",
-                  "start": 20400,
-                  "duration": 2268,
+                  "start": 21440,
+                  "duration": 1228,
                   "kind": "vibrato",
                   "targetNoteId": "vocal-part-2-line-3-note-8",
                   "intensity": 0.29
                 },
                 {
                   "id": "vocal-part-2-line-4-note-1-technique",
-                  "start": 23760,
-                  "duration": 420,
+                  "start": 23520,
+                  "duration": 500,
                   "kind": "scoop",
                   "targetNoteId": "vocal-part-2-line-4-note-1",
                   "intensity": 0.29
                 },
                 {
                   "id": "vocal-part-2-line-4-note-9-technique",
-                  "start": 28560,
-                  "duration": 1788,
+                  "start": 29120,
+                  "duration": 1228,
                   "kind": "vibrato",
                   "targetNoteId": "vocal-part-2-line-4-note-9",
                   "intensity": 0.29
@@ -4656,22 +4656,22 @@
             {
               "id": "vocal-part-5-line-1-note-1",
               "start": 480,
-              "duration": 660,
+              "duration": 420,
               "pitch": 69,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-1-note-2",
-              "start": 1200,
-              "duration": 660,
+              "start": 960,
+              "duration": 420,
               "pitch": 71,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-1-note-3",
-              "start": 1920,
+              "start": 1440,
               "duration": 420,
               "pitch": 69,
               "velocity": 82,
@@ -4679,7 +4679,7 @@
             },
             {
               "id": "vocal-part-5-line-1-note-4",
-              "start": 2400,
+              "start": 1920,
               "duration": 420,
               "pitch": 67,
               "velocity": 76,
@@ -4687,7 +4687,7 @@
             },
             {
               "id": "vocal-part-5-line-1-note-5",
-              "start": 2880,
+              "start": 2400,
               "duration": 420,
               "pitch": 71,
               "velocity": 79,
@@ -4695,24 +4695,24 @@
             },
             {
               "id": "vocal-part-5-line-1-note-6",
-              "start": 3360,
-              "duration": 900,
+              "start": 2880,
+              "duration": 420,
               "pitch": 69,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-1-note-7",
-              "start": 4320,
-              "duration": 660,
-              "pitch": 69,
+              "start": 3360,
+              "duration": 420,
+              "pitch": 71,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-1-note-8",
-              "start": 5040,
-              "duration": 420,
+              "start": 3840,
+              "duration": 1620,
               "pitch": 72,
               "velocity": 76,
               "releaseVelocity": 33
@@ -4727,64 +4727,64 @@
             },
             {
               "id": "vocal-part-5-line-2-note-1",
-              "start": 8400,
-              "duration": 420,
+              "start": 8160,
+              "duration": 612,
               "pitch": 65,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-2-note-2",
-              "start": 8880,
-              "duration": 660,
+              "start": 8832,
+              "duration": 612,
               "pitch": 65,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-2-note-3",
-              "start": 9600,
-              "duration": 660,
+              "start": 9504,
+              "duration": 612,
               "pitch": 65,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-2-note-4",
-              "start": 10320,
-              "duration": 180,
+              "start": 10176,
+              "duration": 612,
               "pitch": 64,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-2-note-5",
-              "start": 10560,
-              "duration": 420,
+              "start": 10848,
+              "duration": 612,
               "pitch": 69,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-2-note-6",
-              "start": 11040,
-              "duration": 1140,
+              "start": 11520,
+              "duration": 1060,
               "pitch": 64,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-2-note-7",
-              "start": 12240,
-              "duration": 420,
+              "start": 12640,
+              "duration": 1060,
               "pitch": 68,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-2-note-8",
-              "start": 12720,
-              "duration": 2268,
+              "start": 13760,
+              "duration": 1228,
               "pitch": 64,
               "velocity": 76,
               "releaseVelocity": 33
@@ -4792,70 +4792,70 @@
             {
               "id": "vocal-part-5-line-3-note-1",
               "start": 15840,
-              "duration": 660,
+              "duration": 780,
               "pitch": 69,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-3-note-2",
-              "start": 16560,
-              "duration": 660,
+              "start": 16680,
+              "duration": 780,
               "pitch": 71,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-3-note-3",
-              "start": 17280,
-              "duration": 420,
+              "start": 17520,
+              "duration": 780,
               "pitch": 69,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-3-note-4",
-              "start": 17760,
-              "duration": 420,
+              "start": 18360,
+              "duration": 780,
               "pitch": 67,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-3-note-5",
-              "start": 18240,
-              "duration": 420,
-              "pitch": 71,
+              "start": 19200,
+              "duration": 780,
+              "pitch": 69,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-3-note-6",
-              "start": 18720,
-              "duration": 900,
-              "pitch": 69,
+              "start": 20040,
+              "duration": 780,
+              "pitch": 67,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-3-note-7",
-              "start": 19680,
-              "duration": 660,
+              "start": 20880,
+              "duration": 780,
               "pitch": 69,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-3-note-8",
-              "start": 20400,
-              "duration": 2268,
+              "start": 21720,
+              "duration": 948,
               "pitch": 65,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-4-note-1",
-              "start": 23760,
+              "start": 23520,
               "duration": 420,
               "pitch": 65,
               "velocity": 79,
@@ -4863,31 +4863,31 @@
             },
             {
               "id": "vocal-part-5-line-4-note-2",
-              "start": 24240,
-              "duration": 660,
+              "start": 24000,
+              "duration": 420,
               "pitch": 65,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-4-note-3",
-              "start": 24960,
-              "duration": 660,
+              "start": 24480,
+              "duration": 420,
               "pitch": 65,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-4-note-4",
-              "start": 25680,
-              "duration": 180,
+              "start": 24960,
+              "duration": 420,
               "pitch": 64,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-4-note-5",
-              "start": 25920,
+              "start": 25440,
               "duration": 420,
               "pitch": 69,
               "velocity": 79,
@@ -4895,40 +4895,40 @@
             },
             {
               "id": "vocal-part-5-line-4-note-6",
-              "start": 26400,
-              "duration": 1140,
+              "start": 25920,
+              "duration": 420,
               "pitch": 64,
               "velocity": 74,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-4-note-7",
-              "start": 27600,
+              "start": 26400,
               "duration": 420,
-              "pitch": 68,
+              "pitch": 69,
               "velocity": 82,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-4-note-8",
-              "start": 28080,
-              "duration": 420,
+              "start": 26880,
+              "duration": 1060,
               "pitch": 68,
               "velocity": 76,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-4-note-9",
-              "start": 28560,
-              "duration": 660,
+              "start": 28000,
+              "duration": 1060,
               "pitch": 68,
               "velocity": 79,
               "releaseVelocity": 33
             },
             {
               "id": "vocal-part-5-line-4-note-10",
-              "start": 29280,
-              "duration": 1068,
+              "start": 29120,
+              "duration": 1228,
               "pitch": 64,
               "velocity": 74,
               "releaseVelocity": 33
@@ -4950,7 +4950,7 @@
             },
             {
               "id": "vocal-part-5-line-1-note-1-pressure",
-              "start": 680,
+              "start": 620,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-5-line-1-note-1",
               "pitch": 69,
@@ -4958,13 +4958,13 @@
             },
             {
               "id": "vocal-part-5-line-1-note-1-aftertouch",
-              "start": 680,
+              "start": 620,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-5-line-1-note-1-bend-reset",
-              "start": 680,
+              "start": 620,
               "type": "pitchBend",
               "value14": 8192
             },
@@ -5003,20 +5003,20 @@
             },
             {
               "id": "vocal-part-5-line-2-note-1-cc",
-              "start": 8400,
+              "start": 8160,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-5-line-2-note-1-bend",
-              "start": 8401,
+              "start": 8161,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-5-line-2-note-1-pressure",
-              "start": 8540,
+              "start": 8360,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-5-line-2-note-1",
               "pitch": 65,
@@ -5024,32 +5024,32 @@
             },
             {
               "id": "vocal-part-5-line-2-note-1-aftertouch",
-              "start": 8540,
+              "start": 8360,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-5-line-2-note-1-bend-reset",
-              "start": 8540,
+              "start": 8360,
               "type": "pitchBend",
               "value14": 8192
             },
             {
               "id": "vocal-part-5-line-2-note-8-cc",
-              "start": 12720,
+              "start": 13760,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-5-line-2-note-8-bend",
-              "start": 12721,
+              "start": 13761,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-5-line-2-note-8-pressure",
-              "start": 12920,
+              "start": 13960,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-5-line-2-note-8",
               "pitch": 64,
@@ -5057,13 +5057,13 @@
             },
             {
               "id": "vocal-part-5-line-2-note-8-aftertouch",
-              "start": 12920,
+              "start": 13960,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-5-line-2-note-8-bend-reset",
-              "start": 12920,
+              "start": 13960,
               "type": "pitchBend",
               "value14": 8192
             },
@@ -5102,20 +5102,20 @@
             },
             {
               "id": "vocal-part-5-line-3-note-8-cc",
-              "start": 20400,
+              "start": 21720,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-5-line-3-note-8-bend",
-              "start": 20401,
+              "start": 21721,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-5-line-3-note-8-pressure",
-              "start": 20600,
+              "start": 21920,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-5-line-3-note-8",
               "pitch": 65,
@@ -5123,32 +5123,32 @@
             },
             {
               "id": "vocal-part-5-line-3-note-8-aftertouch",
-              "start": 20600,
+              "start": 21920,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-5-line-3-note-8-bend-reset",
-              "start": 20600,
+              "start": 21920,
               "type": "pitchBend",
               "value14": 8192
             },
             {
               "id": "vocal-part-5-line-4-note-1-cc",
-              "start": 23760,
+              "start": 23520,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-5-line-4-note-1-bend",
-              "start": 23761,
+              "start": 23521,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-5-line-4-note-1-pressure",
-              "start": 23900,
+              "start": 23660,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-5-line-4-note-1",
               "pitch": 65,
@@ -5156,32 +5156,32 @@
             },
             {
               "id": "vocal-part-5-line-4-note-1-aftertouch",
-              "start": 23900,
+              "start": 23660,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-5-line-4-note-1-bend-reset",
-              "start": 23900,
+              "start": 23660,
               "type": "pitchBend",
               "value14": 8192
             },
             {
               "id": "vocal-part-5-line-4-note-10-cc",
-              "start": 29280,
+              "start": 29120,
               "type": "controlChange",
               "controller": 11,
               "value": 78
             },
             {
               "id": "vocal-part-5-line-4-note-10-bend",
-              "start": 29281,
+              "start": 29121,
               "type": "pitchBend",
               "value14": 8050
             },
             {
               "id": "vocal-part-5-line-4-note-10-pressure",
-              "start": 29480,
+              "start": 29320,
               "type": "polyPressure",
               "targetNoteId": "vocal-part-5-line-4-note-10",
               "pitch": 64,
@@ -5189,13 +5189,13 @@
             },
             {
               "id": "vocal-part-5-line-4-note-10-aftertouch",
-              "start": 29480,
+              "start": 29320,
               "type": "channelPressure",
               "value": 23
             },
             {
               "id": "vocal-part-5-line-4-note-10-bend-reset",
-              "start": 29480,
+              "start": 29320,
               "type": "pitchBend",
               "value14": 8192
             }
@@ -5253,7 +5253,7 @@
                       "value": -24
                     },
                     {
-                      "at": 680,
+                      "at": 620,
                       "value": 0
                     }
                   ]
@@ -5281,11 +5281,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 8400,
+                      "at": 8160,
                       "value": -24
                     },
                     {
-                      "at": 8540,
+                      "at": 8360,
                       "value": 0
                     }
                   ]
@@ -5297,11 +5297,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 12720,
+                      "at": 13760,
                       "value": -12
                     },
                     {
-                      "at": 12920,
+                      "at": 13960,
                       "value": 0
                     }
                   ]
@@ -5329,11 +5329,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 20400,
+                      "at": 21720,
                       "value": -12
                     },
                     {
-                      "at": 20600,
+                      "at": 21920,
                       "value": 0
                     }
                   ]
@@ -5345,11 +5345,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 23760,
+                      "at": 23520,
                       "value": -24
                     },
                     {
-                      "at": 23900,
+                      "at": 23660,
                       "value": 0
                     }
                   ]
@@ -5361,11 +5361,11 @@
                   "interpolation": "linear",
                   "points": [
                     {
-                      "at": 29280,
+                      "at": 29120,
                       "value": -12
                     },
                     {
-                      "at": 29480,
+                      "at": 29320,
                       "value": 0
                     }
                   ]
@@ -5375,7 +5375,7 @@
                 {
                   "id": "vocal-part-5-line-1-note-1-technique",
                   "start": 480,
-                  "duration": 660,
+                  "duration": 420,
                   "kind": "scoop",
                   "targetNoteId": "vocal-part-5-line-1-note-1",
                   "intensity": 0.29
@@ -5390,16 +5390,16 @@
                 },
                 {
                   "id": "vocal-part-5-line-2-note-1-technique",
-                  "start": 8400,
-                  "duration": 420,
+                  "start": 8160,
+                  "duration": 612,
                   "kind": "scoop",
                   "targetNoteId": "vocal-part-5-line-2-note-1",
                   "intensity": 0.29
                 },
                 {
                   "id": "vocal-part-5-line-2-note-8-technique",
-                  "start": 12720,
-                  "duration": 2268,
+                  "start": 13760,
+                  "duration": 1228,
                   "kind": "vibrato",
                   "targetNoteId": "vocal-part-5-line-2-note-8",
                   "intensity": 0.29
@@ -5407,22 +5407,22 @@
                 {
                   "id": "vocal-part-5-line-3-note-1-technique",
                   "start": 15840,
-                  "duration": 660,
+                  "duration": 780,
                   "kind": "scoop",
                   "targetNoteId": "vocal-part-5-line-3-note-1",
                   "intensity": 0.29
                 },
                 {
                   "id": "vocal-part-5-line-3-note-8-technique",
-                  "start": 20400,
-                  "duration": 2268,
-                  "kind": "vibrato",
+                  "start": 21720,
+                  "duration": 948,
+                  "kind": "scoop",
                   "targetNoteId": "vocal-part-5-line-3-note-8",
                   "intensity": 0.29
                 },
                 {
                   "id": "vocal-part-5-line-4-note-1-technique",
-                  "start": 23760,
+                  "start": 23520,
                   "duration": 420,
                   "kind": "scoop",
                   "targetNoteId": "vocal-part-5-line-4-note-1",
@@ -5430,8 +5430,8 @@
                 },
                 {
                   "id": "vocal-part-5-line-4-note-10-technique",
-                  "start": 29280,
-                  "duration": 1068,
+                  "start": 29120,
+                  "duration": 1228,
                   "kind": "vibrato",
                   "targetNoteId": "vocal-part-5-line-4-note-10",
                   "intensity": 0.29
@@ -21565,39 +21565,89 @@
     ],
     "phrases": [
       {
-        "id": "vocal-part-2-line-1",
+        "id": "vocal-part-2-line-1-bar-1",
         "documentId": "lantern-text",
-        "text": "あめのおとがする"
+        "text": "雨の音が",
+        "pronunciation": "あめのおとが",
+        "start": 15360,
+        "duration": 3840
       },
       {
-        "id": "vocal-part-2-line-2",
+        "id": "vocal-part-2-line-1-bar-2",
         "documentId": "lantern-text",
-        "text": "まどにひかるしずく"
+        "text": "する",
+        "pronunciation": "する",
+        "start": 19200,
+        "duration": 3840
       },
       {
-        "id": "vocal-part-2-line-3",
+        "id": "vocal-part-2-line-2-bar-1",
         "documentId": "lantern-text",
-        "text": "そっとてをかさね"
+        "text": "窓に光る",
+        "pronunciation": "まどにひかる",
+        "start": 23040,
+        "duration": 3840
       },
       {
-        "id": "vocal-part-2-line-4",
+        "id": "vocal-part-2-line-2-bar-2",
         "documentId": "lantern-text",
-        "text": "きょうもともるあかり"
+        "text": "しずく",
+        "pronunciation": "しずく",
+        "start": 26880,
+        "duration": 3840
+      },
+      {
+        "id": "vocal-part-2-line-3-bar-1",
+        "documentId": "lantern-text",
+        "text": "そっと手を",
+        "pronunciation": "そっとてお",
+        "start": 30720,
+        "duration": 3840
+      },
+      {
+        "id": "vocal-part-2-line-3-bar-2",
+        "documentId": "lantern-text",
+        "text": "重ね",
+        "pronunciation": "かさね",
+        "start": 34560,
+        "duration": 3840
+      },
+      {
+        "id": "vocal-part-2-line-4-bar-1",
+        "documentId": "lantern-text",
+        "text": "今日も灯る",
+        "pronunciation": "きょうもともる",
+        "start": 38400,
+        "duration": 3840
+      },
+      {
+        "id": "vocal-part-2-line-4-bar-2",
+        "documentId": "lantern-text",
+        "text": "明かり",
+        "pronunciation": "あかり",
+        "start": 42240,
+        "duration": 3840
       },
       {
         "id": "vocal-part-3-line-1",
         "documentId": "lantern-text",
-        "text": "If the street lights all go out"
+        "text": "If the street lights all go out",
+        "start": 46080,
+        "duration": 7680
       },
       {
         "id": "vocal-part-3-line-2",
         "documentId": "lantern-text",
-        "text": "Look for the flame in my hands"
+        "text": "Look for the flame in my hands",
+        "start": 53760,
+        "duration": 7680
       },
       {
         "id": "vocal-part-4-line-1",
         "documentId": "lantern-text",
-        "text": "Fold a little dawn into the blue"
+        "text": "Fold a little dawn into the blue",
+        "start": 61440,
+        "duration": 7680
       },
       {
         "id": "vocal-part-4-line-1-ah",
@@ -21607,7 +21657,9 @@
       {
         "id": "vocal-part-4-line-2",
         "documentId": "lantern-text",
-        "text": "Leave a little light across the room"
+        "text": "Leave a little light across the room",
+        "start": 69120,
+        "duration": 7680
       },
       {
         "id": "vocal-part-4-line-2-ah",
@@ -21617,7 +21669,9 @@
       {
         "id": "vocal-part-4-line-3",
         "documentId": "lantern-text",
-        "text": "When the city falls asleep again"
+        "text": "When the city falls asleep again",
+        "start": 76800,
+        "duration": 7680
       },
       {
         "id": "vocal-part-4-line-3-ah",
@@ -21627,7 +21681,9 @@
       {
         "id": "vocal-part-4-line-4",
         "documentId": "lantern-text",
-        "text": "My paper lantern shines for you"
+        "text": "My paper lantern shines for you",
+        "start": 84480,
+        "duration": 7680
       },
       {
         "id": "vocal-part-4-line-4-ah",
@@ -21635,49 +21691,103 @@
         "text": "Ah"
       },
       {
-        "id": "vocal-part-5-line-1",
+        "id": "vocal-part-5-line-1-bar-1",
         "documentId": "lantern-text",
-        "text": "よあけのかぜがふく"
+        "text": "夜明けの風が",
+        "pronunciation": "よあけのかぜが",
+        "start": 92160,
+        "duration": 3840
       },
       {
-        "id": "vocal-part-5-line-2",
+        "id": "vocal-part-5-line-1-bar-2",
         "documentId": "lantern-text",
-        "text": "きみのなをよんだ"
+        "text": "吹く",
+        "pronunciation": "ふく",
+        "start": 96000,
+        "duration": 3840
       },
       {
-        "id": "vocal-part-5-line-3",
+        "id": "vocal-part-5-line-2-bar-1",
         "documentId": "lantern-text",
-        "text": "ちいさなちょうちん"
+        "text": "君の名を",
+        "pronunciation": "きみのなお",
+        "start": 99840,
+        "duration": 3840
       },
       {
-        "id": "vocal-part-5-line-4",
+        "id": "vocal-part-5-line-2-bar-2",
         "documentId": "lantern-text",
-        "text": "ふたりのみちをてらす"
+        "text": "呼んだ",
+        "pronunciation": "よんだ",
+        "start": 103680,
+        "duration": 3840
+      },
+      {
+        "id": "vocal-part-5-line-3-bar-1",
+        "documentId": "lantern-text",
+        "text": "小さな",
+        "pronunciation": "ちいさな",
+        "start": 107520,
+        "duration": 3840
+      },
+      {
+        "id": "vocal-part-5-line-3-bar-2",
+        "documentId": "lantern-text",
+        "text": "提灯",
+        "pronunciation": "ちょうちん",
+        "start": 111360,
+        "duration": 3840
+      },
+      {
+        "id": "vocal-part-5-line-4-bar-1",
+        "documentId": "lantern-text",
+        "text": "二人の道を",
+        "pronunciation": "ふたりのみちお",
+        "start": 115200,
+        "duration": 3840
+      },
+      {
+        "id": "vocal-part-5-line-4-bar-2",
+        "documentId": "lantern-text",
+        "text": "照らす",
+        "pronunciation": "てらす",
+        "start": 119040,
+        "duration": 3840
       },
       {
         "id": "vocal-part-6-line-1",
         "documentId": "lantern-text",
-        "text": "One breath can bend the light"
+        "text": "One breath can bend the light",
+        "start": 122880,
+        "duration": 7680
       },
       {
         "id": "vocal-part-6-line-2",
         "documentId": "lantern-text",
-        "text": "One word can lift the shade"
+        "text": "One word can lift the shade",
+        "start": 130560,
+        "duration": 7680
       },
       {
         "id": "vocal-part-6-line-3",
         "documentId": "lantern-text",
-        "text": "Let all the doors swing wide"
+        "text": "Let all the doors swing wide",
+        "start": 138240,
+        "duration": 7680
       },
       {
         "id": "vocal-part-6-line-4",
         "documentId": "lantern-text",
-        "text": "I will not turn away"
+        "text": "I will not turn away",
+        "start": 145920,
+        "duration": 7680
       },
       {
         "id": "vocal-part-7-line-1",
         "documentId": "lantern-text",
-        "text": "Fold a little dawn into the blue"
+        "text": "Fold a little dawn into the blue",
+        "start": 153600,
+        "duration": 7680
       },
       {
         "id": "vocal-part-7-line-1-ah",
@@ -21687,7 +21797,9 @@
       {
         "id": "vocal-part-7-line-2",
         "documentId": "lantern-text",
-        "text": "Leave a little light across the room"
+        "text": "Leave a little light across the room",
+        "start": 161280,
+        "duration": 7680
       },
       {
         "id": "vocal-part-7-line-2-ah",
@@ -21697,7 +21809,9 @@
       {
         "id": "vocal-part-7-line-3",
         "documentId": "lantern-text",
-        "text": "When the city falls asleep again"
+        "text": "When the city falls asleep again",
+        "start": 168960,
+        "duration": 7680
       },
       {
         "id": "vocal-part-7-line-3-ah",
@@ -21707,7 +21821,9 @@
       {
         "id": "vocal-part-7-line-4",
         "documentId": "lantern-text",
-        "text": "My paper lantern shines for you"
+        "text": "My paper lantern shines for you",
+        "start": 176640,
+        "duration": 7680
       },
       {
         "id": "vocal-part-7-line-4-ah",
@@ -21717,7 +21833,9 @@
       {
         "id": "vocal-part-7-line-5",
         "documentId": "lantern-text",
-        "text": "Let the morning find us by the door"
+        "text": "Let the morning find us by the door",
+        "start": 184320,
+        "duration": 7680
       },
       {
         "id": "vocal-part-7-line-5-ah",
@@ -21727,7 +21845,9 @@
       {
         "id": "vocal-part-7-line-6",
         "documentId": "lantern-text",
-        "text": "My paper lantern shines for you"
+        "text": "My paper lantern shines for you",
+        "start": 192000,
+        "duration": 7680
       },
       {
         "id": "vocal-part-7-line-6-ah",
@@ -21738,242 +21858,242 @@
     "units": [
       {
         "id": "vocal-part-2-line-1-unit-1",
-        "phraseId": "vocal-part-2-line-1",
+        "phraseId": "vocal-part-2-line-1-bar-1",
         "text": "あ",
         "start": 15840,
-        "duration": 660
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-1-unit-2",
-        "phraseId": "vocal-part-2-line-1",
+        "phraseId": "vocal-part-2-line-1-bar-1",
         "text": "め",
-        "start": 16560,
-        "duration": 660
+        "start": 16400,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-1-unit-3",
-        "phraseId": "vocal-part-2-line-1",
+        "phraseId": "vocal-part-2-line-1-bar-1",
         "text": "の",
-        "start": 17280,
-        "duration": 420
+        "start": 16960,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-1-unit-4",
-        "phraseId": "vocal-part-2-line-1",
+        "phraseId": "vocal-part-2-line-1-bar-1",
         "text": "お",
-        "start": 17760,
-        "duration": 420
+        "start": 17520,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-1-unit-5",
-        "phraseId": "vocal-part-2-line-1",
+        "phraseId": "vocal-part-2-line-1-bar-1",
         "text": "と",
-        "start": 18240,
-        "duration": 420
+        "start": 18080,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-1-unit-6",
-        "phraseId": "vocal-part-2-line-1",
+        "phraseId": "vocal-part-2-line-1-bar-1",
         "text": "が",
-        "start": 18720,
-        "duration": 900
+        "start": 18640,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-1-unit-7",
-        "phraseId": "vocal-part-2-line-1",
+        "phraseId": "vocal-part-2-line-1-bar-2",
         "text": "す",
-        "start": 19680,
-        "duration": 660
+        "start": 19200,
+        "duration": 1620
       },
       {
         "id": "vocal-part-2-line-1-unit-8",
-        "phraseId": "vocal-part-2-line-1",
+        "phraseId": "vocal-part-2-line-1-bar-2",
         "text": "る",
-        "start": 20400,
-        "duration": 2268
-      },
-      {
-        "id": "vocal-part-2-line-2-unit-1",
-        "phraseId": "vocal-part-2-line-2",
-        "text": "ま",
-        "start": 23760,
-        "duration": 420
-      },
-      {
-        "id": "vocal-part-2-line-2-unit-2",
-        "phraseId": "vocal-part-2-line-2",
-        "text": "ど",
-        "start": 24240,
-        "duration": 660
-      },
-      {
-        "id": "vocal-part-2-line-2-unit-3",
-        "phraseId": "vocal-part-2-line-2",
-        "text": "に",
-        "start": 24960,
-        "duration": 660
-      },
-      {
-        "id": "vocal-part-2-line-2-unit-4",
-        "phraseId": "vocal-part-2-line-2",
-        "text": "ひ",
-        "start": 25680,
-        "duration": 180
-      },
-      {
-        "id": "vocal-part-2-line-2-unit-5",
-        "phraseId": "vocal-part-2-line-2",
-        "text": "か",
-        "start": 25920,
-        "duration": 420
-      },
-      {
-        "id": "vocal-part-2-line-2-unit-6",
-        "phraseId": "vocal-part-2-line-2",
-        "text": "る",
-        "start": 26400,
-        "duration": 1140
-      },
-      {
-        "id": "vocal-part-2-line-2-unit-7",
-        "phraseId": "vocal-part-2-line-2",
-        "text": "し",
-        "start": 27600,
-        "duration": 420
-      },
-      {
-        "id": "vocal-part-2-line-2-unit-8",
-        "phraseId": "vocal-part-2-line-2",
-        "text": "ず",
-        "start": 28080,
-        "duration": 420
-      },
-      {
-        "id": "vocal-part-2-line-2-unit-9",
-        "phraseId": "vocal-part-2-line-2",
-        "text": "く",
-        "start": 28560,
+        "start": 20880,
         "duration": 1788
       },
       {
+        "id": "vocal-part-2-line-2-unit-1",
+        "phraseId": "vocal-part-2-line-2-bar-1",
+        "text": "ま",
+        "start": 23520,
+        "duration": 500
+      },
+      {
+        "id": "vocal-part-2-line-2-unit-2",
+        "phraseId": "vocal-part-2-line-2-bar-1",
+        "text": "ど",
+        "start": 24080,
+        "duration": 500
+      },
+      {
+        "id": "vocal-part-2-line-2-unit-3",
+        "phraseId": "vocal-part-2-line-2-bar-1",
+        "text": "に",
+        "start": 24640,
+        "duration": 500
+      },
+      {
+        "id": "vocal-part-2-line-2-unit-4",
+        "phraseId": "vocal-part-2-line-2-bar-1",
+        "text": "ひ",
+        "start": 25200,
+        "duration": 500
+      },
+      {
+        "id": "vocal-part-2-line-2-unit-5",
+        "phraseId": "vocal-part-2-line-2-bar-1",
+        "text": "か",
+        "start": 25760,
+        "duration": 500
+      },
+      {
+        "id": "vocal-part-2-line-2-unit-6",
+        "phraseId": "vocal-part-2-line-2-bar-1",
+        "text": "る",
+        "start": 26320,
+        "duration": 500
+      },
+      {
+        "id": "vocal-part-2-line-2-unit-7",
+        "phraseId": "vocal-part-2-line-2-bar-2",
+        "text": "し",
+        "start": 26880,
+        "duration": 1060
+      },
+      {
+        "id": "vocal-part-2-line-2-unit-8",
+        "phraseId": "vocal-part-2-line-2-bar-2",
+        "text": "ず",
+        "start": 28000,
+        "duration": 1060
+      },
+      {
+        "id": "vocal-part-2-line-2-unit-9",
+        "phraseId": "vocal-part-2-line-2-bar-2",
+        "text": "く",
+        "start": 29120,
+        "duration": 1228
+      },
+      {
         "id": "vocal-part-2-line-3-unit-1",
-        "phraseId": "vocal-part-2-line-3",
+        "phraseId": "vocal-part-2-line-3-bar-1",
         "text": "そ",
         "start": 31200,
-        "duration": 660
+        "duration": 612
       },
       {
         "id": "vocal-part-2-line-3-unit-2",
-        "phraseId": "vocal-part-2-line-3",
+        "phraseId": "vocal-part-2-line-3-bar-1",
         "text": "っ",
-        "start": 31920,
-        "duration": 660
+        "start": 31872,
+        "duration": 612
       },
       {
         "id": "vocal-part-2-line-3-unit-3",
-        "phraseId": "vocal-part-2-line-3",
+        "phraseId": "vocal-part-2-line-3-bar-1",
         "text": "と",
-        "start": 32640,
-        "duration": 420
+        "start": 32544,
+        "duration": 612
       },
       {
         "id": "vocal-part-2-line-3-unit-4",
-        "phraseId": "vocal-part-2-line-3",
+        "phraseId": "vocal-part-2-line-3-bar-1",
         "text": "て",
-        "start": 33120,
-        "duration": 420
+        "start": 33216,
+        "duration": 612
       },
       {
         "id": "vocal-part-2-line-3-unit-5",
-        "phraseId": "vocal-part-2-line-3",
+        "phraseId": "vocal-part-2-line-3-bar-1",
         "text": "を",
-        "start": 33600,
-        "duration": 420,
+        "start": 33888,
+        "duration": 612,
         "pronunciation": "お"
       },
       {
         "id": "vocal-part-2-line-3-unit-6",
-        "phraseId": "vocal-part-2-line-3",
+        "phraseId": "vocal-part-2-line-3-bar-2",
         "text": "か",
-        "start": 34080,
-        "duration": 900
+        "start": 34560,
+        "duration": 1060
       },
       {
         "id": "vocal-part-2-line-3-unit-7",
-        "phraseId": "vocal-part-2-line-3",
+        "phraseId": "vocal-part-2-line-3-bar-2",
         "text": "さ",
-        "start": 35040,
-        "duration": 660
+        "start": 35680,
+        "duration": 1060
       },
       {
         "id": "vocal-part-2-line-3-unit-8",
-        "phraseId": "vocal-part-2-line-3",
+        "phraseId": "vocal-part-2-line-3-bar-2",
         "text": "ね",
-        "start": 35760,
-        "duration": 2268
+        "start": 36800,
+        "duration": 1228
       },
       {
         "id": "vocal-part-2-line-4-unit-1",
-        "phraseId": "vocal-part-2-line-4",
+        "phraseId": "vocal-part-2-line-4-bar-1",
         "text": "きょ",
-        "start": 39120,
-        "duration": 420
+        "start": 38880,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-4-unit-2",
-        "phraseId": "vocal-part-2-line-4",
+        "phraseId": "vocal-part-2-line-4-bar-1",
         "text": "う",
-        "start": 39600,
-        "duration": 660
+        "start": 39440,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-4-unit-3",
-        "phraseId": "vocal-part-2-line-4",
+        "phraseId": "vocal-part-2-line-4-bar-1",
         "text": "も",
-        "start": 40320,
-        "duration": 660
+        "start": 40000,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-4-unit-4",
-        "phraseId": "vocal-part-2-line-4",
+        "phraseId": "vocal-part-2-line-4-bar-1",
         "text": "と",
-        "start": 41040,
-        "duration": 180
+        "start": 40560,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-4-unit-5",
-        "phraseId": "vocal-part-2-line-4",
+        "phraseId": "vocal-part-2-line-4-bar-1",
         "text": "も",
-        "start": 41280,
-        "duration": 420
+        "start": 41120,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-4-unit-6",
-        "phraseId": "vocal-part-2-line-4",
+        "phraseId": "vocal-part-2-line-4-bar-1",
         "text": "る",
-        "start": 41760,
-        "duration": 1140
+        "start": 41680,
+        "duration": 500
       },
       {
         "id": "vocal-part-2-line-4-unit-7",
-        "phraseId": "vocal-part-2-line-4",
+        "phraseId": "vocal-part-2-line-4-bar-2",
         "text": "あ",
-        "start": 42960,
-        "duration": 420
+        "start": 42240,
+        "duration": 1060
       },
       {
         "id": "vocal-part-2-line-4-unit-8",
-        "phraseId": "vocal-part-2-line-4",
+        "phraseId": "vocal-part-2-line-4-bar-2",
         "text": "か",
-        "start": 43440,
-        "duration": 420
+        "start": 43360,
+        "duration": 1060
       },
       {
         "id": "vocal-part-2-line-4-unit-9",
-        "phraseId": "vocal-part-2-line-4",
+        "phraseId": "vocal-part-2-line-4-bar-2",
         "text": "り",
-        "start": 43920,
-        "duration": 1788
+        "start": 44480,
+        "duration": 1228
       },
       {
         "id": "vocal-part-3-line-1-unit-1",
@@ -22348,250 +22468,250 @@
       },
       {
         "id": "vocal-part-5-line-1-unit-1",
-        "phraseId": "vocal-part-5-line-1",
+        "phraseId": "vocal-part-5-line-1-bar-1",
         "text": "よ",
         "start": 92640,
-        "duration": 660
+        "duration": 420
       },
       {
         "id": "vocal-part-5-line-1-unit-2",
-        "phraseId": "vocal-part-5-line-1",
+        "phraseId": "vocal-part-5-line-1-bar-1",
         "text": "あ",
-        "start": 93360,
-        "duration": 660
+        "start": 93120,
+        "duration": 420
       },
       {
         "id": "vocal-part-5-line-1-unit-3",
-        "phraseId": "vocal-part-5-line-1",
+        "phraseId": "vocal-part-5-line-1-bar-1",
         "text": "け",
-        "start": 94080,
+        "start": 93600,
         "duration": 420
       },
       {
         "id": "vocal-part-5-line-1-unit-4",
-        "phraseId": "vocal-part-5-line-1",
+        "phraseId": "vocal-part-5-line-1-bar-1",
         "text": "の",
-        "start": 94560,
+        "start": 94080,
         "duration": 420
       },
       {
         "id": "vocal-part-5-line-1-unit-5",
-        "phraseId": "vocal-part-5-line-1",
+        "phraseId": "vocal-part-5-line-1-bar-1",
         "text": "か",
-        "start": 95040,
+        "start": 94560,
         "duration": 420
       },
       {
         "id": "vocal-part-5-line-1-unit-6",
-        "phraseId": "vocal-part-5-line-1",
+        "phraseId": "vocal-part-5-line-1-bar-1",
         "text": "ぜ",
-        "start": 95520,
-        "duration": 900
-      },
-      {
-        "id": "vocal-part-5-line-1-unit-7",
-        "phraseId": "vocal-part-5-line-1",
-        "text": "が",
-        "start": 96480,
-        "duration": 660
-      },
-      {
-        "id": "vocal-part-5-line-1-unit-8",
-        "phraseId": "vocal-part-5-line-1",
-        "text": "ふ",
-        "start": 97200,
+        "start": 95040,
         "duration": 420
       },
       {
+        "id": "vocal-part-5-line-1-unit-7",
+        "phraseId": "vocal-part-5-line-1-bar-1",
+        "text": "が",
+        "start": 95520,
+        "duration": 420
+      },
+      {
+        "id": "vocal-part-5-line-1-unit-8",
+        "phraseId": "vocal-part-5-line-1-bar-2",
+        "text": "ふ",
+        "start": 96000,
+        "duration": 1620
+      },
+      {
         "id": "vocal-part-5-line-1-unit-9",
-        "phraseId": "vocal-part-5-line-1",
+        "phraseId": "vocal-part-5-line-1-bar-2",
         "text": "く",
         "start": 97680,
         "duration": 1788
       },
       {
         "id": "vocal-part-5-line-2-unit-1",
-        "phraseId": "vocal-part-5-line-2",
+        "phraseId": "vocal-part-5-line-2-bar-1",
         "text": "き",
-        "start": 100560,
-        "duration": 420
+        "start": 100320,
+        "duration": 612
       },
       {
         "id": "vocal-part-5-line-2-unit-2",
-        "phraseId": "vocal-part-5-line-2",
+        "phraseId": "vocal-part-5-line-2-bar-1",
         "text": "み",
-        "start": 101040,
-        "duration": 660
+        "start": 100992,
+        "duration": 612
       },
       {
         "id": "vocal-part-5-line-2-unit-3",
-        "phraseId": "vocal-part-5-line-2",
+        "phraseId": "vocal-part-5-line-2-bar-1",
         "text": "の",
-        "start": 101760,
-        "duration": 660
+        "start": 101664,
+        "duration": 612
       },
       {
         "id": "vocal-part-5-line-2-unit-4",
-        "phraseId": "vocal-part-5-line-2",
+        "phraseId": "vocal-part-5-line-2-bar-1",
         "text": "な",
-        "start": 102480,
-        "duration": 180
+        "start": 102336,
+        "duration": 612
       },
       {
         "id": "vocal-part-5-line-2-unit-5",
-        "phraseId": "vocal-part-5-line-2",
+        "phraseId": "vocal-part-5-line-2-bar-1",
         "text": "を",
-        "start": 102720,
-        "duration": 420,
+        "start": 103008,
+        "duration": 612,
         "pronunciation": "お"
       },
       {
         "id": "vocal-part-5-line-2-unit-6",
-        "phraseId": "vocal-part-5-line-2",
+        "phraseId": "vocal-part-5-line-2-bar-2",
         "text": "よ",
-        "start": 103200,
-        "duration": 1140
+        "start": 103680,
+        "duration": 1060
       },
       {
         "id": "vocal-part-5-line-2-unit-7",
-        "phraseId": "vocal-part-5-line-2",
+        "phraseId": "vocal-part-5-line-2-bar-2",
         "text": "ん",
-        "start": 104400,
-        "duration": 420
+        "start": 104800,
+        "duration": 1060
       },
       {
         "id": "vocal-part-5-line-2-unit-8",
-        "phraseId": "vocal-part-5-line-2",
+        "phraseId": "vocal-part-5-line-2-bar-2",
         "text": "だ",
-        "start": 104880,
-        "duration": 2268
+        "start": 105920,
+        "duration": 1228
       },
       {
         "id": "vocal-part-5-line-3-unit-1",
-        "phraseId": "vocal-part-5-line-3",
+        "phraseId": "vocal-part-5-line-3-bar-1",
         "text": "ち",
         "start": 108000,
-        "duration": 660
+        "duration": 780
       },
       {
         "id": "vocal-part-5-line-3-unit-2",
-        "phraseId": "vocal-part-5-line-3",
+        "phraseId": "vocal-part-5-line-3-bar-1",
         "text": "い",
-        "start": 108720,
-        "duration": 660
+        "start": 108840,
+        "duration": 780
       },
       {
         "id": "vocal-part-5-line-3-unit-3",
-        "phraseId": "vocal-part-5-line-3",
+        "phraseId": "vocal-part-5-line-3-bar-1",
         "text": "さ",
-        "start": 109440,
-        "duration": 420
+        "start": 109680,
+        "duration": 780
       },
       {
         "id": "vocal-part-5-line-3-unit-4",
-        "phraseId": "vocal-part-5-line-3",
+        "phraseId": "vocal-part-5-line-3-bar-1",
         "text": "な",
-        "start": 109920,
-        "duration": 420
+        "start": 110520,
+        "duration": 780
       },
       {
         "id": "vocal-part-5-line-3-unit-5",
-        "phraseId": "vocal-part-5-line-3",
+        "phraseId": "vocal-part-5-line-3-bar-2",
         "text": "ちょ",
-        "start": 110400,
-        "duration": 420
+        "start": 111360,
+        "duration": 780
       },
       {
         "id": "vocal-part-5-line-3-unit-6",
-        "phraseId": "vocal-part-5-line-3",
+        "phraseId": "vocal-part-5-line-3-bar-2",
         "text": "う",
-        "start": 110880,
-        "duration": 900
+        "start": 112200,
+        "duration": 780
       },
       {
         "id": "vocal-part-5-line-3-unit-7",
-        "phraseId": "vocal-part-5-line-3",
+        "phraseId": "vocal-part-5-line-3-bar-2",
         "text": "ち",
-        "start": 111840,
-        "duration": 660
+        "start": 113040,
+        "duration": 780
       },
       {
         "id": "vocal-part-5-line-3-unit-8",
-        "phraseId": "vocal-part-5-line-3",
+        "phraseId": "vocal-part-5-line-3-bar-2",
         "text": "ん",
-        "start": 112560,
-        "duration": 2268
+        "start": 113880,
+        "duration": 948
       },
       {
         "id": "vocal-part-5-line-4-unit-1",
-        "phraseId": "vocal-part-5-line-4",
+        "phraseId": "vocal-part-5-line-4-bar-1",
         "text": "ふ",
-        "start": 115920,
+        "start": 115680,
         "duration": 420
       },
       {
         "id": "vocal-part-5-line-4-unit-2",
-        "phraseId": "vocal-part-5-line-4",
+        "phraseId": "vocal-part-5-line-4-bar-1",
         "text": "た",
-        "start": 116400,
-        "duration": 660
+        "start": 116160,
+        "duration": 420
       },
       {
         "id": "vocal-part-5-line-4-unit-3",
-        "phraseId": "vocal-part-5-line-4",
+        "phraseId": "vocal-part-5-line-4-bar-1",
         "text": "り",
-        "start": 117120,
-        "duration": 660
+        "start": 116640,
+        "duration": 420
       },
       {
         "id": "vocal-part-5-line-4-unit-4",
-        "phraseId": "vocal-part-5-line-4",
+        "phraseId": "vocal-part-5-line-4-bar-1",
         "text": "の",
-        "start": 117840,
-        "duration": 180
+        "start": 117120,
+        "duration": 420
       },
       {
         "id": "vocal-part-5-line-4-unit-5",
-        "phraseId": "vocal-part-5-line-4",
+        "phraseId": "vocal-part-5-line-4-bar-1",
         "text": "み",
-        "start": 118080,
+        "start": 117600,
         "duration": 420
       },
       {
         "id": "vocal-part-5-line-4-unit-6",
-        "phraseId": "vocal-part-5-line-4",
+        "phraseId": "vocal-part-5-line-4-bar-1",
         "text": "ち",
-        "start": 118560,
-        "duration": 1140
+        "start": 118080,
+        "duration": 420
       },
       {
         "id": "vocal-part-5-line-4-unit-7",
-        "phraseId": "vocal-part-5-line-4",
+        "phraseId": "vocal-part-5-line-4-bar-1",
         "text": "を",
-        "start": 119760,
+        "start": 118560,
         "duration": 420,
         "pronunciation": "お"
       },
       {
         "id": "vocal-part-5-line-4-unit-8",
-        "phraseId": "vocal-part-5-line-4",
+        "phraseId": "vocal-part-5-line-4-bar-2",
         "text": "て",
-        "start": 120240,
-        "duration": 420
+        "start": 119040,
+        "duration": 1060
       },
       {
         "id": "vocal-part-5-line-4-unit-9",
-        "phraseId": "vocal-part-5-line-4",
+        "phraseId": "vocal-part-5-line-4-bar-2",
         "text": "ら",
-        "start": 120720,
-        "duration": 660
+        "start": 120160,
+        "duration": 1060
       },
       {
         "id": "vocal-part-5-line-4-unit-10",
-        "phraseId": "vocal-part-5-line-4",
+        "phraseId": "vocal-part-5-line-4-bar-2",
         "text": "す",
-        "start": 121440,
-        "duration": 1068
+        "start": 121280,
+        "duration": 1228
       },
       {
         "id": "vocal-part-6-line-1-unit-1",
@@ -25213,11 +25333,13 @@
     "voices": [
       {
         "id": "voice",
+        "role": "lead",
         "trackId": "voice-track",
         "documentId": "lantern-text"
       },
       {
         "id": "backing-voice",
+        "role": "backing",
         "trackId": "backing",
         "documentId": "lantern-backing-text"
       }

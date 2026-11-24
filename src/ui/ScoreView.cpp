@@ -94,7 +94,7 @@ class ScoreView::Panel final : public juce::Component {
             if (mark.voice.isNotEmpty())
                 names.addIfNotAlreadyThere(mark.voice);
         voices.clear(juce::dontSendNotification);
-        voices.addItem(TRANS("All lyric voices"), 1);
+        voices.addItem(TRANS("Primary lyrics"), 1);
         for (int i = 0; i < names.size(); ++i)
             voices.addItem(names[i], i + 2);
         if (!names.contains(options.lyricVoice))
@@ -192,7 +192,7 @@ class ScoreView::Panel final : public juce::Component {
             c->setVisible(lead);
         voices.setVisible(lead && options.showLyrics && !score.lyrics.empty());
         wording.setVisible(voices.isVisible());
-        lyrics.setEnabled(!score.lyrics.empty());
+        lyrics.setEnabled(!score.lyrics.empty() || !score.displayPhrases.empty());
         chords.setEnabled(!score.chords.empty());
         scales.setEnabled(!score.scales.empty());
         staff.setEnabled(has);

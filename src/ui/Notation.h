@@ -33,6 +33,9 @@ struct NotationScore {
     int bars = 0, beats = 4, beatType = 4;
     juce::int64 ppq = 0, barTicks = 0;
     std::vector<SheetMark> sections, chords, scales, lyrics, tempos, keys;
+    std::vector<OstfpPreview::DisplayPhrase> displayPhrases;
+    juce::String primaryDocument;
+    std::map<juce::String, juce::String> voiceDocuments;
     std::vector<ScorePart> parts;
     std::vector<MeterPoint> meters;
     juce::StringArray unalignedPhrases;

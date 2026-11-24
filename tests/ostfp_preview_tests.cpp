@@ -140,8 +140,10 @@ static int checkGallery(const juce::File& directory) {
             for (auto kind : {ostfstudio::TimelineLane::displayLyrics, ostfstudio::TimelineLane::pronunciation}) {
                 const auto lane = std::find_if(project->globalLanes.begin(), project->globalLanes.end(),
                     [kind](const auto& entry) { return entry.kind == kind; });
-                if (lane == project->globalLanes.end() || lane->regions.size() != 194
-                    || !lane->regions.front().exactBars || lane->regions.front().exactBars->start != 5.125) return 91;
+                const bool sheet = kind == ostfstudio::TimelineLane::displayLyrics;
+                if (lane == project->globalLanes.end() || lane->regions.size() != (sheet ? 32 : 194)
+                    || !lane->regions.front().exactBars || lane->regions.front().exactBars->start != (sheet ? 5.0 : 5.125)
+                    || juce::String::fromUTF8(lane->regions.front().label) != juce::String::fromUTF8(sheet ? "雨の音が" : "あ")) return 91;
             }
             const auto id = project->pitchedNotes[0].front().id;
             const auto original = project->vocalNotes.at(id);
@@ -152,7 +154,8 @@ static int checkGallery(const juce::File& directory) {
             juce::MemoryBlock before;
             if (project->editVocalNote(0,id,changed,before).failed()) return 87;
             const auto& current = project->vocalNotes.at(id);
-            if (current.text != changed.text || current.pronunciation != changed.pronunciation
+            if (project->displayPhrases.front().text != juce::String::fromUTF8("雨の音が")
+                || current.text != changed.text || current.pronunciation != changed.pronunciation
                 || current.technique != changed.technique || current.intensity != .75) return 88;
             juce::MemoryOutputStream out;
             if (writeOstfpPreview(*project,*project->savedMix,out).failed()) return 89;
@@ -323,12 +326,13 @@ static int checkGallery(const juce::File& directory) {
             const auto channel = lane("Channel Aftertouch");
             const auto poly = lane("Poly Aftertouch / note " + juce::String(notes.front().pitch));
             const auto pitch = lane("Vocal / voice / Pitch (cents)");
+            const auto firstPressureTick = notes.front().startTick + std::min<juce::int64>(200, (notes.front().endTick - notes.front().startTick) / 3);
             if (notes.size() < 160 || project->trackLanes.front().regions.size() != 6
                 || project->trackLanes.front().regions.front().bars.firstBar != 5
                 || cc == curves.end() || cc->points.size() < 40
                 || cc->points.front().tick != notes.front().startTick
-                || channel == curves.end() || channel->points.front().tick != notes.front().startTick + 200
-                || poly == curves.end() || poly->points.front().tick != notes.front().startTick + 200
+                || channel == curves.end() || channel->points.front().tick != firstPressureTick
+                || poly == curves.end() || poly->points.front().tick != firstPressureTick
                 || pitch == curves.end() || !pitch->cents || pitch->points.front().value != -24.0
                 || project->trackLanes[7].regions.size() != 2 || project->pitchedNotes[7].size() != 10)
                 return 1;

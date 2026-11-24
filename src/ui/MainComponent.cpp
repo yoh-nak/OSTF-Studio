@@ -743,6 +743,7 @@ MainComponent::MainComponent() {
         }
     };
     vocalLane_.voice.onClick = [this] { if (selectedTrack_) useTrackSinger(*selectedTrack_,false); };
+    vocalLane_.overlay.onClick = [this] { repaint(); };
     pianoGrid_.editLyrics = [this](const auto& n) { if (vocalLane_.isVisible()) editVocalNote(n); };
     addChildComponent(pianoInspectorView_);
     pianoInspectorView_.setViewedComponent(&pianoInspector_, false);
@@ -2249,9 +2250,9 @@ void MainComponent::editVocalNote(const ostfstudio::PitchedNote& note) {
     const auto* data = vocalLane_.lookup(note.id);
     const auto original = data ? *data : ostfstudio::VocalNote{};
     auto* box = new juce::AlertWindow(TRANS("Vocal note"), {}, juce::MessageBoxIconType::NoIcon,this);
-    box->addTextEditor("words",original.text,TRANS("Display lyrics"));
+    box->addTextEditor("words",original.text,TRANS("Note lyrics"));
     box->addTextEditor("reading",original.pronunciation == original.text ? juce::String{} : original.pronunciation,
-                       TRANS("Pronunciation (blank uses display lyrics)"));
+                       TRANS("Pronunciation (blank uses note lyrics)"));
     juce::StringArray choices{"", "scoop", "vibrato"};
     juce::StringArray labels{TRANS("Straight"),TRANS("Scoop"),TRANS("Vibrato")};
     if (!choices.contains(original.technique)) { choices.add(original.technique); labels.add(original.technique); }
@@ -5664,12 +5665,20 @@ void MainComponent::refreshPianoNotes() {
     pianoTrack_ = selectedTrack_;
     auto& grid = pianoGrid_;
     grid.notes.clear();
+    vocalLane_.phrases.clear();
     grid.kitPitches.clear();
     pianoMaxEnds_.clear();
     grid.editable = false;
     if (!project_ || !selectedTrack_) { grid.resetRange(false); return; }
     const auto track = *selectedTrack_;
     grid.notes = project_->pitchedNotes[track];
+    if (track < project_->sourceTrackCount()) {
+        const auto docs = project_->trackLyricDocuments.find(project_->trackIds[int(track)]);
+        for (const auto& phrase : project_->displayPhrases)
+            if (docs != project_->trackLyricDocuments.end() ? docs->second.contains(phrase.document)
+                : project_->primaryMelodyTrack == track && phrase.document == project_->displayDocument)
+                vocalLane_.phrases.push_back(phrase);
+    }
     const auto& drums = project_->drumNotes[track];
     grid.notes.insert(grid.notes.end(), drums.begin(), drums.end());
     std::stable_sort(grid.notes.begin(), grid.notes.end(), [](const auto& a, const auto& b) { return a.startTick < b.startTick; });
@@ -6578,6 +6587,10 @@ void MainComponent::resized() {
                 strip.solo.setBounds(header.removeFromLeft(29).reduced(2, 0));
                 inputControls(header);
                 strip.effects.button.setBounds(header.removeFromRight(48).reduced(2, 0));
+                if (midi && (project_->isGlobalNoteTrack(i) || project_->lyricTrackIds.contains(project_->trackIds[int(i)]))) {
+                    strip.plugin.setVisible(true);
+                    strip.plugin.setBounds(header.removeFromRight(std::min(130, header.getWidth()*3/4)).reduced(1,0));
+                }
                 if (audio) strip.recordingMeter.setBounds(header.removeFromLeft(header.getWidth()/2).reduced(3, 3));
                 strip.meter.setBounds(header.reduced(8, 0).withSizeKeepingCentre(header.getWidth() - 16, 9));
                 continue;
@@ -7379,6 +7392,18 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
             }
         }
     };
+    if (vocalLane_.isVisible() && vocalLane_.overlay.getToggleState()) {
+        g.setColour(juce::Colour(0xffecc681));
+        for (int i = 0; i < project_->trackIds.size(); ++i) {
+            if (size_t(i) == *selectedTrack_ || !project_->lyricTrackIds.contains(project_->trackIds[i])) continue;
+            for (const auto& n : project_->pitchedNotes[size_t(i)]) {
+                if (n.startTick >= right) break;
+                if (n.endTick <= left) continue;
+                g.drawRect(tickX(n.startTick),noteY(n.pitch),std::max(2.f,tickX(n.endTick)-tickX(n.startTick)),
+                           std::max(2.f,rowHeight-1.f),1.5f);
+            }
+        }
+    }
     const auto firstNote = std::upper_bound(pianoMaxEnds_.begin(), pianoMaxEnds_.end(), left) - pianoMaxEnds_.begin();
     for (auto it = notes.begin() + firstNote; it != notes.end() && it->startTick < right; ++it) drawNote(*it);
     if (vocalLane_.isVisible()) {

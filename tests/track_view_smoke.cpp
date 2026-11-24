@@ -288,6 +288,10 @@ private:
             const auto& strip = *studio.trackControls_[i];
             if (!strip.playableInstrument || !strip.instance || strip.instance->getName() != "OSTF Formant Singer") return 4;
         }
+        if (studio.trackControls_[lead]->instance.get() == studio.trackControls_[backing]->instance.get()
+            || !studio.trackControls_[backing]->plugin.isVisible()) return 12;
+        if (studio.vocalLane_.phrases.empty() || studio.vocalLane_.phrases.front().text != juce::String::fromUTF8("雨の音が"))
+            return 14;
         studio.vocalLane_.entrance.onClick();
         if (studio.cursorTick_ != project.pitchedNotes[lead].front().startTick || studio.cursorTick_/project.ticksPerBar != 4) return 5;
         const auto& note = project.pitchedNotes[lead].front();
@@ -302,6 +306,8 @@ private:
         std::vector<PreviewTransport::TrackSetup> routes(project.trackLanes.size());
         routes[lead].instrument = studio.trackControls_[lead]->instance.get();
         routes[lead].midiChannel = studio.trackControls_[lead]->midiChannel;
+        routes[backing].instrument = studio.trackControls_[backing]->instance.get();
+        routes[backing].midiChannel = studio.trackControls_[backing]->midiChannel;
         PreviewTransport playback;
         playback.setChannelMix(lead,{},true,0);
         playback.setOutputMix({});
@@ -327,7 +333,13 @@ private:
             energy += count*std::pow(audio.getRMSLevel(0,0,count),2);
             if (writer && !writer->writeFromAudioSampleBuffer(audio,0,count)) return 10;
         }
-        return energy > frames*.000001 ? 0 : 11;
+        if (energy <= frames*.000001 || project.pitchedNotes[backing].empty()) return 11;
+        playback.takeMeters();
+        playback.setChannelMix(backing,{},true,0);
+        playback.seekToTick(project.pitchedNotes[backing].front().startTick);
+        for (int i=0; i<20; ++i) playback.renderBlock(audio.getArrayOfWritePointers(),2,block);
+        const auto meters = playback.takeMeters();
+        return meters.tracks[lead][0] > .001f && meters.tracks[backing][0] > .001f ? 0 : 13;
     }
     void timerCallback() override {
         if (opened && !studio.canEditTracks() && ++polls < 600) return;

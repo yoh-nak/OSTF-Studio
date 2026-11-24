@@ -15,3 +15,7 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 
 Use Visual Studio 2022 x64 on Windows or Xcode Command Line Tools on macOS. The release workflow records platform-specific build options. See README.md and docs/RELEASING.md in the archive. [Release downloads and corresponding source](https://github.com/yoh-nak/OSTF-Studio/releases)
+
+## Japanese factory voice
+
+OSTF Formant Singer includes Japanese syllables synthesized, trimmed, normalized and looped from HTS Voice “Mei” by the MMDAgent Project Team, Copyright 2009–2013 Nagoya Institute of Technology, Department of Computer Science. The adapted voice samples are distributed under [Creative Commons Attribution 3.0](https://creativecommons.org/licenses/by/3.0/). See HTS-Voice-Mei.txt in the distributed notices and the [original project](https://www.mmdagent.jp/).

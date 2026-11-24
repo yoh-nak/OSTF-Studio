@@ -1,4 +1,5 @@
 #include "VoiceBank.h"
+#include "MeiVoiceData.h"
 #if JUCE_WINDOWS
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -73,9 +74,8 @@ double periodAt(const std::vector<float>& x, int start, double sr) {
     return 0;
 }
 
-std::optional<RecordedMora> readMora(const juce::File& file, double offset, double consonant, double cutoff) {
+std::optional<RecordedMora> readMora(std::unique_ptr<juce::InputStream> stream, double offset, double consonant, double cutoff) {
     juce::WavAudioFormat wav;
-    auto stream = file.createInputStream();
     if (!stream) return {};
     std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(stream.release(), true));
     if (!reader || reader->sampleRate < 8000 || reader->sampleRate > 192000 || reader->numChannels == 0) return {};
@@ -142,7 +142,7 @@ std::unique_ptr<VoiceBank> VoiceBank::load(const juce::File& directory, juce::St
         if (phones.size() != 1 || phones.front().onset == closure || phones.front().onset == lengthMark) return;
         const int key = phones.front().sampleKey();
         if (bank->sounds.count(key) || !file.existsAsFile()) return;
-        if (auto sample = readMora(file, offset, consonant, cutoff)) {
+        if (auto sample = readMora(file.createInputStream(), offset, consonant, cutoff)) {
             total += sample->frames.size();
             if (total > 16 * 1024 * 1024) { tooLarge = true; return; }
             bank->sounds.emplace(key, std::move(*sample));
@@ -170,6 +170,23 @@ std::unique_ptr<VoiceBank> VoiceBank::load(const juce::File& directory, juce::St
                          : "No pitched Japanese CV samples found. Select the folder containing kana WAV files or oto.ini.";
         return {};
     }
+    return bank;
+}
+
+const VoiceBank& VoiceBank::factory() {
+    static const VoiceBank bank = [] {
+        VoiceBank voice;
+        voice.name = "Mei / Japanese";
+        juce::MemoryInputStream input(MeiVoiceData::meicv_zip, MeiVoiceData::meicv_zipSize, false);
+        juce::ZipFile archive(input);
+        for (int i = 0; i < archive.getNumEntries(); ++i) {
+            const auto phones = pronounce(archive.getEntry(i)->filename.upToLastOccurrenceOf(".", false, false), true);
+            if (phones.size() != 1) continue;
+            auto sample = readMora(std::unique_ptr<juce::InputStream>(archive.createStreamForEntry(i)), 0, 0, 0);
+            if (sample) voice.sounds.emplace(phones.front().sampleKey(), std::move(*sample));
+        }
+        return voice;
+    }();
     return bank;
 }
 }

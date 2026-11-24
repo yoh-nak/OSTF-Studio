@@ -123,6 +123,10 @@ if (OSTF_STUDIO_BUILD_GUI)
     endif()
 
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/DocumentTypes.plist" ostf_document_types)
+    if(MSVC)
+        set_property(SOURCE tests/track_view_smoke.cpp tests/notation_smoke.cpp tests/ostfp_preview_tests.cpp
+                     APPEND PROPERTY COMPILE_OPTIONS /utf-8)
+    endif()
     juce_add_gui_app(OSTFStudio
         PRODUCT_NAME "OSTF Studio"
         COMPANY_NAME "OSTF"

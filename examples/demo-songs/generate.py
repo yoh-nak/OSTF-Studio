@@ -525,8 +525,16 @@ def sing_lantern(song):
     lyrics = {"documents": [{"id": "lantern-text", "title": "Paper Lantern Replies"},
                             {"id": "lantern-backing-text", "title": "Wordless backing vocals"}],
               "phrases": [], "units": [], "alignments": [],
-              "voices": [{"id": "voice", "trackId": "voice-track", "documentId": "lantern-text"},
-                         {"id": "backing-voice", "trackId": "backing", "documentId": "lantern-backing-text"}]}
+              "voices": [{"id": "voice", "role": "lead", "trackId": "voice-track", "documentId": "lantern-text"},
+                         {"id": "backing-voice", "role": "backing", "trackId": "backing", "documentId": "lantern-backing-text"}]}
+    # Each Japanese line occupies two chords. The printed wording belongs to the
+    # phrase; kana in its units follow the individual sung notes.
+    written = {
+        "Verse 1": [("雨の音が", "する", 6), ("窓に光る", "しずく", 6),
+                    ("そっと手を", "重ね", 5), ("今日も灯る", "明かり", 6)],
+        "Verse 2": [("夜明けの風が", "吹く", 7), ("君の名を", "呼んだ", 5),
+                    ("小さな", "提灯", 4), ("二人の道を", "照らす", 7)],
+    }
     song["lyrics"] = lyrics
     lead = song["tracks"][0]
     backing = next(lane for lane in song["tracks"] if lane["id"] == "backing")
@@ -545,7 +553,17 @@ def sing_lantern(song):
             syllables = [syllable for word in words for syllable in word.split("-")]
             japanese = name in ("Verse 1", "Verse 2")
             phrase = text.replace(" ", "") if japanese else text.replace("-", "")
-            lyrics["phrases"].append({"id": line_id, "documentId": "lantern-text", "text": phrase})
+            line_tick = section["start"] + line * 8 * PPQ
+            split = len(syllables)
+            if japanese:
+                first, last, split = written[name][line]
+                for half, (printed, morae) in enumerate(((first, syllables[:split]), (last, syllables[split:]))):
+                    lyrics["phrases"].append({"id": f"{line_id}-bar-{half+1}", "documentId": "lantern-text",
+                        "text": printed, "pronunciation": "".join(morae).replace("を", "お"),
+                        "start": line_tick + half * 4 * PPQ, "duration": 4 * PPQ})
+            else:
+                lyrics["phrases"].append({"id": line_id, "documentId": "lantern-text", "text": phrase,
+                                          "start": line_tick, "duration": 8 * PPQ})
             offsets = ([.5, 1, 1.5, 2.25, 3, 3.5, 4.25, 5, 5.5, 6.25, 6.75, 7.25] if refrain else
                        [.5, 1.25, 2, 2.5, 3, 3.5, 4.5, 5.25, 5.75, 6.25, 6.75, 7.25])
             shape = ([1, 2, 3, 2, 1, 2, 4, 3, 2, 1, 1, 0] if refrain else
@@ -556,6 +574,10 @@ def sing_lantern(song):
                 shape = [max(0, degree - (i % 2)) for i, degree in enumerate(shape)]
             if name == "Bridge":
                 shape = [min(5, degree + 1) for degree in shape]
+            if japanese:
+                # Keep each written fragment's notes within its chord.
+                offsets = [0.5 + i * 3.5 / split if i < split else
+                           4 + (i - split) * 3.5 / (len(syllables) - split) for i in range(len(syllables))]
             start = line * 8 * PPQ
             breaths.append({"id": f"{line_id}-inhale", "start": start + 80, "duration": 245,
                             "kind": "inhale", "intensity": .42 if refrain else .26})
@@ -574,7 +596,8 @@ def sing_lantern(song):
                 unit_id = f"{line_id}-unit-{i + 1}"
                 vel = (89 if refrain else 76) + [3, -2, 6, 0][i % 4]
                 lead_notes.append(note(note_id, start + offset, held, pool[tone], vel, releaseVelocity=48 if refrain else 33))
-                lyrics["units"].append({"id": unit_id, "phraseId": line_id, "text": syllable, "start": at, "duration": held})
+                phrase_id = f"{line_id}-bar-{1 if i < split else 2}" if japanese else line_id
+                lyrics["units"].append({"id": unit_id, "phraseId": phrase_id, "text": syllable, "start": at, "duration": held})
                 if japanese and syllable == "を":
                     lyrics["units"][-1]["pronunciation"] = "お"
                 lyrics["alignments"].append({"id": f"{unit_id}-alignment", "voiceId": "voice",

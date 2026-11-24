@@ -203,7 +203,7 @@ class Singer final : public juce::AudioProcessor {
         const juce::SpinLock::ScopedLockType guard(lock);
         if (bank) return bank->name + "  /  " + juce::String(int(bank->sounds.size())) + " recorded morae";
         if (requestedVoice != juce::File{}) return "Voice folder unavailable: " + requestedVoice.getFileName() + "  /  using built-in voice";
-        return "Built-in Japanese formant voice";
+        return factoryBank.name + "  /  MMDAgent";
     }
     juce::File voicePortrait() const {
         const juce::SpinLock::ScopedLockType guard(lock);
@@ -279,8 +279,8 @@ class Singer final : public juce::AudioProcessor {
                     if (active >= 0) {
                         const auto& s = (*sequence)[size_t(active)];
                         if (s.continuesNote && lastIndex >= 0 && lastIndex + 1 == active)
-                            voices[0].articulate(s.phone, rate, bank.get());
-                        else voices[0].start(1, s.key, s.velocity / 127.f, s.phone, rate, bank.get());
+                            voices[0].articulate(s.phone, rate, activeBank());
+                        else voices[0].start(1, s.key, s.velocity / 127.f, s.phone, rate, activeBank());
                     } else
                         voices[0].stopNote();
                     lastIndex = active;
@@ -311,7 +311,7 @@ class Singer final : public juce::AudioProcessor {
             articulation[p[4]][p[5]] = phone;
             for (auto& v : voices)
                 if (v.channel == p[4] + 1 && v.key == p[5])
-                    v.articulate(phone, rate, bank.get());
+                    v.articulate(phone, rate, activeBank());
         } else if (m.isNoteOn()) {
             auto* target = &voices[0];
             for (auto& v : voices) {
@@ -321,7 +321,7 @@ class Singer final : public juce::AudioProcessor {
                 }
             }
             target->start(m.getChannel(), m.getNoteNumber(), m.getFloatVelocity(),
-                          articulation[m.getChannel() - 1][m.getNoteNumber()], rate, bank.get());
+                          articulation[m.getChannel() - 1][m.getNoteNumber()], rate, activeBank());
         } else if (m.isPitchWheel()) {
             bend[m.getChannel() - 1] = std::exp2((m.getPitchWheelValue() - 8192) / (8192.0 * 6));
         } else if (m.isController() && m.getControllerNumber() == 11) {
@@ -338,7 +338,9 @@ class Singer final : public juce::AudioProcessor {
     int selected = -1, generation = 0, seen = -1, lastPart = -1, cursor = -1, lastIndex = -1;
     double rate = 48000, expected = -1;
     std::array<Voice, 16> voices{};
+    const VoiceBank& factoryBank = VoiceBank::factory();
     std::unique_ptr<VoiceBank> bank;
+    const VoiceBank* activeBank() const { return bank ? bank.get() : &factoryBank; }
     juce::File requestedVoice;
     std::array<double, 16> bend{};
     std::array<float, 16> expression{};
