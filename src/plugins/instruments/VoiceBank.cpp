@@ -109,6 +109,7 @@ std::optional<RecordedMora> readMora(std::unique_ptr<juce::InputStream> stream, 
         const int cycles = std::min(12, int((size - at - 2) / sample.period));
         if (cycles < 3) continue;
         sample.loopStart = at;
+        sample.consonantFrames = std::min(at, consonant > 0 ? vowelStart : int(.045 * sr));
         sample.loopEnd = at + int(std::round(cycles * sample.period));
         sample.fade = std::max(1, int(std::round(sample.period)));
         return sample;

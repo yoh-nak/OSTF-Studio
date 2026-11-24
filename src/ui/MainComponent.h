@@ -3,6 +3,7 @@
 #include "ui/ConsoleLookAndFeel.h"
 #include "ui/EditorClipLane.h"
 #include "ui/ChordReview.h"
+#include "ui/SystemUsageMeter.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <JuceHeader.h>
 #include "ui/DeviceSettingsWindow.h"
@@ -258,7 +259,7 @@ private:
     juce::PopupMenu theoryMenu() const;
     juce::PopupMenu musicMenu() const;
     void editSongMusic(ostfstudio::SongMusicEdit::Mode mode);
-    void rememberScoreEdit(juce::MemoryBlock before);
+    void rememberScoreEdit(juce::MemoryBlock before, const char* label);
     void previewNoteFit(const std::vector<ostfstudio::NoteEdit>&);
     juce::String noteFitReading() const;
     std::vector<ostfstudio::TheoryGuide::TrackCell> previewFits_;
@@ -314,9 +315,11 @@ private:
         std::optional<std::vector<ostfstudio::ProjectAudio>> beforeAudio, afterAudio;
         std::optional<ostfstudio::ChordDecisions> reviewBefore, reviewAfter;
         std::optional<size_t> reviewTrack;
+        juce::String label;
     };
     std::deque<NoteRevision> noteHistory_;
     std::size_t noteHistoryCursor_ = 0;
+    uint64_t historyRevision_ = 0;
     struct TrackControls {
         LevelMeter meter, recordingMeter;
         ViewButton cue{ViewButton::Icon::headphones};
@@ -467,7 +470,8 @@ private:
     std::vector<ClipHit> clipsOn(size_t track) const;
     std::optional<ClipHit> clipAt(size_t track, juce::int64 tick) const;
     void clipCommand(ClipOp, std::optional<ClipHit>, size_t destination, juce::int64 tick);
-    void rememberAudioEdit(std::vector<ostfstudio::ProjectAudio> before, juce::MemoryBlock beforeScore = {});
+    void rememberAudioEdit(std::vector<ostfstudio::ProjectAudio> before, juce::MemoryBlock beforeScore = {},
+                           const char* label = "Edit audio clip");
     juce::String selectedAudioId_;
     std::optional<ClipHit> draggingMidi_, dragPreview_;
     juce::int64 midiGrabOffset_ = 0, clipInsertionTick_ = 0;
@@ -512,6 +516,10 @@ private:
     bool transportActive_ = false;
     std::optional<std::size_t> recordTrack_;
     juce::Label statusLabel_;
+    SystemUsageMeter systemUsage_;
+    juce::TextButton undoButton_, redoButton_, historyButton_;
+    juce::PopupMenu editHistoryMenu();
+    void refreshHistoryControls();
     std::unique_ptr<juce::FileChooser> chooser_;
     std::unique_ptr<juce::FileChooser> pluginChooser_;
     std::unique_ptr<ostfstudio::OstfpPreview> project_;

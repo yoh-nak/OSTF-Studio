@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## Chord review, edit history and Japanese singing
+
+Branch `feat/review-performance-history`. The piano roll opens chord review when a pitch or timing edit or a material drop creates pending decisions. The lane collapses after the final decision. The whole ensemble supplies the candidate ranking, while each candidate displays its chord-tone coverage for the selected part, weighted by sounding duration in that interval. Untouched intervals have no decision controls.
+
+The footer offers Undo, Redo and a menu of recorded score and clip edits. Keeping a chord is also a history step and undoing it reopens the review. CPU and RAM show system usage at one-second intervals. The tooltip includes used and total physical memory in GiB.
+
+The Japanese singer preserves recorded consonant timing across pitches, crossfades neighbouring articulations and adds subtle motion to sustained vowels. The singing test checks the source-rate onset and the pitch of a transposed sustain. The portable host rendered the first verse of Paper Lantern Replies as a 12.308-second stereo WAV at 48 kHz. The waveform differs from the previous Mei render. Physical listening and macOS are unverified.
+
+The final Windows Release run passed all 31 CTest cases. The separate core build passed both tests with the local LLVM runtime on PATH. An earlier full run observed the known intermittent Link transport failure, which also passed in isolation. Track-view tests cover duration-weighted candidate percentages on separate tracks, a silent track, the hidden lane, restoring a pending decision from history and the small-window footer. The unpacked host also passed the packaged OSTFP vocal check. The portable folder, verified ZIP (552 files including 35 plug-in bundles) and vocal WAV are under `dist/windows-review-history`.
+
 ## Piano roll restoration and vocal track order
 
 Branch `fix/vocal-track-groups`. The mixer temporarily occupies the lower pane. Closing it restores the previous track editor and its size, or the full-height arrangement if the editor was closed. Chord Voicing is fixed above the lead. Each vocal part owns a display-lyric lane, a pronunciation lane and its melody row. Backing vocal groups can be reordered by dragging the handle beside their track name or by using the header menu. Their row order is fixed, and arrangement tracks retain their own ordering. These changes use the existing score and session formats.

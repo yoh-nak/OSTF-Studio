@@ -80,8 +80,11 @@ static bool testRecordedVoice() {
         for (int i = 0; i < 256; ++i) {
             const float out = block.getSample(0, i);
             if (!std::isfinite(out)) return false;
-            const float expected = reference->read(position, 440 * reference->period / 48000);
-            if (b >= 3 && std::abs(out - std::tanh(expected * (110.f / 127))) > .002f) return false;
+            // The recorded consonant keeps its original timing even when the sung vowel is transposed.
+            if (position < reference->consonantFrames) {
+                const float expected = reference->read(position, reference->rate / 48000);
+                if (b >= 3 && std::abs(out - std::tanh(expected * (110.f / 127))) > .002f) return false;
+            }
             if (b >= 50 && prev <= 0 && out > 0) ++crossings;
             prev = out;
         }

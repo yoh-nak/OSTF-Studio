@@ -1,5 +1,9 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+The footer and File menu expose the score and clip edit journal, including the state of pending chord decisions. Selecting an earlier or later entry uses the same restoration path as Undo and Redo. The platform meter samples system CPU counters and physical memory once a second on the message thread.
+
+Formant Singer plays a recorded consonant onset at its source rate, then transitions to the pitched vowel. Adjacent notes on the same channel can share a short pitch transition and sample crossfade. Sustained notes gain a delayed, low-depth pitch variation within the note's authored expression.
+
 ## Shared instruments, track ordering and voice processing
 
 Studio creates native editor windows when the user opens an instrument, an effect or Splice Sounds. JUCE associates the window with the Studio workspace so the OS keeps it above its owner. Editing an FX slot dismisses the chain popup before showing the editor. Background audio-device and control-surface setup can initialise without creating a desktop window.
@@ -20,7 +24,7 @@ The arrangement projects the lead vocal’s lyric units onto note spans. The pia
 
 ## Arrangement tools and chord decisions
 
-The chord review lane stays visible in an editable pitched piano roll. Each score chord shows an idle candidate dash until a pitch or timing edit touches its interval. Each pending interval owns a decision menu with Confirm, Keep and Cancel. Its button follows the interval when zooming or scrolling. The fixed gutter has a separate button for each batch action. Each pending interval records the original score events for its edited note IDs. Cancellation restores those events and removes inserted notes. Overlapping intervals share the rollback of a sustained or moved note. Keep preserves the edited performance and existing harmony. A candidate menu remains available for narrow intervals. The host preserves pending intervals across mixer and reading views and requires resolution before switching the edited track. Fit analysis accumulates note overlap in ticks per clip and context, including applicable note- or clip-scoped scales. Both fit readouts have independent display preferences.
+Chord review occupies space while decisions are pending. Ensemble notes rank the candidates. Each candidate reports the duration-weighted fit for the selected track during that interval. Each pending interval has a decision menu with Confirm, Keep and Cancel. Its button follows the interval when zooming or scrolling. The fixed gutter has a separate button for each batch action. Each pending interval records the original score events for its edited note IDs. Cancellation restores those events and removes inserted notes. Overlapping intervals share the rollback of a sustained or moved note. Keep preserves the edited performance and existing harmony. A candidate menu remains available for narrow intervals. The host preserves pending intervals across mixer and reading views and requires resolution before switching the edited track. Fit analysis accumulates note overlap in ticks per clip and context, including applicable note- or clip-scoped scales. Both fit readouts have independent display preferences.
 
 Chord ranking uses the score's pitched source tracks together. The analysis indexes enabled notes by start tick and prefix maximum end tick, so a sustained note contributes on both sides of a boundary. Every note edit or material drop builds the index from the current destination score. Session mute/solo is an audition choice and does not change the ranking. The generated chord-voicing lane is excluded to avoid feeding the existing chord back into its own analysis.
 

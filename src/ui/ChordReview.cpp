@@ -11,8 +11,8 @@ static ReviewRange chordRange(const juce::var& event) {
     return {start, start + Tick(event["duration"])};
 }
 
-ChordAnalysis::ChordAnalysis(const OstfpPreview& song)
-    : project(song), score(juce::JSON::parse(song.sourceScore.toString())) {
+ChordAnalysis::ChordAnalysis(const OstfpPreview& song, std::optional<size_t> track)
+    : project(song), score(juce::JSON::parse(song.sourceScore.toString())), editedTrack(track) {
     const auto tracks = score["tracks"];
     for (size_t i = 0; i < song.sourceTrackCount(); ++i) {
         if (song.trackKinds[i] != TrackKind::pitched)
@@ -26,7 +26,7 @@ ChordAnalysis::ChordAnalysis(const OstfpPreview& song)
         for (const auto& n : song.pitchedNotes[i])
             if (n.enabled && !n.fixedTrigger && n.pitch >= 0 && n.pitch <= 127 &&
                 n.startTick < n.endTick && !disabledClips.contains(n.clipId))
-                notes.push_back({n.startTick, n.endTick, n.endTick, n.pitch});
+                notes.push_back({n.startTick, n.endTick, n.endTick, n.pitch, i});
     }
     std::sort(notes.begin(), notes.end(), [](const Note& a, const Note& b) { return a.start < b.start; });
     // The prefix maximum preserves sustained notes when seeking to a later chord.
@@ -35,7 +35,16 @@ ChordAnalysis::ChordAnalysis(const OstfpPreview& song)
 }
 
 juce::StringArray ChordAnalysis::rank(ReviewRange range) const {
-    std::array<double, 12> weights{};
+    ChordDecision row{range};
+    updateCandidates(row);
+    return row.candidates;
+}
+
+void ChordAnalysis::updateCandidates(ChordDecision& row) const {
+    const auto range = row.range;
+    row.candidates.clear();
+    row.trackFit.fill(-1);
+    std::array<double, 12> weights{}, partWeights{};
     int bass = 128;
     double total = 0;
     const auto first = std::upper_bound(notes.begin(), notes.end(), range.getStart(),
@@ -46,11 +55,12 @@ juce::StringArray ChordAnalysis::rank(ReviewRange range) const {
         if (duration <= 0)
             continue;
         weights[note.pitch % 12] += duration;
+        if (editedTrack == note.track) partWeights[note.pitch % 12] += duration;
         bass = std::min(bass, note.pitch);
         total += duration;
     }
     if (total == 0)
-        return {};
+        return;
     struct Quality {
         const char* name;
         std::vector<int> intervals;
@@ -63,13 +73,16 @@ juce::StringArray ChordAnalysis::rank(ReviewRange range) const {
     struct Match {
         double fit;
         juce::String name;
+        int mask;
     };
     std::vector<Match> matches;
     for (int root = 0; root < 12; ++root)
         for (const auto& quality : qualities) {
             double covered = 0;
             int absent = 0;
+            int mask = 0;
             for (auto interval : quality.intervals) {
+                mask |= 1 << ((root + interval) % 12);
                 const auto weight = weights[(root + interval) % 12];
                 covered += weight;
                 if (weight == 0)
@@ -77,10 +90,21 @@ juce::StringArray ChordAnalysis::rank(ReviewRange range) const {
             }
             const double fit =
                 covered / total - .13 * absent + .08 * weights[root] / total + (bass % 12 == root ? .04 : 0);
-            matches.push_back({fit, juce::String(names[root]) + quality.name});
+            matches.push_back({fit, juce::String(names[root]) + quality.name, mask});
         }
     std::stable_sort(matches.begin(), matches.end(), [](const auto& a, const auto& b) { return a.fit > b.fit; });
-    return {matches[0].name, matches[1].name, matches[2].name};
+    auto fit = [&](int mask) {
+        TheoryGuide::Fit result;
+        if (mask) for (int pitch = 0; pitch < 12; ++pitch)
+            result.add(TheoryGuide::contains(mask, pitch), static_cast<Tick>(partWeights[pitch]));
+        return result.percent();
+    };
+    row.trackFit[0] = fit(TheoryGuide::chordToneMask(globalEventAt(score, TimelineLane::chord, range.getStart())));
+    for (int i = 0; i < 3; ++i) {
+        row.candidates.add(matches[i].name);
+        row.trackFit[i + 1] = fit(matches[i].mask);
+    }
+    row.trackFit[4] = fit(TheoryGuide::chordToneMask(row.sourceChord));
 }
 
 std::vector<ReviewRange> changedNoteRanges(const std::vector<PitchedNote>& oldNotes,
@@ -188,12 +212,12 @@ ChordDecisions ChordAnalysis::review(const std::vector<ReviewRange>& affected,
             continue;
         const auto old = globalEventAt(score, TimelineLane::chord, *i);
         ChordDecision item{interval, old["label"].toString()};
-        item.candidates = rank(interval);
         for (const auto& source : imported)
             if (chordRange(source).contains(*i)) {
                 item.sourceChord = source;
                 break;
             }
+        updateCandidates(item);
         item.choice = item.sourceChord.isObject() ? 4 : item.candidates.isEmpty() ? 0 : 1;
         result.push_back(std::move(item));
     }
@@ -285,7 +309,7 @@ juce::Rectangle<int> candidateCell(juce::Rectangle<int> area, int index, int cou
     return area.withLeft(left).withRight(area.getX() + area.getWidth() * (index + 1) / count).reduced(1, 0);
 }
 bool fitsChoices(juce::Rectangle<int> box, int count) {
-    return count > 0 && candidateArea(box).getWidth() >= count * 46 && box.getHeight() >= 36;
+    return count > 0 && candidateArea(box).getWidth() >= count * 84 && box.getHeight() >= 36;
 }
 juce::Rectangle<int> actionBounds(juce::Rectangle<int> box) {
     auto header = box.removeFromTop(box.getHeight() / 2).reduced(std::min(2, box.getWidth() / 8), 3);
@@ -347,27 +371,16 @@ void ChordReviewLane::display(const ostfstudio::ChordDecisions& rows, const ostf
     for (const auto& row : rows)
         names_.add(location(row.range.getStart()) + " - " + location(row.range.getEnd()) + "   " + row.current);
 
-    scoreChords_.clear();
-    for (const auto& lane : song.globalLanes) {
-        if (lane.kind != ostfstudio::TimelineLane::chord) continue;
-        for (const auto& r : lane.regions) {
-            if (!r.exactBars) continue;
-            auto tick = [&](double bar) { return std::llround((bar - 1.0) * song.ticksPerBar); };
-            const ostfstudio::ReviewRange range(tick(r.exactBars->start), tick(r.exactBars->end));
-            const auto next = std::upper_bound(rows.begin(), rows.end(), range.getStart(),
-                [](auto start, const auto& row) { return start < row.range.getEnd(); });
-            scoreChords_.push_back({range, juce::String::fromUTF8(r.label), next == rows.end() || !next->range.intersects(range)});
-        }
-    }
     for (auto* button : {&confirmAll_, &keepAll_, &cancelAll_}) button->setEnabled(!rows_.empty());
     resized();
     repaint();
 }
 
 juce::String ChordReviewLane::option(const ostfstudio::ChordDecision& row, int choice) const {
-    if (choice == 0) return TRANS("Keep") + " " + (row.current.isEmpty() ? noCandidate : row.current);
-    if (choice == 4) return TRANS("Source") + " " + row.sourceChord["label"].toString();
-    return row.candidates[choice - 1];
+    auto label = choice == 0 ? TRANS("Keep") + " " + (row.current.isEmpty() ? noCandidate : row.current)
+               : choice == 4 ? TRANS("Source") + " " + row.sourceChord["label"].toString() : row.candidates[choice - 1];
+    const int fit = row.trackFit[size_t(choice)];
+    return label + "  " + (fit < 0 ? noCandidate : juce::String(fit) + "%");
 }
 
 void ChordReviewLane::showMenu(int index) {
@@ -406,23 +419,18 @@ void ChordReviewLane::paint(juce::Graphics& g) {
     g.setColour(reviewAccent);
     g.fillRect(0, 1, 3, std::max(0, getHeight() - 2));
     g.setFont(juce::FontOptions(14.f, juce::Font::bold));
-    g.drawText(TRANS("Chord review"), titleBounds_, juce::Justification::centredLeft);
-    auto heading = [](juce::Rectangle<int> box) { return box.removeFromTop(box.getHeight() / 2).reduced(5, 1); };
-    g.setFont(juce::FontOptions(13.f));
-    for (const auto& chord : scoreChords_) {
-        auto box = boundsFor(chord.range);
-        if (box.isEmpty()) continue;
-        g.setColour(reviewSurface); g.fillRect(box.withTrimmedRight(1));
-        auto label = heading(box);
-        if (chord.idle) label = label.withRight(actionBounds(box).getX());
-        g.setColour(reviewMuted); g.drawText(chord.label, label, juce::Justification::centredLeft);
-        g.drawText(noCandidate, candidateArea(box), juce::Justification::centredLeft);
-    }
-    if (scoreChords_.empty() && timeline) {
-        const auto plot = timeline().first;
+    auto title = titleBounds_;
+    if (title.getWidth() >= 250) {
+        auto fitLabel = title.removeFromRight(145);
         g.setColour(reviewMuted);
-        g.drawText(noCandidate, getLocalBounds().withX(plot.getX()).reduced(5, 1), juce::Justification::centredLeft);
+        g.setFont(juce::FontOptions(12.f));
+        g.drawText(TRANS("Selected track fit"), fitLabel, juce::Justification::centredRight);
     }
+    g.setColour(reviewAccent);
+    g.setFont(juce::FontOptions(14.f, juce::Font::bold));
+    g.drawText(TRANS("Chord review") + "   " + juce::String(int(rows_.size())),
+               title, juce::Justification::centredLeft);
+    auto heading = [](juce::Rectangle<int> box) { return box.removeFromTop(box.getHeight() / 2).reduced(5, 1); };
     for (int i = 0; i < int(rows_.size()); ++i) {
         auto box = intervalBounds(i);
         if (box.isEmpty()) continue;
@@ -449,7 +457,7 @@ void ChordReviewLane::paint(juce::Graphics& g) {
             g.setColour(row.choice == c + 1 ? reviewAccent : reviewBase);
             g.fillRoundedRectangle(chip.toFloat(), 3.f);
             g.setColour(row.choice == c + 1 ? reviewBase : reviewText);
-            g.drawText(row.candidates[c], chip, juce::Justification::centred);
+            g.drawText(option(row, c + 1), chip, juce::Justification::centred);
         }
     }
 }
@@ -476,12 +484,11 @@ void ChordReviewLane::mouseDown(const juce::MouseEvent& e) {
 
 void ChordReviewLane::resized() {
     const int gutter = timeline ? timeline().first.getX() : 320;
-    auto controls = getLocalBounds().withWidth(std::clamp(gutter, 0, getWidth())).reduced(7, 3);
-    auto header = controls.removeFromTop(controls.getHeight() / 2);
-    titleBounds_ = header;
-    const int width = std::min(114, controls.getWidth() / 3);
+    auto controls = getLocalBounds().withWidth(std::clamp(gutter, 0, getWidth())).reduced(9, 3);
+    titleBounds_ = controls.removeFromTop(std::min(22, controls.getHeight() / 2));
+    const int width = controls.getWidth() / 3;
     for (auto* button : {&confirmAll_, &keepAll_, &cancelAll_})
-        button->setBounds(controls.removeFromLeft(width).reduced(1, 0));
+        button->setBounds(controls.removeFromLeft(width).reduced(2, 1));
     int visible = 0;
     auto place = [&](juce::Rectangle<int> box, int index, const juce::String& name) {
         if (box.isEmpty()) return;
@@ -490,37 +497,33 @@ void ChordReviewLane::resized() {
         if (visible == decisions_.size())
             addChildComponent(decisions_.add(new juce::TextButton()));
         auto* button = decisions_[visible++];
-        const bool pending = index >= 0;
         button->setBounds(bounds);
         button->setVisible(true);
-        button->setEnabled(pending);
-        button->setComponentID(pending ? "chord-decision-" + juce::String(index) : "chord-idle-" + juce::String(visible));
+        button->setComponentID("chord-decision-" + juce::String(index));
         button->setTitle(name + "  " + TRANS("Decide chord"));
-        button->setColour(juce::TextButton::buttonColourId, pending ? confirmGold : reviewSurface);
-        button->setColour(juce::TextButton::textColourOffId, pending ? reviewBase : reviewMuted);
+        button->setColour(juce::TextButton::buttonColourId, confirmGold);
+        button->setColour(juce::TextButton::textColourOffId, reviewBase);
         button->setTooltip(TRANS("Apply a chord, undo note edits, or keep the existing chord"));
         const auto caret = juce::String::charToString(0x25be);
         button->setButtonText(bounds.getWidth() < 55 ? caret : TRANS("Decide chord") + " " + caret);
         button->onClick = [this, index, button] {
-            if (index < 0) return;
             index_ = index;
             repaint();
             decisionMenu(index).showMenuAsync(juce::PopupMenu::Options().withTargetComponent(button));
         };
     };
     for (int i = 0; i < int(rows_.size()); ++i) place(intervalBounds(i), i, names_[i]);
-    for (const auto& chord : scoreChords_)
-        if (chord.idle) place(boundsFor(chord.range), -1, chord.label);
     decisions_.removeLast(decisions_.size() - visible);
 }
 
 void MainComponent::updateChordReviewLane() {
     const bool materialReview = !pendingReview_.empty() && pendingReview_.front().fromMaterial;
-    const bool visible = workspaceMode_ == WorkspaceMode::arrangement && project_ && !mixerSelected_ &&
+    const bool visible = !pendingReview_.empty() && workspaceMode_ == WorkspaceMode::arrangement && project_ && !mixerSelected_ &&
         (materialReview || (pianoGrid_.isVisible() && pianoGrid_.editable && pitchedSelection()));
+    if (visible || (project_ && chordReview_.isVisible() && pendingReview_.empty()))
+        chordReview_.display(pendingReview_, *project_);
     chordReview_.setVisible(visible);
     chordReview_.setEnabled(!recordTrack_);
-    if (visible) chordReview_.display(pendingReview_, *project_);
 }
 
 void MainComponent::refreshChordReview() {
@@ -583,32 +586,29 @@ void MainComponent::resolveChordReview(bool all, ostfstudio::ChordReviewAction a
     else
         pendingReview_.erase(pendingReview_.begin() + chosen);
     if (!undoNotes.empty()) {
-        const ostfstudio::ChordAnalysis analysis(*project_);
+        const ostfstudio::ChordAnalysis analysis(*project_, selectedTrack_);
         std::erase_if(pendingReview_, [&](auto& row) {
             const auto was = row.noteOrigins.size();
             for (const auto& [id, origin] : undoNotes) row.noteOrigins.erase(id);
             if (row.noteOrigins.size() == was) return false;
             if (row.noteOrigins.empty() && !row.fromMaterial) return true;
-            row.candidates = analysis.rank(row.range);
+            analysis.updateCandidates(row);
             if (row.choice != 4) row.choice = row.candidates.isEmpty() ? 0 : 1;
             return false;
         });
         inspectedNote_.reset();
         pianoGrid_.selection.clear();
     }
+    rememberScoreEdit(changed ? std::move(before) : project_->sourceScore,
+                      action == Action::cancel ? "Cancel chord edit" : action == Action::keep ? "Keep chords" : "Apply chord choices");
+    auto& revision = noteHistory_.back();
+    revision.reviewBefore = previous;
+    revision.reviewAfter = pendingReview_;
+    revision.reviewTrack = selectedTrack_;
     if (changed) {
-        rememberScoreEdit(std::move(before));
-        auto& revision = noteHistory_.back();
-        revision.reviewBefore = previous;
-        revision.reviewAfter = pendingReview_;
-        revision.reviewTrack = selectedTrack_;
         theory_.reset();
         refreshTheory();
         finishNoteEdit(playing);
-    } else if (noteHistoryCursor_ > 0) {
-        auto& revision = noteHistory_[noteHistoryCursor_ - 1];
-        if (revision.reviewAfter && revision.reviewTrack == selectedTrack_ && revision.after == project_->sourceScore)
-            revision.reviewAfter = pendingReview_;
     }
     refreshChordReview();
 }
@@ -667,7 +667,7 @@ void MainComponent::reviewDroppedChords(const ostfstudio::OstfpPreview& source, 
         else
             spans.push_back(r);
     }
-    pendingReview_ = ostfstudio::ChordAnalysis(*project_).review(spans, imported, true,
+    pendingReview_ = ostfstudio::ChordAnalysis(*project_, selectedTrack_).review(spans, imported, true,
                                                                 spans.empty() ? 0 : spans.back().getEnd());
     for (auto& row : pendingReview_) row.fromMaterial = true;
     if (pendingReview_.empty())

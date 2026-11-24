@@ -46,6 +46,7 @@ public:
 
     TheoryGuide(const juce::var& score, Tick end);
     static bool contains(int mask, int pitch) { return (mask & (1 << (pitch % 12))) != 0; }
+    static int chordToneMask(const juce::var& chord);
     std::size_t firstCell(double tick) const {
         return static_cast<std::size_t>(std::partition_point(cells.begin(), cells.end(),
             [tick](const Cell& cell) { return double(cell.end) <= tick; }) - cells.begin());

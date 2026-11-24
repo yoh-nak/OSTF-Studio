@@ -7,7 +7,7 @@ namespace ostfstudio::singing {
 struct RecordedMora {
     std::vector<float> frames;
     double rate{}, period{};
-    int loopStart{}, loopEnd{}, fade{};
+    int loopStart{}, loopEnd{}, fade{}, consonantFrames{};
 
     float read(double& position, double step) const {
         if (position >= loopEnd) {

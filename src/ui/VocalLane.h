@@ -63,14 +63,14 @@ public:
             if (note.startTick >= range.getEnd()) break;
             if (note.endTick <= range.getStart()) continue;
             const auto* data = lookup(note.id);
+            if (!data) continue;
             const int left = x(note.startTick), w = std::max(1,x(note.endTick)-left-1);
             g.setColour(juce::Colour(0xff2a4248));
             const int top = phrases.empty() ? 1 : row;
             g.fillRect(left,top,w,getHeight()-top);
             g.setColour(juce::Colours::white);
-            if (phrases.empty()) g.drawText(data ? data->text : juce::String{}, left+2,0,w-2,row,juce::Justification::centredLeft);
+            if (phrases.empty()) g.drawText(data->text, left+2,0,w-2,row,juce::Justification::centredLeft);
             g.setColour(juce::Colour(0xff9ce4d8));
-            if (!data) continue;
             g.drawText(data->pronunciation,left+2,row,w-2,row,juce::Justification::centredLeft);
             if (data->technique.isEmpty()) continue;
             g.setColour(juce::Colour(0xffffc871));

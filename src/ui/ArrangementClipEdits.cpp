@@ -21,8 +21,8 @@ std::optional<MainComponent::ClipHit> MainComponent::clipAt(size_t track, Tick t
     return {};
 }
 
-void MainComponent::rememberAudioEdit(std::vector<ProjectAudio> before, juce::MemoryBlock beforeScore) {
-    rememberScoreEdit(beforeScore.isEmpty() ? project_->sourceScore : std::move(beforeScore));
+void MainComponent::rememberAudioEdit(std::vector<ProjectAudio> before, juce::MemoryBlock beforeScore, const char* label) {
+    rememberScoreEdit(beforeScore.isEmpty() ? project_->sourceScore : std::move(beforeScore), label);
     auto& revision = noteHistory_.back();
     revision.beforeAudio.emplace(std::move(before));
     revision.afterAudio.emplace(project_->audio);
@@ -65,6 +65,8 @@ void MainComponent::clipCommand(ClipOp op, std::optional<ClipHit> hit, size_t de
     }
 
     const bool isAudio = op == ClipOp::paste ? copiedAudio_.has_value() : hit->audio;
+    const char* action = op == ClipOp::move ? "Move clip" : op == ClipOp::split ? "Split clip"
+        : op == ClipOp::paste ? "Paste clip" : op == ClipOp::duplicate ? "Duplicate clip" : "Join clips";
     if (op == ClipOp::duplicate) tick = hit->end;
     if (op == ClipOp::split && (tick <= hit->start || tick >= hit->end)) { fail("Choose a point inside the clip."); return; }
     std::optional<ClipHit> next;
@@ -120,7 +122,7 @@ void MainComponent::clipCommand(ClipOp op, std::optional<ClipHit> hit, size_t de
         if (op == ClipOp::join) { *source = std::move(update); audio.erase(lookup(next->id)); }
         else if (op == ClipOp::move) *source = std::move(update);
         else audio.push_back(std::move(update));
-        rememberAudioEdit(std::move(before), std::move(beforeScore));
+        rememberAudioEdit(std::move(before), std::move(beforeScore), action);
         markSessionEdited();
         waveforms_.load(audio);
         tick = selection;
@@ -140,7 +142,7 @@ void MainComponent::clipCommand(ClipOp op, std::optional<ClipHit> hit, size_t de
             if (next) tick = hit->start;
         }
         if (r.failed()) { fail(r.getErrorMessage()); if (playing) startTransport(false); return; }
-        rememberScoreEdit(std::move(before));
+        rememberScoreEdit(std::move(before), action);
         theory_.reset();
         refreshTheory();
     }

@@ -487,6 +487,16 @@ MainComponent::MainComponent() {
     menuBar_.setColour(juce::PopupMenu::backgroundColourId, juce::Colour(0xff20262d));
     addAndMakeVisible(menuBar_);
     addAndMakeVisible(statusLabel_);
+    addAndMakeVisible(systemUsage_);
+    for (auto* button : {&undoButton_, &redoButton_, &historyButton_}) addAndMakeVisible(*button);
+    undoButton_.setButtonText(TRANS("Undo"));
+    redoButton_.setButtonText(TRANS("Redo"));
+    historyButton_.setButtonText(TRANS("Edit history"));
+    undoButton_.onClick = [this] { undoPianoEdit(false); };
+    redoButton_.onClick = [this] { undoPianoEdit(true); };
+    historyButton_.onClick = [this] {
+        editHistoryMenu().showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&historyButton_));
+    };
     addAndMakeVisible(deck_);
     basics_.commit = [this](auto field, auto value, int choice) { editSongField(field, value, choice); };
     basics_.advanced = [this] { editSongInformation(); };
@@ -607,7 +617,7 @@ MainComponent::MainComponent() {
         juce::MemoryBlock before;
         auto r = project_->editDrumPad(*selectedTrack_, row, pitch, before);
         if (r.wasOk()) {
-            rememberScoreEdit(std::move(before));
+            rememberScoreEdit(std::move(before), "Edit drum pad");
             finishNoteEdit(playing);
         } else {
             if (playing)
@@ -622,7 +632,7 @@ MainComponent::MainComponent() {
         juce::MemoryBlock before;
         auto result = project_->editDrumPad(*selectedTrack_, from, {}, before, to);
         if (result.wasOk()) {
-            rememberScoreEdit(std::move(before));
+            rememberScoreEdit(std::move(before), "Move drum pad");
             finishNoteEdit(playing);
             drumPads_.select(to);
         } else {
@@ -1017,7 +1027,7 @@ MainComponent::MainComponent() {
         juce::MemoryBlock before;
         auto result = project_->drawTempo(start, from, end, to, before);
         if (result.wasOk() && !before.isEmpty()) {
-            rememberScoreEdit(std::move(before));
+            rememberScoreEdit(std::move(before), "Edit tempo");
             updateDocumentLabel();
             finishNoteEdit(false);
         } else if (result.failed()) {
@@ -1138,7 +1148,7 @@ void MainComponent::editSongField(SongBasicsPanel::Field field, const juce::Stri
         }
         auto result = project_->applySongInformation(info, &before);
         if (result.failed()) { reject(juce::translate(result.getErrorMessage())); return; }
-        if (!before.isEmpty()) rememberScoreEdit(std::move(before));
+        if (!before.isEmpty()) rememberScoreEdit(std::move(before), "Song information");
         updateDocumentLabel();
         return;
     }
@@ -1186,7 +1196,7 @@ void MainComponent::editSongField(SongBasicsPanel::Field field, const juce::Stri
     if (playing) stopTransport();
     auto result = project_->applySongMusic(edit, before);
     if (result.wasOk() && !before.isEmpty()) {
-        rememberScoreEdit(std::move(before));
+        rememberScoreEdit(std::move(before), "Transpose and tempo");
         inspectedNote_.reset();
         scaleReference_ = -1;
         theory_.reset();
@@ -1234,7 +1244,7 @@ void MainComponent::editSongMusic(ostfstudio::SongMusicEdit::Mode mode) {
                     safe->auditionShift_ = edit.semitones; safe->auditionRate_ = edit.rate;
                     safe->auditionClock_ = edit.rate == 1 ? std::nullopt : safe->project_->clock.scaled(edit.rate);
                 } else if (!before.isEmpty()) {
-                    safe->rememberScoreEdit(std::move(before));
+                    safe->rememberScoreEdit(std::move(before), "Transpose and tempo");
                     safe->inspectedNote_.reset(); safe->scaleReference_ = -1; safe->theory_.reset(); safe->refreshTheory();
                     safe->finishNoteEdit(false);
                 }
@@ -1274,6 +1284,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addSeparator();
             menu.addItem(undoScore, TRANS("Undo score edit"), project_ && !recordTrack_ && noteHistoryCursor_ > 0);
             menu.addItem(redoScore, TRANS("Redo score edit"), project_ && !recordTrack_ && noteHistoryCursor_ < noteHistory_.size());
+            menu.addSubMenu(TRANS("Edit history"), editHistoryMenu(), project_ && !recordTrack_ && !noteHistory_.empty());
             menu.addSeparator();
             menu.addItem(saveScore, TRANS("Save as OSTF..."), canEditTracks());
             menu.addItem(saveProject, TRANS("Save as OSTFP..."), canEditTracks());
@@ -1964,7 +1975,7 @@ void MainComponent::placeResult(ImportResultRow& row, std::optional<std::size_t>
         if (row.index >= 0 && row.source.trackKinds[row.index] == ostfstudio::TrackKind::audio)
             markSessionEdited();
         else if (!before.isEmpty())
-            rememberScoreEdit(std::move(before));
+            rememberScoreEdit(std::move(before), "Import material");
         else
             markSessionEdited();
         waveforms_.load(project_->audio);
@@ -2300,7 +2311,7 @@ void MainComponent::editVocalNote(const ostfstudio::PitchedNote& note) {
         juce::MemoryBlock before;
         const auto result = safe->project_->editVocalNote(*track,id,change,before);
         if (result.wasOk() && !before.isEmpty()) {
-            safe->rememberScoreEdit(std::move(before));
+            safe->rememberScoreEdit(std::move(before), "Edit vocal expression");
             if (!safe->trackControls_[*track]->instrumentAssignment.isObject() && change.text.isNotEmpty())
                 safe->useTrackSinger(*track,true);
         } else if (result.failed()) safe->statusLabel_.setText(juce::translate(result.getErrorMessage()),juce::dontSendNotification);
@@ -2557,7 +2568,7 @@ void MainComponent::stopTransport() {
             auto result = project_->addRecordedClip(*recordTrack_, transport_.recordedRange(), recorded, before);
             added = result.wasOk();
             failure = result.getErrorMessage();
-            if (added) rememberScoreEdit(std::move(before));
+            if (added) rememberScoreEdit(std::move(before), "Record MIDI");
         }
         if (added) refreshTrackTheory(*recordTrack_);
         const auto finishedTrack = *recordTrack_;
@@ -2635,10 +2646,14 @@ bool MainComponent::keyPressed(const juce::KeyPress& key) {
     const auto* focus = juce::Component::getCurrentlyFocusedComponent();
     if (focus && (dynamic_cast<const juce::TextEditor*>(focus) || focus->findParentComponentOfClass<juce::TextEditor>())) return false;
     const auto mods = key.getModifiers();
+    if (project_ && mods.isCommandDown() && !mods.isAltDown()
+        && (key.isKeyCode('Z') || (key.isKeyCode('Y') && !mods.isShiftDown()))) {
+        undoPianoEdit(key.isKeyCode('Y') || mods.isShiftDown());
+        return true;
+    }
     if (arrangementClipFocus_ && project_ && selectedTrack_ && !selectedGlobal_ && hasKeyboardFocus(false) && mods.isCommandDown() && !mods.isAltDown()) {
         const auto track = *selectedTrack_;
         const auto hit = clipLane_.selected ? clipAt(track, std::llround((*clipLane_.selected - 1) * project_->ticksPerBar)) : std::nullopt;
-        if (key.isKeyCode('Z')) { undoPianoEdit(mods.isShiftDown()); return true; }
         if (key.isKeyCode('C')) { clipCommand(ClipOp::copy, hit, track, 0); return true; }
         if (key.isKeyCode('V')) { clipCommand(ClipOp::paste, hit, track, clipInsertionTick_); return true; }
         if (key.isKeyCode('D')) { clipCommand(ClipOp::duplicate, hit, track, 0); return true; }
@@ -2659,19 +2674,11 @@ bool MainComponent::keyPressed(const juce::KeyPress& key) {
                 globalCommand(4);
                 return true;
             }
-            if (key.isKeyCode('Z')) {
-                undoPianoEdit(mods.isShiftDown());
-                return true;
-            }
         }
         if (key.isKeyCode(juce::KeyPress::returnKey)) {
             globalCommand(1);
             return true;
         }
-    }
-    if ((controllerEditor_.isVisible() || drumSteps_.isVisible() || tempoEditor_.isVisible()) && mods.isCommandDown() && !mods.isAltDown() && key.isKeyCode('Z')) {
-        undoPianoEdit(mods.isShiftDown());
-        return true;
     }
     if (mods.isAnyModifierKeyDown()) return false;
     if (key.isKeyCode(juce::KeyPress::F1Key)) { showShortcutList(); return true; }
@@ -3122,7 +3129,7 @@ void MainComponent::editSongInformation() {
             juce::MemoryBlock before;
             auto result = safe->project_->applySongDetails(info, music, before);
             if (result.wasOk() && !before.isEmpty()) {
-                safe->rememberScoreEdit(std::move(before));
+                safe->rememberScoreEdit(std::move(before), "Song information");
                 safe->refreshTheory();
                 safe->finishNoteEdit(false);
                 safe->updateDocumentLabel();
@@ -3208,7 +3215,7 @@ void MainComponent::showPatch(std::size_t track, juce::int64 tick) {
             if (playing) safe->stopTransport();
             juce::MemoryBlock before;
             auto result = safe->project_->setPatchAt(track, tick, channel, values, before, shared);
-            if (result.wasOk()) safe->rememberScoreEdit(std::move(before));
+            if (result.wasOk()) safe->rememberScoreEdit(std::move(before), "Program change");
             else safe->statusLabel_.setText(result.getErrorMessage(), juce::dontSendNotification);
             safe->finishNoteEdit(playing);
         }), true);
@@ -4487,7 +4494,7 @@ void MainComponent::offerInstrumentProgram(std::size_t owner, int channel, int p
             const bool routed = part.outputTrack.has_value() || safe->hasSharedParts(owner);
             const auto result = safe->project_->setPatchAt(track, tick, part.midiChannel,
                                                             {-1, -1, program}, before, routed, true);
-            if (result.wasOk()) safe->rememberScoreEdit(std::move(before));
+            if (result.wasOk()) safe->rememberScoreEdit(std::move(before), "Program change");
             else safe->statusLabel_.setText(result.getErrorMessage(), juce::dontSendNotification);
             safe->finishNoteEdit(playing);
         }), true);
@@ -4704,7 +4711,7 @@ void MainComponent::editMidiClip(size_t track, const juce::String& id, ostfstudi
     juce::MemoryBlock previous;
     const auto result = project_->editMidiClip(track, id, action, tick, previous);
     if (result.wasOk()) {
-        rememberScoreEdit(std::move(previous));
+        rememberScoreEdit(std::move(previous), "Edit MIDI clip");
         theory_.reset();
         refreshTheory();
         finishNoteEdit(playing);
@@ -5234,7 +5241,7 @@ void MainComponent::applyGlobalChange(TimelineLane lane, juce::Array<juce::var> 
     juce::MemoryBlock before;
     auto result = project_->changeGlobalEvents(lane, remove, insert, before);
     if (result.wasOk()) {
-        rememberScoreEdit(std::move(before));
+        rememberScoreEdit(std::move(before), "Edit timeline");
         theory_.reset();
         refreshTheory();
         finishNoteEdit(playing);
@@ -5898,10 +5905,44 @@ juce::String MainComponent::noteFitReading() const {
     return TRANS("Selected note") + "   " + TRANS("Chord tone fit") + " " + percent(chord) + "   " + TRANS("Scale fit") + " " + percent(scale);
 }
 
-void MainComponent::rememberScoreEdit(juce::MemoryBlock before) {
+juce::PopupMenu MainComponent::editHistoryMenu() {
+    juce::PopupMenu menu;
+    menu.addSectionHeader(TRANS("Edit history"));
+    auto addState = [&](size_t target, juce::String label) {
+        auto action = [safe = juce::Component::SafePointer<MainComponent>(this), target,
+                       revision = historyRevision_, generation = projectGeneration_, cursor = noteHistoryCursor_] {
+            if (!safe || safe->historyRevision_ != revision || safe->projectGeneration_ != generation ||
+                safe->noteHistoryCursor_ != cursor || safe->recordTrack_ || target > safe->noteHistory_.size()) return;
+            const bool playing = safe->transportActive_;
+            if (playing) safe->stopTransport();
+            while (target != safe->noteHistoryCursor_) {
+                const auto old = safe->noteHistoryCursor_;
+                safe->undoPianoEdit(target > old);
+                if (old == safe->noteHistoryCursor_ || target > safe->noteHistory_.size()) break;
+            }
+            if (playing) safe->startTransport(false);
+        };
+        menu.addItem(label, !recordTrack_ && target != noteHistoryCursor_, target == noteHistoryCursor_, action);
+    };
+    addState(0, TRANS("Before listed edits"));
+    for (size_t i = 0; i < noteHistory_.size(); ++i)
+        addState(i + 1, juce::String(int(i + 1)) + "   " + noteHistory_[i].label);
+    return menu;
+}
+
+void MainComponent::refreshHistoryControls() {
+    const bool available = project_ && !recordTrack_;
+    undoButton_.setEnabled(available && noteHistoryCursor_ > 0);
+    redoButton_.setEnabled(available && noteHistoryCursor_ < noteHistory_.size());
+    historyButton_.setEnabled(available && !noteHistory_.empty());
+}
+
+void MainComponent::rememberScoreEdit(juce::MemoryBlock before, const char* label) {
     while (noteHistory_.size() > noteHistoryCursor_) noteHistory_.pop_back();
     if (!noteHistory_.empty() && noteHistory_.back().after != before) noteHistory_.clear();
     noteHistory_.push_back({std::move(before), project_->sourceScore});
+    noteHistory_.back().label = juce::translate(label);
+    ++historyRevision_;
     std::size_t bytes = 0;
     for (const auto& revision : noteHistory_) bytes += revision.before.getSize() + revision.after.getSize();
     while (noteHistory_.size() > 1 && (noteHistory_.size() > 64 || bytes > 32 * 1024 * 1024)) {
@@ -5909,6 +5950,7 @@ void MainComponent::rememberScoreEdit(juce::MemoryBlock before) {
         noteHistory_.pop_front();
     }
     noteHistoryCursor_ = noteHistory_.size();
+    refreshHistoryControls();
     refreshWindowTitle();
 }
 
@@ -5942,12 +5984,12 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
         statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
         return;
     }
-    rememberScoreEdit(std::move(before));
+    rememberScoreEdit(std::move(before), "Edit notes");
     if (!affected.empty()) {
         auto& revision = noteHistory_.back();
         revision.reviewBefore = pendingReview_;
         revision.reviewTrack = selectedTrack_;
-        const ostfstudio::ChordAnalysis harmony(*project_);
+        const ostfstudio::ChordAnalysis harmony(*project_, selectedTrack_);
         auto changes = harmony.review(affected);
         for (auto& change : changes) {
             auto position = change.range.getStart();
@@ -5957,15 +5999,14 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
                 auto part = change;
                 part.range = {position,end};
                 if (part.range != change.range)
-                    part.candidates = harmony.rank(part.range);
+                    harmony.updateCandidates(part);
                 part.choice = part.candidates.isEmpty() ? 0 : 1;
                 gaps.push_back(std::move(part));
             };
             for (auto& row : pendingReview_) if (row.range.intersects(change.range)) {
                 appendGap(row.range.getStart());
                 position = row.range.getEnd();
-                row.candidates = row.range == change.range ? change.candidates
-                    : harmony.rank(row.range);
+                harmony.updateCandidates(row);
                 if (row.choice != 4) row.choice = row.candidates.isEmpty() ? 0 : 1;
             }
             appendGap(change.range.getEnd());
@@ -6003,7 +6044,7 @@ void MainComponent::undoPianoEdit(bool redo) {
     if (!project_ || recordTrack_ || (redo ? noteHistoryCursor_ >= noteHistory_.size() : noteHistoryCursor_ == 0)) return;
     const auto& revision = noteHistory_[redo ? noteHistoryCursor_ : noteHistoryCursor_ - 1];
     if ((!project_->addedClips.empty() && revision.panTrack.isEmpty() && !revision.beforeAudio) || project_->sourceScore != (redo ? revision.before : revision.after)) {
-        noteHistory_.clear(); noteHistoryCursor_ = 0; return;
+        noteHistory_.clear(); noteHistoryCursor_ = 0; refreshHistoryControls(); return;
     }
     const bool playing = transportActive_;
     if (playing) stopTransport();
@@ -6191,7 +6232,7 @@ void MainComponent::editPerformancePoint(juce::String id, juce::int64 tick, std:
         juce::MemoryBlock before;
         const auto result = project_->editVocalNote(track,note->id,change,before);
         if (result.failed()) statusLabel_.setText(juce::translate(result.getErrorMessage()),juce::dontSendNotification);
-        else if (!before.isEmpty()) rememberScoreEdit(std::move(before));
+        else if (!before.isEmpty()) rememberScoreEdit(std::move(before), "Edit vocal expression");
     } else if (label == "Pan automation") {
         const auto key = project_->trackIds[int(track)];
         const auto it = project_->panAutomation.find(key);
@@ -6208,7 +6249,7 @@ void MainComponent::editPerformancePoint(juce::String id, juce::int64 tick, std:
             mixer_.setPan(track, mixer_.channel(track).pan);
         } else
             project_->panAutomation[key] = env;
-        rememberScoreEdit(project_->sourceScore);
+        rememberScoreEdit(project_->sourceScore, "Pan automation");
         markSessionEdited();
         auto& revision = noteHistory_.back();
         revision.panTrack = key;
@@ -6230,7 +6271,7 @@ void MainComponent::editPerformancePoint(juce::String id, juce::int64 tick, std:
             if (playing) startTransport(false);
             return;
         }
-        rememberScoreEdit(std::move(before));
+        rememberScoreEdit(std::move(before), "Edit MIDI controller");
     }
     finishNoteEdit(playing);
 }
@@ -6274,6 +6315,7 @@ void MainComponent::refreshEditor() {
     }
     const bool piano = editing && !audio && !tempo;
     refreshPianoNotes();
+    refreshHistoryControls();
     pianoGrid_.setDescription(noteFitReading());
     const bool drum = piano && selectedTrack_ && pianoGrid_.percussion;
     {
@@ -6454,7 +6496,13 @@ void MainComponent::resized() {
 
     deck_.setBounds(18, menuHeight + barHeight + 8, std::min(1590, getWidth() - 36),
                     TransportPanel::panelHeight(getWidth()));
-    statusLabel_.setBounds(20, getHeight() - 37, getWidth() - 40, 24);
+    auto footer = juce::Rectangle<int>(18, getHeight() - 37, getWidth() - 36, 24);
+    systemUsage_.setBounds(footer.removeFromRight(std::min(190, footer.getWidth() / 3)));
+    footer.removeFromRight(8);
+    historyButton_.setBounds(footer.removeFromRight(86).reduced(2, 0));
+    redoButton_.setBounds(footer.removeFromRight(62).reduced(2, 0));
+    undoButton_.setBounds(footer.removeFromRight(62).reduced(2, 0));
+    statusLabel_.setBounds(footer);
     auto editor = getWorkspace();
     trackHeaderWidth = std::min(preferredHeaderWidth_, std::max(320, editor.getWidth() - 145));
     trackNameWidth = std::clamp(trackHeaderWidth - 315, 70, 300);

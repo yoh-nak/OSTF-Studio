@@ -11,16 +11,25 @@ class Voice {
   public:
     int channel = -1, key = -1;
     void start(int ch, int pitch, float velocity, Phone p, double sr, const VoiceBank* bank) {
+        const bool connected = key >= 0 && channel == ch && envelope > .01;
+        const double previousHz = hz;
+        if (!connected) { envelope = 0; recorded = nullptr; }
         channel = ch; key = pitch; gain = velocity;
-        phase = envelope = 0; released = false;
-        hz = juce::MidiMessage::getMidiNoteInHertz(pitch);
-        resonators = {};
+        phase = 0; released = false; noteAge = 0;
         articulate(p, sr, bank);
+        hz = juce::MidiMessage::getMidiNoteInHertz(pitch);
+        glideCents = connected ? std::clamp(1200 * std::log2(previousHz / hz), -90., 90.) : 0.;
+        for (auto& res : resonators) res.y1 = res.y2 = 0;
     }
     void articulate(Phone p, double sr, const VoiceBank* bank) {
         constexpr float freq[5][3] = {
             {760, 1200, 2600}, {290, 2250, 3100}, {330, 1250, 2350}, {490, 1880, 2650}, {490, 900, 2450}};
         constexpr float bandwidth[3] = {90, 120, 175};
+        outgoing = recorded;
+        outgoingPosition = position;
+        outgoingHz = hz;
+        crossfadeLength = std::max(1, int(.012 * sr));
+        crossfadeLeft = outgoing ? crossfadeLength : 0;
         phone = p;
         age = 0;
         recorded = bank ? bank->find(p) : nullptr;
@@ -52,19 +61,40 @@ class Voice {
         }
     }
     void stopNote() { released = true; }
+    bool endingOn(int ch) const { return channel == ch && released && envelope > 0; }
     float sample(double sr, double bendRatio, float expression) {
         envelope = std::clamp(envelope + (released ? -95.0 : 110.0) / sr, 0.0, 1.0);
         if (released && envelope == 0) { key = channel = -1; return 0; }
-        const double time = age++ / sr;
-        if (phone.onset == closure) return 0;
+        const double time = age++ / sr, held = noteAge++ / sr;
+        float previous = 0;
+        const double carry = double(crossfadeLeft) / crossfadeLength;
+        if (crossfadeLeft > 0) {
+            previous = outgoing->read(outgoingPosition, outgoingHz * bendRatio * outgoing->period / sr);
+            --crossfadeLeft;
+        }
+        if (phone.onset == closure) return float(gain * envelope * expression * carry * previous);
         const double strength = phone.intensity / 127.0;
         double cents = 0;
         if (phone.delivery == vibrato) cents = vibratoCents(time,strength);
         if (phone.delivery == scoop) cents = scoopCents(time,strength);
+        const double settling = std::max(0., 1. - held / .045);
+        cents += glideCents * settling * settling;
+        const double sustain = std::clamp((held - .15) / .28, 0., 1.);
+        if (phone.delivery == plain && sustain > 0)
+            cents += sustain * (10 * std::sin(29.7 * held) + 3 * std::sin(10.1 * held));
         const auto pitch = hz * bendRatio * (cents == 0 ? 1 : std::exp2(cents / 1200));
-        const auto level = gain * envelope * expression;
-        const float recording = recorded ? recorded->read(position, pitch * recorded->period / sr) : 0.f;
-        if (recorded && !vowelSample) return float(level * recording);
+        const auto level = gain * envelope * expression * (1. - sustain * (.035 + .025 * std::sin(6.3 * held)));
+        float recording = 0;
+        if (recorded) {
+            const double tunedStep = pitch * recorded->period / sr;
+            double step = tunedStep;
+            if (!vowelSample && phone.onset != vowelOnly && recorded->consonantFrames > 0) {
+                const double mix = std::clamp((position - recorded->consonantFrames) / (.014 * recorded->rate), 0., 1.);
+                step = std::lerp(recorded->rate / sr, tunedStep, mix);
+            }
+            recording = recorded->read(position, step);
+        }
+        if (recorded && !vowelSample) return float(level * std::lerp(double(recording), double(previous), carry));
         const double step = std::min(.45, pitch / sr);
         phase += step; phase -= std::floor(phase);
         // A band-limited glottal edge excites the higher formants as well as the fundamental.
@@ -99,16 +129,19 @@ class Voice {
         }
         double tone = .45 * std::tanh(out) + unfiltered;
         if (vowelSample) tone += opened * (recording - tone);
-        return float(level * tone);
+        return float(level * std::lerp(tone, double(previous), carry));
     }
   private:
     struct Resonator { double a{}, target{}, b{}, drive{}, y1{}, y2{}; };
     std::array<Resonator, 3> resonators{};
     const RecordedMora* recorded = nullptr;
+    const RecordedMora* outgoing = nullptr;
+    double outgoingPosition{}, outgoingHz{}, glideCents{};
+    int crossfadeLength = 1, crossfadeLeft = 0;
     Phone phone;
     double hz{}, phase{}, gain{}, envelope{}, position{}, transition{}, previousNoise{};
     unsigned noise = 1397;
-    uint64_t age = 0;
+    uint64_t age = 0, noteAge = 0;
     bool released = false, nasal = false, stop = false, voiced = false, fricative = false, vowelSample = false;
 };
 class Singer;
@@ -310,16 +343,17 @@ class Singer final : public juce::AudioProcessor {
             if (m.getSysExDataSize() == 11) { phone.glide = p[8]; phone.delivery = p[9]; phone.intensity = p[10]; }
             articulation[p[4]][p[5]] = phone;
             for (auto& v : voices)
-                if (v.channel == p[4] + 1 && v.key == p[5])
+                if (v.channel == p[4] + 1 && v.key == p[5] && !v.endingOn(v.channel))
                     v.articulate(phone, rate, activeBank());
         } else if (m.isNoteOn()) {
-            auto* target = &voices[0];
-            for (auto& v : voices) {
-                if (v.key < 0 || (v.channel == m.getChannel() && v.key == m.getNoteNumber())) {
-                    target = &v;
-                    break;
-                }
-            }
+            auto target = std::find_if(voices.begin(), voices.end(), [&](const Voice& v) {
+                return v.channel == m.getChannel() && v.key == m.getNoteNumber();
+            });
+            if (target == voices.end()) target = std::find_if(voices.begin(), voices.end(),
+                [&](const Voice& v) { return v.endingOn(m.getChannel()); });
+            if (target == voices.end()) target = std::find_if(voices.begin(), voices.end(),
+                [](const Voice& v) { return v.key < 0; });
+            if (target == voices.end()) target = voices.begin();
             target->start(m.getChannel(), m.getNoteNumber(), m.getFloatVelocity(),
                           articulation[m.getChannel() - 1][m.getNoteNumber()], rate, activeBank());
         } else if (m.isPitchWheel()) {

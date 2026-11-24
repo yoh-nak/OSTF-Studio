@@ -743,6 +743,15 @@ int checkSamplePlacement(const juce::File& file) {
         overlap.pitchedNotes = {{{0,1440,60}}, {{0,480,48},{480,1440,41}},
                                 {{480,1440,69},{0,480,64},{0,480,67}}, {}, {}, {}};
         const auto clean = ChordAnalysis(overlap).review({{0,1440}});
+        overlap.pitchedNotes[0].push_back({0,160,61});
+        const auto melodyFit = ChordAnalysis(overlap, 0).review({{0,480}});
+        const auto keysFit = ChordAnalysis(overlap, 2).review({{0,480}});
+        const auto silentFit = ChordAnalysis(overlap, 3).review({{0,480}});
+        if (melodyFit.size() != 1 || keysFit.size() != 1 || silentFit.size() != 1
+            || melodyFit[0].candidates != keysFit[0].candidates || melodyFit[0].candidates[0] != "C"
+            || melodyFit[0].trackFit[1] != 75 || keysFit[0].trackFit[1] != 100
+            || silentFit[0].trackFit[1] != -1) return 241;
+        overlap.pitchedNotes[0].pop_back();
         PitchedNote noise{0,1920,37,100};
         for (const auto i : {3,4,5}) overlap.pitchedNotes[i].push_back(noise);
         noise.fixedTrigger = true;
@@ -855,6 +864,11 @@ int checkSamplePlacement(const juce::File& file) {
         for (auto id : {"chord-confirm-all", "chord-keep-all", "chord-cancel-all"})
             if (!button(id) || button(id)->getRight() > main.chordReview_.timeline().first.getX()) return 238;
         main.setSize(680, 550);
+        if (main.systemUsage_.getBounds().isEmpty() || main.historyButton_.getRight() > main.systemUsage_.getX()
+            || main.statusLabel_.getRight() > main.undoButton_.getX()) return 244;
+       #if JUCE_WINDOWS || JUCE_MAC
+        if (!main.systemUsage_.getTooltip().contains("GiB")) return 245;
+       #endif
         if (main.pianoGrid_.getHeight() < 10 || main.chordReview_.getHeight() < 36
             || decision->getHeight() < 16 || main.chordReview_.getBottom() > main.pianoGrid_.getY()) return 239;
         main.setSize(1650, 1400);
@@ -862,7 +876,21 @@ int checkSamplePlacement(const juce::File& file) {
         main.selectTrack(0);
         if (main.selectedTrack_ != 0 || !main.pendingReview_.empty()) return 203;
         main.selectTrack(tracks);
-        if (!main.chordReview_.isVisible() || main.project_->sourceScore != imported || decision->isEnabled()) return 224;
+        if (main.chordReview_.isVisible() || main.chordReviewHeight() != 0 || main.project_->sourceScore != imported
+            || !main.undoButton_.isEnabled() || !main.historyButton_.isEnabled()) return 224;
+        auto history = main.editHistoryMenu();
+        bool restoredPending = false;
+        size_t state = 0;
+        for (juce::PopupMenu::MenuItemIterator it(history); it.next();) {
+            if (it.getItem().action && state++ == main.noteHistoryCursor_ - 1) {
+                it.getItem().action();
+                restoredPending = main.chordReview_.isVisible() && main.pendingReview_.size() == pendingCount;
+                break;
+            }
+        }
+        if (!restoredPending || !main.redoButton_.isEnabled()) return 242;
+        main.redoButton_.onClick();
+        if (main.chordReview_.isVisible() || !main.pendingReview_.empty() || main.project_->sourceScore != imported) return 243;
         auto note = main.project_->pitchedNotes[tracks].front();
         note.pitch += 1;
         main.applyNoteGesture({{ostfstudio::NoteEdit::change,note}});

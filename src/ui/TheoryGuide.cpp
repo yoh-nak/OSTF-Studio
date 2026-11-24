@@ -27,6 +27,11 @@ template<class Visitor> void each(const juce::var& items, Visitor visit) {
 int combine(int a, int b) { return a == -1 || a == b ? b : -2; }
 }
 
+int TheoryGuide::chordToneMask(const juce::var& chord) {
+    const int tones = pitchMask(chord, "root"), bass = pitchClass(chord["bass"]);
+    return tones && bass >= 0 ? tones | (1 << bass) : tones;
+}
+
 TheoryGuide::TheoryGuide(const juce::var& score, Tick end) {
     enum Kind { chord, scale, section };
     struct Edge { Kind kind; int index; bool start; };
@@ -42,9 +47,7 @@ TheoryGuide::TheoryGuide(const juce::var& score, Tick end) {
     each(harmony["chords"], [&](const auto& entry) {
         span(entry, chord, static_cast<int>(chords.size()));
         const auto intervals = pitchMask(entry, "root");
-        auto mask = intervals;
-        const auto bass = pitchClass(entry["bass"]);
-        if (mask && bass >= 0) mask |= 1 << bass;
+        const auto mask = chordToneMask(entry);
         int extensions = 0;
         const int root = pitchClass(entry["root"]);
         each(entry["intervals"], [&](const auto& interval) {

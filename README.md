@@ -1,5 +1,7 @@
 # OSTF Studio
 
+Editing note pitch or timing opens chord review for the affected intervals. Candidate percentages show how much of the selected track's sounding note duration fits each chord. The lane closes after the last decision. The footer provides Undo, Redo and Edit history for score and clip edits. The CPU and RAM meters show system-wide usage. Hover over them for physical memory in use and total capacity.
+
 In **Paper Lantern Replies**, bar 5 pairs the lead-sheet text 雨の音が with Am9. The lead singer articulates the kana on the melody notes. The backing singer enters in bar 18 on its own track. Use **First lyric** on either part to locate its entrance and **Overlay vocal parts** to view both melodies. The factory singer uses offline Japanese syllable samples generated from MMDAgent's Mei voice.
 
 Instrument and FX editors stay visible above the Studio arrangement while you work. Click **Edit** in an FX chain to open its controls directly. Click the arrangement to give it keyboard focus while keeping the editor in view.

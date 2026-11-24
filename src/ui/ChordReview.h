@@ -13,6 +13,7 @@ struct ChordDecision {
     int choice = 0;
     ReviewNoteOrigins noteOrigins;
     bool fromMaterial = false;
+    std::array<int, 5> trackFit{-1, -1, -1, -1, -1};
 };
 using ChordDecisions = std::vector<ChordDecision>;
 enum class ChordReviewAction { apply, cancel, keep };
@@ -21,8 +22,9 @@ void rememberReviewedNotes(ChordDecisions&, const juce::MemoryBlock& before, std
                            const std::vector<PitchedNote>& after);
 class ChordAnalysis {
   public:
-    explicit ChordAnalysis(const OstfpPreview&);
+    explicit ChordAnalysis(const OstfpPreview&, std::optional<size_t> editedTrack = {});
     juce::StringArray rank(ReviewRange) const;
+    void updateCandidates(ChordDecision&) const;
     ChordDecisions review(const std::vector<ReviewRange>& affected,
                           const juce::Array<juce::var>& imported = {}, bool crop = false, juce::int64 end = 0) const;
 
@@ -30,9 +32,11 @@ class ChordAnalysis {
     struct Note {
         juce::int64 start, end, latestEnd;
         int pitch;
+        size_t track;
     };
     const OstfpPreview& project;
     const juce::var score;
+    const std::optional<size_t> editedTrack;
     std::vector<Note> notes;
 };
 std::vector<ReviewRange> changedNoteRanges(const std::vector<PitchedNote>& oldNotes,
@@ -61,8 +65,6 @@ class ChordReviewLane : public juce::Component {
     unsigned revision_ = 0;
     ostfstudio::ChordDecisions rows_;
     juce::StringArray names_;
-    struct ScoreChord { ostfstudio::ReviewRange range; juce::String label; bool idle; };
-    std::vector<ScoreChord> scoreChords_;
     juce::TextButton confirmAll_, keepAll_, cancelAll_;
     juce::OwnedArray<juce::TextButton> decisions_;
     juce::Rectangle<int> titleBounds_;
