@@ -270,7 +270,9 @@ private:
     juce::Rectangle<int> functionRow_;
     std::optional<std::size_t> pianoTrack_;
     std::size_t pianoGeneration_ = 0;
-    struct NoteRevision { juce::MemoryBlock before, after; juce::String panTrack; ostfstudio::PanEnvelope oldPan, newPan; };
+    struct NoteRevision { juce::MemoryBlock before, after; juce::String panTrack; ostfstudio::PanEnvelope oldPan, newPan;
+        std::optional<std::vector<ostfstudio::ProjectAudio>> beforeAudio, afterAudio;
+    };
     std::deque<NoteRevision> noteHistory_;
     std::size_t noteHistoryCursor_ = 0;
     struct TrackControls {
@@ -416,6 +418,18 @@ private:
     bool spliceAuditionActive_ = false;
     EditorClipLane clipLane_;
     void refreshClipLane();
+    struct ClipHit { size_t track; juce::String id; juce::int64 start, end; bool audio; };
+    enum class ClipOp { copy = 10, paste, duplicate, move, split, join };
+    std::vector<ClipHit> clipsOn(size_t track) const;
+    std::optional<ClipHit> clipAt(size_t track, juce::int64 tick) const;
+    void clipCommand(ClipOp, std::optional<ClipHit>, size_t destination, juce::int64 tick);
+    void rememberAudioEdit(std::vector<ostfstudio::ProjectAudio> before, juce::MemoryBlock beforeScore = {});
+    juce::String selectedAudioId_;
+    std::optional<ClipHit> draggingMidi_, dragPreview_;
+    juce::int64 midiGrabOffset_ = 0, clipInsertionTick_ = 0;
+    bool arrangementClipFocus_ = false;
+    std::optional<ostfstudio::ProjectAudio> copiedAudio_;
+    ostfstudio::OstfpPreview::MidiClipCopy copiedMidi_;
     void midiClipMenu(std::size_t track, double bar);
     bool beginMidiResize(std::size_t track, double bar, double tolerance);
     void dragMidiResize(double bar, bool finish);

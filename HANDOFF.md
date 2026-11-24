@@ -1,5 +1,9 @@
 # OSTF Studio development handoff
 
+## Arrangement clip editing
+
+Branch `feature/arrangement-clip-editing`. MIDI and audio clip editing lives in `ArrangementClipEdits.cpp`, with regression cases in the track-view, transport and OSTFP tests. Each track can hold multiple audio regions. The OSTFP production layer binds them to shared audio sources, and the existing Studio timing extension stores the source phase of a split region. Existing OSTF 5 scores can be loaded without migration. Test references include both parts of a split warped loop and copying or moving an imported MIDI clip. Windows x64 Release passed all 29 tests including reruns. Startup reached its timeout and the waveform check missed its asynchronous thumbnail during the full run. Both passed on the isolated rerun. The JUCE-free core passed 2/2. The locally packaged portable executable passed the track-view and transport checks and matched the compiled executable. The Setup and Portable packages were built. Real-device playback and macOS were not validated in this change.
+
 ## Sample placement, stem separation and shared-part feedback
 
 Branch `feature/sample-placement-stem-separator`. Windows x64 Release passed all 29 CTest cases. The separate JUCE-free core build passed 2/2. The Audio files button next to Plug-ins opens the right-hand folder browser. Drop a sample to place it at the pointer, then drag the clip body to move it. Dropping over an occupied audio track opens a replacement menu. The current model has one audio clip per track.

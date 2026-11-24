@@ -1,4 +1,4 @@
-#include "ui/ExternalAudioEdit.h"
+#include "ui/AudioRegionEdits.h"
 #include "ui/MainComponent.h"
 #include "ui/SongInformationPanel.h"
 #include "ui/SongMidi.h"
@@ -302,7 +302,7 @@ bool checkWaveform(const juce::File& directory) {
     for (bool embedded : {false, true}) {
         if (embedded) { region.localFile = juce::File{}; region.embedded = bytes.getMemoryBlock(); }
         waveforms.load({region});
-        if (!waveforms.available(0) || std::abs(waveforms.endTick(region, clock) - 2400) > .001) {
+        if (!waveforms.available(region) || std::abs(waveforms.endTick(region, clock) - 2400) > .001) {
             std::cerr << "Could not load the trimmed WAV at its expected length\n";
             return false;
         }
@@ -354,6 +354,20 @@ bool checkWaveform(const juce::File& directory) {
     };
     if (!run(region.timing) || level(1056) > 0.01f || level(1440) < 0.15f
         || level(2016) > 0.01f || level(2400) < 0.15f || level(2880) > 0.01f) return false;
+    // Playback measurements must agree on both sides of a cut through a warped cycle.
+    const std::array<int, 7> ticks{1056, 1380, 1440, 1900, 2016, 2400, 2840};
+    std::array<float, 7> baseline{};
+    for (size_t i = 0; i < ticks.size(); ++i) baseline[i] = level(ticks[i]);
+    auto right = rightSlice(region, 1380, 2880, clock, 1.);
+    song.audio.front().durationTicks = 1380 - region.startTick;
+    song.audio.push_back(right);
+    if (!run(region.timing)) return false;
+    for (size_t i = 0; i < ticks.size(); ++i)
+        if (std::abs(baseline[i] - level(ticks[i])) > 0.0001f) return false;
+    ProjectAudio consolidated;
+    if (consolidateRegions(song.audio[0], song.audio[1], 2880, clock, consolidated).failed()
+        || consolidated.timing != region.timing || consolidated.durationTicks != region.durationTicks) return false;
+    song.audio = {region};
     // The trimmed native sample repeats every second, including across the tempo change.
     if (!run({true, 0, {}}) || level(2320) < 0.15f || level(2450) > 0.01f) return false;
     if (!run({false, 960, {}}) || level(1445) < 0.15f || level(2200) > 0.01f) return false;
@@ -397,7 +411,7 @@ bool checkWaveform(const juce::File& directory) {
     }
     region.embedded.reset();
     waveforms.load({region});
-    return !waveforms.available(0);
+    return !waveforms.available(region);
 }
 
 bool savePng(const juce::File& file, juce::Component& component) {

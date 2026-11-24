@@ -1,4 +1,5 @@
 #include "ui/OstfpPreview.h"
+#include "ui/AudioRegionEdits.h"
 #include "StockEffects.h"
 #include "ui/SongMidi.h"
 #include "ui/StudioLanguage.h"
@@ -601,6 +602,45 @@ int main(int argc, char** argv) {
         if (clip.durationTicks != 960 || !clip.timing.loop || clip.timing.cycleTicks != 240
             || clip.timing.markers.size() != 1 || clip.timing.markers[0].source != 0.6
             || clip.timing.markers[0].position != 0.3) return 1;
+    }
+    // Two regions may share an embedded source and have independent warp phases.
+    auto second = bundled->audio.front();
+    second.regionId = "region-" + juce::Uuid().toString();
+    second.startTick += second.durationTicks;
+    second.timing.phaseOffset = 0.375;
+    bundled->audio.push_back(second);
+    juce::MemoryOutputStream repeated;
+    if (ostfstudio::writeOstfpPreview(*bundled, mix, repeated).failed()) return 1;
+    juce::MemoryInputStream repeatIn(repeated.getData(), repeated.getDataSize(), false);
+    std::unique_ptr<ostfstudio::OstfpPreview> roundTrip;
+    const auto reopenedRegions = ostfstudio::readOstfpPreview(repeatIn, roundTrip);
+    if (reopenedRegions.failed() || roundTrip->audio.size() != 2) {
+        std::cerr << "Multi-region OSTFP round trip: " << reopenedRegions.getErrorMessage() << '\n';
+        return 1;
+    }
+    const auto& a = roundTrip->audio[0];
+    const auto& b = roundTrip->audio[1];
+    if (a.regionId != bundled->audio.front().regionId || b.regionId != second.regionId || a.track != b.track
+        || b.timing != second.timing || a.embedded.getData() != b.embedded.getData() || a.path != b.path) return 1;
+    // Consolidating independent clips keeps both sounds and the gap between them.
+    auto constantClip = [&](int tick, juce::uint8 highByte) {
+        auto data = wav.getMemoryBlock();
+        auto* samples = static_cast<juce::uint8*>(data.getData()) + 44;
+        samples[1] = samples[3] = highByte;
+        ostfstudio::ProjectAudio region{0, "tone.wav", {}, std::move(data), tick, 8};
+        region.timing.cycleTicks = 8;
+        return region;
+    };
+    auto leftTone = constantClip(0, 0x20), rightTone = constantClip(12, 0xc0);
+    ostfstudio::ProjectAudio rendered;
+    if (ostfstudio::consolidateRegions(leftTone, rightTone, 20, project->clock, rendered).failed()
+        || rendered.durationTicks != 20 || rendered.regionId != leftTone.regionId) return 1;
+    auto renderReader = ostfstudio::wavReader(rendered.embedded);
+    if (!renderReader || renderReader->numChannels != 2) return 1;
+    juce::AudioBuffer<float> sample(2, 1);
+    for (auto [tick, expected] : {std::pair{4, .25f}, std::pair{10, 0.f}, std::pair{16, -.5f}}) {
+        if (!renderReader->read(&sample, 0, 1, std::llround(project->clock.secondsAt(tick) * renderReader->sampleRate), true, true)
+            || std::abs(sample.getSample(0, 0) - expected) > .001f) return 1;
     }
     const auto relativePath = external->audio.front().path;
     if (!relativePath.startsWith(scoreFile.getFileNameWithoutExtension() + ".media/")) return 1;

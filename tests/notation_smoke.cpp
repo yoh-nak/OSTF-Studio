@@ -231,6 +231,7 @@ bool checkImport(const juce::File& dir, MainComponent& main) {
         placeImportTrack(*separated, 0, *analysed, 0, 0, before, true).failed() || analysed->audio.size() != 1 ||
         analysed->audio.front().localFile != stems.getChildFile("drums.wav"))
         return false;
+    if (analysed->audio.front().regionId == separated->audio.front().regionId) return false;
     if (placeImportTrack(*analysed, -1, *separated, {}, 0, before).failed() ||
         juce::JSON::parse(separated->sourceScore.toString())["harmony"]["chords"].size() != 2)
         return false;

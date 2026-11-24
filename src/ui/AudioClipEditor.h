@@ -117,12 +117,13 @@ public:
         if (timing.cycleTicks <= 0 || timing.markers.empty()) return;
         const double period = timing.cycleTicks;
         const double cyclePixels = period / ticksPerBar / visible.getLength() * area.getWidth();
-        if (cyclePixels < 2. || (!timing.loop && start >= clip->sourceTick() + period)) return;
-        for (double origin = clip->sourceTick() + std::max(0., std::floor((start - clip->sourceTick()) / period)) * period;
+        const auto base = clip->sourceTick() - timing.phaseOffset * period;
+        if (cyclePixels < 2. || (!timing.loop && start >= base + period)) return;
+        for (double origin = base + std::max(0., std::floor((start - base) / period)) * period;
              origin < end; origin += period) {
             for (const auto marker : timing.markers) {
                 const double tick = origin + marker.position * period;
-                if (tick < start || tick >= end) continue;
+                if (tick < std::max(start, double(clip->sourceTick())) || tick >= end) continue;
                 const int x = xAtTick(tick);
                 g.setColour(juce::Colour(0xffffbc63));
                 g.drawVerticalLine(x, float(area.getY()), float(area.getBottom()));
@@ -186,10 +187,10 @@ private:
         const auto tick = tickAtX(point.x);
         return tick >= clip->sourceTick() && tick < waves.endTick(*clip, clock())
             && (timing.loop || !timing.sourceLimitTicks || tick < clip->sourceTick() + timing.sourceLimitTicks)
-            && (timing.loop || !timing.cycleTicks || tick < clip->sourceTick() + timing.cycleTicks);
+            && (timing.loop || !timing.cycleTicks || tick < clip->sourceTick() + (1. - timing.phaseOffset) * timing.cycleTicks);
     }
     double cycleStart(int x) const {
-        const double start = sourceClip()->sourceTick();
+        const double start = sourceClip()->sourceTick() - timing.phaseOffset * timing.cycleTicks;
         return timing.loop ? start + std::floor((tickAtX(x) - start) / timing.cycleTicks) * timing.cycleTicks : start;
     }
     double phase(int x, double origin) const { return (tickAtX(x) - origin) / timing.cycleTicks; }

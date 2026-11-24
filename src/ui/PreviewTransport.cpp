@@ -215,42 +215,13 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     for (auto& slot : instruments_) {
         slot.timeline.clear();
         slot.seekEvents.clear();
-        slot.wav.setSize(0, 0);
+        slot.regions.clear();
     }
-    juce::WavAudioFormat wavFormat;
+    ostfstudio::AudioRegionPlayback::SourceCache sources;
     if (!monitorOnly) for (const auto& audio : project.audio) {
         if (audio.track >= instruments_.size()) continue;
-        auto stream = audio.embedded.isEmpty()
-            ? std::unique_ptr<juce::InputStream>(audio.localFile.createInputStream().release())
-            : std::make_unique<juce::MemoryInputStream>(audio.embedded, false);
-        if (!stream) return juce::Result::fail("Missing WAV: " + audio.path);
-        if (audio.sha256.isNotEmpty() && (stream->getTotalLength() > 16 * 1024 * 1024
-            || juce::SHA256(*stream).toHexString() != audio.sha256 || !stream->setPosition(0)))
-            return juce::Result::fail("WAV does not match the saved project: " + audio.path);
-        std::unique_ptr<juce::AudioFormatReader> reader(wavFormat.createReaderFor(stream.release(), true));
-        if (!reader || reader->lengthInSamples < 1 || reader->lengthInSamples > 8 * 1024 * 1024
-            || reader->numChannels < 1 || reader->numChannels > 2 || reader->sampleRate <= 0)
-            return juce::Result::fail("Unsupported WAV: " + audio.path);
-        auto& slot = instruments_[audio.track];
-        if (audio.sha256.isNotEmpty() && (reader->sampleRate != audio.sampleRate
-            || static_cast<int>(reader->numChannels) != audio.channels || reader->lengthInSamples != audio.assetFrames))
-            return juce::Result::fail("WAV format does not match its descriptor: " + audio.path);
-        const auto frames = audio.frameCount > 0 ? audio.frameCount : reader->lengthInSamples - audio.startFrame;
-        if (audio.startFrame < 0 || frames > reader->lengthInSamples - audio.startFrame)
-            return juce::Result::fail("Invalid WAV source range: " + audio.path);
-        if (!audio.timing.valid()) return juce::Result::fail("Invalid WAV timing");
-        slot.wavTiming = audio.timing;
-        slot.wavStartTick = audio.sourceTick();
-        slot.wavStart = juce::roundToInt(clock_.secondsAt(audio.sourceTick()) * sampleRate_);
-        slot.wavEnd = audio.durationTicks > 0 ? juce::roundToInt(clock_.secondsAt(audio.startTick + audio.durationTicks) * sampleRate_)
-                                              : static_cast<int>(lastSample_);
-        if (!audio.timing.loop && audio.timing.sourceLimitTicks)
-            slot.wavEnd = std::min(slot.wavEnd, juce::roundToInt(clock_.secondsAt(audio.sourceTick() + audio.timing.sourceLimitTicks) * sampleRate_));
-        slot.wavGain = audio.muted ? 0.0f : juce::Decibels::decibelsToGain(static_cast<float>(audio.gainDb));
-        slot.wav.setSize(static_cast<int>(reader->numChannels), static_cast<int>(frames));
-        if (!reader->read(&slot.wav, 0, slot.wav.getNumSamples(), audio.startFrame, true, true))
-            return juce::Result::fail("Could not decode WAV: " + audio.path);
-        slot.wavRate = reader->sampleRate;
+        auto& region = instruments_[audio.track].regions.emplace_back();
+        if (auto r = region.load(audio, clock_, sampleRate_, int(lastSample_), &sources); r.failed()) return r;
         outputChannels = 2;
     }
     for (auto& slot : instruments_) slot.panEnvelope = {};
@@ -571,7 +542,7 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
     for (std::size_t track = 0; track < instruments_.size(); ++track) {
         auto& slot = instruments_[track];
         const auto& chain = inserts_[outputCount + track];
-        if (!slot.external && !slot.instance && slot.wav.getNumSamples() == 0 && std::none_of(chain.begin(), chain.end(), [](auto* fx) { return fx != nullptr; })) continue;
+        if (!slot.external && !slot.instance && slot.regions.empty() && std::none_of(chain.begin(), chain.end(), [](auto* fx) { return fx != nullptr; })) continue;
         const auto channelCount = slot.instance ? std::max({2, slot.instance->getTotalNumInputChannels(),
                                                             slot.instance->getTotalNumOutputChannels()}) : 2;
         if (channelCount < 1 || channelCount > pluginAudio_.getNumChannels()) continue;
@@ -632,24 +603,7 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
             slot.instance->processBlock(pluginBlock, pluginMidi_);
             if (slot.instance->getMainBusNumOutputChannels() == 1) block.copyFrom(1, 0, block, 0, 0, count);
         }
-        if (slot.wav.getNumSamples() > 0) {
-            for (int c = 0; c < 2; ++c) {
-                const auto* source = slot.wav.getReadPointer(std::min(c, slot.wav.getNumChannels() - 1));
-                auto* dest = block.getWritePointer(c);
-                for (int i = 0; i < count; ++i) {
-                    const double position = first + i * timelineStep;
-                    if (position < slot.wavStart) continue;
-                    if (position >= slot.wavEnd) break;
-                    const auto nativeFrame = (position - slot.wavStart) * slot.wavRate / sampleRate_;
-                    const auto tick = slot.wavTiming.cycleTicks ? clock_.tickAt(position / sampleRate_) - slot.wavStartTick : 0.0;
-                    const auto frame = slot.wavTiming.frameAt(nativeFrame, std::max(0.0, tick), slot.wav.getNumSamples());
-                    if (frame >= slot.wav.getNumSamples()) break;
-                    const auto pos = static_cast<int>(frame);
-                    const auto next = std::min(pos + 1, slot.wav.getNumSamples() - 1);
-                    dest[i] += (source[pos] + (source[next] - source[pos]) * static_cast<float>(frame - pos)) * slot.wavGain;
-                }
-            }
-        }
+        for (const auto& region : slot.regions) region.mixInto(block, count, first, timelineStep, sampleRate_, clock_);
         processEffects(chain, block, count, &patchMidi_);
         const auto& mix = gains_[track];
         const auto basePan = mix.pan.load();
@@ -913,7 +867,7 @@ std::optional<ostfstudio::ProjectAudio> PreviewTransport::finishAudioTake(size_t
     const int start = captureOrigin_ + captureFirst_, end = captureOrigin_ + captureEnd_;
     clip.startTick = juce::int64(std::llround(clock_.tickAt(start / sampleRate_)));
     clip.durationTicks = std::max<juce::int64>(1, std::llround(clock_.tickAt(end / sampleRate_)) - clip.startTick);
-    std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::MemoryOutputStream>(clip.embedded, false);
+    std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::MemoryOutputStream>(clip.embedded.writable(), false);
     juce::WavAudioFormat wav;
     auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions{}.withSampleRate(sampleRate_)
         .withNumChannels(captured_.getNumChannels()).withBitsPerSample(16));

@@ -98,11 +98,34 @@ struct SessionMix {
     std::vector<bool> audioTracks;
 };
 
+// A duplicated region and its undo entries can share an immutable source recording.
+class RegionAudioBytes {
+public:
+    RegionAudioBytes() = default;
+    RegionAudioBytes(juce::MemoryBlock bytes) : data(std::make_shared<juce::MemoryBlock>(std::move(bytes))) {}
+    const juce::MemoryBlock& read() const { static const juce::MemoryBlock empty; return data ? *data : empty; }
+    operator const juce::MemoryBlock&() const { return read(); }
+    juce::MemoryBlock& writable() {
+        if (!data) data = std::make_shared<juce::MemoryBlock>();
+        else if (data.use_count() > 1) data = std::make_shared<juce::MemoryBlock>(*data);
+        return *data;
+    }
+    size_t getSize() const { return read().getSize(); }
+    bool isEmpty() const { return read().isEmpty(); }
+    void* getData() { return writable().getData(); }
+    const void* getData() const { return read().getData(); }
+    void reset() { data.reset(); }
+    bool operator==(const RegionAudioBytes& other) const { return data == other.data || read() == other.read(); }
+    bool operator==(const juce::MemoryBlock& bytes) const { return read() == bytes; }
+private:
+    std::shared_ptr<juce::MemoryBlock> data;
+};
+
 struct ProjectAudio {
     std::size_t track = 0;
     juce::String path;
     juce::File localFile;
-    juce::MemoryBlock embedded;
+    RegionAudioBytes embedded;
     juce::int64 startTick = 0, durationTicks = 0, startFrame = 0, frameCount = 0;
     double gainDb = 0;
     bool muted = false;
@@ -110,6 +133,11 @@ struct ProjectAudio {
     int sampleRate = 0, channels = 0;
     juce::int64 assetFrames = 0;
     ClipTiming timing;
+    juce::String regionId = "region-" + juce::Uuid().toString();
+    bool operator==(const ProjectAudio&) const = default;
+    juce::String mediaKey() const {
+        return embedded.isEmpty() ? localFile.getFullPathName() : "memory:" + juce::String::toHexString(reinterpret_cast<juce::pointer_sized_uint>(embedded.getData()));
+    }
     juce::int64 sourceTick() const { return startTick + timing.leadingTicks; }
     void resizeBounds(juce::int64 start, juce::int64 end, juce::int64 previousEnd) {
         const auto onset = sourceTick();
@@ -202,6 +230,11 @@ struct OstfpPreview {
     juce::Result editDrumPad(size_t track, int row, std::optional<int> pitch, juce::MemoryBlock &before,
                              std::optional<int> moveTo = {});
     juce::Result addRecordedClip(size_t track, juce::Range<juce::int64>, const std::vector<PitchedNote>&, juce::MemoryBlock& before, const juce::String& name = "Recorded MIDI");
+    struct MidiClipCopy { juce::var data; juce::int64 period = 0; TrackKind kind = TrackKind::pitched; };
+    MidiClipCopy copyMidiClip(size_t track, const juce::String& id) const;
+    juce::Result placeMidiClip(const MidiClipCopy&, size_t destination, juce::int64 tick,
+                               std::optional<size_t> moveFrom, const juce::String& joinTo, juce::MemoryBlock& before);
+    static constexpr size_t maxAudioRegions = 256;
     enum class MidiClipEdit { split, toggleLoop, resizeLoop };
     juce::Result editMidiClip(size_t track, const juce::String& id, MidiClipEdit edit, juce::int64 tick, juce::MemoryBlock& before);
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);

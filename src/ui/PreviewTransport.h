@@ -4,7 +4,7 @@
 #include "ui/ControllerMap.h"
 #include "ui/MidiInputRoute.h"
 
-#include "ui/OstfpPreview.h"
+#include "ui/AudioRegionPlayback.h"
 #include "core/MixerState.h"
 #include "ui/AudioMeters.h"
 #include <juce_audio_devices/juce_audio_devices.h>
@@ -111,12 +111,7 @@ private:
         juce::MidiBuffer timeline;
         juce::MidiBuffer seekEvents, loopEvents;
         ostfstudio::PanEnvelope panEnvelope;
-        juce::AudioBuffer<float> wav;
-        double wavRate = 0.0;
-        int wavStart = 0, wavEnd = 0;
-        juce::int64 wavStartTick = 0;
-        ostfstudio::ClipTiming wavTiming;
-        float wavGain = 1.0f;
+        std::vector<ostfstudio::AudioRegionPlayback> regions;
     };
     std::array<InstrumentTrack, maxTracks> instruments_;
     juce::AudioBuffer<float> pluginAudio_;

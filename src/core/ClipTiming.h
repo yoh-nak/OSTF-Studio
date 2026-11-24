@@ -8,6 +8,7 @@
 namespace ostfstudio {
 struct WarpPoint {
     double position, source;
+    bool operator==(const WarpPoint&) const = default;
 };
 
 struct ClipTiming {
@@ -16,7 +17,10 @@ struct ClipTiming {
     std::vector<WarpPoint> markers;
     std::int64_t leadingTicks = 0; // Silence before the source onset.
     std::int64_t sourceLimitTicks = 0; // Retain a cropped one-shot when its container grows.
+    double phaseOffset = 0; // Cycle position at the start of a sliced source.
+    bool operator==(const ClipTiming&) const = default;
     bool valid() const {
+        if (!std::isfinite(phaseOffset) || phaseOffset < 0 || phaseOffset > 1) return false;
         if (leadingTicks < 0 || sourceLimitTicks < 0) return false;
         if (cycleTicks < 0 || markers.size() > 128 || (!cycleTicks && !markers.empty())) return false;
         WarpPoint previous{0, 0};
@@ -38,6 +42,7 @@ struct ClipTiming {
     double frameAt(double elapsedFrames, double elapsedTicks, int frames) const {
         auto phase = cycleTicks ? elapsedTicks / double(cycleTicks) : elapsedFrames / frames;
         if (phase < 0) return -1;
+        phase += phaseOffset;
         if (loop) phase -= std::floor(phase);
         return phase >= 1 ? double(frames) : sourcePhase(phase) * frames;
     }

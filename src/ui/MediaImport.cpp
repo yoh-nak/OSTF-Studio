@@ -603,6 +603,7 @@ juce::Result analyseImportParts(const juce::File &file, bool useDemucs, std::uni
         aligned->audio.clear();
         for (size_t i = 0; i < encoded.size(); ++i) {
             auto part = region;
+            part.regionId = "region-" + juce::Uuid().toString();
             part.path = stemNames[i] + ".wav";
             part.track = i;
             part.localFile = juce::File{};
@@ -780,12 +781,7 @@ juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPrevie
         return fail("Choose a matching destination track.");
     if (source.trackKinds[index] == TrackKind::audio) {
         auto regions = dest.audio;
-        if (std::any_of(regions.begin(), regions.end(), [&](const auto& old) { return old.track == *track; })) {
-            if (!replace)
-                return fail("Confirm replacement of existing material.");
-            std::erase_if(regions, [&](const auto& old) { return old.track == *track; });
-        }
-        const auto kept = regions.size();
+        std::vector<ProjectAudio> placed;
         for (auto region : source.audio)
             if (region.track == static_cast<std::size_t>(index)) {
                 auto end = convert(region.startTick + region.durationTicks);
@@ -793,17 +789,23 @@ juce::Result placeImportTrack(const OstfpPreview& source, int index, OstfpPrevie
                 region.durationTicks = end - region.startTick;
                 if (end > dest.durationTicks || region.durationTicks <= 0)
                     return fail("The result does not fit inside the song.");
-                for (const auto& old : regions)
-                    if (old.track == *track && old.startTick < end &&
-                        old.startTick + old.durationTicks > region.startTick)
-                        return fail("The destination contains another audio clip.");
+                auto overlaps = [&](const ProjectAudio& other) {
+                    return other.track == *track && other.startTick < end && other.startTick + other.durationTicks > region.startTick;
+                };
+                if (std::any_of(placed.begin(), placed.end(), overlaps)) return fail("The destination contains another audio clip.");
+                if (std::any_of(regions.begin(), regions.end(), overlaps)) {
+                    if (!replace) return fail("Confirm replacement of existing material.");
+                    std::erase_if(regions, overlaps);
+                }
                 region.track = *track;
-                regions.push_back(std::move(region));
+                region.regionId = "region-" + juce::Uuid().toString();
+                placed.push_back(std::move(region));
             }
-        if (regions.size() == kept)
+        if (placed.empty())
             return fail("No audio regions to place.");
-        if (regions.size() > OstfpPreview::maxTracks)
+        if (regions.size() + placed.size() > OstfpPreview::maxAudioRegions)
             return fail("Too many audio regions for this project.");
+        regions.insert(regions.end(), placed.begin(), placed.end());
         dest.audio = std::move(regions);
         return juce::Result::ok();
     }

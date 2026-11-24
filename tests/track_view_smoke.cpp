@@ -225,6 +225,32 @@ int checkSamplePlacement(const juce::File& file) {
     clip = main.clipOn(1);
     if (main.clipOn(0) || !clip || clip->durationTicks != length || clip->startTick <= start
         || clip->startFrame != 0 || clip->timing.leadingTicks != 0 || clip->localFile != file) return 153;
+    using Op = MainComponent::ClipOp;
+    auto hit = main.clipAt(1, clip->startTick);
+    if (!hit || length < 4) return 170;
+    const auto original = *hit;
+    const auto cut = original.start + length / 2;
+    clip->timing = {true, length, {{0.3, 0.6}}};
+    main.clipCommand(Op::split, hit, 1, cut);
+    auto right = main.clipAt(1, cut);
+    if (main.clipsOn(1).size() != 2 || !right || right->id == original.id || right->end != original.end
+        || std::abs(main.clipOn(1)->timing.phaseOffset - double(cut - original.start) / length) > 1e-7) return 171;
+    main.clipCommand(Op::copy, right, 0, 0);
+    main.clipCommand(Op::paste, {}, 0, 0);
+    auto pasted = main.clipAt(0, 0);
+    if (!pasted || pasted->id == right->id || pasted->end != right->end - right->start) return 172;
+    main.clipCommand(Op::duplicate, pasted, 0, 0);
+    if (main.clipsOn(0).size() != 2 || !main.clipAt(0, pasted->end)) return 173;
+    main.clipCommand(Op::paste, {}, 0, 1);
+    if (main.clipsOn(0).size() != 2) return 174;
+    main.clipCommand(Op::join, main.clipAt(1, original.start), 1, 0);
+    auto joined = main.clipAt(1, original.start);
+    if (!joined || joined->id != original.id || joined->end != original.end || main.clipsOn(1).size() != 1
+        || !main.clipOn(1)->timing.loop || main.clipOn(1)->localFile != file) return 175;
+    main.undoPianoEdit(false);
+    if (main.clipsOn(1).size() != 2 || main.clipsOn(0).size() != 2) return 176;
+    main.undoPianoEdit(true);
+    if (main.clipsOn(1).size() != 1) return 177;
     // A separator file carries playable triads and named regions in the same standard MIDI track.
     juce::MidiMessageSequence notes;
     notes.addEvent(juce::MidiMessage::textMetaEvent(3, "OSTF Stem Separator Chords"));
@@ -240,6 +266,23 @@ int checkSamplePlacement(const juce::File& file) {
     const auto before = main.project_->sourceTrackCount();
     main.filesDropped({temporary.getFile().getFullPathName()}, x, main.trackRows_[0].getCentreY());
     if (main.project_->sourceTrackCount() != before + 1 || main.project_->pitchedNotes[before].size() != 3) return 155;
+    const auto midiClips = main.clipsOn(before);
+    if (midiClips.size() != 1) return 178;
+    const auto first = midiClips.front();
+    main.clipCommand(Op::duplicate, first, before, 0);
+    auto duplicate = main.clipAt(before, first.end);
+    if (!duplicate || duplicate->id == first.id || main.project_->pitchedNotes[before].size() != 6) return 179;
+    const auto midiCut = first.start + (first.end - first.start) / 2;
+    main.clipCommand(Op::split, first, before, midiCut);
+    if (main.clipsOn(before).size() != 3 || !main.clipAt(before, midiCut)) return 180;
+    main.clipCommand(Op::join, main.clipAt(before, first.start), before, 0);
+    if (main.clipsOn(before).size() != 2 || main.clipAt(before, first.start)->end != first.end) return 181;
+    main.clipCommand(Op::copy, duplicate, before, 0);
+    main.clipCommand(Op::paste, {}, before, duplicate->end);
+    auto last = main.clipAt(before, duplicate->end);
+    if (!last || last->id == duplicate->id) return 182;
+    main.clipCommand(Op::move, last, before, last->end);
+    if (main.clipAt(before, last->start) || !main.clipAt(before, last->end) || main.clipAt(before, last->end)->id != last->id) return 183;
     for (int y = main.rowOverlay_.getY(); y < main.rowOverlay_.getBottom(); ++y) {
         if (main.globalLaneAt({x,y}) != ostfstudio::TimelineLane::chord) continue;
         main.filesDropped({temporary.getFile().getFullPathName()}, x, y);

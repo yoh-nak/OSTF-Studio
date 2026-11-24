@@ -11,13 +11,20 @@ inline juce::MemoryBlock sourceWavBytes(const ProjectAudio& clip) {
     return {};
 }
 
-inline juce::int64 editableClipFrames(const ProjectAudio& clip, const TempoMap& clock, juce::int64 frames, double rate) {
+inline juce::int64 editableClipFrames(const ProjectAudio& clip, const TempoMap& clock, juce::int64 frames, double rate, juce::int64& first) {
+    first = clip.startFrame;
     if (clip.durationTicks <= 0) return frames;
     auto end = clip.startTick + clip.durationTicks;
     if (!clip.timing.loop && clip.timing.sourceLimitTicks) end = std::min(end, clip.sourceTick() + clip.timing.sourceLimitTicks);
     const double fraction = clip.timing.cycleTicks ? double(end - clip.sourceTick()) / clip.timing.cycleTicks
         : (clock.secondsAt(end) - clock.secondsAt(clip.sourceTick())) * rate / frames;
-    return std::clamp<juce::int64>(std::llround(clip.timing.sourcePhase(std::clamp(fraction, 0.0, 1.0)) * frames), 1, frames);
+    const auto start = clip.timing.phaseOffset;
+    // A range crossing a loop seam edits the shared source cycle.
+    if (clip.timing.loop && start + fraction > 1.) return frames;
+    const auto offset = std::llround(clip.timing.sourcePhase(start) * frames);
+    first += offset;
+    const auto last = std::llround(clip.timing.sourcePhase(std::clamp(start + fraction, start, 1.)) * frames);
+    return std::max<juce::int64>(0, last - offset);
 }
 inline std::unique_ptr<juce::AudioFormatReader> wavReader(const juce::MemoryBlock& data) {
     return std::unique_ptr<juce::AudioFormatReader>(juce::WavAudioFormat{}.createReaderFor(new juce::MemoryInputStream(data, false), true));
@@ -28,21 +35,24 @@ inline std::unique_ptr<juce::AudioFormatWriter> wavWriter(juce::MemoryBlock& out
         .withSampleRate(source.sampleRate).withNumChannels(int(source.numChannels)).withBitsPerSample(int(source.bitsPerSample)));
 }
 inline juce::MemoryBlock clipWav(const ProjectAudio& clip, const juce::MemoryBlock& source, const TempoMap& clock,
-                                 juce::int64& frames) {
+                                 juce::int64& frames, juce::int64* sourceStart = nullptr) {
     auto reader = wavReader(source);
     if (!reader || clip.startFrame < 0 || clip.startFrame >= reader->lengthInSamples) return {};
     const auto available = reader->lengthInSamples - clip.startFrame;
-    frames = editableClipFrames(clip, clock, clip.frameCount > 0 ? std::min(available, clip.frameCount) : available, reader->sampleRate);
-    if (clip.startFrame == 0 && frames == reader->lengthInSamples) return source;
+    juce::int64 first = 0;
+    frames = editableClipFrames(clip, clock, clip.frameCount > 0 ? std::min(available, clip.frameCount) : available, reader->sampleRate, first);
+    if (sourceStart) *sourceStart = first;
+    if (!frames) return {};
+    if (first == 0 && frames == reader->lengthInSamples) return source;
     juce::MemoryBlock bytes;
     auto writer = wavWriter(bytes, *reader);
-    if (!writer || !writer->writeFromAudioReader(*reader, clip.startFrame, frames)) return {};
+    if (!writer || !writer->writeFromAudioReader(*reader, first, frames)) return {};
     writer.reset();
     return bytes;
 }
 
 inline juce::Result prepareEditedWav(const ProjectAudio& clip, const juce::File& file,
-                                     const juce::String& originalHash, ProjectAudio& result, juce::int64 frames = -1) {
+                                     const juce::String& originalHash, ProjectAudio& result, juce::int64 frames = -1, juce::int64 sourceStart = -1) {
     const auto original = sourceWavBytes(clip);
     if (original.isEmpty() || juce::SHA256(original).toHexString() != originalHash)
         return juce::Result::fail("The source has changed. Create a new working copy.");
@@ -51,7 +61,7 @@ inline juce::Result prepareEditedWav(const ProjectAudio& clip, const juce::File&
         return juce::Result::fail("Unsupported WAV");
     auto before = wavReader(original), after = wavReader(edited);
     if (!before || !after) return juce::Result::fail("Unsupported WAV");
-    const auto first = frames < 0 ? 0 : clip.startFrame;
+    const auto first = frames < 0 ? 0 : (sourceStart < 0 ? clip.startFrame : sourceStart);
     if (frames < 0) frames = before->lengthInSamples;
     if (first < 0 || frames <= 0 || frames > before->lengthInSamples - first ||
         after->lengthInSamples != frames || before->sampleRate != after->sampleRate || before->numChannels != after->numChannels)

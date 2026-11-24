@@ -9,8 +9,14 @@ public:
 
     void load(const std::vector<ostfstudio::ProjectAudio>& audio) {
         entries_.clear();
+        std::map<juce::String, std::shared_ptr<Entry>> media;
         juce::WavAudioFormat wav;
         for (const auto& clip : audio) {
+            const auto key = clip.mediaKey();
+            if (auto it = media.find(key); it != media.end()) {
+                entries_.emplace(clip.regionId, it->second);
+                continue;
+            }
             std::unique_ptr<juce::InputStream> input;
             if (!clip.embedded.isEmpty()) input = std::make_unique<juce::MemoryInputStream>(clip.embedded, true);
             else input = clip.localFile.createInputStream();
@@ -18,7 +24,10 @@ public:
             std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(input.release(), true));
             if (!reader || reader->sampleRate <= 0 || reader->numChannels < 1 || reader->numChannels > 2
                 || reader->lengthInSamples < 1 || reader->lengthInSamples > 8 * 1024 * 1024) continue;
-            auto& entry = entries_[clip.track];
+            auto shared = std::make_shared<Entry>();
+            media.emplace(key, shared);
+            entries_.emplace(clip.regionId, shared);
+            auto& entry = *shared;
             entry.rate = reader->sampleRate;
             entry.frames = reader->lengthInSamples;
             entry.thumbnail = std::make_unique<juce::AudioThumbnail>(64, formats_, cache_);
@@ -27,26 +36,30 @@ public:
         }
     }
 
-    bool available(std::size_t track) const { return entries_.count(track) > 0; }
+    bool available(const ostfstudio::ProjectAudio& clip) const { return entries_.count(clip.regionId) > 0; }
+    double nativeSeconds(const ostfstudio::ProjectAudio& clip) const {
+        const auto it = entries_.find(clip.regionId);
+        return it == entries_.end() ? 0. : double(sourceFrames(clip, *it->second)) / it->second->rate;
+    }
     double nativeTicks(const ostfstudio::ProjectAudio& clip, const ostfstudio::TempoMap& clock) const {
-        const auto it = entries_.find(clip.track);
+        const auto it = entries_.find(clip.regionId);
         if (it == entries_.end()) return 0;
-        return clock.tickAt(clock.secondsAt(clip.sourceTick()) + double(sourceFrames(clip, it->second)) / it->second.rate) - clip.sourceTick();
+        return clock.tickAt(clock.secondsAt(clip.sourceTick()) + double(sourceFrames(clip, *it->second)) / it->second->rate) - clip.sourceTick();
     }
     double endTick(const ostfstudio::ProjectAudio& clip, const ostfstudio::TempoMap& clock) const {
         if (clip.durationTicks > 0) return double(clip.startTick + clip.durationTicks);
-        const auto it = entries_.find(clip.track);
+        const auto it = entries_.find(clip.regionId);
         return it == entries_.end() ? double(clip.startTick)
-             : clock.tickAt(clock.secondsAt(clip.sourceTick()) + sourceFrames(clip, it->second) / it->second.rate);
+             : clock.tickAt(clock.secondsAt(clip.sourceTick()) + sourceFrames(clip, *it->second) / it->second->rate);
     }
 
     static constexpr juce::uint32 seamColour = 0xfff1d398;
     void draw(juce::Graphics& g, juce::Rectangle<int> area, const ostfstudio::ProjectAudio& clip,
               const ostfstudio::TempoMap& clock, double firstTick, double lastTick,
               const ostfstudio::ClipTiming* preview = nullptr) const {
-        const auto it = entries_.find(clip.track);
+        const auto it = entries_.find(clip.regionId);
         if (it == entries_.end() || area.isEmpty() || lastTick <= firstTick) return;
-        const auto& data = it->second;
+        const auto& data = *it->second;
         const auto onset = clock.secondsAt(clip.sourceTick());
         const auto seconds = double(sourceFrames(clip, data)) / data.rate;
         if (seconds <= 0) return;
@@ -56,10 +69,10 @@ public:
         };
         const auto& timing = preview ? *preview : clip.timing;
         const auto phaseAt = [&](double tick) {
-            return timing.cycleTicks ? (tick - clip.sourceTick()) / timing.cycleTicks : (secondsAt(tick) - onset) / seconds;
+            return timing.phaseOffset + (timing.cycleTicks ? (tick - clip.sourceTick()) / timing.cycleTicks : (secondsAt(tick) - onset) / seconds);
         };
         const auto tickAt = [&](double phase) {
-            return timing.cycleTicks ? clip.sourceTick() + phase * timing.cycleTicks : clock.tickAt(onset + phase * seconds);
+            return timing.cycleTicks ? clip.sourceTick() + (phase - timing.phaseOffset) * timing.cycleTicks : clock.tickAt(onset + (phase - timing.phaseOffset) * seconds);
         };
         const auto xAt = [&](double tick) {
             return area.getX() + juce::roundToInt((tick - firstTick) / (lastTick - firstTick) * area.getWidth());
@@ -114,5 +127,5 @@ private:
     juce::AudioFormatManager formats_;
     juce::AudioThumbnailCache cache_{1};
     juce::int64 serial_ = 0;
-    std::map<std::size_t, Entry> entries_;
+    std::map<juce::String, std::shared_ptr<Entry>> entries_;
 };

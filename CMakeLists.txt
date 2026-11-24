@@ -144,7 +144,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp
         examples/demo-songs/copper-mile.ostfp examples/demo-songs/first-light-vector.ostfp)
     juce_generate_juce_header(OSTFStudio)
-    target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/OstfpPreview.cpp
+    target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/ArrangementClipEdits.cpp src/ui/OstfpPreview.cpp
         src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
         src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
         src/ui/TheoryGuide.cpp tests/stock_effects_smoke.cpp tests/track_view_smoke.cpp tests/notation_smoke.cpp
