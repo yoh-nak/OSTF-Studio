@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Chord decisions and per-interval clip fit
+
+Branch `feature/persistent-chord-review-lane`. The pitched piano roll keeps its chord review lane visible. Only intervals touched by a note edit require a decision. The gold **Decide chords** menu applies Confirm, Cancel or Keep to the selected interval or all pending intervals. Cancel restores the affected notes with their original IDs and attributes, including notes spanning or moving between intervals. Keep preserves the edited notes and the destination harmony. Undoing a cancellation restores the pending review.
+
+Arrangement chord and scale fit are indexed by clip and score chord. The drawing test compares the four visible chord intervals in the Neon Platforms electric piano clip against a render with both fit indicators hidden. The track-view test exercises the actual decision menu, independent edits and a batch containing a moved note, a deletion and a duplicate. The score format remains OSTF 5.0.
+
+Windows x64 Release compiled locally. Track view, piano edits, theory guide and both JUCE-free core tests passed. The development portable ZIP in `dist/windows-chord-review-lane/` contains the tested executable. macOS and physical-device operation were not exercised for this change.
+
 ## Whole-score chord analysis
 
 Branch `feature/whole-score-chord-analysis`. Chord review after piano edits and material drops ranks each interval using all pitched score tracks. The track that initiated an edit determines which intervals need a decision. Clip fit percentages continue to describe each individual clip. The track-view regression uses a sustained C melody over bass and keys changing from C major to F major, including disabled events and generated voicing as exclusion cases.

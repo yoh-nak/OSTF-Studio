@@ -11,13 +11,19 @@ struct ChordDecision {
     juce::var sourceChord;
     // 0 keeps the score, 1..3 choose a ranked chord, 4 uses the dropped chord.
     int choice = 0;
+    ReviewNoteOrigins noteOrigins;
+    bool fromMaterial = false;
 };
 using ChordDecisions = std::vector<ChordDecision>;
+enum class ChordReviewAction { apply, cancel, keep };
+void rememberReviewedNotes(ChordDecisions&, const juce::MemoryBlock& before, std::size_t track,
+                           const std::vector<NoteEdit>& edits, const juce::StringArray& resultIds,
+                           const std::vector<PitchedNote>& after);
 class ChordAnalysis {
   public:
     explicit ChordAnalysis(const OstfpPreview&);
     juce::StringArray rank(ReviewRange) const;
-    ChordDecisions review(const std::vector<ReviewRange>& affected, bool includeScoreChords,
+    ChordDecisions review(const std::vector<ReviewRange>& affected,
                           const juce::Array<juce::var>& imported = {}, bool crop = false, juce::int64 end = 0) const;
 
   private:
@@ -44,17 +50,23 @@ class ChordReviewLane : public juce::Component {
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void resized() override;
-    int preferredHeight(int) const { return 44; }
+    juce::PopupMenu decisionMenu();
+    int preferredHeight(int) const { return 60; }
     std::function<std::pair<juce::Rectangle<int>,juce::Range<double>>()> timeline;
     std::function<void(int)> choose;
-    std::function<void(bool all, bool keep)> confirm;
+    std::function<void(bool all, ostfstudio::ChordReviewAction)> decide;
 
   private:
     int index_ = 0;
     unsigned revision_ = 0;
     ostfstudio::ChordDecisions rows_;
     juce::StringArray names_;
-    juce::TextButton intervals_, all_;
+    struct ScoreChord { ostfstudio::ReviewRange range; juce::String label; };
+    std::vector<ScoreChord> scoreChords_;
+    juce::TextButton intervals_, decision_;
+    juce::Rectangle<int> titleBounds_;
+    juce::Rectangle<int> boundsFor(ostfstudio::ReviewRange) const;
+    void updateActions();
     void showMenu(int index);
     juce::String option(const ostfstudio::ChordDecision&,int) const;
 };

@@ -2193,6 +2193,48 @@ juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEd
     return result;
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
+juce::Result OstfpPreview::restoreReviewedNotes(std::size_t track, const ReviewNoteOrigins& origins,
+                                              juce::MemoryBlock& before) try {
+    require(track < sourceTrackCount() && !origins.empty(), "Select a MIDI track.");
+    before = savedScore(*this);
+    auto score = parseObject(before);
+    auto clips = score["tracks"][int(track)]["clips"];
+    require(clips.isArray(), "The clips have changed since this edit.");
+    std::map<juce::String, juce::var> owners;
+    std::set<juce::String> created, removed;
+    std::vector<const ReviewNoteOrigin*> restore;
+    for (const auto& [id, origin] : origins) {
+        if (origin.event.isObject()) restore.push_back(&origin);
+        else removed.insert(id);
+        created.insert(origin.createdClips.begin(), origin.createdClips.end());
+    }
+    for (auto& clip : *clips.getArray()) {
+        owners.emplace(clip["id"].toString(), clip);
+        auto notes = clip["notes"];
+        if (auto* list = notes.getArray())
+            for (int i = list->size(); --i >= 0;)
+                if (origins.contains(list->getReference(i)["id"].toString())) list->remove(i);
+    }
+    std::stable_sort(restore.begin(), restore.end(), [](auto* a, auto* b) { return a->index < b->index; });
+    for (const auto* origin : restore) {
+        auto owner = owners.find(origin->clipId);
+        require(owner != owners.end(), "The clips have changed since this edit.");
+        auto events = arrayProperty(owner->second, "notes");
+        events.getArray()->insert(std::min(origin->index, events.size()), origin->event.clone());
+    }
+    for (int i = clips.size(); --i >= 0;) {
+        const auto& clip = clips.getArray()->getReference(i);
+        const auto id = clip["id"].toString();
+        if (created.contains(id) && clip["notes"].size() == 0 && clip["midiEvents"].size() == 0) {
+            clips.getArray()->remove(i);
+            removed.insert(id);
+        }
+    }
+    require(removed.empty() || !referencesNote(score, removed), "A linked MIDI event cannot be removed.");
+    reviseDocument(score, before, "studio-" + juce::Uuid().toString());
+    return restoreNoteScore(editedScoreBytes(before, score, {"tracks", "document"}));
+} catch (const std::exception& e) { return juce::Result::fail(e.what()); }
+
 bool OstfpPreview::insertGeneratorPattern(std::size_t track, int bar) {
     if (track >= sourceTrackCount() || trackKinds[track] != TrackKind::pitched || track >= pitchedNotes.size() || track >= trackLanes.size() || bar < bars.firstBar || bar >= bars.endBar
         || ppq < 2 || ticksPerBar <= 0) return false;

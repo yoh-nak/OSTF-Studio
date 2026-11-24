@@ -131,11 +131,12 @@ private:
     void editGlobalBoundary(bool split);
     ChordReviewLane chordReview_;
     ostfstudio::ChordDecisions pendingReview_;
+    void updateChordReviewLane();
     void refreshChordReview();
     bool chordReviewBlocksSwitch();
-    void resolveChordReview(bool all, bool keep);
+    void resolveChordReview(bool all, ostfstudio::ChordReviewAction);
     void reviewDroppedChords(const ostfstudio::OstfpPreview&, int index, juce::int64 tick);
-    int chordReviewHeight(int width) const { return pendingReview_.empty() ? 0 : chordReview_.preferredHeight(width); }
+    int chordReviewHeight(int width) const { return chordReview_.isVisible() ? chordReview_.preferredHeight(width) : 0; }
     enum class ClipTool { select, split, join };
     ClipTool clipTool_ = ClipTool::select;
     bool joinKeepsRight_ = false;
@@ -254,7 +255,7 @@ private:
     void refreshTrackTheory(std::size_t track);
     std::vector<ostfstudio::TheoryGuide::ClipFits> clipFits_;
     ostfstudio::TheoryGuide::ClipFits previewClipFits_;
-    const ostfstudio::TheoryGuide::ClipFit* clipFit(size_t, const char*) const;
+    const ostfstudio::TheoryGuide::ClipFit& clipFit(size_t, const char*, size_t chordBegin) const;
     juce::Rectangle<int> drawFitBadges(juce::Graphics&,juce::Rectangle<int>,const ostfstudio::TheoryGuide::ClipFit&) const;
     bool pitchedSelection() const;
     void drawTheoryRows(juce::Graphics&, juce::Rectangle<int>, int labelWidth) const;

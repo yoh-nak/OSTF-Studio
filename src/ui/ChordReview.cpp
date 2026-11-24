@@ -102,7 +102,51 @@ std::vector<ReviewRange> changedNoteRanges(const std::vector<PitchedNote>& oldNo
     return ranges;
 }
 
-ChordDecisions ChordAnalysis::review(const std::vector<ReviewRange>& affected, bool includeScoreChords,
+void rememberReviewedNotes(ChordDecisions& rows, const juce::MemoryBlock& before, std::size_t track,
+                           const std::vector<NoteEdit>& edits, const juce::StringArray& resultIds,
+                           const std::vector<PitchedNote>& after) {
+    struct BeforeNote { ReviewNoteOrigin origin; ReviewRange range; };
+    std::map<juce::String, BeforeNote> old;
+    std::set<juce::String> existingClips;
+    const auto score = juce::JSON::parse(before.toString());
+    const auto clips = score["tracks"][int(track)]["clips"];
+    if (auto* list = clips.getArray()) for (const auto& clip : *list) {
+        const auto owner = clip["id"].toString();
+        existingClips.insert(owner);
+        const auto notes = clip["notes"];
+        if (auto* events = notes.getArray()) for (int i = 0; i < events->size(); ++i) {
+            const auto& event = events->getReference(i);
+            const Tick start = Tick(clip["start"]) + Tick(event["start"]);
+            old.emplace(event["id"].toString(), BeforeNote{{owner, event, i}, {start, start + Tick(event["duration"])}});
+        }
+    }
+    ReviewNoteOrigins earliest;
+    std::set<juce::String> created;
+    for (const auto& row : rows) for (const auto& [id, origin] : row.noteOrigins) {
+        earliest.emplace(id, origin);
+        created.insert(origin.createdClips.begin(), origin.createdClips.end());
+    }
+    std::map<juce::String, const PitchedNote*> current;
+    for (const auto& note : after) current.emplace(note.id, &note);
+    int output = 0;
+    for (const auto& edit : edits) {
+        const auto id = edit.action == NoteEdit::erase ? edit.note.id : resultIds[output++];
+        if (edit.note.fixedTrigger) continue;
+        const auto original = old.find(id);
+        const auto now = current.find(id);
+        const auto from = original == old.end() ? ReviewRange{} : original->second.range;
+        const auto to = now == current.end() ? ReviewRange{} : ReviewRange(now->second->startTick, now->second->endTick);
+        auto origin = original == old.end() ? ReviewNoteOrigin{} : original->second.origin;
+        if (auto it = earliest.find(id); it != earliest.end()) origin = it->second;
+        if (now != current.end() && (!existingClips.contains(now->second->clipId) || created.contains(now->second->clipId)))
+            origin.createdClips.addIfNotAlreadyThere(now->second->clipId);
+        for (auto& row : rows)
+            if (row.noteOrigins.contains(id) || (!from.isEmpty() && row.range.intersects(from)) || (!to.isEmpty() && row.range.intersects(to)))
+                row.noteOrigins[id] = origin;
+    }
+}
+
+ChordDecisions ChordAnalysis::review(const std::vector<ReviewRange>& affected,
                                      const juce::Array<juce::var>& imported, bool crop, Tick end) const {
     const Tick limit = std::max(project.durationTicks, end);
     ChordDecisions result;
@@ -140,10 +184,9 @@ ChordDecisions ChordAnalysis::review(const std::vector<ReviewRange>& affected, b
         const ReviewRange interval(*i, *j);
         if (*i < 0 || *j > limit)
             continue;
-        const auto old = globalEventAt(score, TimelineLane::chord, *i);
-        if (!(includeScoreChords && old.isObject()) &&
-            !std::any_of(affected.begin(), affected.end(), [&](auto r) { return r.intersects(interval); }))
+        if (std::none_of(affected.begin(), affected.end(), [&](auto r) { return r.intersects(interval); }))
             continue;
+        const auto old = globalEventAt(score, TimelineLane::chord, *i);
         ChordDecision item{interval, old["label"].toString()};
         item.candidates = rank(interval);
         for (const auto& source : imported)
@@ -229,217 +272,273 @@ juce::Result chordDecisionEdits(const juce::var& score, const ChordDecisions& de
 }
 } // namespace ostfstudio
 
+namespace {
+const juce::Colour reviewBase(0xff16232d), reviewSurface(0xff253841), reviewText(0xfff1f6f6),
+                   reviewMuted(0xffa4b8c1), reviewAccent(0xff8ce0d0), confirmGold(0xffffc36a);
+const auto noCandidate = juce::String::charToString(0x2014);
+
+juce::Rectangle<int> candidateArea(juce::Rectangle<int> box) {
+    return box.reduced(4, 3).withTrimmedTop(box.getHeight() / 2 - 2);
+}
+juce::Rectangle<int> candidateCell(juce::Rectangle<int> area, int index, int count) {
+    const int left = area.getX() + area.getWidth() * index / count;
+    return area.withLeft(left).withRight(area.getX() + area.getWidth() * (index + 1) / count).reduced(1, 0);
+}
+bool fitsChoices(juce::Rectangle<int> box, int count) {
+    return count > 0 && candidateArea(box).getWidth() >= count * 46 && box.getHeight() >= 36;
+}
+} // namespace
+
 ChordReviewLane::ChordReviewLane() {
-  setComponentID("chord-review");
-  addAndMakeVisible(intervals_);
-  addAndMakeVisible(all_);
-  intervals_.onClick = [this] { showMenu(-1); };
-  all_.setButtonText(TRANS("Confirm all..."));
-  all_.onClick = [this] {
+    setComponentID("chord-review");
+    setTitle(TRANS("Chord review"));
+    addAndMakeVisible(intervals_);
+    intervals_.setTitle(TRANS("Choose chord interval"));
+    intervals_.onClick = [this] { showMenu(-1); };
+
+    addAndMakeVisible(decision_);
+    decision_.setComponentID("chord-decision");
+    decision_.setButtonText(TRANS("Decide chords") + "  " + juce::String::charToString(0x25be));
+    decision_.setTooltip(TRANS("Apply a chord, undo note edits, or keep the existing chord"));
+    decision_.onClick = [this] {
+        if (!rows_.empty()) decisionMenu().showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&decision_));
+    };
+    updateActions();
+}
+
+juce::PopupMenu ChordReviewLane::decisionMenu() {
     juce::PopupMenu menu;
-    menu.addItem(1, TRANS("Apply all selected chords"));
-    menu.addItem(2, TRANS("Keep all current chords"));
-    menu.showMenuAsync(
-        juce::PopupMenu::Options().withTargetComponent(&all_),
-        [safe = juce::Component::SafePointer<ChordReviewLane>(this),
-         revision = revision_](int id) {
-          if (safe && revision == safe->revision_ && id && safe->confirm)
-            safe->confirm(true, id == 2);
-        });
-  };
-}
-void ChordReviewLane::display(const ostfstudio::ChordDecisions &rows,
-                              const ostfstudio::OstfpPreview &song) {
-  if (rows_.empty() && !rows.empty()) {
-    auto edited = std::find_if(rows.begin(), rows.end(),
-                               [](const auto &r) { return r.choice != 0; });
-    index_ = edited == rows.end() ? 0 : int(edited - rows.begin());
-  }
-  rows_ = rows;
-  ++revision_;
-  index_ = std::clamp(index_, 0, std::max(0, int(rows.size()) - 1));
-  names_.clear();
-  auto location = [&](juce::int64 tick) {
-    return TransportPanel::musicalPosition(
-        song, tick,
-        ostfstudio::activeMeter(song.meters, double(tick),
-                                {0, song.meterBeats, song.beatUnit}));
-  };
-  for (const auto &row : rows)
-    names_.add(location(row.range.getStart()) + " - " +
-               location(row.range.getEnd()) + "   " + row.current);
-  intervals_.setButtonText(TRANS("Chord review") + " (" +
-                           juce::String(int(rows.size())) + ")");
-  repaint();
-}
-juce::String ChordReviewLane::option(const ostfstudio::ChordDecision &row,
-                                     int choice) const {
-  if (choice == 0)
-    return TRANS("Keep") + " " +
-           (row.current.isEmpty() ? juce::String("-") : row.current);
-  if (choice == 4)
-    return TRANS("Source") + " " + row.sourceChord["label"].toString();
-  return row.candidates[choice - 1];
-}
-void ChordReviewLane::showMenu(int index) {
-  juce::PopupMenu menu;
-  auto options = [&](int i) {
-    juce::PopupMenu sub;
-    const auto &row = rows_[size_t(i)];
-    for (int c = 0; c < 5; ++c) {
-      if ((c > 0 && c < 4 && c > row.candidates.size()) ||
-          (c == 4 && !row.sourceChord.isObject()))
-        continue;
-      sub.addItem(1 + i * 6 + c, option(row, c), true, row.choice == c);
+    if (rows_.empty()) return menu;
+    using Action = ostfstudio::ChordReviewAction;
+    auto addChoices = [&](juce::PopupMenu& target, bool all) {
+        auto action = [&](Action choice) {
+            return [safe = juce::Component::SafePointer<ChordReviewLane>(this), revision = revision_, selected = index_, all, choice] {
+                if (safe && safe->isEnabled() && safe->revision_ == revision && safe->index_ == selected && safe->decide)
+                    safe->decide(all, choice);
+            };
+        };
+        target.addItem(TRANS("Confirm"), action(Action::apply));
+        target.addItem(TRANS("Cancel chord"), action(Action::cancel));
+        target.addItem(TRANS("Keep"), action(Action::keep));
+    };
+    menu.addSectionHeader(names_[index_]);
+    addChoices(menu, false);
+    if (rows_.size() > 1) {
+        juce::PopupMenu all;
+        addChoices(all, true);
+        menu.addSeparator();
+        menu.addSubMenu(TRANS("All pending intervals") + " (" + juce::String(int(rows_.size())) + ")", all);
     }
-    sub.addSeparator();
-    sub.addItem(6 + i * 6, TRANS("Confirm interval"));
-    return sub;
-  };
-  if (index >= 0)
-    menu = options(index);
-  else
-    for (int i = 0; i < int(rows_.size()); ++i)
-      menu.addSubMenu(names_[i], options(i));
-  menu.showMenuAsync(
-      juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(),
-      [safe = juce::Component::SafePointer<ChordReviewLane>(this),
-       rev = revision_](int id) {
-        if (!safe || id <= 0 || safe->revision_ != rev)
-          return;
-        safe->index_ = (id - 1) / 6;
-        const auto c = (id - 1) % 6;
-        if (c == 5) {
-          if (safe->confirm)
-            safe->confirm(false, false);
-        } else if (safe->choose)
-          safe->choose(c);
-      });
+    return menu;
+}
+
+void ChordReviewLane::updateActions() {
+    const bool pending = !rows_.empty();
+    decision_.setEnabled(pending);
+    decision_.setColour(juce::TextButton::buttonColourId, pending ? confirmGold : reviewSurface);
+    decision_.setColour(juce::TextButton::textColourOffId, pending ? reviewBase : reviewText);
+    intervals_.setVisible(pending);
+    if (pending)
+        intervals_.setButtonText(names_[index_] + "  " + juce::String::charToString(0x25be));
+    repaint();
+}
+
+void ChordReviewLane::display(const ostfstudio::ChordDecisions& rows, const ostfstudio::OstfpPreview& song) {
+    const auto oldRange = rows_.empty() ? ostfstudio::ReviewRange{} : rows_[size_t(index_)].range;
+    rows_ = rows;
+    ++revision_;
+    const auto selected = std::find_if(rows.begin(), rows.end(), [&](const auto& r) { return r.range == oldRange; });
+    index_ = selected == rows.end() ? std::clamp(index_, 0, std::max(0, int(rows.size()) - 1))
+                                    : int(selected - rows.begin());
+    names_.clear();
+    auto location = [&](juce::int64 tick) {
+        return TransportPanel::musicalPosition(song, tick, ostfstudio::activeMeter(song.meters, double(tick),
+                                              {0, song.meterBeats, song.beatUnit}));
+    };
+    for (const auto& row : rows)
+        names_.add(location(row.range.getStart()) + " - " + location(row.range.getEnd()) + "   " + row.current);
+
+    scoreChords_.clear();
+    for (const auto& lane : song.globalLanes) {
+        if (lane.kind != ostfstudio::TimelineLane::chord) continue;
+        for (const auto& r : lane.regions) {
+            if (!r.exactBars) continue;
+            auto tick = [&](double bar) { return std::llround((bar - 1.0) * song.ticksPerBar); };
+            scoreChords_.push_back({{tick(r.exactBars->start), tick(r.exactBars->end)}, juce::String::fromUTF8(r.label)});
+        }
+    }
+    updateActions();
+}
+
+juce::String ChordReviewLane::option(const ostfstudio::ChordDecision& row, int choice) const {
+    if (choice == 0) return TRANS("Keep") + " " + (row.current.isEmpty() ? noCandidate : row.current);
+    if (choice == 4) return TRANS("Source") + " " + row.sourceChord["label"].toString();
+    return row.candidates[choice - 1];
+}
+
+void ChordReviewLane::showMenu(int index) {
+    if (rows_.empty()) return;
+    constexpr int stride = 5;
+    auto options = [&](int i) {
+        juce::PopupMenu sub;
+        const auto& row = rows_[size_t(i)];
+        const auto base = i * stride + 1;
+        for (int c = 0; c <= row.candidates.size(); ++c)
+            sub.addItem(base + c, option(row, c), true, row.choice == c);
+        if (row.sourceChord.isObject()) sub.addItem(base + 4, option(row, 4), true, row.choice == 4);
+        return sub;
+    };
+    juce::PopupMenu menu;
+    if (index >= 0) menu = options(index);
+    else for (int i = 0; i < int(rows_.size()); ++i) menu.addSubMenu(names_[i], options(i));
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(),
+        [safe = juce::Component::SafePointer<ChordReviewLane>(this), revision = revision_](int id) {
+            if (!safe || id <= 0 || safe->revision_ != revision) return;
+            safe->index_ = (id - 1) / stride;
+            const auto action = (id - 1) % stride;
+            if (safe->choose) safe->choose(action);
+        });
+}
+
+juce::Rectangle<int> ChordReviewLane::boundsFor(ostfstudio::ReviewRange range) const {
+    if (!timeline) return {};
+    const auto [plot, ticks] = timeline();
+    if (ticks.isEmpty() || plot.isEmpty() || range.getEnd() <= ticks.getStart() || range.getStart() >= ticks.getEnd()) return {};
+    auto x = [&](double tick) {
+        return plot.getX() + juce::roundToInt(std::clamp((tick - ticks.getStart()) / ticks.getLength(), 0., 1.) * plot.getWidth());
+    };
+    const int start = std::min(x(double(range.getStart())), plot.getRight() - 1);
+    return {start, 1, std::max(1, x(double(range.getEnd())) - start), std::max(0, getHeight() - 2)};
 }
 juce::Rectangle<int> ChordReviewLane::intervalBounds(int i) const {
-  if (!timeline || !juce::isPositiveAndBelow(i, int(rows_.size())))
-    return {};
-  const auto [plot, ticks] = timeline();
-  if (ticks.isEmpty() || plot.isEmpty())
-    return {};
-  const auto &range = rows_[size_t(i)].range;
-  if (range.getEnd() <= ticks.getStart() || range.getStart() >= ticks.getEnd())
-    return {};
-  auto x = [&](double t) {
-    return plot.getX() + juce::roundToInt(std::clamp((t - ticks.getStart()) /
-                                                         ticks.getLength(),
-                                                     0.0, 1.0) *
-                                          plot.getWidth());
-  };
-  const auto start = std::min(x(double(range.getStart())), plot.getRight() - 1);
-  return {start, 1, std::max(1, x(double(range.getEnd())) - start),
-          std::max(0, getHeight() - 2)};
+    return juce::isPositiveAndBelow(i, int(rows_.size())) ? boundsFor(rows_[size_t(i)].range) : juce::Rectangle<int>{};
 }
-void ChordReviewLane::paint(juce::Graphics &g) {
-  g.fillAll(juce::Colour(0xff1b2730));
-  g.setFont(juce::FontOptions(13.f));
-  for (int i = 0; i < int(rows_.size()); ++i) {
-    auto box = intervalBounds(i);
-    if (box.isEmpty())
-      continue;
-    const auto &row = rows_[size_t(i)];
-    g.setColour(juce::Colour(0xff425d64));
-    g.fillRect(box);
-    g.setColour(juce::Colour(0xff7ccac6));
-    g.fillRect(box.removeFromLeft(1));
-    const bool wide = box.getWidth() >= 180;
-    const auto header = wide ? box.removeFromTop(box.getHeight() / 2) : box;
-    g.setColour(juce::Colours::white);
-    const auto current =
-        row.current.isEmpty() ? juce::String("-") : row.current;
-    const auto title =
-        row.choice == 0 ? option(row, 0)
-                        : current + "  " + juce::String::charToString(0x2192) +
-                              "  " + option(row, row.choice);
-    g.drawText(wide ? title : current, header.reduced(3, 0),
-               juce::Justification::centredLeft);
-    if (!wide)
-      continue;
-    const int cellWidth = box.getWidth() / (row.candidates.size() + 1);
-    for (int c = 1; c <= row.candidates.size(); ++c) {
-      auto cell = box.removeFromLeft(cellWidth).reduced(1);
-      g.setColour(juce::Colour(row.choice == c ? 0xff267a72 : 0xff2d3e49));
-      g.fillRect(cell);
-      g.setColour(juce::Colours::white);
-      g.drawText(row.candidates[c - 1], cell, juce::Justification::centred);
+
+void ChordReviewLane::paint(juce::Graphics& g) {
+    g.fillAll(reviewBase);
+    g.setColour(reviewSurface.brighter(.25f));
+    g.drawHorizontalLine(0, 0.f, float(getWidth()));
+    g.setColour(reviewAccent);
+    g.fillRect(0, 1, 3, std::max(0, getHeight() - 2));
+    g.setFont(juce::FontOptions(14.f, juce::Font::bold));
+    g.drawText(TRANS("Chord review"), titleBounds_, juce::Justification::centredLeft);
+    auto heading = [](juce::Rectangle<int> box) { return box.removeFromTop(box.getHeight() / 2).reduced(5, 1); };
+    g.setFont(juce::FontOptions(13.f));
+    for (const auto& chord : scoreChords_) {
+        auto box = boundsFor(chord.range);
+        if (box.isEmpty()) continue;
+        g.setColour(reviewSurface); g.fillRect(box.withTrimmedRight(1));
+        g.setColour(reviewMuted); g.drawText(chord.label, heading(box), juce::Justification::centredLeft);
+        g.drawText(noCandidate, candidateArea(box), juce::Justification::centredLeft);
     }
-    g.setColour(juce::Colours::white);
-    g.drawText(TRANS("Confirm"), box, juce::Justification::centred);
-  }
-}
-void ChordReviewLane::mouseDown(const juce::MouseEvent &e) {
-  for (int i = 0; i < int(rows_.size()); ++i) {
-    const auto box = intervalBounds(i);
-    if (!box.contains(e.getPosition()))
-      continue;
-    index_ = i;
-    if (box.getWidth() < 181 || e.y < box.getY() + box.getHeight() / 2 ||
-        e.mods.isPopupMenu()) {
-      showMenu(i);
-      return;
+    if (scoreChords_.empty() && timeline) {
+        const auto plot = timeline().first;
+        g.setColour(reviewMuted);
+        g.drawText(noCandidate, getLocalBounds().withX(plot.getX()).reduced(5, 1), juce::Justification::centredLeft);
     }
-    const auto count = rows_[size_t(i)].candidates.size();
-    const auto c = (e.x - box.getX() - 1) /
-                   std::max(1, (box.getWidth() - 1) / (count + 1));
-    if (c >= count) {
-      if (confirm)
-        confirm(false, false);
-    } else if (choose)
-      choose(c + 1);
-    return;
-  }
+    for (int i = 0; i < int(rows_.size()); ++i) {
+        auto box = intervalBounds(i);
+        if (box.isEmpty()) continue;
+        const auto& row = rows_[size_t(i)];
+        const bool selected = i == index_;
+        g.setColour(reviewBase); g.fillRect(box);
+        g.setColour(selected ? juce::Colour(0xff334854) : reviewSurface); g.fillRect(box.withTrimmedRight(1));
+        g.setColour(selected ? confirmGold : reviewAccent);
+        g.fillRect(box.withHeight(2));
+        g.setColour(reviewText);
+        const auto label = row.choice == 0 ? option(row, 0)
+            : row.current + "  " + juce::String::charToString(0x2192) + "  " + option(row, row.choice);
+        g.setFont(juce::FontOptions(13.f, juce::Font::bold));
+        g.drawText(label, heading(box), juce::Justification::centredLeft);
+        const auto area = candidateArea(box);
+        const int count = row.candidates.size();
+        if (!fitsChoices(box, count)) {
+            g.setColour(reviewAccent);
+            g.drawText(TRANS("Candidates") + " " + juce::String::charToString(0x25be), area, juce::Justification::centredLeft);
+            continue;
+        }
+        for (int c = 0; c < count; ++c) {
+            const auto chip = candidateCell(area, c, count);
+            g.setColour(row.choice == c + 1 ? reviewAccent : reviewBase);
+            g.fillRoundedRectangle(chip.toFloat(), 3.f);
+            g.setColour(row.choice == c + 1 ? reviewBase : reviewText);
+            g.drawText(row.candidates[c], chip, juce::Justification::centred);
+        }
+    }
 }
+
+void ChordReviewLane::mouseDown(const juce::MouseEvent& e) {
+    for (int i = 0; i < int(rows_.size()); ++i) {
+        const auto box = intervalBounds(i);
+        if (!box.contains(e.getPosition())) continue;
+        index_ = i;
+        updateActions();
+        const int count = rows_[size_t(i)].candidates.size();
+        if (!e.mods.isPopupMenu() && fitsChoices(box, count)) {
+            for (int c = 0; c < count; ++c) {
+                if (candidateCell(candidateArea(box), c, count).contains(e.getPosition())) {
+                    if (choose) choose(c + 1);
+                    return;
+                }
+            }
+        }
+        showMenu(i);
+        return;
+    }
+}
+
 void ChordReviewLane::resized() {
-  int gutter = timeline ? timeline().first.getX() : 180;
-  auto area =
-      getLocalBounds().withWidth(std::clamp(gutter, 0, getWidth())).reduced(2);
-  if (area.getWidth() < 150) {
-    intervals_.setBounds(area.removeFromTop(area.getHeight() / 2));
-    all_.setBounds(area);
-  } else {
-    all_.setBounds(
-        area.removeFromRight(std::min(100, area.getWidth() / 2)).reduced(1));
-    intervals_.setBounds(area.reduced(1));
-  }
+    const int gutter = timeline ? timeline().first.getX() : 320;
+    auto controls = getLocalBounds().withWidth(std::clamp(gutter, 0, getWidth())).reduced(7, 3);
+    auto header = controls.removeFromTop(controls.getHeight() / 2);
+    titleBounds_ = header.removeFromLeft(std::min(105, header.getWidth() / 2));
+    intervals_.setBounds(header.reduced(1));
+    decision_.setBounds(controls.removeFromLeft(std::min(controls.getWidth(), 155)).reduced(1));
 }
+
+void MainComponent::updateChordReviewLane() {
+    const bool visible = workspaceMode_ == WorkspaceMode::arrangement && project_ &&
+        (!pendingReview_.empty() || (pianoGrid_.isVisible() && pianoGrid_.editable && pitchedSelection()));
+    chordReview_.setVisible(visible);
+    chordReview_.setEnabled(!recordTrack_);
+    if (visible) chordReview_.display(pendingReview_, *project_);
+}
+
 void MainComponent::refreshChordReview() {
-  chordReview_.setVisible(project_ && !pendingReview_.empty());
-  if (project_)
-    chordReview_.display(pendingReview_, *project_);
-  resized();
-  repaint();
+    updateChordReviewLane();
+    resized();
+    repaint();
 }
 bool MainComponent::chordReviewBlocksSwitch() {
     if (pendingReview_.empty())
         return false;
-    statusLabel_.setText(TRANS("Confirm or keep the pending chords before switching tracks."),
+    statusLabel_.setText(TRANS("Resolve the pending chord proposals before switching tracks."),
                          juce::dontSendNotification);
     return true;
 }
 
-void MainComponent::resolveChordReview(bool all, bool keep) {
+void MainComponent::resolveChordReview(bool all, ostfstudio::ChordReviewAction action) {
+    using Action = ostfstudio::ChordReviewAction;
     const int chosen = chordReview_.selected();
     if (!project_ || recordTrack_ || !juce::isPositiveAndBelow(chosen, int(pendingReview_.size())))
         return;
     ostfstudio::ChordDecisions rows = all ? pendingReview_ : ostfstudio::ChordDecisions{pendingReview_[size_t(chosen)]};
-    if (keep)
-        for (auto& row : rows)
-            row.choice = 0;
     const auto previous = pendingReview_;
     juce::Array<juce::var> remove, insert;
-    const auto score = juce::JSON::parse(project_->sourceScore.toString());
-    auto result = ostfstudio::chordDecisionEdits(score, rows, remove, insert);
+    ostfstudio::ReviewNoteOrigins undoNotes;
+    auto result = juce::Result::ok();
+    if (action == Action::apply)
+        result = ostfstudio::chordDecisionEdits(juce::JSON::parse(project_->sourceScore.toString()), rows, remove, insert);
+    else if (action == Action::cancel)
+        for (const auto& row : rows) undoNotes.insert(row.noteOrigins.begin(), row.noteOrigins.end());
     juce::MemoryBlock before;
-    const bool changed = !insert.isEmpty() || !remove.isEmpty();
+    const bool changed = !undoNotes.empty() || !insert.isEmpty() || !remove.isEmpty();
     const bool playing = changed && transportActive_;
     if (playing)
         stopTransport();
-    if (result.wasOk() && changed) {
+    if (!undoNotes.empty() && selectedTrack_)
+        result = project_->restoreReviewedNotes(*selectedTrack_, undoNotes, before);
+    else if (result.wasOk() && changed) {
         auto end = project_->durationTicks;
         for (const auto& item : insert)
             end = std::max(end, juce::int64(item["start"]) + juce::int64(item["duration"]));
@@ -464,6 +563,20 @@ void MainComponent::resolveChordReview(bool all, bool keep) {
         pendingReview_.clear();
     else
         pendingReview_.erase(pendingReview_.begin() + chosen);
+    if (!undoNotes.empty()) {
+        const ostfstudio::ChordAnalysis analysis(*project_);
+        std::erase_if(pendingReview_, [&](auto& row) {
+            const auto was = row.noteOrigins.size();
+            for (const auto& [id, origin] : undoNotes) row.noteOrigins.erase(id);
+            if (row.noteOrigins.size() == was) return false;
+            if (row.noteOrigins.empty() && !row.fromMaterial) return true;
+            row.candidates = analysis.rank(row.range);
+            if (row.choice != 4) row.choice = row.candidates.isEmpty() ? 0 : 1;
+            return false;
+        });
+        inspectedNote_.reset();
+        pianoGrid_.selection.clear();
+    }
     if (changed) {
         rememberScoreEdit(std::move(before));
         auto& revision = noteHistory_.back();
@@ -473,6 +586,10 @@ void MainComponent::resolveChordReview(bool all, bool keep) {
         theory_.reset();
         refreshTheory();
         finishNoteEdit(playing);
+    } else if (noteHistoryCursor_ > 0) {
+        auto& revision = noteHistory_[noteHistoryCursor_ - 1];
+        if (revision.reviewAfter && revision.reviewTrack == selectedTrack_ && revision.after == project_->sourceScore)
+            revision.reviewAfter = pendingReview_;
     }
     refreshChordReview();
 }
@@ -531,8 +648,9 @@ void MainComponent::reviewDroppedChords(const ostfstudio::OstfpPreview& source, 
         else
             spans.push_back(r);
     }
-    pendingReview_ = ostfstudio::ChordAnalysis(*project_).review(spans, false, imported, true,
+    pendingReview_ = ostfstudio::ChordAnalysis(*project_).review(spans, imported, true,
                                                                 spans.empty() ? 0 : spans.back().getEnd());
+    for (auto& row : pendingReview_) row.fromMaterial = true;
     if (pendingReview_.empty())
         statusLabel_.setText(TRANS("No chord regions to place."), juce::dontSendNotification);
     refreshChordReview();

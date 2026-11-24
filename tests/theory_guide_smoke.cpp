@@ -24,9 +24,15 @@ int modelChecks() {
     notes[0].clipId="sustain"; notes[1].clipId="answer"; notes[2].clipId="muted";
     TheoryGuide::ClipFits badges;
     const auto fit = guide.analyse(0, notes, -1, &badges), other = guide.analyse(1, notes);
-    if (badges.size()!=2 || badges.at("sustain").chord.total!=8 || badges.at("sustain").chord.percent()!=50 ||
-        badges.at("answer").chord.total!=4 || badges.at("answer").chord.percent()!=100) return 51;
     const auto v = guide.firstCell(16), tonic = guide.firstCell(20), solo = guide.firstCell(22);
+    const auto& sustain = badges.at("sustain");
+    const auto& dominantFit = sustain.at(fit[v].chordBegin);
+    const auto& tonicFit = sustain.at(fit[tonic].chordBegin);
+    const auto& answer = badges.at("answer").at(fit[tonic].chordBegin);
+    if (badges.size() != 2 || sustain.size() != 2 || fit[tonic].chordBegin != fit[solo].chordBegin ||
+        dominantFit.chord.total != 4 || dominantFit.chord.percent() != 100 || tonicFit.chord.total != 4 ||
+        tonicFit.chord.percent() != 0 || answer.chord.total != 4 || answer.chord.percent() != 100 ||
+        dominantFit.scale.percent() != 100 || tonicFit.scale.percent() != 100) return 51;
     if (fit[v].chord.percent() != 100 || fit[tonic].chord.percent() != 50 || fit[tonic].chord.total != 8
         || fit[tonic].scale.percent() != 100 || fit[v].scale.percent() != 100 || fit[solo].backgroundScale != -2
         || fit[solo].scale.percent() != -1 || other[solo].scale.percent() != 100) return 2;
@@ -288,6 +294,15 @@ int checkTheoryGuide(const juce::File& demo) {
     main.displayTransportPosition(13 * project->ticksPerBar);
     if (auto* scroll = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-horizontal-scroll")))
             scroll->setCurrentRangeStart(13, juce::sendNotificationSync);
+    auto* vertical = dynamic_cast<juce::ScrollBar*>(main.findChildWithID("arrangement-vertical-scroll"));
+    if (!vertical) return 62;
+    vertical->setCurrentRangeStart(320, juce::sendNotificationSync);
+    const juce::String muteName = juce::String::fromUTF8(project->trackLanes[keys].label) + " mute";
+    juce::Component* trackMute = nullptr;
+    for (auto* child : main.getChildren())
+        for (auto* control : child->getChildren())
+            if (control->getTitle() == muteName) trackMute = control;
+    if (!trackMute) return 63;
     model->menuItemSelected(harmonic.id, 4);
     const auto multicolour = main.createComponentSnapshot(main.getLocalBounds());
     model->menuItemSelected(blue.id, 4);
@@ -311,6 +326,23 @@ int checkTheoryGuide(const juce::File& demo) {
     if (!chordPixels) return 18;
     set("Scale fit", false);
     if (grid->getHeight() != both || !find(*model, TRANS("Chord fit")).checked) return 19;
+    set("Chord fit", false);
+    // The pre-chorus keys clip covers four visible chords. Each must draw its own badges.
+    const auto plain = main.createComponentSnapshot(main.getLocalBounds());
+    const auto times = grid->tickRange();
+    const auto top = main.getLocalArea(trackMute, trackMute->getLocalBounds()).getY();
+    int checked = 0;
+    for (const auto& harmony : guide.functions) {
+        if (harmony.start < times.getStart() || harmony.end > times.getEnd()) continue;
+        const auto x = grid->getX() + juce::roundToInt(grid->getWidth() * (harmony.end - times.getStart()) / times.getLength()) - 12;
+        int changed = 0;
+        for (int dx = 0; dx < 8; ++dx)
+            for (int dy = 3; dy < 14; ++dy)
+                changed += plain.getPixelAt(x + dx, top + dy) != snapshot.getPixelAt(x + dx, top + dy);
+        if (changed < 24) return 64;
+        ++checked;
+    }
+    if (checked < 3) return 65;
     set("Chord fit", false); set("Scale fit", true);
     if (grid->getHeight() != both || find(*model, TRANS("Chord fit")).checked) return 20;
     set("Show Theory Guide", false);

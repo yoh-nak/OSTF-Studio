@@ -332,16 +332,26 @@ int checkSamplePlacement(const juce::File& file) {
     if (!last || last->id == duplicate->id) return 182;
     main.clipCommand(Op::move, last, before, last->end);
     if (main.clipAt(before, last->start) || !main.clipAt(before, last->end) || main.clipAt(before, last->end)->id != last->id) return 183;
+    main.verticalScroll_.setCurrentRangeStart(0, juce::sendNotificationSync);
+    main.timelineLaneMask_ |= 1u << static_cast<unsigned>(ostfstudio::TimelineLane::chord);
+    main.refreshTimelineLanes();
+    main.resized();
     bool placedChord = false;
+    const auto expectedTick = main.arrangementTickAt(x);
     for (int y = main.rowOverlay_.getY(); y < main.rowOverlay_.getBottom(); ++y) {
         if (main.globalLaneAt({x,y}) != ostfstudio::TimelineLane::chord) continue;
         main.filesDropped({temporary.getFile().getFullPathName()}, x, y);
         const auto score = juce::JSON::parse(main.project_->sourceScore.toString());
         for (const auto& region : *score["harmony"]["chords"].getArray())
-            if (region["label"] == "Dm" && juce::int64(region["start"]) == main.arrangementTickAt(x)) placedChord = true;
+            if (region["label"] == "Dm" && juce::int64(region["start"]) == expectedTick) placedChord = true;
+        if (!placedChord) {
+            std::fprintf(stderr, "Chord drop at %lld: %s; %s\n", static_cast<long long>(expectedTick),
+                         main.statusLabel_.getText().toRawUTF8(), juce::JSON::toString(score["harmony"]["chords"], true).toRawUTF8());
+            return 156;
+        }
         break;
     }
-    if (!placedChord) return 156;
+    if (!placedChord) return 232;
     {
         using namespace ostfstudio;
         const auto score=juce::JSON::parse(R"({"harmony":{"chords":[{"id":"a","start":0,"duration":480,"label":"C"},{"id":"b","start":480,"duration":960,"label":"G"}]},"timeline":{"tempoChanges":[{"at":0,"bpm":100},{"at":480,"bpm":130}]}})");
@@ -378,7 +388,7 @@ int checkSamplePlacement(const juce::File& file) {
         overlap.chordVoicingTrack = 5;
         overlap.pitchedNotes = {{{0,1440,60}}, {{0,480,48},{480,1440,41}},
                                 {{480,1440,69},{0,480,64},{0,480,67}}, {}, {}, {}};
-        const auto clean = ChordAnalysis(overlap).review({{0,1440}}, true);
+        const auto clean = ChordAnalysis(overlap).review({{0,1440}});
         PitchedNote noise{0,1920,37,100};
         for (const auto i : {3,4,5}) overlap.pitchedNotes[i].push_back(noise);
         noise.fixedTrigger = true;
@@ -390,12 +400,14 @@ int checkSamplePlacement(const juce::File& file) {
         noise.clipId = "disabled-clip";
         overlap.pitchedNotes[0].push_back(noise);
         const ChordAnalysis ensemble(overlap);
-        const auto decisions=ensemble.review({{0,1440}}, true);
+        const auto decisions=ensemble.review({{0,1440}});
         if(decisions.size()!=2 || decisions[0].range!=ReviewRange(0,480) || decisions[1].range!=ReviewRange(480,1440)
             || decisions[0].candidates[0]!="C" || decisions[1].candidates[0]!="F") return 218;
         if (clean.size() != 2 || clean[0].candidates != decisions[0].candidates ||
             clean[1].candidates != decisions[1].candidates || !ensemble.rank({1440,1920}).isEmpty()) return 220;
-        const auto cropped = ensemble.review({{420,510}}, false, {}, true);
+        const auto touched = ensemble.review({{40,70}});
+        if (touched.size() != 1 || touched.front().range != decisions.front().range) return 222;
+        const auto cropped = ensemble.review({{420,510}}, {}, true);
         if (cropped.size() != 2 || cropped[0].candidates != decisions[0].candidates ||
             cropped[1].candidates != decisions[1].candidates) return 221;
         ChordReviewLane lane;
@@ -428,17 +440,42 @@ int checkSamplePlacement(const juce::File& file) {
                                 : ostfstudio::writeOstfPreview(*source, *out)).failed()) return 191;
         }
         const auto tracks = main.project_->sourceTrackCount();
+        main.revealRow(main.trackRows_[0]);
+        const auto dropTick = main.arrangementTickAt(x);
         main.filesDropped({material.getFile().getFullPathName()}, x, main.trackRows_[0].getCentreY());
         if (main.project_->sourceTrackCount() != tracks + 1 || main.project_->pitchedNotes[tracks].size() != 3
             || main.project_->programChanges[tracks].size() != 1 || main.project_->programChanges[tracks][0].program != 33) return 192;
-        if (main.pendingReview_.empty() || !main.chordReview_.isVisible() || main.pendingReview_.front().range.getStart() != main.arrangementTickAt(x)
+        if (main.pendingReview_.empty() || !main.chordReview_.isVisible() || main.pendingReview_.front().range.getStart() != dropTick
             || main.pendingReview_.front().sourceChord["label"] != "Dm") return 201;
         main.selectTrack(0);
         if (main.selectedTrack_ != tracks) return 202;
-        main.resolveChordReview(true,true);
+        auto* decision = dynamic_cast<juce::TextButton*>(main.chordReview_.findChildWithID("chord-decision"));
+        auto choose = [&](const char* label, bool all = false) {
+            auto menu = main.chordReview_.decisionMenu();
+            if (all && main.pendingReview_.size() > 1) {
+                for (juce::PopupMenu::MenuItemIterator it(menu); it.next();)
+                    if (it.getItem().subMenu) {
+                        auto sub = *it.getItem().subMenu;
+                        for (juce::PopupMenu::MenuItemIterator child(sub); child.next();)
+                            if (child.getItem().text == juce::translate(label) && child.getItem().action) {
+                                child.getItem().action(); return true;
+                            }
+                    }
+                return false;
+            }
+            for (juce::PopupMenu::MenuItemIterator it(menu); it.next();)
+                if (it.getItem().text == juce::translate(label) && it.getItem().action) {
+                    it.getItem().action(); return true;
+                }
+            return false;
+        };
+        if (!decision || !decision->isEnabled()) return 223;
+        const auto imported = main.project_->sourceScore;
+        if (!choose("Keep", true)) return 223;
         main.selectTrack(0);
         if (main.selectedTrack_ != 0 || !main.pendingReview_.empty()) return 203;
         main.selectTrack(tracks);
+        if (!main.chordReview_.isVisible() || main.project_->sourceScore != imported || decision->isEnabled()) return 224;
         auto note = main.project_->pitchedNotes[tracks].front();
         note.pitch += 1;
         main.applyNoteGesture({{ostfstudio::NoteEdit::change,note}});
@@ -447,18 +484,56 @@ int checkSamplePlacement(const juce::File& file) {
         if (!main.pendingReview_.empty()) return 205;
         main.undoPianoEdit(true);
         if (main.pendingReview_.empty()) return 206;
+        if (!decision->isEnabled()) return 225;
+        if (packed) {
+            const auto edited = main.project_->sourceScore;
+            if (!choose("Cancel chord", true) || !main.pendingReview_.empty()) return 226;
+            const auto notesOf = [tracks](const juce::MemoryBlock& score) {
+                return juce::JSON::toString(juce::JSON::parse(score.toString())["tracks"][int(tracks)]["clips"]);
+            };
+            if (notesOf(main.project_->sourceScore) != notesOf(imported)) return 226;
+            main.undoPianoEdit(false);
+            if (main.project_->sourceScore != edited || main.pendingReview_.empty()) return 227;
+            if (!choose("Keep", true) || main.project_->sourceScore != edited) return 228;
+            // One note moves across clips, a second is deleted, and a copy is inserted elsewhere.
+            // Cancelling the batch must restore the original note IDs, attributes and clip inventory.
+            const auto originalNotes = main.project_->pitchedNotes[tracks];
+            auto shifted = originalNotes[0];
+            shifted.startTick += main.project_->ticksPerBar;
+            shifted.endTick += main.project_->ticksPerBar;
+            auto copied = originalNotes[2];
+            copied.startTick = shifted.startTick;
+            copied.endTick = shifted.endTick;
+            main.applyNoteGesture({{ostfstudio::NoteEdit::change, shifted},
+                                   {ostfstudio::NoteEdit::erase, originalNotes[1]},
+                                   {ostfstudio::NoteEdit::duplicate, copied}});
+            if (main.pendingReview_.size() < 2 || !choose("Cancel chord", true) ||
+                notesOf(main.project_->sourceScore) != notesOf(edited) || !main.pendingReview_.empty()) return 229;
+            auto repitched = originalNotes[0];
+            ++repitched.pitch;
+            main.applyNoteGesture({{ostfstudio::NoteEdit::change, repitched}, {ostfstudio::NoteEdit::duplicate, copied}});
+            if (main.pendingReview_.size() < 2 || !choose("Cancel chord") || main.pendingReview_.empty()) return 230;
+            const auto& remainingNotes = main.project_->pitchedNotes[tracks];
+            const auto restored = std::find_if(remainingNotes.begin(), remainingNotes.end(),
+                [&](const auto& n) { return n.id == repitched.id; });
+            if (remainingNotes.size() != originalNotes.size() + 1 || restored == remainingNotes.end() ||
+                restored->pitch != originalNotes[0].pitch || !choose("Keep", true)) return 231;
+            main.selectTrack(0);
+            if (main.selectedTrack_ != 0) return 228;
+            continue;
+        }
         auto& firstDecision=main.pendingReview_.at(size_t(main.chordReview_.selected()));
         firstDecision.choice = firstDecision.candidates[0] == firstDecision.current ? 2 : 1;
         const auto expected=firstDecision.candidates[firstDecision.choice-1];
         const auto at=firstDecision.range.getStart();
         const auto remaining=main.pendingReview_.size()-1;
-        main.resolveChordReview(false,false);
+        if (!choose("Confirm")) return 225;
         const auto updated=juce::JSON::parse(main.project_->sourceScore.toString());
         if(main.pendingReview_.size()!=remaining || ostfstudio::globalEventAt(updated,ostfstudio::TimelineLane::chord,at)["label"]!=expected) return 214;
         if (!main.pendingReview_.empty()) {
             main.selectTrack(0);
             if(main.selectedTrack_ != tracks) return 217;
-            main.resolveChordReview(true,false);
+            if (!choose("Confirm", true)) return 225;
         }
         if (!main.pendingReview_.empty()) return 207;
     }
@@ -863,6 +938,9 @@ int checkTrackView(const juce::File& fixture) {
     if (!main.getName().contains(TRANS("Unsaved changes"))) return 77;
     if (!main.keyPressed(juce::KeyPress('Z', juce::ModifierKeys::commandModifier, 0))
         || main.getName().contains(TRANS("Unsaved changes"))) return 78;
+    if (!reachable(*guitar))
+        scroll->setCurrentRangeStart(scroll->getCurrentRangeStart() + guitar->getBottom()
+            - guitar->getParentComponent()->getHeight() + 4, juce::sendNotificationSync);
     const auto trackPoint = main.getLocalPoint(guitar, juce::Point<int>{12, -8}).toFloat();
     main.mouseDown(gesture(&main, trackPoint, trackPoint));
     if (tempo->isVisible() || !tracks->isVisible()) return 79;

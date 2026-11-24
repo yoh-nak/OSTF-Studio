@@ -406,7 +406,7 @@ int checkPianoEdits(const juce::File& fixture) {
     if (editor->points.size()!=initialPoints) return 73;
     auto* review = dynamic_cast<ChordReviewLane*>(main.findChildWithID("chord-review"));
     if (!review || !review->isVisible()) return 121;
-    review->confirm(true,true);
+    review->decide(true, ostfstudio::ChordReviewAction::keep);
     auto* drumMode = dynamic_cast<juce::ComboBox*>(main.findChildWithID("drum-mode"));
     auto* steps = dynamic_cast<DrumSteps*>(main.findChildWithID("drum-steps"));
     if (!drumMode || !steps) return 74;

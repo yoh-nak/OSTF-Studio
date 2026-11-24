@@ -30,6 +30,15 @@ struct NoteEdit {
     PitchedNote note;
 };
 
+// The original score event retains its ID, articulation and note-scoped data during chord review.
+struct ReviewNoteOrigin {
+    juce::String clipId;
+    juce::var event;
+    int index = 0;
+    juce::StringArray createdClips;
+};
+using ReviewNoteOrigins = std::map<juce::String, ReviewNoteOrigin>;
+
 struct MidiControl {
     juce::String type;
     int number = 0, channel = 0;
@@ -239,6 +248,7 @@ struct OstfpPreview {
     enum class MidiClipEdit { split, toggleLoop, resizeLoop };
     juce::Result editMidiClip(size_t track, const juce::String& id, MidiClipEdit edit, juce::int64 tick, juce::MemoryBlock& before);
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);
+    juce::Result restoreReviewedNotes(std::size_t track, const ReviewNoteOrigins&, juce::MemoryBlock& before);
     juce::Result editNotes(std::size_t track, const std::vector<NoteEdit>& edits, juce::MemoryBlock& before,
                            juce::StringArray& resultingIds);
     juce::Result setPatchAt(std::size_t track, juce::int64 tick, int channel, std::array<int,3> values,

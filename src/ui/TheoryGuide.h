@@ -29,7 +29,8 @@ public:
         int percent() const { return total == 0 ? -1 : juce::roundToInt(100 * inside / total); }
     };
     struct ClipFit { Fit chord, scale; };
-    using ClipFits = std::map<juce::String, ClipFit>;
+    using ChordFits = std::map<std::size_t, ClipFit>; // First analysis cell in each chord interval.
+    using ClipFits = std::map<juce::String, ChordFits>;
     struct TrackCell {
         Fit chord, scale;
         std::size_t chordBegin = 0, chordEnd = 0;

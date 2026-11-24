@@ -268,9 +268,12 @@ std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, cons
         noteIds.insert(note.id);
         clipIds.insert(note.clipId);
     }
+    std::size_t chordBegin = 0;
     for (std::size_t j = 0; j < cells.size(); ++j) {
         const auto& c = cells[j];
         auto& dest = result[j];
+        if (j && cells[j - 1].chord != c.chord) chordBegin = j;
+        dest.chordBegin = chordBegin;
         for (auto i : c.scales) {
             if (reference >= 0 && reference != i) continue;
             const auto& targets = scales[i].targets;
@@ -291,8 +294,10 @@ std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, cons
         auto* sourceClip = clips && n.clipId.isNotEmpty() ? &(*clips)[n.clipId] : nullptr;
         for (auto i = firstCell(double(n.startTick)); i < cells.size() && cells[i].start < n.endTick; ++i) {
             const auto& c = cells[i];
-            auto* clip = sourceClip;
-            if (!clip && clips && track >= trackIds.size() && c.chord >= 0) clip = &(*clips)[chords[size_t(c.chord)].id];
+            auto* intervals = sourceClip;
+            if (!intervals && clips && track >= trackIds.size() && c.chord >= 0)
+                intervals = &(*clips)[chords[size_t(c.chord)].id];
+            auto* clip = intervals ? &(*intervals)[result[i].chordBegin] : nullptr;
             const auto length = std::min(n.endTick, c.end) - std::max(n.startTick, c.start);
             if (const int mask = chordMask(c)) {
                 const bool inside = contains(mask, n.pitch);
@@ -319,7 +324,6 @@ std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, cons
         }
         for (auto i = first; i < end; ++i) {
             result[i].chord = total;
-            result[i].chordBegin = first;
             result[i].chordEnd = end;
         }
         first = end;
