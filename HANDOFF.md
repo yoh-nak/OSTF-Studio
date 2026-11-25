@@ -1,5 +1,9 @@
 # OSTF Studio development handoff
 
+## Shared take workflow specification
+
+The [product specification (Japanese)](docs/TAKES_AND_LIVE_SESSION.ja.md) defines default T1, arrangement take lanes, per-cell audition, adoption, shared cuts and structural edits during live playback. It includes acceptance scenarios for the implementation. The running application still uses extra passes. The proposed total-pass control uses 1 for one pass and 0 to skip. This documentation change introduces no runtime or file-format changes. The OSTF 5.1 storage design awaits the formal specification.
+
 ## Live session editing and global scissors
 
 The Windows portable folder for this change is `dist/windows-session-edit/Portable`. Live session has one grid. Its column chooser, M/R buttons and track/section menus sit above a resizable piano roll or mixer. New four-bar sections and section copies go at the end of the arrangement. Track colours are available from the arrangement track icon, Track menu and live column header.
