@@ -36,6 +36,26 @@ static bool testRecordedVoice() {
     juce::String error;
     auto bank = VoiceBank::load(dir, error);
     if (!bank || !bank->find({0,vowelOnly}) || std::abs(bank->find({0,vowelOnly})->period - 120) > 2) return false;
+    // A Japanese bank containing only a vowel still uses a single voiced source for /ma/.
+    {
+        juce::XmlElement xml("OSTFSinger");
+        xml.setAttribute("voiceFolder",dir.getFullPathName());
+        juce::MemoryBlock state; juce::AudioProcessor::copyXmlToBinary(xml,state);
+        std::unique_ptr<juce::AudioProcessor> singer(createPluginFilter());
+        singer->setStateInformation(state.getData(),int(state.getSize()));
+        singer->setRateAndBufferSizeDetails(48000,1024); singer->prepareToPlay(48000,1024);
+        juce::MidiBuffer notes;
+        notes.addEvent(phoneMessage(1,69,{0,m}),0);
+        notes.addEvent(juce::MidiMessage::noteOn(1,69,(juce::uint8)110),0);
+        juce::AudioBuffer<float> audio(2,1024); singer->processBlock(audio,notes);
+        const auto* vowel=bank->find({0,vowelOnly});
+        double position=0.;
+        for(int i=0;i<1024;++i) {
+            const auto recorded=vowel->read(position,440.*vowel->period/48000.);
+            const auto expected=std::tanh(recorded*(110./127.)*i/1200.);
+            if(i>=520 && std::abs(audio.getSample(0,i)-expected)>.002f) return false;
+        }
+    }
     // Shift-JIS 'ka' (82 A9). The alias, offset, consonant and negative cutoff all matter.
     const char line[] = "a.wav=\x82\xa9,20,60,-240,0,0\n";
     if (!oto.replaceWithData(line, sizeof(line) - 1)) return false;
@@ -97,17 +117,22 @@ int main(int argc, char** argv) {
     using namespace ostfstudio::singing;
     if (argc < 2 || argc > 4) return 1;
     const auto source = juce::File(juce::String::fromUTF8(argv[1])).loadFileAsString();
-    const auto scoreUnits = items(juce::JSON::parse(source)["lyrics"]["units"]);
+    const auto demoScore = juce::JSON::parse(source);
+    const auto& scoreUnits = items(demoScore["lyrics"]["units"]);
     int englishUnits = 0;
     for (const auto& unit : scoreUnits) {
-        if (!unit["text"].toString().containsAnyOf("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")) continue;
+        const auto printed = unit["text"].toString();
+        if (printed.containsAnyOf("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")) return 40;
+        if (printed.isEmpty() || printed[0]<0x30a1 || printed[0]>0x30ff) continue;
         const auto reading = unit["pronunciation"].toString();
-        if (reading.isEmpty()) return 40;
+        if (reading!=printed) return 40;
         for (auto c : reading) if (c < 0x30a1 || c > 0x30ff) return 40;
         ++englishUnits;
     }
     if (englishUnits < 100) return 40;
-    const auto parts = readParts(juce::JSON::parse(source));
+    for (const auto& phrase : items(demoScore["lyrics"]["phrases"]))
+        if (phrase["text"].toString().containsAnyOf("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")) return 41;
+    const auto parts = readParts(demoScore);
     if (parts.empty() || parts.front().syllables.empty()) return 2;
     const auto kana = pronounce(juce::String::charToString(0x30ab) + juce::String::charToString(0x30bc));
     if (kana.size() != 2 || kana[0].vowel != 0 || kana[1].vowel != 3 || kana[1].onset != z) return 3;

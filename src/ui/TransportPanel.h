@@ -1,4 +1,5 @@
 #pragma once
+#include "ConsoleDisplay.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "ui/OstfpPreview.h"
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -182,8 +183,7 @@ public:
         g.setFont(juce::FontOptions(11.f));
         for (int i = 0; i < fieldCount; ++i) {
             auto rect = fields_[i];
-            g.setColour(juce::Colour(0xff111c20));
-            g.fillRoundedRectangle(rect.toFloat(), 3);
+            ostfstudio::console::drawLcd(g,rect);
             rect.reduce(7, 2);
             auto caption = rect.removeFromTop(14);
             g.setFont(juce::FontOptions(10.5f, juce::Font::bold));

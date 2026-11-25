@@ -26,6 +26,5 @@
   {"type":"ElectricRig","name":"OSTF Electric Guitar Rig","code":"Of25","category":"Distortion"},
   {"type":"AcousticRig","name":"OSTF Acoustic Guitar Rig","code":"Of26","category":"Filter"},
   {"type":"BassRig","name":"OSTF Bass Rig","code":"Of27","category":"Distortion"},
-  {"type":"Harmonizer","name":"OSTF Harmonizer","code":"Of28","category":"Pitch Shift"},
-  {"type":"ScaleEditor","name":"OSTF Scale Editor","code":"Of29","category":"Tools"}
+  {"type":"Harmonizer","name":"OSTF Harmonizer","code":"Of28","category":"Pitch Shift"}
 ]

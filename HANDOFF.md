@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## Scale instrument, vocal and track console
+
+Branch `feat/scale-instrument-console`. The Scale Editor is a new VST3 instrument class (`Ose1`). It uses the supplied Max device's candidate, flow, genre/lens and contextual A/B audition engines. Load a VST3 instrument inside the editor or use the built-in reference tone. Studio supplies its score in the instrument slot and supports preview in its stopped-transport monitor path. External hosts use Open OSTF. Chord assignment, whole-score export and digest-checked drag return use the existing 5.0 path. The Max pattern/range tools and complete original workspace remain future work.
+
+Paper Lantern Replies stores katakana in the printed English phrases, note text and per-note pronunciations. The standalone and packaged scores are identical. All 42 phrases and 204 lyric units have been checked. The Japanese bank's missing-consonant path now uses recorded voicing and an unvoiced onset. Voiced transitions are shortened. The isolated English pre-chorus render is `build-visuals/mei-prechorus-single-voice.wav`.
+
+Transport fields, the prompt panel, current lyric panels and the master's digital displays use a shared black LCD surface. Track headers reserve eight send controls and disable unmapped returns. Width and interaction coverage is in the vocal-track smoke. Set `OSTF_TRACK_HEADER_PREVIEWS` to an existing output directory for narrow and wide audio-track screenshots. Windows nested FM rendering, state restoration, MIDI and A/B playback have been exercised with `ostf_scale_instrument_tests`. Commercial DAWs, macOS and hardware listening remain unverified.
+
+The Windows Portable build is `dist/windows-scale-instrument/Portable`. Its packaged vocal-track and stock-plugin smoke tests passed, as did both independent core tests. The final full Windows suite passed 32 of 33 tests. The unrelated Link transport test intermittently reports that playback is still active immediately after stop (exit 2, one failure in ten direct runs).
+
 ## Scale Editor, sung English readings and send slots
 
 Branch `feat/scale-editor-and-vocal-reading`. Scale Editor opens a Studio chord snapshot or an OSTF file in another VST3 host. Assignments are chord-targeted timed scales. Dragging back checks the originating score and uses Studio's timeline undo history. The native editor includes the 24 scale collections from the Max device. Run `ostf_scale_editor_tests`, the stock VST3 smoke and the vocal track smoke for file, host and drop coverage. Paper Lantern Replies has separate printed English and katakana readings throughout the lead and backing parts. The bilingual-mei render now starts at the first Pre-Chorus. Eight mixer sends are displayed with inactive slots dimmed. Expanded narrow headers wrap active sends across two rows.

@@ -1,5 +1,8 @@
 #include "ScaleDocument.h"
 #include "ScoreExchange.h"
+#include "InstrumentRack.h"
+#include "ScaleAssets.h"
+#include <juce_javascript/juce_javascript.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <cstring>
 
@@ -8,10 +11,9 @@ using namespace ostfstudio::scale;
 class Processor final : public juce::AudioProcessor, public juce::VST3ClientExtensions,
                         public juce::ChangeBroadcaster {
 public:
-    Processor() : AudioProcessor(BusesProperties().withInput("Input",juce::AudioChannelSet::stereo(),true)
-                                                  .withOutput("Output",juce::AudioChannelSet::stereo(),true)) {}
+    Processor() : AudioProcessor(BusesProperties().withOutput("Output",juce::AudioChannelSet::stereo(),true)), rack(*this) {}
     const juce::String getName() const override { return "OSTF Scale Editor"; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.; }
@@ -20,13 +22,12 @@ public:
     void setCurrentProgram(int) override {}
     const juce::String getProgramName(int) override { return {}; }
     void changeProgramName(int,const juce::String&) override {}
-    void prepareToPlay(double,int) override {}
-    void releaseResources() override {}
-    bool isBusesLayoutSupported(const BusesLayout& l) const override {
-        auto in = l.getMainInputChannelSet();
-        return in == l.getMainOutputChannelSet() && (in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo());
+    void prepareToPlay(double rate,int block) override {rack.prepare(rate,block);}
+    void releaseResources() override {rack.release();}
+    bool isBusesLayoutSupported(const BusesLayout& layout) const override {
+        return layout.getMainOutputChannelSet()==juce::AudioChannelSet::stereo();
     }
-    void processBlock(juce::AudioBuffer<float>&,juce::MidiBuffer&) override {}
+    void processBlock(juce::AudioBuffer<float>& audio,juce::MidiBuffer& midi) override {rack.process(audio,midi);}
     bool hasEditor() const override { return true; }
     juce::AudioProcessorEditor* createEditor() override;
     juce::VST3ClientExtensions* getVST3ClientExtensions() override { return this; }
@@ -71,13 +72,24 @@ public:
         const juce::ScopedLock lock(stateLock);
         juce::XmlElement xml("ScaleEditor");
         xml.setAttribute("baseHash",document.baseHash);
-        xml.addTextElement(document.text);
+        xml.createNewChildElement("Score")->addTextElement(document.text);
+        if (unavailableInstrument) xml.addChildElement(new juce::XmlElement(*unavailableInstrument));
+        else rack.save(xml);
         copyXmlToBinary(xml,dest);
     }
     void setStateInformation(const void* data,int size) override {
         if (const auto xml = getXmlFromBinary(data,size); xml && xml->hasTagName("ScaleEditor")) {
             const juce::ScopedLock lock(stateLock);
-            if (document.load(xml->getAllSubText()).wasOk()) {
+            const auto* score=xml->getChildByName("Score");
+            const auto restored=rack.restore(xml->getChildByName("Instrument"));
+            rackError=restored.getErrorMessage();
+            unavailableInstrument.reset();
+            if (restored.failed()) {
+                unavailableInstrument=std::make_unique<juce::XmlElement>(*xml->getChildByName("Instrument"));
+                rack.restore(nullptr);
+            }
+            sendChangeMessage();
+            if (document.load(score ? score->getAllSubText() : xml->getAllSubText()).wasOk()) {
                 const auto hash = xml->getStringAttribute("baseHash");
                 if (hash.length()==64 && hash.containsOnly("0123456789abcdef")) document.baseHash = hash;
                 sendChangeMessage();
@@ -86,14 +98,34 @@ public:
     }
     juce::CriticalSection stateLock;
     Document document;
-    juce::String offered;
+    juce::String offered,rackError;
+    InstrumentRack rack;
+    std::unique_ptr<juce::XmlElement> unavailableInstrument;
 };
 
 class Editor final : public juce::AudioProcessorEditor, private juce::ChangeListener {
 public:
     explicit Editor(Processor& p) : AudioProcessorEditor(p), proc(p) {
-        for (juce::Component* c : std::initializer_list<juce::Component*>{&song,&chords,&roots,&modes,&apply,&open,&refresh,&save,&drag,&status})
+        for (juce::Component* c : std::initializer_list<juce::Component*>{&song,&chords,&roots,&modes,&apply,&open,&refresh,&save,&drag,&status,&back,&forward,&strategy,&lens,&choices,&details,&notes,&audition,&compare,&stop,&loadInstrument,&showInstrument})
             addAndMakeVisible(c);
+        js.maximumExecutionTime=juce::RelativeTime::seconds(6);
+        engineStatus=js.execute(juce::String::fromUTF8(ScaleAssets::Adviser_js,ScaleAssets::Adviser_jsSize));
+        if(engineStatus.wasOk()) engineStatus=js.execute(juce::String::fromUTF8(ScaleAssets::AdviserBridge_js,ScaleAssets::AdviserBridge_jsSize));
+        back.onClick=[this]{chords.setSelectedItemIndex(chords.getSelectedItemIndex()-1,juce::sendNotificationSync);};
+        forward.onClick=[this]{chords.setSelectedItemIndex(chords.getSelectedItemIndex()+1,juce::sendNotificationSync);};
+        strategy.addItemList({"Balanced","Smooth voice leading","Tension / resolution"},1);
+        lens.addItemList({"Chord scale","Key and mode","Performance"},1);
+        strategy.setSelectedId(1,juce::dontSendNotification); lens.setSelectedId(1,juce::dontSendNotification);
+        strategy.onChange=lens.onChange=[this]{selectChord();};
+        choices.setTitle("Ranked scale candidates");
+        choices.onChange=[this]{selectCandidate();};
+        loadInstrument.onClick=[this]{chooseInstrument();};
+        showInstrument.onClick=[this]{proc.rack.openWindow();};
+        audition.onClick=[this]{listen(false);}; compare.onClick=[this]{listen(true);};
+        stop.onClick=[this]{proc.rack.stopPreview();};
+        notes.setColour(juce::Label::textColourId,juce::Colour(0xff95ead6));
+        notes.setFont(juce::FontOptions(18,juce::Font::bold));
+        details.setJustificationType(juce::Justification::centredLeft);
         chords.setTitle("Chord track"); roots.setTitle("Scale tonic"); modes.setTitle("Scale type");
         roots.setTextWhenNothingSelected("Tonic"); modes.setTextWhenNothingSelected("Scale");
         for (int i=0;i<12;++i) roots.addItem(tonicNames[i],i+1);
@@ -109,18 +141,29 @@ public:
         refresh.onClick = [this]{ requestLoad(proc.offered); };
         proc.addChangeListener(this);
         sync();
-        setSize(620,218);
+        setResizable(true,false); setResizeLimits(640,450,1400,850); setSize(780,480);
     }
-    ~Editor() override { proc.removeChangeListener(this); }
+    ~Editor() override { proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this); }
     void resized() override {
         auto a=getLocalBounds().reduced(12);
         song.setBounds(a.removeFromTop(32));
         auto files=a.removeFromTop(31);
         open.setBounds(files.removeFromLeft(105).reduced(1)); refresh.setBounds(files.removeFromLeft(150).reduced(1));
         save.setBounds(files.removeFromLeft(110).reduced(1)); drag.setBounds(files.reduced(1));
-        a.removeFromTop(8); chords.setBounds(a.removeFromTop(31)); a.removeFromTop(6);
+        a.removeFromTop(10);
+        auto nav=a.removeFromTop(32);
+        back.setBounds(nav.removeFromLeft(38).reduced(1)); forward.setBounds(nav.removeFromRight(38).reduced(1)); chords.setBounds(nav.reduced(1));
+        auto policy=a.removeFromTop(32);
+        strategy.setBounds(policy.removeFromLeft(policy.getWidth()/2).reduced(1)); lens.setBounds(policy.reduced(1));
+        choices.setBounds(a.removeFromTop(33).reduced(1));
+        notes.setBounds(a.removeFromTop(29)); details.setBounds(a.removeFromTop(std::max(48,(a.getHeight()-175)/2)));
+        auto play=a.removeFromTop(32);
+        audition.setBounds(play.removeFromLeft(155).reduced(1)); compare.setBounds(play.removeFromLeft(180).reduced(1)); stop.setBounds(play.removeFromLeft(64).reduced(1));
+        a.removeFromTop(6);
         auto edit=a.removeFromTop(32);
         roots.setBounds(edit.removeFromLeft(75).reduced(1)); apply.setBounds(edit.removeFromRight(105).reduced(1)); modes.setBounds(edit.reduced(1));
+        auto instrument=a.removeFromBottom(34);
+        loadInstrument.setBounds(instrument.removeFromLeft(180).reduced(1)); showInstrument.setBounds(instrument.reduced(1));
         status.setBounds(a);
     }
     void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff202e36));}
@@ -163,7 +206,78 @@ private:
         const auto step=juce::String("C D EF G A B").indexOf(tonic["step"].toString());
         roots.setSelectedId(((std::max(0,step)+int(tonic["alter"])+12)%12)+1,juce::dontSendNotification);
         modes.setSelectedId(mode,juce::dontSendNotification);
-        status.setText(label.isEmpty() ? "Choose a scale for this chord." : "Assigned: "+label,juce::dontSendNotification);
+        back.setEnabled(chords.getSelectedItemIndex()>0);
+        forward.setEnabled(chords.getSelectedItemIndex()+1<chords.getNumItems());
+        if(loadedText!=proc.document.text && engineStatus.wasOk()) {
+            call("openScore",{proc.document.text}); loadedText=proc.document.text;
+        }
+        const juce::StringArray strategies{"balanced","smooth","tension"}, lenses{"chord","key","performance"};
+        rows=juce::JSON::parse(call("rankChord",{chords.getSelectedItemIndex(),strategies[strategy.getSelectedItemIndex()],lenses[lens.getSelectedItemIndex()]}).toString());
+        choices.clear(juce::dontSendNotification);
+        for(int i=0;i<rows.size();++i)
+            choices.addItem(juce::String(i+1)+".   "+rows[i]["name"].toString(),i+1);
+        int selected=choices.getNumItems()?1:0;
+        if (label.isNotEmpty() && mode>0) for (int i=0;i<rows.size();++i) {
+            const auto item=rows[i];
+            if (int(item["root"])+1!=roots.getSelectedId()) continue;
+            const auto intervals=item["intervals"];
+            const auto& desired=catalog()[size_t(mode-1)].intervals;
+            if(intervals.size()==int(desired.size()) && std::equal(desired.begin(),desired.end(),intervals.getArray()->begin(),[](int a,const juce::var& b){return a==int(b);})) {
+                selected=i+1; break;
+            }
+        }
+        choices.setSelectedId(selected,juce::dontSendNotification);
+        if(rows.size()) selectCandidate();
+        else { notes.setText({},juce::dontSendNotification); details.setText("No ranked candidates for this chord.",juce::dontSendNotification); }
+        audition.setEnabled(rows.size()>0); compare.setEnabled(rows.size()>0);
+        status.setText(lastError.isNotEmpty()?lastError:label.isEmpty() ? "Select a candidate or set a custom scale below." : "Assigned: "+label,juce::dontSendNotification);
+    }
+    juce::var call(const juce::Identifier& function,std::initializer_list<juce::var> args) {
+        auto result=engineStatus;
+        juce::var value;
+        if(result.wasOk()) value=js.callFunction(function,{juce::var{},args.begin(),int(args.size())},&result);
+        lastError=result.getErrorMessage();
+        return value;
+    }
+    void selectCandidate() {
+        const auto item=rows[choices.getSelectedItemIndex()];
+        if(!item.isObject()) return;
+        roots.setSelectedId(int(item["root"])+1,juce::dontSendNotification);
+        for(size_t i=0;i<catalog().size();++i) {
+            const auto values=item["intervals"];
+            const auto& intervals=catalog()[i].intervals;
+            if(values.size()==int(intervals.size()) && std::equal(intervals.begin(),intervals.end(),values.getArray()->begin(),[](int a,const juce::var& b){return a==int(b);})) {
+                modes.setSelectedId(int(i+1),juce::dontSendNotification);break;
+            }
+        }
+        notes.setText(item["pitches"].toString(),juce::dontSendNotification);
+        const auto caution=item["warnings"].toString();
+        details.setText(item["description"].toString()+"\n"+(caution.isNotEmpty()?caution:item["reason"].toString()),juce::dontSendNotification);
+    }
+    void listen(bool ab) {
+        auto events=juce::JSON::parse(call("listenTo",{choices.getSelectedItemIndex(),ab}).toString());
+        if(!events.size()) { status.setText(lastError.isNotEmpty()?lastError:"No phrase for this chord.",juce::dontSendNotification); return; }
+        proc.rack.audition(events);
+        status.setText(ab?"Playing reference, then candidate.":"Playing candidate.",juce::dontSendNotification);
+    }
+    void chooseInstrument() {
+        chooser=std::make_unique<juce::FileChooser>("Load a VST3 instrument",juce::File{},"*.vst3");
+        chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles|juce::FileBrowserComponent::canSelectDirectories,
+            [self=juce::Component::SafePointer<Editor>(this)](const auto& fc){
+                if(!self || fc.getResult()==juce::File{}) return;
+                auto r=self->proc.rack.choose(fc.getResult());
+                self->status.setText(r.failed()?r.getErrorMessage():self->proc.rack.name(),juce::dontSendNotification);
+                if(r.wasOk()) {
+                    { const juce::ScopedLock lock(self->proc.stateLock);
+                      self->proc.unavailableInstrument.reset(); self->proc.rackError.clear(); }
+                    self->updateInstrument();
+                    self->proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+                }
+            });
+    }
+    void updateInstrument() {
+        showInstrument.setButtonText(proc.rack.name());
+        showInstrument.setEnabled(proc.rack.hasInstrument());
     }
     void sync() {
         const juce::ScopedLock lock(proc.stateLock);
@@ -178,7 +292,10 @@ private:
         const bool ready=chords.getNumItems()>0;
         for(juce::Component* c:std::initializer_list<juce::Component*>{&apply,&roots,&modes,&chords}) c->setEnabled(ready);
         refresh.setEnabled(proc.offered.isNotEmpty()); save.setEnabled(!proc.document.text.isEmpty()); drag.setEnabled(save.isEnabled());
+        back.setEnabled(false);forward.setEnabled(false);audition.setEnabled(ready);compare.setEnabled(ready);
+        updateInstrument();
         if(ready) selectChord(); else status.setText("Open an OSTF score with a chord track.",juce::dontSendNotification);
+        if(proc.rackError.isNotEmpty()) status.setText(proc.rackError,juce::dontSendNotification);
         drag.exportFile=[this] {
             const juce::ScopedLock guard(proc.stateLock);
             const auto dir=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("OSTF Scale Editor");
@@ -225,7 +342,14 @@ private:
     }
     using ChangeDetails = juce::AudioProcessorListener::ChangeDetails;
     Processor& proc;
-    juce::Label song,status;
+    juce::JavascriptEngine js;
+    juce::Result engineStatus=juce::Result::ok();
+    juce::String loadedText,lastError;
+    juce::var rows;
+    juce::Label song,status,notes,details;
+    juce::TextButton back{"<"},forward{">"},audition{"Hear candidate"},compare{"A/B with reference"},stop{"Stop"},
+        loadInstrument{"Load VST3 instrument..."},showInstrument;
+    juce::ComboBox choices,strategy,lens;
     juce::ComboBox chords,roots,modes;
     juce::TextButton open{"Open OSTF"}, refresh{"Read Studio score"}, save{"Save OSTF..."},apply{"Assign scale"};
     Drag drag;

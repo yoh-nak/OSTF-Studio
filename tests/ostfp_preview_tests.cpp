@@ -158,6 +158,10 @@ static int checkGallery(const juce::File& directory) {
                 if (first == lane->regions.end() || first->exactBars->start != (sheet ? 5.0 : 5.125)
                     || juce::String::fromUTF8(first->label) != juce::String::fromUTF8(sheet ? "雨の音が" : "あ")) return 91;
             }
+            const bool katakanaLine=std::any_of(leadLanes.front().regions.begin(),leadLanes.front().regions.end(),[](const auto& cell) {
+                return juce::String::fromUTF8(cell.label)==juce::String::fromUTF8("イフ ザ ストリート ライツ オール ゴー アウト");
+            });
+            if (!katakanaLine) return 91;
             const auto& backingLanes = project->partLyricLanes.at(project->trackIds.indexOf("backing"));
             if (backingLanes.size() != 2 || backingLanes[0].kind != ostfstudio::TimelineLane::displayLyrics
                 || backingLanes[1].kind != ostfstudio::TimelineLane::pronunciation
@@ -168,7 +172,8 @@ static int checkGallery(const juce::File& directory) {
                 const auto display = std::find_if(cells.begin(), cells.end(), [at](const auto& cell) {
                     return cell.exactBars->start <= at && at < cell.exactBars->end;
                 });
-                if (display == cells.end() || juce::String::fromUTF8(display->label) != "Ah"
+                if (display == cells.end() || juce::String::fromUTF8(display->label) != juce::String::fromUTF8("アー")
+                    || juce::String::fromUTF8(reading.label) != juce::String::fromUTF8("アー")
                     || display->exactBars->start >= at) return 92;
             }
             const auto id = project->pitchedNotes[0].front().id;

@@ -130,7 +130,7 @@ class SyllableVoice {
             const double onset = phone.durationMs && phone.onset == vowelOnly ? .028 :
                 std::max(.067, recorded->consonantFrames / recorded->rate);
             if (!vowelSample && recorded->period > 0 && time > onset) {
-                const double amount = std::min(1., (time - onset) / .040);
+                const double amount = std::min(1., (time - onset) * pitch);
                 const double low = std::max(double(recorded->consonantFrames), std::min(onset * recorded->rate, double(recorded->loopStart)));
                 const double high = std::max(low, .82 * recorded->frames.size() - recorded->period);
                 // Advance once through the voiced recording over the scored duration.
@@ -144,6 +144,19 @@ class SyllableVoice {
             }
         }
         if (recorded && !vowelSample) return float(level * recording);
+        if (vowelSample) {
+            // Only the recording supplies voiced energy. Model an unavailable consonant
+            // with a short obstruction or noise burst ahead of the recorded vowel.
+            noise = noise * 1664525u + 1013904223u;
+            const double white = double(noise) / 2147483648.0 - 1.0;
+            const double hiss = white - previousNoise;
+            previousNoise = white;
+            const double attack = fricative ? .055 : stop ? .032 : .025;
+            const double opening = std::clamp(time/attack,0.,1.);
+            const double noiseGain = fricative ? .10*(1.-opening) :
+                stop && time>=.009 ? .08*std::exp(-150.*(time-.009)) : 0.;
+            return float(level * (recording * opening + hiss * noiseGain));
+        }
         const double step = std::min(.45, pitch / sr);
         phase += step; phase -= std::floor(phase);
         // A band-limited glottal edge excites the higher formants as well as the fundamental.
@@ -177,7 +190,6 @@ class SyllableVoice {
             res.y2 = res.y1; res.y1 = value; out += value;
         }
         double tone = .45 * std::tanh(out) + unfiltered;
-        if (vowelSample) tone += opened * (recording - tone);
         return float(level * tone);
     }
   private:
@@ -304,7 +316,8 @@ class Voice : public SyllableVoice {
         const bool vowel = en ? en <= 15 : incoming.onset == vowelOnly;
         const bool sonorant = en ? en >= 25 && en <= 28 :
             incoming.onset == m || incoming.onset == n || incoming.onset == r || incoming.onset == moraN;
-        double seconds = vowel ? .037 : sonorant ? .026 : .008;
+        // One short splice removes sample discontinuities without carrying a second sung pitch.
+        double seconds = vowel ? .006 : sonorant ? .005 : .003;
         if (incoming.durationMs > 0) seconds = std::min(seconds,incoming.durationMs * .00035);
         length = remaining = std::max(1, int(seconds * sr));
     }

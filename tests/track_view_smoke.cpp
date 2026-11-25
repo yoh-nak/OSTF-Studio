@@ -409,12 +409,52 @@ private:
         if (pre == project.vocalNotes.end() || pre->second.pronunciation != juce::String::fromUTF8("イフ")) return 32;
         studio.vocalLane_.entrance.onClick();
         if (studio.cursorTick_ != project.pitchedNotes[lead].front().startTick || studio.cursorTick_/project.ticksPerBar != 4) return 5;
+        const auto* slots=studio.trackControls_[lead]->sends.getViewedComponent();
+        if (!slots || slots->getNumChildComponents()!=int(ostfstudio::maxMixerReturns)) return 28;
+        for(int i=0;i<slots->getNumChildComponents();++i)
+            if(slots->getChildComponent(i)->isEnabled() != (size_t(i)<studio.mixer_.returnCount())) return 28;
+        const auto previewDir=juce::SystemStats::getEnvironmentVariable("OSTF_TRACK_HEADER_PREVIEWS",{});
+        if(previewDir.isNotEmpty()) {
+            const auto audio=std::find(project.trackKinds.begin(),project.trackKinds.end(),ostfstudio::TrackKind::audio);
+            if(audio==project.trackKinds.end()) return 38;
+            const size_t track=size_t(audio-project.trackKinds.begin());
+            const auto originalScroll=studio.verticalScroll_.getCurrentRangeStart();
+            const auto originalWidth=studio.preferredHeaderWidth_;
+            for(int width:{400,760}) {
+                studio.preferredHeaderWidth_=width; studio.resized();
+                studio.verticalScroll_.setCurrentRangeStart(studio.verticalScroll_.getCurrentRangeStart()
+                    +studio.trackRows_[track].getY()-studio.rowOverlay_.getY()-4,juce::sendNotificationSync);
+                studio.resized();
+                auto area=studio.trackRows_[track].withWidth(studio.trackHeaderWidth).getIntersection(studio.rowOverlay_.getBounds());
+                juce::FileOutputStream out(juce::File(previewDir).getChildFile("track-sends-"+juce::String(width)+".png"));
+                if(area.isEmpty() || !out.openedOk() || !out.setPosition(0) || out.truncate().failed()
+                    || !juce::PNGImageFormat().writeImageToStream(studio.createComponentSnapshot(area),out)) return 38;
+            }
+            studio.preferredHeaderWidth_=originalWidth;
+            studio.verticalScroll_.setCurrentRangeStart(originalScroll,juce::sendNotificationSync); studio.resized();
+        }
         while (studio.mixer_.returnCount() < ostfstudio::maxMixerReturns) studio.mixer_.addReturn();
         studio.refreshTrackSends();
         studio.resized();
         const auto& sends = studio.trackControls_[lead]->sends;
         if (sends.getViewedComponent()->getWidth() > sends.getWidth() || sends.getViewedComponent()->getHeight() > sends.getHeight()
             || sends.getViewedComponent()->getNumChildComponents() != int(ostfstudio::maxMixerReturns)) return 28;
+        const auto previousWidth=studio.preferredHeaderWidth_;
+        for(int width : {400,487,760}) {
+            studio.preferredHeaderWidth_=width;
+            studio.resized();
+            const auto& strip=*studio.trackControls_[lead];
+            const auto* row=strip.sends.getViewedComponent();
+            if(row->getWidth()>strip.sends.getWidth() || strip.sends.getY()<strip.input.getBottom()
+                || strip.pan.getBounds().intersects(strip.input.getBounds())) return 37;
+            for(int k=0;k<row->getNumChildComponents();++k) {
+                const auto* knob=row->getChildComponent(k);
+                if(!knob->isEnabled() || !row->getLocalBounds().contains(knob->getBounds())
+                    || (k && knob->getBounds().intersects(row->getChildComponent(k-1)->getBounds()))) return 37;
+            }
+        }
+        studio.preferredHeaderWidth_=previousWidth;
+        studio.resized();
         const auto guideImage = juce::SystemStats::getEnvironmentVariable("OSTF_PROMPT_LCD_PNG", {});
         if (guideImage.isNotEmpty()) {
             juce::FileOutputStream out{juce::File(guideImage)};

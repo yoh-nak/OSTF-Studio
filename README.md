@@ -1,10 +1,10 @@
 # OSTF Studio
 
-Opening a demo or song file shows the filename while the score is read in the background. The prompt guide and current written lyrics use a backlit LCD treatment. Expanded track headers put four or more sends on a dedicated row. The master places the VUs and phase scope above the numerical measurements.
+The transport, prompt guide and current vocal lyrics use black inset displays. Source track headers group the fader, pan and input controls above eight send slots. On narrow expanded headers the sends wrap when there is room for two rows. Each assigned return enables its corresponding send in the header and mixer.
 
-**Paper Lantern Replies** keeps all its English lyrics on the lead sheet and supplies per-note katakana for the lead and backing voices. The mixer shows eight send slots on every source strip. Adding a return activates its slot.
+**Paper Lantern Replies** shows katakana for its English-language lines on the lead sheet and uses note-aligned katakana for the singer. Japanese verse text retains its original spelling.
 
-**OSTF Scale Editor** is a VST3 insert. Open its editor in Studio to read the current chord track, or use Open OSTF in another host. Select a chord, tonic and scale, then Assign scale. Save OSTF writes the complete score. Drag OSTF to Studio applies the scales to the originating arrangement in one undoable edit.
+**OSTF Scale Editor** is a VST3 instrument. Open it on a Studio instrument track, or use **Open OSTF** in another host. Select a chord, analysis lens and flow strategy to compare ranked scales. **Hear candidate** and **A/B with reference** play the original device's contextual phrases through a reference tone or a VST3 instrument selected with **Load VST3 instrument**. **Assign scale**, **Save OSTF**, and **Drag OSTF to Studio** apply, export and return the assignment.
 
 Japanese long-vowel marks within one unit extend the vowel recording. With English dictionary input, the Japanese bank chooses a consonant recording shaped for the following vowel.
 

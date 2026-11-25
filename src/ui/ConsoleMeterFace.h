@@ -1,4 +1,5 @@
 #pragma once
+#include "ConsoleDisplay.h"
 #include "ui/AudioMeters.h"
 #include <juce_graphics/juce_graphics.h>
 
@@ -74,10 +75,9 @@ inline void drawChannelVu(juce::Graphics& g, juce::Rectangle<float> bounds, Ster
 
 inline void drawMasterDetails(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Rectangle<float> graphs,
                               const MasterReadout& data, const std::array<float,31>& bands) {
-    g.setColour(juce::Colour(0xff101b20));
-    g.fillRoundedRectangle(bounds,4.f);
+    drawLcd(g,bounds.toNearestInt());
     auto area = bounds.reduced(7,5);
-    const auto mint = juce::Colour(0xff94e5d3), dim = juce::Colour(0xffadbfca), amber = juce::Colour(0xffffc47a);
+    const auto mint = lcdInk, dim = juce::Colour(0xffadbfca), amber = juce::Colour(0xffffc47a);
     auto number = [](double value) { return std::isfinite(value) ? juce::String(value,1) : juce::String::charToString(0x2014); };
     auto db = [&](float amplitude) { return number(amplitude > 0 ? 20.0*std::log10(amplitude) : -INFINITY); };
     auto cell = [&](juce::Rectangle<float> rect, juce::String title, juce::String value) {
@@ -110,14 +110,18 @@ inline void drawMasterDetails(juce::Graphics& g, juce::Rectangle<float> bounds, 
     const auto sum = levels.rms[0]+levels.rms[1];
     bipolar("BALANCE  L/R",sum > 0 ? (levels.rms[1]-levels.rms[0])/sum : 0.,sum > 0);
     bipolar("PHASE  -1/+1",levels.correlation,levels.hasCorrelation);
-    g.setColour(juce::Colour(0xff101b20));
-    g.fillRoundedRectangle(graphs,4.f);
+    drawLcd(g,graphs.toNearestInt());
     area = graphs.reduced(7,5);
     g.setColour(dim); g.drawText("SHORT-TERM   /   60 s",area.removeFromTop(17),juce::Justification::centredLeft);
     auto plot = area.removeFromTop(area.getHeight() * .44f);
+    auto markings=plot.removeFromLeft(25.f);
+    g.setFont(juce::FontOptions(9.f));
     auto y = [&](float level) { return plot.getBottom()-plot.getHeight()*std::clamp((level+60.f)/60.f,0.f,1.f); };
     for (int tick : {-12,-24,-36,-48}) {
-        g.setColour(juce::Colour(0xff35454a)); g.drawHorizontalLine(int(y(float(tick))),plot.getX(),plot.getRight());
+        const auto lineY=y(float(tick));
+        g.setColour(dim);
+        g.drawText(juce::String(tick),markings.withY(lineY-6).withHeight(12),juce::Justification::centredLeft);
+        g.setColour(juce::Colour(0xff304040)); g.drawHorizontalLine(int(lineY),plot.getX(),plot.getRight());
     }
     juce::Path history;
     bool connected = false;
@@ -130,24 +134,26 @@ inline void drawMasterDetails(juce::Graphics& g, juce::Rectangle<float> bounds, 
         connected=true;
     }
     g.setColour(mint); g.strokePath(history,juce::PathStrokeType(1.5f));
+    g.setFont(juce::FontOptions(10.f));
     g.setColour(dim); g.drawText("SPECTRUM   /   31 BANDS",area.removeFromTop(17),juce::Justification::centredLeft);
     auto scale=area.removeFromBottom(13);
     g.drawText("20 Hz",scale,juce::Justification::centredLeft);
     g.drawText("20 kHz",scale,juce::Justification::centredRight);
     const float step=area.getWidth()/bands.size();
+    juce::ColourGradient illumination(juce::Colour(0xff44776f),area.getX(),area.getBottom(),
+        amber,area.getX(),area.getY(),false);
+    illumination.addColour(.65,lcdInk);
+    g.setGradientFill(illumination);
     for (size_t i=0;i<bands.size();++i) {
         const auto h=area.getHeight()*std::clamp((juce::Decibels::gainToDecibels(bands[i],-72.f)+72.f)/72.f,0.f,1.f);
-        g.setColour(mint); g.fillRect(area.getX()+i*step,area.getBottom()-h,std::max(1.f,step-1),h);
+        if(h<=0) continue;
+        g.fillRect(area.getX()+i*step,area.getBottom()-h,std::max(1.f,step-2),h);
     }
 }
 
 inline void drawPhaseScope(juce::Graphics& g, juce::Rectangle<float> bounds, const MasterReadout& data) {
     if (bounds.isEmpty()) return;
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff20342f),bounds.getCentreX(),bounds.getCentreY(),
-                                            juce::Colour(0xff0b1516),bounds.getRight(),bounds.getY(),true));
-    g.fillRoundedRectangle(bounds,5);
-    g.setColour(juce::Colour(0xff647572));
-    g.drawRoundedRectangle(bounds.reduced(.5f), 5, 1);
+    drawLcd(g,bounds.toNearestInt());
     auto screen = bounds.reduced(9, 4);
     g.setColour(juce::Colour(0xffbccdc4));
     g.setFont(juce::FontOptions(11.f, juce::Font::bold));

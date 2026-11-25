@@ -19,6 +19,7 @@
 #include <utility>
 
 namespace {
+void offerScaleEditorScore(juce::AudioPluginInstance&, const juce::MemoryBlock&);
 constexpr auto panel = 0xff242a31;
 constexpr auto muted = 0xffaab6c4;
 constexpr auto accent = 0xff46bdb2;
@@ -2415,7 +2416,7 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
     if (armed >= 0 && size_t(armed) < project_->sourceTrackCount() && project_->trackKinds[size_t(armed)] != ostfstudio::TrackKind::audio)
         inputTrack = size_t(armed);
     if (recording && !audioTake) inputTrack = selectedTrack_;
-    if (monitorOnly && !inputTrack) return;
+    if (monitorOnly && !inputTrack && !scaleEditorMonitoring()) return;
     const auto localDest = inputTrack ? trackControls_[*inputTrack]->outputTrack.value_or(*inputTrack) : size_t(0);
     const auto monitorDest = inputTrack && midiOutputs_.contains(armedId_) ? *inputTrack : localDest;
     auto& devices = ensureDeviceSettings().devices();
@@ -2429,11 +2430,12 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
         const auto destination = track.outputTrack.value_or(i);
         tracks.push_back({track.outputTrack, track.playableInstrument ? track.instance.get() : nullptr, track.midiChannel});
         auto& route = tracks.back();
-        if (monitorOnly && i != monitorDest) route.instrument = nullptr;
+        const bool previewEditor = track.editor && track.editor->isVisible() && track.instance && track.instance->getName()=="OSTF Scale Editor";
+        if (monitorOnly && (!inputTrack || i != monitorDest) && !previewEditor) route.instrument = nullptr;
         if (const auto out = midiOutputs_.find(project_->trackIds[int(i)]); out != midiOutputs_.end()) {
             route.outputTrack.reset();
             route.instrument = nullptr;
-            if (!monitorOnly || i == monitorDest) {
+            if (!monitorOnly || (inputTrack && i == monitorDest)) {
                 auto& port = openPorts[out->second.identifier];
                 if (!port) port = openTrackOutput(devices, out->second.identifier);
                 if (!port) {
@@ -2455,7 +2457,7 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
     };
     for (std::size_t i = 0; i < outputControls_.size(); ++i) copyEffects(outputControls_[i].effects, inserts[i]);
     for (std::size_t i = 0; i < std::min(trackControls_.size(), PreviewTransport::maxTracks); ++i)
-        if ((!monitorOnly || i == monitorDest) && !tracks[i].external) copyEffects(trackControls_[i]->effects, inserts[PreviewTransport::outputCount + i]);
+        if ((!monitorOnly || tracks[i].instrument || (inputTrack && i == monitorDest)) && !tracks[i].external) copyEffects(trackControls_[i]->effects, inserts[PreviewTransport::outputCount + i]);
     const auto start = cursorTick_ >= project_->playbackEndTick() ? 0 : std::max<juce::int64>(0, cursorTick_);
     PreviewTransport::TakeOptions take;
     take.cycle = drumSteps_.looping() ? drumSteps_.loopRange() : (cycleButton_.getToggleState() && !drumSteps_.isVisible()
@@ -2534,7 +2536,7 @@ void MainComponent::stopTransport() {
             for (auto& output : outputControls_) output.meter.clear();
             mixer_.clearMeters();
         }
-        monitorPending_ = armedId_.isNotEmpty();
+        monitorPending_ = armedId_.isNotEmpty() || scaleEditorMonitoring();
         if (monitorPending_) startTimerHz(24);
         return;
     }
@@ -2580,7 +2582,7 @@ void MainComponent::stopTransport() {
     deck_.record.setToggleState(false, juce::dontSendNotification);
     for (auto* button : {&deck_.home, &deck_.rewind, &deck_.forward, &deck_.end}) button->setEnabled(true);
     displayTransportPosition(parked.tick, parked.seconds);
-    monitorPending_ = armedId_.isNotEmpty();
+    monitorPending_ = armedId_.isNotEmpty() || scaleEditorMonitoring();
     if (link_ || hasAudioInputs_ || monitorPending_) startTimerHz(24); else stopTimer();
     for (auto& track : trackControls_) track->meter.clear();
     for (auto& output : outputControls_) output.meter.clear();
@@ -3826,6 +3828,7 @@ void MainComponent::rebuildTrackControls() {
             controls->inputGain.valueFromTextFunction = [](const juce::String& text) { return text.getDoubleValue(); };
             controls->inputGain.setRange(-60, 24, .1);
             controls->inputGain.setDoubleClickReturnValue(true, 0);
+            controls->inputGain.setPopupDisplayEnabled(true,true,nullptr);
             controls->inputGain.onValueChange = [this, i, slider = &controls->inputGain] {
                 auto db = slider->getValue();
                 audioInputs_[project_->trackIds[int(i)]].gainDb = db;
@@ -4438,6 +4441,7 @@ void MainComponent::loadTrackPlugin(std::size_t index, const juce::PluginDescrip
         target.editor.reset();
         if (description.isInstrument) instance->disableNonMainBuses();
         if (!state.isEmpty()) instance->setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+        if (self->project_) offerScaleEditorScore(*instance,self->project_->sourceScore);
         target.playableInstrument = PreviewTransport::supportsInstrument(*instance);
         target.pluginPath = juce::File(description.fileOrIdentifier);
         target.instance = std::move(instance);
@@ -4482,6 +4486,7 @@ void MainComponent::openTrackPluginEditor(std::size_t index) {
     auto& instance = strip.instance;
     auto& pluginEditor = strip.editor;
     if (!instance) return;
+    offerScaleEditorScore(*instance,project_->sourceScore);
     if (!pluginEditor) {
         std::unique_ptr<juce::AudioProcessorEditor> editor(instance->createEditorAndMakeActive());
         if (!editor) editor = std::make_unique<juce::GenericAudioProcessorEditor>(*instance);
@@ -4518,10 +4523,15 @@ void MainComponent::openTrackPluginEditor(std::size_t index) {
                 break;
             }
         }
-        window->onClosed = [this, index] { updatePresetLabel(index); };
+        const bool preview = instance->getName()=="OSTF Scale Editor";
+        window->onClosed = [this, index, preview] {
+            updatePresetLabel(index);
+            if (preview && !transportActive_) stopTransport();
+        };
         pluginEditor = std::move(window);
     }
     showStudioWindow(*pluginEditor, *this);
+    if (instance->getName()=="OSTF Scale Editor" && !transportActive_) stopTransport();
     statusLabel_.setText(strip.playableInstrument ? TRANS("Instrument ready for track playback")
                                                  : TRANS("Plug-in editor ready / audio routing unavailable for this plug-in"),
                          juce::dontSendNotification);
@@ -5275,13 +5285,21 @@ void offerScaleEditorScore(juce::AudioPluginInstance& instance, const juce::Memo
     }
 }
 }
+bool MainComponent::scaleEditorMonitoring() const {
+    return std::any_of(trackControls_.begin(),trackControls_.end(),[](const auto& track) {
+        return track->editor && track->editor->isVisible() && track->instance && track->instance->getName()=="OSTF Scale Editor";
+    });
+}
 void MainComponent::refreshScaleEditors() {
     if (!project_) return;
     const auto update = [this](const EffectChain& chain) {
         for (const auto& slot : chain.slots)
             if (slot.editor && slot.effect) offerScaleEditorScore(*slot.effect,project_->sourceScore);
     };
-    for (const auto& track : trackControls_) update(track->effects);
+    for (const auto& track : trackControls_) {
+        if (track->instance) offerScaleEditorScore(*track->instance,project_->sourceScore);
+        update(track->effects);
+    }
     for (const auto& output : outputControls_) update(output.effects);
 }
 void MainComponent::openEffectEditor(bool output, std::size_t index, std::size_t position) {
@@ -6713,7 +6731,7 @@ void MainComponent::resized() {
     statusLabel_.setBounds(footer);
     auto editor = getWorkspace();
     trackHeaderWidth = std::min(preferredHeaderWidth_, std::max(320, editor.getWidth() - 145));
-    trackNameWidth = std::clamp(trackHeaderWidth - 295, 76, 300);
+    trackNameWidth = std::clamp(trackHeaderWidth - 295, 76, 205);
     ruler_.headerWidth = trackHeaderWidth;
     basics_.setVisible(project_ && workspaceMode_ == WorkspaceMode::arrangement);
     if (pluginBrowser_) {
@@ -6862,6 +6880,11 @@ void MainComponent::resized() {
                 }
                 if (canArm && !strip.size.expanded()) strip.input.setBounds(row.removeFromLeft(28).reduced(1, 0));
             };
+            const auto placeInputGain = [&](juce::Rectangle<int> gain) {
+                const auto textBox=gain.getWidth()>=85 ? juce::Slider::TextBoxRight : juce::Slider::NoTextBox;
+                if(strip.inputGain.getTextBoxPosition()!=textBox) strip.inputGain.setTextBoxStyle(textBox,false,52,17);
+                strip.inputGain.setBounds(gain);
+            };
             placeGrip(strip.size, trackRows_[i]);
             auto header = rowOverlay_.getLocalArea(this, trackRows_[i]).withWidth(trackHeaderWidth - columnGripWidth);
             if (strip.size.compact()) {
@@ -6886,38 +6909,28 @@ void MainComponent::resized() {
                 inputControls(top);
                 strip.effects.button.setBounds(top.removeFromRight(50).reduced(2, 1));
                 placeInstrument(top.reduced(2, 1));
-                const bool manySends = mixer_.returnCount() > 3 && header.getHeight() >= 60;
-                if (manySends) {
-                    const int minSendHeight = strip.sends.getViewedComponent()->getNumChildComponents() > 4
-                        && header.getWidth() < 460 ? 42 : 30;
-                    auto sendRow = header.removeFromBottom(std::clamp(header.getHeight() - 32, minSendHeight, 56));
-                    strip.sends.setBounds(sendRow.reduced(2, 0));
-                }
-                auto lower = header.removeFromLeft(std::min(trackNameWidth, 170));
-                strip.volume.setBounds(lower.removeFromTop(manySends ? 14 : 22).reduced(3, 0));
-                strip.meter.setBounds(lower.removeFromTop(std::min(manySends ? 11 : 22, lower.getHeight())).reduced(5, 0));
-                strip.preset.setBounds(lower);
-                auto knobs = manySends ? header.removeFromLeft(std::min(74, header.getWidth()/3))
-                                       : header.withTrimmedBottom(std::min(22, header.getHeight()));
-                knobs.reduce(2, 1);
-                auto panSlot = knobs.removeFromLeft(std::min(77, knobs.getWidth()));
-                strip.pan.setBounds(panSlot.removeFromRight(std::min(48, panSlot.getHeight())));
-                if (!manySends) strip.sends.setBounds(knobs);
-                auto inputArea = (manySends ? header.withSizeKeepingCentre(header.getWidth(), 22)
-                                            : header.removeFromBottom(std::min(22, header.getHeight()))).reduced(1, 0);
-                strip.mix.setBounds(inputArea.removeFromRight(48).reduced(2,1));
+                // Align controls to the top of a tall clip, keeping the signal path together at every width.
+                const int sendHeight=header.getWidth()<530 ? 48 : 36;
+                auto levelAndInput = header.removeFromTop(std::clamp(header.getHeight()-sendHeight,23,42));
+                auto level = levelAndInput.removeFromLeft(std::clamp(header.getWidth()/4,82,160));
+                strip.volume.setBounds(level.removeFromTop(std::min(18,level.getHeight()/2)).reduced(3,0));
+                strip.meter.setBounds(level.removeFromTop(std::min(9,level.getHeight())).reduced(5,0));
+                strip.preset.setVisible(!audio && level.getHeight()>=12);
+                strip.preset.setBounds(level);
+                auto pan = levelAndInput.removeFromLeft(std::min(62,levelAndInput.getWidth()/4));
+                const int dial = std::min(38,pan.getHeight());
+                strip.pan.setBounds(pan.removeFromRight(dial).withSizeKeepingCentre(dial,dial));
+                auto inputArea=levelAndInput.withSizeKeepingCentre(levelAndInput.getWidth(),std::min(24,levelAndInput.getHeight()));
+                strip.mix.setBounds(inputArea.removeFromRight(45).reduced(1,1));
                 if (canArm) {
                     if (audio) {
-                        strip.inputGain.setBounds(inputArea.removeFromRight(std::min(117, inputArea.getWidth()/2)).reduced(2,0));
-                        strip.recordingMeter.setBounds(inputArea.removeFromRight(inputArea.getWidth()/3).reduced(2,5));
+                        auto gain=inputArea.removeFromRight(std::min(108,inputArea.getWidth()/2)).reduced(2,0);
+                        placeInputGain(gain);
+                        strip.recordingMeter.setBounds(inputArea.removeFromRight(std::min(72,inputArea.getWidth()/4)).reduced(2,5));
                     }
                     strip.input.setBounds(inputArea.reduced(3,0));
                 }
-                if (audio) {
-                    strip.preset.setText(TRANS("Recording input gain (dB)"), juce::dontSendNotification);
-                    strip.preset.setJustificationType(juce::Justification::centredRight);
-                }
-
+                strip.sends.setBounds(header.removeFromTop(std::min(sendHeight,header.getHeight())).reduced(3,0));
                 continue;
             }
             strip.meter.setBounds(header.withWidth(trackNameWidth).removeFromBottom(10).reduced(5, 1));
@@ -6934,7 +6947,7 @@ void MainComponent::resized() {
             strip.sends.setBounds(row.removeFromLeft(audio ? row.getWidth()/2 : row.getWidth()));
             if (audio) {
                 strip.preset.setBounds({});
-                strip.inputGain.setBounds(row.reduced(2, 0));
+                placeInputGain(row.reduced(2, 0));
                 strip.recordingMeter.setBounds(strip.meter.getBounds().withTrimmedRight(trackNameWidth / 2));
                 strip.meter.setBounds(strip.meter.getBounds().withTrimmedLeft(trackNameWidth / 2));
             } else strip.preset.setBounds(row.reduced(2, 0));

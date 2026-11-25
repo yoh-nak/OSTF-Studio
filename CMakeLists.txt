@@ -169,7 +169,9 @@ if (OSTF_STUDIO_BUILD_GUI)
         target_link_libraries(OSTFStudio PRIVATE "-framework CoreGraphics" "-framework ImageIO")
     endif()
     include(packaging/collect-notices.cmake)
+    add_subdirectory(src/plugins/scale)
     add_subdirectory(src/plugins/effects)
+    add_dependencies(ostf_scale_instrument_tests OSTFSynthFM_VST3)
     configure_file(src/plugins/effects/StockEffects.h.in generated/StockEffects.h @ONLY)
 
     add_executable(ostf_gm_channel_activity_tests tests/gm_channel_activity_tests.cpp src/ui/PreviewTransport.cpp

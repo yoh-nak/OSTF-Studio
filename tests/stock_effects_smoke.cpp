@@ -134,7 +134,7 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
             if (block > 5) peak = std::max(peak, std::abs(wet));
         }
     }
-    if (desc.name == "OSTF Stem Separator" || desc.name == "OSTF Scale Editor") return difference == 0 && instance.getLatencySamples() == 0 && instance.hasEditor();
+    if (desc.name == "OSTF Stem Separator") return difference == 0 && instance.getLatencySamples() == 0 && instance.hasEditor();
     if (desc.name == "OSTF Wave Analyzer") {
         if (difference != 0 || instance.getLatencySamples() != 0 || !instance.hasEditor()) return false;
         auto* span = instance.getParameters()[0];
@@ -375,7 +375,7 @@ int checkStockEffects(const juce::StringArray& args) {
     if (ostfstudio::readOstfpPreview(file, song).failed() || !song->savedMix) return 21;
     {
         auto editor = load(formats,directory.getChildFile("OSTF Scale Editor.vst3"));
-        if (!editor || !editor->getVST3Client()) return 68;
+        if (!editor || !editor->getPluginDescription().isInstrument || !PreviewTransport::supportsInstrument(*editor) || !editor->getVST3Client()) return 68;
         auto* component = editor->getVST3Client()->getIComponentPtr();
         void* result = nullptr;
         if (!component || component->queryInterface(ostfstudio::scale::scoreInputId,&result)!=Steinberg::kResultOk || !result) return 69;
@@ -386,6 +386,13 @@ int checkStockEffects(const juce::StringArray& args) {
         if (!received) return 70;
         std::unique_ptr<juce::AudioProcessorEditor> gui(editor->createEditorIfNeeded());
         if (!gui) return 71;
+        gui.reset();
+        editor->prepareToPlay(48000,256);
+        juce::AudioBuffer<float> audio(2,256); juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1,64,(juce::uint8)100),12);
+        editor->processBlock(audio,midi);
+        if(audio.getMagnitude(0,0,12)>1.e-6f || audio.getMagnitude(0,12,244)<.01f) return 73;
+        editor->releaseResources();
     }
     const auto& mix = *song->savedMix;
     const auto score = juce::JSON::parse(song->sourceScore.toString());
