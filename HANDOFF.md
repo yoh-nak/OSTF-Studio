@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Live section input and stage navigation
+
+Branch `feat/live-sections-track-console`. The microphone icon opens Live session. Under **Section input**, select a section-row and MIDI-track-column cell to edit the shared arrangement piano roll. Chord boundaries, chord fit and scale fit appear inside the cells. Row launch and extra-pass controls operate on the full section independently of the selected track. Stage rows show the first and last bar and section length. Audio tracks can be monitored from Stage. Independent cross-section clip playback and AI performers are outside this implementation.
+
+Windows x64 portable folder: `dist/windows-live-tracks/Portable`. The track-view regression checks the section bar label, changing a different row's repeat count, editing the underlying arrangement, and undo across views. The theory regression checks time-local chord fits. Windows screenshots can be captured with `OSTF_LIVE_MATRIX_PNG` and `OSTF_LIVE_SECTIONS_PNG`. macOS and live hardware are unverified for this update.
+
 ## Live track selection
 
 On `feat/live-sections-track-console`, the live piano roll has direct track buttons and a per-song Favourites filter. Use the star beside each track to edit the set. The header identifies the piano-roll target even when it is filtered out. Narrow windows wrap the track list and allow vertical scrolling. The ordinary arrangement retains its track picker.

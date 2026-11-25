@@ -55,8 +55,16 @@ public:
                 g.setColour(juce::Colour(0xff263239));
                 if (icon==Icon::printLead) { line(6,12,13,12); line(6,15,11,15); }
                 else { line(12,11,12,14); g.fillEllipse(x+8,y+13,5,3); } break;
-            case Icon::liveSession:
-                for (int i=0;i<3;++i) { g.fillRoundedRectangle(x+1,y+2+i*6,5.f,4.f,1.f); line(9,4+i*6,18-i*2,4+i*6); } break;
+            case Icon::liveSession: {
+                // Angled handheld microphone on a live boom stand.
+                g.fillEllipse(x+12.f, y+.5f, 7.f, 7.f);
+                juce::Path handle;
+                handle.addQuadrilateral(x+12.f,y+5.f, x+15.f,y+8.f, x+7.f,y+12.f, x+5.8f,y+10.7f);
+                g.fillPath(handle);
+                line(9,10,9,15); line(9,15,4,18); line(9,15,14,18);
+                line(3,4,5,6); line(6,1,7,4);
+                break;
+            }
             case Icon::history:
                 g.drawEllipse(x+2,y+1,16,16,1.6f); line(10,4,10,9); line(10,9,14,11); break;
             case Icon::chordFit:

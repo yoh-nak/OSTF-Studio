@@ -1184,6 +1184,21 @@ int checkTrackView(const juce::File& fixture) {
     if (const auto result = checkSamplePlacement(wave)) return result;
     using namespace ostfstudio;
     using A = SurfaceAction;
+    {
+        juce::FileInputStream stream(fixture);
+        std::unique_ptr<OstfpPreview> song, added;
+        if (readOstfpPreview(stream,song).failed() || song->editTracks(TrackKind::pitched,{},added).failed()) return 322;
+        const auto index = added->sourceTrackCount()-1;
+        const auto bar = added->ticksPerBar;
+        const juce::Range<juce::int64> section{bar, 3*bar};
+        juce::MemoryBlock previous;
+        juce::StringArray ids;
+        if (added->editNotes(index,{{NoteEdit::insert,{bar,bar+1,60,85,true,{}}}},previous,ids,section).failed()
+            || added->editNotes(index,{{NoteEdit::insert,{2*bar,2*bar+1,64,85,true,{}}}},previous,ids,section).failed()) return 323;
+        const auto clips = juce::JSON::parse(added->sourceScore.toString())["tracks"][int(index)]["clips"];
+        if (clips.size()!=1 || juce::int64(clips[0]["start"])!=bar || juce::int64(clips[0]["duration"])!=2*bar
+            || clips[0]["notes"].size()!=2) return 324;
+    }
     if (mackieAction(juce::MidiMessage::pitchWheel(8,16383)).index != 7
         || mackieAction(juce::MidiMessage::controllerEvent(1,16,65)).value != -1
         || mackieAction(juce::MidiMessage::pitchWheel(9,8192)).kind != A::none) return 95;
@@ -1876,6 +1891,47 @@ int checkTrackView(const juce::File& fixture) {
         if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed()
             || !juce::PNGImageFormat().writeImageToStream(selector->createComponentSnapshot(selector->getLocalBounds()), out)) return 309;
     }
+    main.setSize(previousSize.getWidth(), previousSize.getHeight());
+    auto* matrix = descendant<LiveSectionMatrix>(main);
+    auto* inputTab = findControl<juce::TextButton>(main, TRANS("Section input"));
+    auto* stageTab = findControl<juce::TextButton>(main, TRANS("Stage"));
+    if (!matrix || !inputTab || !stageTab || session->barDetails.size()!=int(session->sections.size())
+        || session->barDetails[0] != TRANS("BARS") + " 1" + juce::String::charToString(0x2013)
+                                      + "2   /   2 " + TRANS("bars")) return 313;
+    inputTab->onClick();
+    main.setSize(1450, 1000);
+    const auto firstName = session->sections[0].name;
+    auto* firstSlot = findControl<juce::TextButton>(*matrix, firstName + " / Lead Guitar");
+    auto* moreRepeats = findControl<juce::TextButton>(*matrix, TRANS("Extra passes") + " + / " + firstName);
+    if (!matrix->isVisible() || session->isVisible() || !firstSlot || !moreRepeats) return 314;
+    const auto beforeRepeats = session->sections[0].repeats;
+    moreRepeats->onClick();
+    if (session->selected != last || session->sections[0].repeats != beforeRepeats+1) return 315;
+    firstSlot->onClick();
+    if (tracks->getSelectedItemIndex()!=guitarItem || session->selected!=0
+        || descendant<PianoNoteGrid>(main)!=sectionGrid || !sectionGrid->editable
+        || !main.findChildWithID("piano-ruler")->isVisible()) return 316;
+    const auto tick = session->range().getStart();
+    const auto beforeInsert = sectionGrid->notes.size();
+    sectionGrid->commit({{NoteEdit::insert,{tick,tick+1,51,90,true,{}}}});
+    if (sectionGrid->notes.size()!=beforeInsert+1) return 317;
+    const auto editId = sectionGrid->selection[0];
+    const auto hasInserted = [&]{return std::any_of(sectionGrid->notes.begin(),sectionGrid->notes.end(),[&](const auto& n){return n.id==editId;});};
+    if (editId.isEmpty() || !click("Arrangement") || !hasInserted()) return 318;
+    sectionGrid->undoRedo(false);
+    if (hasInserted() || !click("Live session") || !matrix->isVisible() || hasInserted()) return 319;
+    if (const auto path = juce::SystemStats::getEnvironmentVariable("OSTF_LIVE_MATRIX_PNG",{}); path.isNotEmpty()) {
+        juce::FileOutputStream out{juce::File(path)};
+        if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed() ||
+            !juce::PNGImageFormat().writeImageToStream(main.createComponentSnapshot(main.getLocalBounds()),out)) return 320;
+    }
+    stageTab->onClick();
+    if (const auto path = juce::SystemStats::getEnvironmentVariable("OSTF_LIVE_SECTIONS_PNG",{}); path.isNotEmpty()) {
+        juce::FileOutputStream out{juce::File(path)};
+        if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed() ||
+            !juce::PNGImageFormat().writeImageToStream(session->createComponentSnapshot(session->getLocalBounds()),out)) return 321;
+    }
+    session->list.selectRow(last);
     main.setSize(previousSize.getWidth(), previousSize.getHeight());
     const auto area=session->range();
     const auto countBefore=sectionGrid->notes.size();

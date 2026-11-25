@@ -361,6 +361,7 @@ std::vector<TheoryGuide::TrackCell> TheoryGuide::analyse(std::size_t track, cons
             ++end;
         }
         for (auto i = first; i < end; ++i) {
+            result[i].localChord = result[i].chord;
             result[i].chord = total;
             result[i].chordEnd = end;
         }

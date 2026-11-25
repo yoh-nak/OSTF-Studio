@@ -6,7 +6,9 @@
 class LiveSections final : public juce::Component, private juce::ListBoxModel {
 public:
     std::vector<PreviewTransport::LiveSection> sections;
-    std::function<void()> selectionChanged, launchSection;
+    juce::StringArray barDetails;
+    std::function<void()> selectionChanged;
+    std::function<void(int)> launchSection;
     std::function<void(size_t,int)> repeatsChanged;
     std::function<int(size_t)> remaining;
     std::function<void(int)> inputAction;
@@ -18,9 +20,9 @@ public:
     LiveSections() {
         for(auto* c:std::initializer_list<juce::Component*>{&heading,&list,&count,&fewer,&more,&launch,&input,&arm,&instrument,&fx}) addAndMakeVisible(c);
         heading.setFont(juce::FontOptions(20.f,juce::Font::bold));
-        list.setModel(this); list.setRowHeight(36); list.setColour(juce::ListBox::backgroundColourId,juce::Colour(0xff202e38));
-        fewer.onClick=[this]{change(-1);}; more.onClick=[this]{change(1);};
-        launch.onClick=[this]{if(launchSection)launchSection();};
+        list.setModel(this); list.setRowHeight(45); list.setColour(juce::ListBox::backgroundColourId,juce::Colour(0xff202e38));
+        fewer.onClick=[this]{changeRepeats(selected,-1);}; more.onClick=[this]{changeRepeats(selected,1);};
+        launch.onClick=[this]{if(launchSection)launchSection(selected);};
         int i=0; for(auto* b:{&input,&arm,&instrument,&fx}) b->onClick=[this,index=i++]{if(inputAction)inputAction(index);};
     }
     ~LiveSections() override {list.setModel(nullptr);}
@@ -47,6 +49,17 @@ public:
         for(size_t i=1;i<sections.size();++i) sections[i-1].ticks.setEnd(std::min(sections[i-1].ticks.getEnd(),sections[i].ticks.getStart()));
         std::erase_if(sections,[](const auto& s){return s.ticks.isEmpty();});
         if(sections.empty()) sections.push_back({{},song.title,{0,song.playbackEndTick()},0});
+        barDetails.clear();
+        const auto bar = std::max<juce::int64>(1, song.ticksPerBar);
+        for (const auto& section : sections) {
+            const auto ticks = section.ticks;
+            const auto first = song.bars.firstBar + ticks.getStart()/bar;
+            const auto last = song.bars.firstBar + std::max(ticks.getStart(), ticks.getEnd()-1)/bar;
+            const auto length = ticks.getLength() % bar == 0 ? juce::String(ticks.getLength()/bar)
+                : juce::String(double(ticks.getLength())/double(bar), 2);
+            barDetails.add(TRANS("BARS") + " " + juce::String(first) + (last==first ? juce::String{} : juce::String::charToString(0x2013)+juce::String(last))
+                           + "   /   " + length + " " + TRANS("bars"));
+        }
         selected=0;
         for (size_t i=0; i<sections.size(); ++i) {
             auto& section = sections[i];
@@ -73,15 +86,18 @@ public:
         more.setBounds(controls.removeFromRight(34).reduced(1)); fewer.setBounds(controls.removeFromRight(34).reduced(1));count.setBounds(controls);
         list.setBounds(a.reduced(0,3));
     }
-private:
     int repeats(size_t i) const {return remaining ? remaining(i) : sections[i].repeats;}
-    void change(int delta) {
-        if(sections.empty())return;
-        const auto i=size_t(selected); sections[i].repeats=std::clamp(repeats(i)+delta,0,99);
+    void changeRepeats(int row, int delta) {
+        if(row<0 || row>=int(sections.size())) return;
+        const auto i=size_t(row); sections[i].repeats=std::clamp(repeats(i)+delta,0,99);
         if(repeatsChanged)repeatsChanged(i,sections[i].repeats);
-        count.setText(TRANS("Repeats remaining")+"   "+juce::String(sections[i].repeats),juce::dontSendNotification);
-        fewer.setEnabled(sections[i].repeats>0);more.setEnabled(sections[i].repeats<99);list.repaint();
+        if(row==selected) {
+            count.setText(TRANS("Repeats remaining")+"   "+juce::String(sections[i].repeats),juce::dontSendNotification);
+            fewer.setEnabled(sections[i].repeats>0); more.setEnabled(sections[i].repeats<99);
+        }
+        list.repaint();
     }
+private:
     int getNumRows() override {return int(sections.size());}
     void selectedRowsChanged(int i) override {if(i>=0 && i<getNumRows()){selected=i;if(selectionChanged)selectionChanged();}}
     void paintListBoxItem(int i,juce::Graphics& g,int w,int h,bool chosen) override {
@@ -89,7 +105,9 @@ private:
         g.fillAll(juce::Colour(chosen?0xff35505d:0xff23313a));
         if(i==playing){g.setColour(juce::Colour(0xff70dcc0));g.fillRect(0,2,4,h-4);}
         g.setFont(juce::FontOptions(15.f,juce::Font::bold));g.setColour(juce::Colours::white);
-        g.drawText(sections[size_t(i)].name,10,0,w-75,h,juce::Justification::centredLeft,true);
+        g.drawText(sections[size_t(i)].name,10,1,w-68,23,juce::Justification::centredLeft,true);
+        g.setFont(juce::FontOptions(12.f)); g.setColour(juce::Colour(0xffb4c9d0));
+        g.drawText(barDetails[i],10,23,w-62,h-24,juce::Justification::centredLeft,true);
         g.setColour(juce::Colour(0xff97d8c9));g.drawText("+"+juce::String(repeats(size_t(i))),w-55,0,45,h,juce::Justification::centredRight);
     }
 };

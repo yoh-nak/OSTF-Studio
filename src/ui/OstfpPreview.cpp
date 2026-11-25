@@ -2255,9 +2255,12 @@ juce::Result OstfpPreview::restoreNoteScore(const juce::MemoryBlock& bytes) try 
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
 namespace {
-juce::var editableClip(juce::var clips, juce::int64 tick, juce::int64 bar, juce::int64 limit, bool enabledOnly = false) {
+juce::var editableClip(juce::var clips, juce::int64 tick, juce::int64 bar, juce::int64 limit, bool enabledOnly = false,
+                       juce::Range<juce::int64> preferred = {}) {
     auto start = tick / bar * bar;
     auto end = std::min(limit, start + bar);
+    preferred = preferred.getIntersectionWith({0,limit});
+    if (preferred.contains(tick)) { start = preferred.getStart(); end = preferred.getEnd(); }
     for (const auto& c : array(clips)) {
         if (enabledOnly && !bool(c.getProperty("enabled", true))) continue;
         const auto a = integer(c["start"]), b = a + integer(c["duration"]);
@@ -2456,7 +2459,8 @@ juce::Result OstfpPreview::editVocalNote(size_t track, const juce::String& id, c
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
 juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEdit>& edits,
-                                     juce::MemoryBlock& before, juce::StringArray& resultingIds) try {
+                                     juce::MemoryBlock& before, juce::StringArray& resultingIds,
+                                     juce::Range<juce::int64> newClipRange) try {
     require(index < sourceTrackCount() && trackKinds[index] != TrackKind::audio && !edits.empty(), "Select a MIDI track.");
     before = savedScore(*this);
     auto score = parseObject(before);
@@ -2501,7 +2505,7 @@ juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEd
                 event = fresh ? object({}) : event.clone();
                 event.getDynamicObject()->setProperty("id", "note-" + juce::Uuid().toString());
             }
-            if (fresh || crossing) clip = editableClip(clips, n.startTick, ticksPerBar, playbackEndTick());
+            if (fresh || crossing) clip = editableClip(clips, n.startTick, ticksPerBar, playbackEndTick(), false, newClipRange);
             if (fresh && track["midi"]["mode"].isString() && track["midi"]["mode"] != "singleChannel")
                 event.getDynamicObject()->setProperty("channel", sourceMidiChannels[index]);
             arrayProperty(clip, "notes").getArray()->add(event);

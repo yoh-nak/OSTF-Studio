@@ -38,6 +38,9 @@ int modelChecks() {
     TheoryGuide::ClipFits badges;
     const auto fit = guide.analyse(0, notes, -1, &badges), other = guide.analyse(1, notes);
     const auto v = guide.firstCell(16), tonic = guide.firstCell(20), solo = guide.firstCell(22);
+    if (fit[tonic].localChord.percent() != 0 || fit[solo].localChord.percent() != 0
+        || fit[guide.firstCell(24)].localChord.percent() != 100 || fit[guide.firstCell(32)].localChord.percent() != -1)
+        return 75;
     const auto& sustain = badges.at("sustain");
     const auto& dominantFit = sustain.at(fit[v].chordBegin);
     const auto& tonicFit = sustain.at(fit[tonic].chordBegin);

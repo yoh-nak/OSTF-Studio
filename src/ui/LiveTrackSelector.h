@@ -6,6 +6,16 @@
 class LiveTrackSelector final : public juce::Component {
 public:
     std::function<void(std::size_t)> selectTrack;
+    std::function<void()> filterChanged;
+
+    bool includesTrack(std::size_t index) const {
+        return index < buttons_.size() && buttons_[index]->isVisible();
+    }
+
+    void showFilterOnly(bool filterOnly) {
+        filterOnly_ = filterOnly;
+        view_.setVisible(!filterOnly);
+    }
 
     LiveTrackSelector() {
         for (auto* component : std::initializer_list<juce::Component*>{&all_, &favourites_, &editing_, &view_})
@@ -39,7 +49,8 @@ public:
         updateFilter();
     }
 
-    void bind(const ostfstudio::OstfpPreview& song, std::optional<std::size_t> selected) {
+    void bind(const ostfstudio::OstfpPreview& song, std::optional<std::size_t> selected,
+              const juce::String& section = {}) {
         const auto count = song.trackLanes.size();
         while (buttons_.size() < count) {
             const auto index = buttons_.size();
@@ -52,6 +63,7 @@ public:
                 else starred_.add(id);
                 updateFilter();
                 save();
+                if (filterChanged) filterChanged();
             };
         }
         buttons_.resize(count);
@@ -69,13 +81,15 @@ public:
             tile.name.setToggleState(selected == i, juce::dontSendNotification);
             if (selected == i) current = name;
         }
+        if (section.isNotEmpty() && current.isNotEmpty()) current += "  /  " + section;
         editing_.setText(current.isEmpty() ? juce::String{} : TRANS("Editing track") + "  " + current, juce::dontSendNotification);
+        editing_.setTooltip(current);
         updateFilter();
     }
 
     int preferredHeight(int width) const {
         const int rows = (int(buttons_.size()) + columns(width) - 1) / columns(width);
-        return headerHeight(width) + 2 + rowHeight * std::clamp(rows, 1, 2);
+        return headerHeight(width) + (filterOnly_ ? 0 : 2 + rowHeight * std::clamp(rows, 1, 2));
     }
 
     void paint(juce::Graphics& g) override {
@@ -136,6 +150,7 @@ private:
         view_.setViewPosition(0, 0);
         updateFilter();
         save();
+        if (filterChanged) filterChanged();
     }
     void save() const {
         if (!settings_ || settingsKey_.isEmpty()) return;
@@ -187,5 +202,5 @@ private:
     juce::PropertySet* settings_ = nullptr;
     juce::String settingsKey_;
     juce::StringArray starred_;
-    bool onlyStarred_ = false;
+    bool onlyStarred_ = false, filterOnly_ = false;
 };

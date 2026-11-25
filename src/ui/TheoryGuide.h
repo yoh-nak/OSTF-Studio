@@ -34,6 +34,7 @@ public:
     using ClipFits = std::map<juce::String, ChordFits>;
     struct TrackCell {
         Fit chord, scale;
+        Fit localChord; // Time-local score before chord-wide aggregation.
         std::size_t chordBegin = 0, chordEnd = 0;
         int backgroundScale = -1;
         std::vector<int> noteScoped;

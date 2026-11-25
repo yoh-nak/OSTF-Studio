@@ -268,7 +268,7 @@ struct OstfpPreview {
     bool addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes);
     juce::Result restoreReviewedNotes(std::size_t track, const ReviewNoteOrigins&, juce::MemoryBlock& before);
     juce::Result editNotes(std::size_t track, const std::vector<NoteEdit>& edits, juce::MemoryBlock& before,
-                           juce::StringArray& resultingIds);
+                           juce::StringArray& resultingIds, juce::Range<juce::int64> newClipRange = {});
     juce::Result setPatchAt(std::size_t track, juce::int64 tick, int channel, std::array<int,3> values,
                             juce::MemoryBlock& before, bool sharedPart = false, bool programOnly = false);
     juce::Result editController(std::size_t track, const MidiControl&, const juce::String& id, juce::int64 tick,
