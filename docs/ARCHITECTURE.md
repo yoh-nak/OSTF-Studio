@@ -2,6 +2,8 @@
 
 ## Section performance and presentation
 
+The live track selector calls the same edit-target selection as the arrangement. Its favourites filter controls button visibility independently of selection, recording and playback. Local view settings index favourites by score document ID and track ID, with a separate identity for global voicing. Renaming or reordering a track preserves its star.
+
 Live playback projects OSTF section IDs and source tick ranges into a finite local performance order. Repeat counts belong to the current performance. They can change until a boundary is consumed. The transport splits hardware blocks at those boundaries and uses precomputed MIDI chase buffers. Note edits are validated on the message thread and published at a boundary. A bounded look-ahead returns ordered section visits in score ticks, including repeats. A network or physical performer still needs an adapter for clock deadlines, performer identity and proposal arbitration.
 
 Arming an audio track in Live routes its selected mono or stereo input through the track inserts, mix, sends and outputs. Recording input gain is shared with the mixer. Portable track colour overrides use OSTF presentation object colours. Printer configuration stays local. Native printing and the PDF preview use the same page layout and opening credit allocation.

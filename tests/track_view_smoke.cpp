@@ -1829,15 +1829,61 @@ int checkTrackView(const juce::File& fixture) {
     int guitarItem=-1;
     for(int i=0;i<tracks->getNumItems();++i) if(tracks->getItemText(i)=="Lead Guitar") guitarItem=i;
     if (guitarItem<0) return 291;
-    tracks->setSelectedItemIndex(guitarItem,juce::sendNotificationSync);
+    auto* selector = descendant<LiveTrackSelector>(main);
+    if (!selector || !selector->isVisible() || tracks->isVisible()) return 301;
+    juce::PropertySet livePrefs;
+    selector->openDocument("smoke-live", livePrefs);
+    auto* allTracks = findControl<juce::TextButton>(*selector, TRANS("All tracks"));
+    auto* favourites = findControl<juce::TextButton>(*selector, TRANS("Favourites"));
+    auto* guitarButton = findControl<juce::TextButton>(*selector, "Lead Guitar");
+    auto* guitarStar = findControl<juce::TextButton>(*selector, TRANS("Favourite track") + " / Lead Guitar");
+    const int other = (guitarItem + 1) % tracks->getNumItems();
+    auto* otherTrack = findControl<juce::TextButton>(*selector, tracks->getItemText(other));
+    auto* otherStar = findControl<juce::TextButton>(*selector, TRANS("Favourite track") + " / " + tracks->getItemText(other));
+    if (!allTracks || !favourites || !guitarButton || !guitarStar || !otherTrack || !otherStar) return 302;
+    otherTrack->onClick();
+    guitarStar->onClick();
+    favourites->onClick();
+    if (otherTrack->getParentComponent()->isVisible() || !guitarButton->getParentComponent()->isVisible() || tracks->getSelectedItemIndex() != other
+        || !otherTrack->getToggleState() || session->selected != last) return 303;
+    guitarButton->onClick();
+    if (tracks->getSelectedItemIndex() != guitarItem || !guitarButton->getToggleState()) return 304;
+    guitarStar->onClick();
+    if (guitarButton->getParentComponent()->isVisible() || !allTracks->isVisible()) return 305;
+    allTracks->onClick();
+    guitarStar->onClick();
+    otherStar->onClick();
+    favourites->onClick();
+    selector->openDocument("different-song", livePrefs);
+    if (!allTracks->getToggleState() || guitarStar->getToggleState()) return 306;
+    selector->openDocument("smoke-live", livePrefs);
+    if (!favourites->getToggleState() || !guitarStar->getToggleState() || !otherStar->getToggleState()
+        || !guitarButton->getParentComponent()->isVisible() || !otherTrack->getParentComponent()->isVisible()) return 307;
+    if (!click("Arrangement") || !click("Live session") || !favourites->getToggleState()
+        || tracks->getSelectedItemIndex() != guitarItem || session->selected != last) return 308;
+    const auto previousSize = main.getLocalBounds();
+    allTracks->onClick();
+    auto* trackViewport = descendant<juce::Viewport>(*selector);
+    if (!trackViewport || !trackViewport->isVerticalScrollBarShown()) return 310;
+    trackViewport->setViewPosition(0, trackViewport->getViewedComponent()->getHeight());
+    if (trackViewport->getViewPositionY() <= 0) return 311;
+    main.setSize(1450, 1000);
+    favourites->onClick();
+    if (guitarButton->getParentComponent()->getY() != otherTrack->getParentComponent()->getY()
+        || trackViewport->getViewPositionY() != 0) return 312;
+    if (const auto path = juce::SystemStats::getEnvironmentVariable("OSTF_LIVE_TRACKS_PNG", {}); path.isNotEmpty()) {
+        juce::FileOutputStream out{juce::File(path)};
+        if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed()
+            || !juce::PNGImageFormat().writeImageToStream(selector->createComponentSnapshot(selector->getLocalBounds()), out)) return 309;
+    }
+    main.setSize(previousSize.getWidth(), previousSize.getHeight());
     const auto area=session->range();
     const auto countBefore=sectionGrid->notes.size();
     sectionGrid->commit({{NoteEdit::insert,{area.getStart(),area.getStart()+1,47,93,true,{}}}});
     if(sectionGrid->notes.size()!=countBefore+1) return 292;
     sectionGrid->commit({{NoteEdit::insert,{area.getEnd(),area.getEnd()+1,47,93,true,{}}}});
     if(sectionGrid->notes.size()!=countBefore+1) return 293;
-    const int other=(guitarItem+1)%tracks->getNumItems();
-    tracks->setSelectedItemIndex(other,juce::sendNotificationSync);
+    otherTrack->onClick();
     if(tracks->getSelectedItemIndex()!=other) return 294;
     if (!click("Print lead sheet")) return 288;
     auto* sheet=descendant<ScoreView>(main);

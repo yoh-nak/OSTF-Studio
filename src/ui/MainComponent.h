@@ -27,6 +27,7 @@
 #include "ui/ControllerSurface.h"
 #include "ui/MidiActivityLamp.h"
 #include "ui/LiveSections.h"
+#include "ui/LiveTrackSelector.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
@@ -393,6 +394,7 @@ private:
     bool trackEditorOpen_ = true, mixerSelected_ = false;
     bool lowerPaneOpen() const { return trackEditorOpen_ || mixerSelected_; }
     LiveSections live_;
+    LiveTrackSelector liveTracks_;
     std::optional<std::size_t> liveGeneration_;
     TransportPanel deck_;
     SongBasicsPanel basics_;

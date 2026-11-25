@@ -1202,3 +1202,7 @@ countries: jp
 "Print..." = "プリンターで印刷…"
 "Recording input level" = "録音入力レベル"
 "Play section" = "構成を再生"
+"Favourites" = "お気に入り"
+"Favourite track" = "このトラックをお気に入りに登録・解除"
+"Editing track" = "編集中"
+"Star a track in All tracks to show it here." = "「全トラック」で使いたいトラックの☆を押してください。"

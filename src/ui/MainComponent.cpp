@@ -500,6 +500,8 @@ MainComponent::MainComponent() {
     addView(arrangementButton_, "Arrangement", showArrangement);
     addView(liveButton_,"Live session",openLiveSession);
     addChildComponent(live_);
+    addChildComponent(liveTracks_);
+    liveTracks_.selectTrack = [this](std::size_t track) { selectTrack(track); };
     live_.selectionChanged=[this] {
         pianoGrid_.selection.clear();
         refreshPianoNotes(); pianoGrid_.repaint(); repaint();
@@ -3116,6 +3118,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     savedScore_ = project_->sourceScore;
     sessionEdited_ = false;
     currentFilename_ = filename;
+    liveTracks_.openDocument(project_->documentId, *viewPreferences_.getUserSettings());
     legacySourceFile_ = project_->sourceVersion != "5.0.0" && sourceFolder != juce::File{}
                             ? sourceFolder.getChildFile(filename)
                             : juce::File{};
@@ -6833,6 +6836,7 @@ void MainComponent::refreshEditor() {
     const bool arranging = workspaceMode_ == WorkspaceMode::arrangement;
     const bool live=project_ && workspaceMode_==WorkspaceMode::live;
     live_.setVisible(live);
+    liveTracks_.setVisible(live);
     liveButton_.setToggleState(live,juce::dontSendNotification);liveButton_.setEnabled(project_ && !recordTrack_);
     const bool reading = project_ && !arranging && !live;
     if (reading && !scoreView_) {
@@ -6984,7 +6988,7 @@ void MainComponent::refreshEditor() {
     midiDrag_.setEnabled(selectedTrack_ && canExportTrack(*selectedTrack_));
     mixer_.setVisible(arranging && project_ != nullptr && showMixer);
     if(live){
-        trackPicker_.setVisible(true);
+        liveTracks_.bind(*project_, selectedTrack_);
         const bool source=selectedTrack_ && *selectedTrack_<project_->sourceTrackCount();
         pianoGrid_.setVisible(selectedTrack_ && project_->trackKinds[*selectedTrack_]!=ostfstudio::TrackKind::audio);
         live_.arm.setToggleState(source && project_->trackIds[int(*selectedTrack_)]==armedId_,juce::dontSendNotification);
@@ -7081,8 +7085,7 @@ void MainComponent::resized() {
         verticalScroll_.setVisible(false);
         if(workspaceMode_==WorkspaceMode::live) {
             live_.setBounds(editor.removeFromRight(std::clamp(editor.getWidth()/3,220,390)));
-            auto top=editor.removeFromTop(35);
-            trackPicker_.setBounds(top.removeFromLeft(std::min(320,top.getWidth())).reduced(3));
+            liveTracks_.setBounds(editor.removeFromTop(liveTracks_.preferredHeight(editor.getWidth() - 4)).reduced(2, 0));
             editor.removeFromLeft(45);
             editor.removeFromTop(18);
             pianoGrid_.setBounds(editor.reduced(5,4));

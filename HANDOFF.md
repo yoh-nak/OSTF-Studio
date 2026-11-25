@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Live track selection
+
+On `feat/live-sections-track-console`, the live piano roll has direct track buttons and a per-song Favourites filter. Use the star beside each track to edit the set. The header identifies the piano-roll target even when it is filtered out. Narrow windows wrap the track list and allow vertical scrolling. The ordinary arrangement retains its track picker.
+
+Windows x64 portable build: `dist/windows-live-tracks/Portable/OSTF Studio.exe`. The track-view smoke test exercises direct selection, empty and multi-track favourites, document isolation, restored settings, narrow-window scrolling and wide-window wrapping. macOS and physical-controller operation have not been tested for this change.
+
 ## Live sections, track colours and print layout
 
 Branch `feat/live-sections-track-console`. Windows x64 portable build: `dist/windows-live-sections/Portable/OSTF Studio.exe`. The folder includes 36 VST3 bundles and their licences.
