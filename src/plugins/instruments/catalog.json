@@ -20,5 +20,5 @@
     "code": "Owt1"
   },
   {"type":"Singer","name":"OSTF Formant Singer","code":"Osg1"},
-  {"type":"ScaleEditor","name":"OSTF Scale Editor","code":"Ose1"}
+  {"type":"ScaleEditor","name":"OSTF Scale Editor","code":"Ose1","installerGroup":"composition"}
 ]

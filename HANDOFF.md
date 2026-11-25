@@ -1,5 +1,9 @@
 # OSTF Studio development handoff
 
+## Selectable plug-in installers
+
+Branch `feat/selectable-plugin-installers`. Windows Setup and the Apple silicon PKG share the stock catalogue in `packaging/plugin_choices.py`. Run `python tests/installer_choices.py` to check both selection trees, the Windows helper payloads and macOS receipt mappings. Windows Setup and Portable ZIP were built locally from the 5.1 Studio build and 36 stock VST3s. The workflow exercises selective installation on each OS and full installation afterward. The macOS package and native install paths still need a macOS run.
+
 ## 5.1 score integration and demo arrangements
 
 Branch `feat/ostf51-studio`. Schemas and the MIDI comp fixture are from upstream revision `957bd071cecc58a12f417ad212c40723ba9812ca`. To refresh the arrangements run `python examples/demo-songs/generate.py`, then run `examples/demo-songs/verify.py` with the checked-out reference repository path. Build the app, stock VST3s and GUI tests in Release. Run `ostf_native_comps`, `ostf_studio_demo_gallery`, `ostf_studio_stock_effects`, the two scale tests and `ostf_singing_tests`. ScaleWorkspace.html adapts the offline HTML bundled in the supplied OSTF Scale Editor v1.0 Max device. Scale-only return validates against the original working snapshot. On Windows the eight generated projects passed upstream package validation and Score, Production and Manifest schemas. The gallery load/save checks also passed. A real browser applied a scale to Paper Lantern Replies and the native ScaleDocument imported the export successfully. Both a standalone bridge and a hosted lead vocal rendered to 48 kHz WAV. Hardware monitoring, macOS and subjective vocal listening require separate checks.

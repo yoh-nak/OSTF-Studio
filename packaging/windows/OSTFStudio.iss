@@ -19,20 +19,39 @@ OutputBaseFilename=OSTF_Studio_Windows_x64_Setup
 SetupIconFile=..\..\assets\AppIcon.ico
 WizardStyle=modern
 SetupLogging=yes
+UsePreviousTasks=no
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [CustomMessages]
+#include GroupLabels
+en.AllPlugins=Studio and all plug-ins
+ja.AllPlugins=Studio 本体とすべてのプラグイン
+en.AppOnly=Studio application only
+ja.AppOnly=Studio 本体のみ
+en.ChoosePlugins=Select individual plug-ins
+ja.ChoosePlugins=プラグインを選択
+en.Application=OSTF Studio application
+ja.Application=OSTF Studio 本体
 en.SharedTask=Install or update shared VST3 plug-ins for Studio and other DAWs (requires administrator approval)
 ja.SharedTask=Studio と他の DAW で使う共有 VST3 をインストール・更新する（管理者の許可が必要）
 en.SharedLaunchError=Windows could not start the shared VST3 installer. %1 (Windows error %2)
 ja.SharedLaunchError=Windows が共有 VST3 インストーラーを起動できませんでした。%1（Windows エラー %2）
 en.SharedExitError=The shared VST3 installer stopped (setup exit code %1). If a DAW is using an OSTF plug-in that needs updating, save your work and close that DAW before retrying.
 ja.SharedExitError=共有 VST3 のインストールが中断されました（セットアップ終了コード %1）。更新が必要な OSTF プラグインを DAW で使用している場合は、作業を保存してその DAW を閉じてから再試行してください。
-en.ContinueAppOnly=Continue installing the Studio application now? To install missing instruments and effects later, run this installer again and select the shared VST3 task.
-ja.ContinueAppOnly=今回は Studio 本体のインストールを続けますか？ 不足している音源・エフェクトは、あとでこのインストーラーを再実行し、共有 VST3 の項目を選ぶと追加できます。
+en.ContinueAppOnly=Continue installing the Studio application now? To add plug-ins later, run this installer again and choose them from the component list.
+ja.ContinueAppOnly=今回は Studio 本体のインストールを続けますか？ プラグインは、あとでこのインストーラーを再実行し、一覧から選んで追加できます。
+
+[Types]
+Name: "full"; Description: "{cm:AllPlugins}"
+Name: "apponly"; Description: "{cm:AppOnly}"
+Name: "custom"; Description: "{cm:ChoosePlugins}"; Flags: iscustom
+
+[Components]
+Name: "studio"; Description: "{cm:Application}"; Types: full apponly custom; Flags: fixed
+#include PluginComponents
 
 [Tasks]
 Name: "sharedvst3"; Description: "{cm:SharedTask}"
@@ -62,18 +81,32 @@ Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project\shell\open\command"; Va
 
 [Code]
 var
-  SharedInstalled: Boolean;
+  InstalledSelection: String;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  { Keep the sharedvst3 command-line task for existing automated installs. }
+  Result := PageID = wpSelectTasks;
+end;
+
+function SelectedPlugins: String;
+begin
+  Result := '';
+  #include PluginSelection
+  if Result <> '' then Delete(Result, 1, 1);
+end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ExitCode: Integer;
-  Params: String;
+  Params, Selection: String;
   ShowCommand: Integer;
 begin
   Result := '';
-  if SharedInstalled or not WizardIsTaskSelected('sharedvst3') then exit;
+  Selection := SelectedPlugins;
+  if (Selection = '') or (Selection = InstalledSelection) or not WizardIsTaskSelected('sharedvst3') then exit;
   ExtractTemporaryFile('OSTF-Studio-VST3-Setup.exe');
-  Params := '/SUPPRESSMSGBOXES /NORESTART /SP- /NOCLOSEAPPLICATIONS';
+  Params := '/TYPE=custom /COMPONENTS="' + Selection + '" /SUPPRESSMSGBOXES /NORESTART /SP- /NOCLOSEAPPLICATIONS';
   if WizardSilent then begin
     Params := '/VERYSILENT ' + Params;
     ShowCommand := SW_HIDE;
@@ -87,7 +120,7 @@ begin
   else if ExitCode <> 0 then
     Result := FmtMessage(CustomMessage('SharedExitError'), [IntToStr(ExitCode)])
   else
-    SharedInstalled := True;
+    InstalledSelection := Selection;
   if Result <> '' then begin
     Log(Result);
     if not WizardSilent then
@@ -120,7 +153,7 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if (CurStep = ssPostInstall) and SharedInstalled then begin
+  if (CurStep = ssPostInstall) and (InstalledSelection <> '') then begin
     #include MigrationList
   end;
 end;
