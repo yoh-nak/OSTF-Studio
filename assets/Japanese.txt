@@ -1154,3 +1154,9 @@ countries: jp
 "Meter refresh rate" = "メーターの更新頻度"
 
 "Phase" = "位相"
+
+"Set the first bar and number of bars to loop" = "ループの開始小節と長さを設定"
+
+"Start bar" = "開始小節"
+
+"Length in bars" = "長さ（小節）"

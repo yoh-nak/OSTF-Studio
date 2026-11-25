@@ -126,6 +126,14 @@ int checkPianoEdits(const juce::File& fixture) {
             juce::Point<float> xy{125,y};
             steps.mouseDown(pointer(steps,xy,xy,juce::ModifierKeys::shiftModifier));
         };
+        steps.setLoopBars(2,2);
+        steps.bind(&score,0,9000,240);
+        if (steps.loopRange() != juce::Range<juce::int64>(3840,11520) || steps.range().getStart() != 0) return 131;
+        steps.setLoopBars(3,8);
+        if (steps.loopRange() != juce::Range<juce::int64>(7680,11520)) return 132;
+        steps.bind(nullptr,0,0,240);
+        steps.bind(&score,0,0,240);
+        if (steps.loopRange() != steps.range()) return 133;
         touch(72);
         if (edits.size()!=1 || edits[0].action!=NoteEdit::erase || edits[0].note.id!="a") return 68;
         touch(48);

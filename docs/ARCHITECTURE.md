@@ -1,5 +1,9 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+The mixer master has a pinned viewport. Two calibrated, average-responding VU envelopes and a chronological ring of stereo samples are measured after master processing and gain, before the Cue monitor switch. The drum editor keeps its optional, bar-addressed playback/recording loop separate from the visible editing page. Both use source-score ticks.
+
+The local singing instrument analyses pitch marks when a voice bank loads. Sustained grains overlap at the output pitch while retaining the source waveform inside each grain. Adjacent syllables overlap briefly using the outgoing renderer. Studio supplies phoneme duration in its private articulation message. The instrument also accepts earlier messages and derives durations from host tempo in imported-score mode.
+
 The footer and File menu expose the score and clip edit journal, including the state of pending chord decisions. Selecting an earlier or later entry uses the same restoration path as Undo and Redo. The platform meter samples system CPU counters and physical memory once a second on the message thread.
 
 Formant Singer plays a recorded consonant onset at its source rate, then transitions to the pitched vowel. Adjacent notes on the same channel can share a short pitch transition and sample crossfade. Sustained notes gain a delayed, low-depth pitch variation within the note's authored expression.

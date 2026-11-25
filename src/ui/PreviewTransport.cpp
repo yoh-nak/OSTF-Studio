@@ -186,8 +186,8 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     sampleRate_ = sampleRate;
     for (auto& pair : vu_) for (auto& channel : pair) channel.prepare(sampleRate);
     for (auto& v : vuPublished_) v.store(0, std::memory_order_relaxed);
-    masterAnalyzer_.prepare(sampleRate, 2);
-    phaseIndex_ = 0; phaseDecimation_ = 0; scopeFrame_ = {};
+    for (auto& meter : masterVu_) meter.prepare(sampleRate);
+    phaseDecimation_ = 0; scopeFrame_ = {};
     { const juce::SpinLock::ScopedLockType guard(masterPublishLock_); publishedMaster_ = {}; }
     if (project.clock.empty()) return juce::Result::fail("The song needs an initial tempo.");
     if (!monitorOnly) {
@@ -364,7 +364,8 @@ juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview&
                     const auto duration = clock_.secondsAt(n.endTick) - start;
                     const auto edges = ostfstudio::singing::articulationPositions(entry->second, duration);
                     for (size_t p = 0; p < entry->second.size(); ++p)
-                        midi->addEvent(ostfstudio::singing::phoneMessage(setup.midiChannel, key, entry->second[p]),
+                        midi->addEvent(ostfstudio::singing::phoneMessage(setup.midiChannel, key, entry->second[p],
+                                       duration * (edges[p+1] - edges[p])),
                                        juce::roundToInt((start + edges[p] * duration) * sampleRate_));
                 }
             }
@@ -683,17 +684,14 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
     const auto* right = stems_[0].getReadPointer(1);
     for (int i = 0; i < audible; ++i) {
         const float l = left[i] * masterGain, r = right[i] * masterGain;
-        masterAnalyzer_.push(l, r);
         if (--phaseDecimation_ <= 0) {
-            scopeFrame_.scope[phaseIndex_] = {l, r};
-            phaseIndex_ = (phaseIndex_ + 1) % scopeFrame_.scope.size();
+            scopeFrame_.scope[scopeFrame_.nextPoint] = {l, r};
+            scopeFrame_.nextPoint = (scopeFrame_.nextPoint + 1) % scopeFrame_.scope.size();
             phaseDecimation_ = std::max(1, int(sampleRate_ / 6000));
         }
     }
-    const auto& readings = masterAnalyzer_.values;
-    scopeFrame_.momentary = readings.momentary;
-    scopeFrame_.integrated = readings.integrated;
-    scopeFrame_.truePeak = std::max(readings.currentTruePeak[0], readings.currentTruePeak[1]);
+    scopeFrame_.vu = {masterVu_[0].process(left, audible, masterGain),
+                      masterVu_[1].process(right, audible, masterGain)};
     { const juce::SpinLock::ScopedTryLockType guard(masterPublishLock_);
       if (guard.isLocked()) publishedMaster_ = scopeFrame_; }
     for (int c = 0; c < 2; ++c) {

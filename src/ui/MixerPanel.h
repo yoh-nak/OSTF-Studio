@@ -85,7 +85,7 @@ private:
     juce::TextButton addBusButton_ {TRANS("+ Bus")};
     juce::TextButton addReturnButton_ {TRANS("+ Return")};
     juce::Component rack_;
-    juce::Viewport viewport_;
+    juce::Viewport viewport_, masterViewport_;
     juce::Component outputRack_;
     juce::Viewport outputViewport_;
     std::vector<ostfstudio::ChannelMix> channels_;

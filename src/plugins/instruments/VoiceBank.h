@@ -8,19 +8,18 @@ struct RecordedMora {
     std::vector<float> frames;
     double rate{}, period{};
     int loopStart{}, loopEnd{}, fade{}, consonantFrames{};
-
-    // Read at the source rate inside each grain. Changing the spacing of the
-    // grains changes the sung pitch without shifting the vowel's resonances.
-    float pitchedGrain(double centre, double phase, double targetPeriod) const {
-        const double mark = std::round(centre / period) * period;
-        const auto sample = [&](double at) {
-            at = std::clamp(at, 0., double(frames.size() - 2));
-            const int i = int(at);
-            return std::lerp(frames[i], frames[i + 1], float(at - i));
-        };
-        const double blend = .5 - .5 * std::cos(juce::MathConstants<double>::pi * phase);
-        return std::lerp(sample(mark + phase * targetPeriod),
-                         sample(mark + (phase - 1.) * targetPeriod), float(blend));
+    std::vector<int> pitchMarks;
+    void preparePitchMarks();
+    int nearestMark(double at) const {
+        const auto next = std::lower_bound(pitchMarks.begin(), pitchMarks.end(), at);
+        if (next == pitchMarks.begin()) return *next;
+        if (next == pitchMarks.end() || at - *(next-1) < *next - at) return *(next-1);
+        return *next;
+    }
+    float sampleAt(double at) const {
+        at = std::clamp(at, 0., double(frames.size()-2));
+        const int i = int(at);
+        return std::lerp(frames[i],frames[i+1],float(at-i));
     }
 
     float read(double& position, double step) const {

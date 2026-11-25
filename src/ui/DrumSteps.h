@@ -40,6 +40,10 @@ public:
         loop.setButtonText(TRANS("Loop"));
         addAndMakeVisible(loop);
         loop.onClick = [this] { notifyRange(); };
+        addAndMakeVisible(loopSettings);
+        loopSettings.setTitle(TRANS("Loop range"));
+        loopSettings.setTooltip(TRANS("Set the first bar and number of bars to loop"));
+        loopSettings.onClick = [this] { showLoopSettings(); };
         for (int n : {1, 2, 4})
             bars.addItem(juce::String(n) + " " + TRANS("bars"), n);
         bars.setSelectedId(1);
@@ -72,6 +76,20 @@ public:
                          "for more slots."));
     }
     bool looping() const { return isVisible() && loop.getToggleState(); }
+    juce::Range<Tick> loopRange() const {
+        if (!song || song->ticksPerBar <= 0) return {};
+        if (!customLoop) return range();
+        const Tick firstTick = Tick(loopFirst - 1) * song->ticksPerBar;
+        return {firstTick, std::min(song->playbackEndTick(), firstTick + Tick(loopBars) * song->ticksPerBar)};
+    }
+    void setLoopBars(int firstBar, int length) {
+        if (!song || song->ticksPerBar <= 0) return;
+        customLoop = true;
+        const int last = std::max(1, song->bars.endBar - 1);
+        loopFirst = std::clamp(firstBar, 1, last);
+        loopBars = std::clamp(length, 1, last - loopFirst + 1);
+        notifyRange();
+    }
     juce::Range<Tick> range() const {
         return song ? juce::Range<Tick>{start, std::min(song->playbackEndTick(), start + span())} : juce::Range<Tick>{};
     }
@@ -79,6 +97,7 @@ public:
         if (song != project || track != index) {
             start = 0;
             selected = first = 0;
+            customLoop = false;
             loop.setToggleState(false, juce::dontSendNotification);
         }
         song = project;
@@ -87,7 +106,10 @@ public:
         if (song) {
             grid = step > 1 ? step : std::max(1., song->ppq / 4.);
             start = std::clamp<Tick>(start, 0, song->playbackEndTick() - 1);
+            if (customLoop && (loopFirst + loopBars - 1 >= song->bars.endBar))
+                setLoopBars(loopFirst, loopBars);
         }
+        updateLoopCaption();
         repaint();
     }
     void resized() override {
@@ -102,6 +124,7 @@ public:
         locate.setBounds(top.removeFromLeft(79).reduced(1));
         bars.setBounds(top.removeFromLeft(80).reduced(1));
         loop.setBounds(top.removeFromLeft(64));
+        loopSettings.setBounds(top.removeFromLeft(93).reduced(1));
         repeats.setBounds(top.removeFromLeft(112).reduced(1));
         fill.setBounds(top.removeFromLeft(104).reduced(1));
     }
@@ -192,6 +215,58 @@ private:
     static constexpr int rowHeight = 24;
     juce::TextButton back, forward, locate, fill;
     juce::ToggleButton loop;
+    juce::TextButton loopSettings;
+    int loopFirst = 1, loopBars = 1;
+    bool customLoop = false;
+    void updateLoopCaption() {
+        const auto ticks = loopRange();
+        if (ticks.isEmpty()) { loopSettings.setButtonText(TRANS("Loop range")); return; }
+        const auto firstBar = 1 + ticks.getStart() / song->ticksPerBar;
+        const auto lastBar = 1 + (ticks.getEnd() - 1) / song->ticksPerBar;
+        loopSettings.setButtonText(juce::String(firstBar) + " - " + juce::String(lastBar)
+                                   + "  " + juce::String::charToString(0x25be));
+    }
+    void showLoopSettings() {
+        if (!song || loopRange().isEmpty()) return;
+        struct BarEditor final : juce::Component {
+            juce::Label fromLabel, lengthLabel;
+            juce::Slider from, length;
+            BarEditor(DrumSteps& owner) {
+                const auto range = owner.loopRange();
+                const int last = owner.song->bars.endBar - 1;
+                const int first = int(range.getStart() / owner.song->ticksPerBar) + 1;
+                fromLabel.setText(TRANS("Start bar"), juce::dontSendNotification);
+                lengthLabel.setText(TRANS("Length in bars"), juce::dontSendNotification);
+                int y = 6;
+                for (auto pair : {std::pair{&fromLabel,&from}, std::pair{&lengthLabel,&length}}) {
+                    auto [label, slider] = pair;
+                    addAndMakeVisible(*label); addAndMakeVisible(*slider);
+                    slider->setTitle(label->getText());
+                    slider->setSliderStyle(juce::Slider::IncDecButtons);
+                    slider->setTextBoxStyle(juce::Slider::TextBoxLeft, false, 45, 24);
+                    label->setBounds(5,y,104,28); slider->setBounds(111,y,108,28);
+                    y += 34;
+                }
+                const auto limit = [](juce::Slider& control, int maximum) {
+                    control.setRange(1, std::max(2, maximum), 1);
+                    control.setEnabled(maximum > 1);
+                    if (maximum == 1) control.setValue(1,juce::dontSendNotification);
+                };
+                limit(from,last); limit(length,last-first+1);
+                from.setValue(first,juce::dontSendNotification);
+                length.setValue((range.getLength()+owner.song->ticksPerBar-1)/owner.song->ticksPerBar,juce::dontSendNotification);
+                auto change = [this, target = juce::Component::SafePointer<DrumSteps>(&owner), last, limit,
+                               project = owner.song, trackIndex = owner.track] {
+                    if (!target || target->song != project || target->track != trackIndex) return;
+                    limit(length,last-int(from.getValue())+1);
+                    target->setLoopBars(int(from.getValue()),int(length.getValue()));
+                };
+                from.onValueChange = length.onValueChange = change;
+                setSize(225,76);
+            }
+        };
+        juce::CallOutBox::launchAsynchronously(std::make_unique<BarEditor>(*this), loopSettings.getScreenBounds(), nullptr);
+    }
     juce::ComboBox bars, repeats;
     int selected = 0, first = 0;
     Tick barStart(Tick t) const { return t / song->ticksPerBar * song->ticksPerBar; }
@@ -204,6 +279,7 @@ private:
     }
     juce::Rectangle<int> gridArea() const { return getLocalBounds().withTrimmedTop(headerHeight).withTrimmedLeft(labelWidth); }
     void notifyRange() {
+        updateLoopCaption();
         repaint();
         if (loopChanged) loopChanged();
     }

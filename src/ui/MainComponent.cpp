@@ -2454,7 +2454,7 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
         if ((!monitorOnly || i == monitorDest) && !tracks[i].external) copyEffects(trackControls_[i]->effects, inserts[PreviewTransport::outputCount + i]);
     const auto start = cursorTick_ >= project_->playbackEndTick() ? 0 : std::max<juce::int64>(0, cursorTick_);
     PreviewTransport::TakeOptions take;
-    take.cycle = drumSteps_.looping() ? drumSteps_.range() : (cycleButton_.getToggleState() && !drumSteps_.isVisible()
+    take.cycle = drumSteps_.looping() ? drumSteps_.loopRange() : (cycleButton_.getToggleState() && !drumSteps_.isVisible()
         ? editorCycle_ : juce::Range<juce::int64>{});
     take.controlPort = mackiePort_;
     if (monitorOnly) take.cycle = {};
@@ -6142,7 +6142,7 @@ void MainComponent::setWorkspaceMode(WorkspaceMode mode) {
 
 void MainComponent::updateDrumLoop() {
     if (!transportActive_ || recordTrack_ || !transport_.isRunning()) return;
-    const auto range = drumSteps_.looping() ? drumSteps_.range() : cycleButton_.getToggleState() && !drumSteps_.isVisible()
+    const auto range = drumSteps_.looping() ? drumSteps_.loopRange() : cycleButton_.getToggleState() && !drumSteps_.isVisible()
         ? editorCycle_ : juce::Range<juce::int64>{};
     if (range == activeLoop_) return;
     activeLoop_ = range;

@@ -378,7 +378,7 @@ private:
         for (int i=0; i<20; ++i) playback.renderBlock(audio.getArrayOfWritePointers(),2,block);
         const auto meters = playback.takeMeters();
         return meters.tracks[lead][0] > .001f && meters.tracks[backing][0] > .001f
-            && meters.vu[backing] > .001f && meters.master.truePeak > .001f
+            && meters.vu[backing] > .001f && meters.master.vu[0] > .001f && meters.master.vu[1] > .001f
             && std::any_of(meters.master.scope.begin(), meters.master.scope.end(), [](auto point) {
                 return point[0] != 0 || point[1] != 0;
             }) ? 0 : 13;
@@ -1332,6 +1332,12 @@ int checkTrackView(const juce::File& fixture) {
         auto* output = findControl<juce::ComboBox>(*mixer, tracks->getItemText(0) + " output");
         if (!addBus || !addReturn || !output || addBus->getRight() > addReturn->getX()
             || main.getComponentAt(main.getLocalPoint(addBus, addBus->getLocalBounds().getCentre())) != addBus) return 251;
+        auto* masterMute = findControl<juce::TextButton>(*mixer, TRANS("Master") + " mute");
+        if (!masterMute) return 258;
+        const auto masterArea = mixer->getLocalArea(masterMute->getParentComponent(),masterMute->getParentComponent()->getLocalBounds());
+        const auto trackArea = mixer->getLocalArea(output->getParentComponent(),output->getParentComponent()->getLocalBounds());
+        if (masterArea.getX() >= trackArea.getX() || masterArea.getWidth() <= trackArea.getWidth()
+            || mixer->getLocalPoint(cueStatus,juce::Point<int>{}).x <= masterArea.getRight()) return 258;
         const auto returns = mixer->returnCount();
         for (auto bus = mixer->routing().busCount; bus < ostfstudio::maxMixerBuses; ++bus) {
             if (!addBus->isEnabled()) return 252;

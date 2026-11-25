@@ -1,5 +1,9 @@
 # OSTF Studio
 
+The mixer pins the master on the far left. Its two VU needles show the post-fader left and right signals, with a phase scope underneath. Each source strip has a needle VU above the fader. A steady sine at −18 dBFS reads 0 VU.
+
+In the drum step sequencer, open the numbered range beside **Loop**, enter the first bar and length, then enable **Loop**. After you set a range you can page through the step grid independently. The built-in singer crossfades neighbouring syllables and times English vowel changes and consonants to the sung note.
+
 Enable **Chord fit** or **Scale fit** in View to see a colour-coded percentage on each corresponding global timeline region. The denominator is the total pitched note duration sounding within that region across tracks. A targeted scale counts the notes to which it applies. Hover over short regions for a numeric reading.
 
 The VST3 browser lists a scanned component class once across installation paths and prefers a bundled copy in a portable build. The fixed-phrase OSTF Arranger preview has been retired.

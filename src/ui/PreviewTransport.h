@@ -1,5 +1,4 @@
 #pragma once
-#include "plugins/effects/AnalyzerMeters.h"
 #include "ui/LinkSession.h"
 #include "ui/AudioTrackInput.h"
 #include "ui/ControllerMap.h"
@@ -106,10 +105,9 @@ private:
     std::array<ostfstudio::PeakMailbox, maxTracks> trackMeters_;
     std::array<std::array<ostfstudio::VolumeUnit, 2>, maxTracks> vu_;
     std::array<std::atomic<float>, maxTracks> vuPublished_{};
-    ostfstudio::analyzer::Meters masterAnalyzer_;
+    std::array<ostfstudio::VolumeUnit, 2> masterVu_;
     ostfstudio::MasterReadout scopeFrame_, publishedMaster_;
     juce::SpinLock masterPublishLock_;
-    size_t phaseIndex_ = 0;
     int phaseDecimation_ = 0;
     std::array<ostfstudio::PeakMailbox, outputCount> outputMeters_;
     ostfstudio::PeakMailbox cueMeter_;

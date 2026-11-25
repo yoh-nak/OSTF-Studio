@@ -138,6 +138,17 @@ int main(int argc, char** argv) {
         || (city.at("a").front().english & 63) != 31 || (city.at("b").front().english & 63) != 33) return 21;
     if (word.size() != 3 || (word[0].english & 63) != 25 || (word[1].english & 63) != 6
         || (word[2].english & 63) != 33 || !isPhone(phoneMessage(1, 60, word[2]))) return 18;
+    const auto timed = phoneMessage(1,60,word[1],.730);
+    if (!isPhone(timed) || timed.getSysExDataSize()!=14
+        || timed.getSysExData()[12] + 128*timed.getSysExData()[13] != 730) return 22;
+    // The first sample of a joined phone must continue the outgoing voice.
+    render(word[1]);
+    singer->processBlock(audio,midi);
+    const auto uninterrupted = audio.getSample(0,0);
+    render(word[1]);
+    midi.addEvent(phoneMessage(1,60,{1,0}),0);
+    singer->processBlock(audio,midi);
+    if (std::abs(audio.getSample(0,0)-uninterrupted) > 1.e-5f) return 23;
     const auto edges = articulationPositions(word, .8);
     if (edges[2] - edges[1] < .8 || edges.back() != 1.) return 19;
     const auto vowel = render(word[1]), stop = render(word[2]);

@@ -1,10 +1,11 @@
 #include "ui/MixerPanel.h"
+#include "ui/ConsoleMeterFace.h"
 #include "ui/ConsoleLookAndFeel.h"
 #include <algorithm>
 #include <numeric>
 
 namespace {
-constexpr int stripWidth = 116;
+constexpr int stripWidth = 166, outputWidth = 108, masterWidth = 284;
 
 const char* groupName(ostfstudio::MixerTrackGroup group) {
     using enum ostfstudio::MixerTrackGroup;
@@ -94,21 +95,22 @@ void MixerPanel::Strip::resized() {
     if (listenOnMain) listenOnMain->setBounds(area.removeFromBottom(21));
     if (!isTrack && mute.isVisible()) mute.setBounds(area.removeFromBottom(21).withSizeKeepingCentre(40, 21));
     diagnostics = {};
-    if (isMaster) diagnostics = area.removeFromTop(std::clamp(area.getHeight() - 65, 0, 125));
+    if (isMaster) diagnostics = area.removeFromTop(std::min(248, area.getHeight() * 2 / 3));
     if (isTrack) {
         output.setBounds(area.removeFromTop(21).reduced(0, 1));
         returnTarget.setBounds(area.removeFromTop(20).reduced(0, 1));
         auto knobs = area.removeFromTop(62).withTrimmedTop(13);
         pan.setBounds(knobs.removeFromLeft(knobs.getWidth() / 2));
         sendLevel.setBounds(knobs);
-        diagnostics = area.removeFromTop(std::clamp(area.getHeight() - 64, 0, 22));
+        diagnostics = area.removeFromTop(std::min(85, area.getHeight()));
         auto switches = area.removeFromBottom(21);
         mute.setBounds(switches.removeFromLeft(switches.getWidth() / (arm.isVisible() ? 4 : 3)));
         solo.setBounds(switches.removeFromLeft(switches.getWidth() / (arm.isVisible() ? 3 : 2)));
         if (arm.isVisible()) arm.setBounds(switches.removeFromLeft(switches.getWidth() / 2));
         cue.setBounds(switches);
     }
-    meter.setBounds(area.removeFromRight(36).withTrimmedBottom(20).reduced(0, 2));
+    if (isMaster) area = area.withSizeKeepingCentre(std::min(100, area.getWidth()), area.getHeight());
+    else meter.setBounds(area.removeFromRight(36).withTrimmedBottom(20).reduced(0, 2));
     volume.setBounds(area);
 }
 
@@ -149,47 +151,15 @@ void MixerPanel::Strip::paint(juce::Graphics& g) {
     g.setColour(face.brighter(.30f));
     g.drawRoundedRectangle(bounds.reduced(.5f), 4.f, 1.f);
     if (!diagnostics.isEmpty()) {
-        auto box = diagnostics.reduced(1);
-        g.setColour(juce::Colour(0xff152026)); g.fillRoundedRectangle(box.toFloat(), 3);
-        g.setFont(juce::FontOptions(10.5f));
-        if (isTrack) {
-            const auto scale = box.reduced(3, 1);
-            const auto bar = scale.withTrimmedTop(std::max(0,scale.getHeight()-4)).toFloat();
-            const float db = juce::Decibels::gainToDecibels(vu, -24.f);
-            g.setColour(juce::Colour(0xffdae5ef));
-            g.drawText("VU", scale.withTrimmedBottom(3), juce::Justification::centredLeft);
-            g.drawText(vu > .0631f ? juce::String(db,1) : juce::String::charToString(0x2014),
-                       scale.withTrimmedBottom(3), juce::Justification::centredRight);
-            for (int i = 0; i < 24; ++i) {
-                const auto tick = -24.f + (i + 1) * 27.f / 24;
-                const juce::Colour colour(tick <= -3 ? 0xff49ce75 : tick <= 0 ? 0xffffd14b : 0xfff65055);
-                g.setColour(colour.withAlpha(db >= tick ? 1.f : .19f));
-                g.fillRect(bar.getX() + i * bar.getWidth()/24,bar.getY(),std::max(1.f,bar.getWidth()/24-1),bar.getHeight());
-            }
-        } else if (isMaster) {
-            auto content = box.reduced(4, 2);
-            auto reading = [&](const juce::String& unit, double value) {
-                const auto row = content.removeFromTop(std::min(15,content.getHeight()));
-                g.setColour(juce::Colour(0xffbac9cf)); g.drawText(unit,row,juce::Justification::centredLeft);
-                g.setColour(juce::Colour(0xffedf5f4));
-                g.drawText(std::isfinite(value) ? juce::String(value,1) : juce::String::charToString(0x2014),row,juce::Justification::centredRight);
-            };
-            reading("LUFS M",analysis.momentary); reading("LUFS I",analysis.integrated);
-            reading("dBTP",analysis.truePeak > 0 ? 20*std::log10(analysis.truePeak) : -INFINITY);
-            if (content.getHeight() >= 20) {
-                g.setColour(juce::Colour(0xffbac9cf));
-                g.drawText(TRANS("Phase"),content,juce::Justification::topLeft);
-                const auto mid = content.toFloat().getCentre();
-                const float scale = .48f * std::min(content.getWidth(),content.getHeight());
-                g.setColour(juce::Colour(0xff43535e));
-                g.drawLine(mid.x-scale,mid.y,mid.x+scale,mid.y); g.drawLine(mid.x,mid.y-scale,mid.x,mid.y+scale);
-                g.setColour(juce::Colour(0xff80debc));
-                for (const auto& p : analysis.scope) {
-                    const float side = std::clamp((p[0]-p[1])*.5f,-1.f,1.f);
-                    const float sum = std::clamp((p[0]+p[1])*.5f,-1.f,1.f);
-                    if (side != 0 || sum != 0) g.fillEllipse(mid.x+scale*side-1,mid.y-scale*sum-1,2,2);
-                }
-            }
+        auto box = diagnostics.reduced(1, 2).toFloat();
+        if (isMaster) {
+            auto pair = box.removeFromTop(std::min(box.getWidth() * .255f, box.getHeight() * .44f));
+            auto left = pair.removeFromLeft(pair.getWidth() * .5f);
+            ostfstudio::console::drawVu(g, left.reduced(1, 0), analysis.vu[0], "L   VU");
+            ostfstudio::console::drawVu(g, pair.reduced(1, 0), analysis.vu[1], "R   VU");
+            ostfstudio::console::drawPhaseScope(g, box.withTrimmedTop(4), analysis);
+        } else {
+            ostfstudio::console::drawVu(g, box, vu, "VU");
         }
     }
     if (isTrack) {
@@ -205,6 +175,8 @@ MixerPanel::MixerPanel() {
     addAndMakeVisible(caption_);
     addAndMakeVisible(addBusButton_);
     addAndMakeVisible(addReturnButton_);
+    addAndMakeVisible(masterViewport_);
+    masterViewport_.setScrollBarsShown(true, false);
     addAndMakeVisible(viewport_);
     addAndMakeVisible(outputViewport_);
     viewport_.setViewedComponent(&rack_, false);
@@ -310,7 +282,9 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         routing_.cueDb = cue_->volume.getValue();
         if (routingChanged) routingChanged();
     };
-    outputRack_.addAndMakeVisible(*master_);
+    master_->meter.setVisible(false);
+    master_->setComponentID("master-strip");
+    masterViewport_.setViewedComponent(master_.get(), false);
     outputRack_.addAndMakeVisible(*cue_);
     addReturn();
     refreshAudibility();
@@ -530,22 +504,27 @@ void MixerPanel::resized() {
     addReturnButton_.setBounds(toolbar.removeFromRight(94).reduced(1));
     addBusButton_.setBounds(toolbar.removeFromRight(94).reduced(1));
     caption_.setBounds(toolbar);
-    const auto outputCount = static_cast<int>(buses_.size() + returns_.size()) + 2;
-    const auto groupWidth = juce::jmin(stripWidth * outputCount, area.getWidth() * 3 / 5);
+    const int height = std::max(360, area.getHeight() - viewport_.getScrollBarThickness());
+    masterViewport_.setBounds(area.removeFromLeft(std::min(masterWidth, area.getWidth() / 3)));
+    if (master_) {
+        const int scroll = height > masterViewport_.getHeight() ? masterViewport_.getScrollBarThickness() : 0;
+        master_->setSize(std::max(1, masterViewport_.getWidth() - scroll), height);
+    }
+    area.removeFromLeft(6);
+    const auto outputCount = static_cast<int>(buses_.size() + returns_.size()) + 1;
+    const auto groupWidth = std::min(outputWidth * outputCount, area.getWidth() * 2 / 5);
     outputViewport_.setBounds(area.removeFromRight(groupWidth));
-    area.removeFromRight(12);
+    area.removeFromRight(6);
     viewport_.setBounds(area);
-    // Keep a usable fader and meter below the routing controls in a shallow mixer pane.
-    const auto height = std::max(264, area.getHeight() - viewport_.getScrollBarThickness());
     rack_.setSize(stripWidth * static_cast<int>(strips_.size()), height);
-    outputRack_.setSize(stripWidth * outputCount, height);
-    auto rackBounds = rack_.getLocalBounds();
-    const auto place = [&](Strip& strip) { strip.setBounds(rackBounds.removeFromLeft(stripWidth).reduced(2, 1)); };
-    for (const auto index : trackOrder_) place(*strips_[index]);
-    rackBounds = outputRack_.getLocalBounds();
+    outputRack_.setSize(outputWidth * outputCount, height);
+    auto tracks = rack_.getLocalBounds();
+    for (const auto index : trackOrder_)
+        strips_[index]->setBounds(tracks.removeFromLeft(stripWidth).reduced(2, 1));
+    auto outputs = outputRack_.getLocalBounds();
+    const auto place = [&](Strip& strip) { strip.setBounds(outputs.removeFromLeft(outputWidth).reduced(2, 1)); };
     for (auto& bus : buses_) place(*bus);
     for (auto& strip : returns_) place(*strip);
-    if (master_) place(*master_);
     if (cue_) place(*cue_);
 }
 

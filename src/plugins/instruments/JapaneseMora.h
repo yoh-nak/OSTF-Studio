@@ -11,6 +11,7 @@ enum Delivery { plain, vibrato, scoop };
 struct Phone {
     int vowel = 0, onset = vowelOnly, glide = 0, delivery = plain, intensity = 0;
     int english = 0; // ARPAbet index, with bit 6 for primary stress.
+    int durationMs = 0; // Optional playback timing, outside the score format.
     int sampleKey() const { return (onset * 3 + glide) * 5 + vowel; }
 };
 

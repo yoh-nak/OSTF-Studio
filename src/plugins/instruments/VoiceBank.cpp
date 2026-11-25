@@ -112,10 +112,31 @@ std::optional<RecordedMora> readMora(std::unique_ptr<juce::InputStream> stream, 
         sample.consonantFrames = std::min(at, consonant > 0 ? vowelStart : int(.045 * sr));
         sample.loopEnd = at + int(std::round(cycles * sample.period));
         sample.fade = std::max(1, int(std::round(sample.period)));
+        sample.preparePitchMarks();
         return sample;
     }
     return {};
 }
+}
+
+// Follow one upward waveform crossing per period. Import-time analysis also applies
+// to user voice banks, whose pitch and recording phase can vary within a vowel.
+void RecordedMora::preparePitchMarks() {
+    pitchMarks.clear();
+    if (period < 2 || frames.size() < 3) return;
+    int mark = 0;
+    while (mark < int(frames.size())-2) {
+        pitchMarks.push_back(mark);
+        const int predicted = mark + int(std::round(period));
+        int nearest = predicted;
+        double distance = period;
+        const int radius = std::max(1, int(.23 * period));
+        for (int i = std::max(mark+1,predicted-radius); i <= std::min(int(frames.size())-2,predicted+radius); ++i)
+            if (frames[i] <= 0 && frames[i+1] > 0 && std::abs(i-predicted) < distance) {
+                nearest = i; distance = std::abs(i-predicted);
+            }
+        mark = nearest;
+    }
 }
 
 std::unique_ptr<VoiceBank> VoiceBank::load(const juce::File& directory, juce::String& error) {
@@ -187,6 +208,7 @@ const std::array<RecordedMora, 40>& VoiceBank::english() {
             for (auto& frame : sound.frames) frame = in.readShort() / 32768.f;
             sound.period = periodAt(sound.frames, frames / 4, sound.rate);
             if (sound.period <= 0) sound.period = sound.rate / 150.;
+            sound.preparePitchMarks();
         }
         return sounds;
     }();

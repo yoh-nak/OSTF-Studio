@@ -99,19 +99,21 @@ inline Lyrics lyricsFor(const juce::var& score) {
 }
 
 // Studio-private non-commercial SysEx. Accept the earlier two-field articulation as well.
-inline juce::MidiMessage phoneMessage(int ch, int key, Phone phone) {
+inline juce::MidiMessage phoneMessage(int ch, int key, Phone phone, double duration = 0.) {
+    const int ms = std::clamp(juce::roundToInt(duration * 1000), 0, 16383);
     const juce::uint8 data[]{0x7d, 'O', 'S', 'V', juce::uint8(ch - 1), juce::uint8(key),
         juce::uint8(phone.vowel), juce::uint8(phone.onset), juce::uint8(phone.glide),
-        juce::uint8(phone.delivery), juce::uint8(phone.intensity), juce::uint8(phone.english)};
-    return juce::MidiMessage::createSysExMessage(data, phone.english ? 12 : 11);
+        juce::uint8(phone.delivery), juce::uint8(phone.intensity), juce::uint8(phone.english),
+        juce::uint8(ms & 127), juce::uint8(ms >> 7)};
+    return juce::MidiMessage::createSysExMessage(data, ms ? 14 : phone.english ? 12 : 11);
 }
 inline bool isPhone(const juce::MidiMessage& m) {
     if (!m.isSysEx()) return false;
     const int size = m.getSysExDataSize();
-    if (size != 8 && size != 11 && size != 12) return false;
+    if (size != 8 && size != 11 && size != 12 && size != 14) return false;
     const auto* p = m.getSysExData();
     return p[0] == 0x7d && p[1] == 'O' && p[2] == 'S' && p[3] == 'V' && p[4] < 16 && p[5] < 128 && p[6] < 5
-        && (size != 12 || ((p[11] & 63) >= 1 && (p[11] & 63) <= 39))
+        && (size < 12 || (size == 14 && p[11] == 0) || ((p[11] & 63) >= 1 && (p[11] & 63) <= 39))
         && (size == 8 ? p[7] < 4 : p[7] < onsetCount && p[8] <= 2 && p[9] <= scoop && p[10] <= 127);
 }
 struct Syllable {

@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Console VUs, drum loop range and singer phrasing
+
+Branch `feat/console-meters-drum-loop-singer`. Source channels have needle VUs. The master at the far left has independent left/right VUs and a phase scope, tapped after master gain and before Cue selection. The numbered button beside the step-sequencer Loop switch sets a first bar and length. Paging the step editor preserves an explicit loop. The singer tracks source pitch marks, overlaps neighbouring syllables and fits English vowel transitions and consonants to their allocated duration.
+
+The Windows Release portable in `dist/windows-console-vu/Portable` passed the hosted Paper Lantern Replies lead/backing vocal check, including both master VUs and the scope. Both core tests passed. Of 31 Windows tests, 29 passed on the first run. The track-view test passed on its isolated retry. The Link transport check failed twice in the network-enabled test environment and passed in a separate isolated run. The mixer screenshot uses deterministic test signals. Matching 12.33-second vocal renders are in `build-visuals/console-singer-before.wav` and `console-singer-after.wav`. Hardware listening and macOS were not verified.
+
 ## Chorus display lyrics and mixer monitoring
 
 The arrangement and piano roll share the written lyric cells derived from the original phrases and the exact chord boundaries. Paper Lantern Replies has 55 chord cells per voice. Its first backing “Ah” starts on the offbeat of beat two in bar 18. The backing track opens at 100 px. Note timing and the portable score schema are unchanged.

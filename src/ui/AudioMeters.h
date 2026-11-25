@@ -39,8 +39,8 @@ private:
 };
 
 struct MasterReadout {
-    double momentary = -INFINITY, integrated = -INFINITY;
-    float truePeak = 0;
+    StereoPeak vu{};
+    std::size_t nextPoint = 0;
     std::array<StereoPeak, 96> scope{};
 };
 struct MeterFrame {
