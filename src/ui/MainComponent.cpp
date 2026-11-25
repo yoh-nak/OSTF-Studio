@@ -207,13 +207,13 @@ public:
 
 class EffectChainPanel final : public juce::Component, private juce::Timer {
 public:
-    struct Entry { juce::String name; bool editable; };
+    struct Entry { juce::String name; bool editable; juce::String key; };
     struct State { std::vector<Entry> entries; bool busy = true; };
 
     EffectChainPanel(const juce::String& track, std::function<State()> read,
                      std::function<void(int, int)> move, std::function<void(int)> edit,
                      std::function<void(int)> remove, std::function<void(juce::Component&)> add,
-                     std::function<void()> browser)
+                     std::function<void()> browser, std::function<void(int,juce::Component&)> selectKey)
         : read_(std::move(read)), move_(std::move(move)) {
         title_.setText(track + TRANS(" / FX chain"), juce::dontSendNotification);
         title_.setFont(juce::FontOptions(16.0f, juce::Font::bold));
@@ -230,6 +230,7 @@ public:
             row.handle.setTooltip(TRANS("Drag to a new position in the chain"));
             row.handle.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
             row.handle.addMouseListener(this, false);
+            row.key.onClick=[selectKey,index,button=&row.key]{selectKey(index,*button);};
             row.name.setJustificationType(juce::Justification::centredLeft);
             row.up.setTitle("Move effect " + juce::String(index + 1) + " up");
             row.down.setTitle("Move effect " + juce::String(index + 1) + " down");
@@ -261,6 +262,7 @@ public:
             row.open.setBounds(line.removeFromRight(48).reduced(1, 0));
             row.down.setBounds(line.removeFromRight(54).reduced(1, 0));
             row.up.setBounds(line.removeFromRight(42).reduced(1, 0));
+            if (row.key.isVisible()) row.key.setBounds(line.removeFromRight(118).reduced(1,0));
             row.name.setBounds(line.reduced(4, 0));
         }
         area.removeFromTop(4);
@@ -280,7 +282,8 @@ private:
     struct Row {
         juce::TextButton handle {"::"}, up {TRANS("Up")}, down {TRANS("Down")}, open {TRANS("Edit")}, remove {TRANS("Remove")};
         juce::Label name;
-        std::array<juce::Component*, 6> components() { return {&handle, &name, &up, &down, &open, &remove}; }
+        juce::TextButton key;
+        std::array<juce::Component*, 7> components() { return {&handle, &name, &up, &down, &open, &remove,&key}; }
     };
 
     void timerCallback() override { refresh(); }
@@ -296,6 +299,9 @@ private:
             const auto& entry = state.entries[static_cast<std::size_t>(i)];
             row.name.setText(juce::String(i + 1) + ". " + entry.name, juce::dontSendNotification);
             row.name.setTooltip(entry.name);
+            row.key.setVisible(entry.key.isNotEmpty());
+            row.key.setButtonText(entry.key);
+            row.key.setTooltip(TRANS("Sidechain source") + " / " + entry.key);
             row.handle.setEnabled(!state.busy && count_ > 1);
             row.up.setEnabled(!state.busy && i > 0);
             row.down.setEnabled(!state.busy && i + 1 < count_);
@@ -305,7 +311,7 @@ private:
         if (getHeight() != 102 + count_ * rowHeight) {
             dragSource_.reset();
             dragTarget_.reset();
-            setSize(484, 102 + count_ * rowHeight);
+            setSize(600, 102 + count_ * rowHeight);
         }
         add_.setEnabled(!state.busy && state.entries.size() < rows_.size());
     }
@@ -2452,8 +2458,14 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
             unavailable.push_back(juce::String::fromUTF8(project_->trackLanes[i].label));
     }
     PreviewTransport::Inserts inserts {};
-    const auto copyEffects = [](const EffectChain& chain, PreviewTransport::Chain& destination) {
-        for (std::size_t slot = 0; slot < chain.slots.size(); ++slot) destination[slot] = chain.slots[slot].effect.get();
+    const auto copyEffects = [&](const EffectChain& chain, PreviewTransport::Chain& destination) {
+        for (std::size_t slot = 0; slot < chain.slots.size(); ++slot) {
+            const auto& fx=chain.slots[slot];
+            destination[slot]=fx.effect.get();
+            const int key=project_->trackIds.indexOf(fx.keyTrackId);
+            if(fx.effect && key>=0 && size_t(key)<tracks.size())
+                inserts.keyTracks[fx.effect.get()]=tracks[size_t(key)].outputTrack.value_or(size_t(key));
+        }
     };
     for (std::size_t i = 0; i < outputControls_.size(); ++i) copyEffects(outputControls_[i].effects, inserts[i]);
     for (std::size_t i = 0; i < std::min(trackControls_.size(), PreviewTransport::maxTracks); ++i)
@@ -3083,6 +3095,7 @@ void MainComponent::saveDocument(SaveFormat format) {
                         for (const auto& slot : chain.slots) {
                             const auto key = ostfstudio::SessionMix::effectSlot(output, index, ids.size());
                             ids.add(slot.id);
+                            if (safe->project_->trackIds.contains(slot.keyTrackId)) mix.sidechainTracks[key]=slot.keyTrackId;
                             for (const auto& fx : ostfstudio::stockEffects) if (slot.id == fx.chainId()) {
                                 juce::MemoryBlock state;
                                 if (slot.effect) slot.effect->getStateInformation(state);
@@ -4748,7 +4761,12 @@ void MainComponent::showEffects(bool output, std::size_t index) {
                     const auto name = slot.effect ? slot.effect->getName()
                         : slot.id.upToLastOccurrenceOf("|", false, false).fromLastOccurrenceOf("|", false, false)
                             + (slot.id.isEmpty() ? TRANS("Loading...") : TRANS(" (unavailable)"));
-                    state.entries.push_back({name, slot.effect != nullptr});
+                    juce::String key;
+                    if (name=="OSTF Unmask" && slot.effect && (output || index<self->project_->sourceTrackCount())) {
+                        const int source=self->project_->trackIds.indexOf(slot.keyTrackId);
+                        key=TRANS("Key") + " / " + (source>=0 ? juce::String::fromUTF8(self->project_->trackLanes[size_t(source)].label) : TRANS("Off"));
+                    }
+                    state.entries.push_back({name, slot.effect != nullptr,key});
                 }
             }
             return state;
@@ -4807,6 +4825,27 @@ void MainComponent::showEffects(bool output, std::size_t index) {
         },
         [current] {
             if (auto* self = current(); self && !self->pluginBrowserButton_.getToggleState()) self->togglePluginBrowser();
+        },
+        [current,output,index](int position,juce::Component& button) {
+            auto* self=current(); if(!self) return;
+            auto& chain=self->effectChain(output,index);
+            auto* processor=chain.slots[size_t(position)].effect.get();
+            const auto selected=chain.slots[size_t(position)].keyTrackId;
+            juce::PopupMenu menu; menu.addItem(1,TRANS("Off"),true,selected.isEmpty());
+            const auto ids=self->project_->trackIds;
+            for(int i=0;i<int(self->project_->sourceTrackCount());++i) {
+                if ((!output && size_t(i)==index) || self->trackControls_[size_t(i)]->outputTrack
+                    || self->midiOutputs_.contains(ids[i])) continue;
+                menu.addItem(2+i,juce::String::fromUTF8(self->project_->trackLanes[size_t(i)].label),true,selected==ids[i]);
+            }
+            menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&button),[current,output,index,processor,ids](int id) {
+                auto* owner=current(); if(!owner || id<1 || id>ids.size()+1) return;
+                for(auto& fx:owner->effectChain(output,index).slots) if(fx.effect.get()==processor) {
+                    owner->stopTransport();
+                    fx.keyTrackId=id==1 ? juce::String{} : ids[id-2];
+                    owner->markSessionEdited(); break;
+                }
+            });
         });
     juce::CallOutBox::launchAsynchronously(std::move(panel), getLocalArea(&chain.button, chain.button.getLocalBounds()), this);
 }
@@ -5331,6 +5370,8 @@ void MainComponent::restoreEffects(bool output, std::size_t index, const juce::S
     for (int i = 0; i < ids.size(); ++i) {
         auto& slot = chain.slots[static_cast<std::size_t>(i)];
         slot.id = ids[i];
+        const auto& keys=project_->savedMix->sidechainTracks;
+        if(auto it=keys.find(ostfstudio::SessionMix::effectSlot(output,index,i));it!=keys.end()) slot.keyTrackId=it->second;
         const auto& states = project_->savedMix->stockEffectStates;
         if (const auto state = states.find(ostfstudio::SessionMix::effectSlot(output, index, i)); state != states.end())
             slot.savedState = state->second;
@@ -5354,6 +5395,8 @@ void MainComponent::loadEffect(bool output, std::size_t index, std::size_t posit
             safe->refreshTrackActions();
             auto& slot = chain.slots[position];
             if (effect) effect->disableNonMainBuses();
+            if (effect && description.name=="OSTF Unmask" && effect->getBusCount(true)==2)
+                effect->getBus(true,1)->enable(true);
             if (!effect || !PreviewTransport::supportsInsert(*effect)) {
                 if (slot.id.isEmpty()) chain.slots.pop_back();
                 safe->statusLabel_.setText(effect ? TRANS("Insert requires a stereo audio effect") : TRANS("Could not load FX: ") + error,

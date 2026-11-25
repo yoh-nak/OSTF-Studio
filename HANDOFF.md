@@ -1,5 +1,17 @@
 # OSTF Studio development handoff
 
+## Print preview, scale ranges, singer and sidechain unmasking
+
+Branch `feat/lead-print-scale-unmask`. The Windows x64 portable is in `dist/windows-print-scale-unmask/Portable`. It includes the Studio application and the new OSTF Unmask VST3.
+
+- The master mute sits below the master fader. The scope column combines the phase display with stereo waveform traces from the post-fader sample history.
+- Paper Lantern Replies stores English in its written lyric phrases and their note units. The 135 English note units have separate katakana pronunciations. The recorded singer now resamples neighbouring recorded cycles at a common glottal phase. The backing channel's chorus insert was removed. `build-visuals/mei-phase-aligned-prechorus.wav` is the isolated pre-chorus render.
+- The Scale Editor song map supports contiguous chord selection, exact repeated progressions, chord-targeted scale assignment and a one-step undo. The existing nested instrument, A/B playback, save and Studio drop paths remain in place.
+- Lead sheet and score PDF export open an A4 paper preview. Both output paths draw the same score pages, honour millimetre margins and start new pages at the requested bars. The lead sheet exposes its chord, scale, lyric and layout controls in the preview. `build-win-plugins/notation-check/lead-with-breaks.pdf` uses 20 mm margins and starts new pages at bars 5 and 9.
+- OSTF Unmask uses a mono or stereo key bus and five frequency bands. Studio's FX chain key selector taps the source before its FX, fader and mute. The supported routing round-trips in the production session. Existing projects without a key bypass the extra source-buffer copy.
+
+The final Windows Release suite passed 33/33 and the independent core suite passed 2/2. The portable executable opened the packaged demo and passed its stock-effect routing smoke. The initial full run reproduced the pre-existing intermittent Link stop failure. Five direct runs and the final full suite passed. Commercial hosts, macOS and hardware listening need separate validation. The current native Scale Editor and Player views cover part of the supplied Max devices.
+
 ## Scale instrument, vocal and track console
 
 Branch `feat/scale-instrument-console`. The Scale Editor is a new VST3 instrument class (`Ose1`). It uses the supplied Max device's candidate, flow, genre/lens and contextual A/B audition engines. Load a VST3 instrument inside the editor or use the built-in reference tone. Studio supplies its score in the instrument slot and supports preview in its stopped-transport monitor path. External hosts use Open OSTF. Chord assignment, whole-score export and digest-checked drag return use the existing 5.0 path. The Max pattern/range tools and complete original workspace remain future work.

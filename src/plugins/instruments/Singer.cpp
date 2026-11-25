@@ -201,19 +201,30 @@ class SyllableVoice {
     bool grainReady = false;
     int oldMark = 0, newMark = 0;
     float grain(const RecordedMora& source, double at, double pitch, double sr) {
-        const auto period = source.rate / pitch;
+        // Resample one glottal cycle to one output period. Reading an output-sized
+        // window from a high voice can replay several source cycles on low notes.
+        if (source.pitchMarks.size() < 2) return 0;
+        auto cycleAt = [&] {
+            const auto& marks = source.pitchMarks;
+            const auto it = std::lower_bound(marks.begin(), marks.end(), at);
+            return juce::jlimit(0, int(marks.size()) - 2, int(it - marks.begin()) - 1);
+        };
         if (!grainReady) {
-            oldMark = newMark = source.nearestMark(at);
+            oldMark = newMark = cycleAt();
             grainReady = true;
         }
         const float mix = float(.5 - .5 * std::cos(juce::MathConstants<double>::pi * phase));
-        const auto out = std::lerp(source.sampleAt(oldMark + phase * period),
-                                   source.sampleAt(newMark + (phase - 1) * period), mix);
+        auto sampleCycle = [&](int index) {
+            const auto first = source.pitchMarks[size_t(index)];
+            const auto last = source.pitchMarks[size_t(index + 1)];
+            return source.sampleAt(first + phase * (last - first));
+        };
+        const auto out = std::lerp(sampleCycle(oldMark), sampleCycle(newMark), mix);
         phase += std::min(.45, pitch / sr);
         if (phase >= 1) {
             phase -= 1;
             oldMark = newMark;
-            newMark = source.nearestMark(at);
+            newMark = cycleAt();
         }
         return out;
     }

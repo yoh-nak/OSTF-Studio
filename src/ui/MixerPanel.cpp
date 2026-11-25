@@ -132,9 +132,9 @@ void MixerPanel::Strip::resized() {
     auto area = getLocalBounds().reduced(5, 3);
     classification.setBounds(area.removeFromTop(15));
     name.setBounds(area.removeFromTop(18));
-    status.setBounds(area.removeFromBottom(17));
+    if (!isMaster) status.setBounds(area.removeFromBottom(17));
     if (listenOnMain) listenOnMain->setBounds(area.removeFromBottom(21));
-    if (!isTrack && mute.isVisible()) mute.setBounds(area.removeFromBottom(21).withSizeKeepingCentre(40, 21));
+    if (!isTrack && !isMaster && mute.isVisible()) mute.setBounds(area.removeFromBottom(21).withSizeKeepingCentre(40, 21));
     diagnostics = isMaster ? juce::Rectangle<int>{} : area.removeFromTop(isTrack ? 71 : 63);
     auto slots = area.removeFromTop(26).reduced(1,2);
     if (isTrack) instrument.setBounds(slots.removeFromLeft(slots.getWidth()/2).withTrimmedRight(3));
@@ -142,6 +142,10 @@ void MixerPanel::Strip::resized() {
     effect.setBounds(slots);
     if (isMaster) {
         auto outputSection = area.removeFromRight(std::clamp(area.getWidth()/5,82,112));
+        auto faderColumn = outputSection.withTrimmedRight(40);
+        status.setBounds(faderColumn.removeFromBottom(17));
+        mute.setBounds(faderColumn.removeFromBottom(22).withSizeKeepingCentre(42, 21));
+        outputSection.setBottom(faderColumn.getBottom());
         meter.setBounds(outputSection.removeFromRight(40).withTrimmedBottom(23).reduced(1,2));
         volume.setBounds(outputSection);
         diagnostics = area.reduced(2);
@@ -274,7 +278,9 @@ void MixerPanel::Strip::paint(juce::Graphics& g) {
             } else {
                 ostfstudio::console::drawChannelVu(g, needles.reduced(2), analysis.vu, 2, "VU");
             }
+            auto waveform = box.removeFromBottom(box.getHeight() * .37f);
             ostfstudio::console::drawPhaseScope(g, box.reduced(2), analysis);
+            ostfstudio::console::drawStereoWave(g, waveform.reduced(2), analysis);
             ostfstudio::console::drawMasterDetails(g, measurements.reduced(2), graphs.reduced(2), analysis, bands);
         } else {
             ostfstudio::console::drawChannelVu(g, box, vu, meterChannels, "VU");

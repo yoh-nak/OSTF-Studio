@@ -98,7 +98,7 @@ struct SessionMix {
     std::array<juce::StringArray, mixerOutputCapacity> outputEffects;
     std::vector<juce::StringArray> trackEffects;
     // Normalized to the displayed channel and slot when reading a production document.
-    std::map<juce::String, juce::String> stockEffectStates;
+    std::map<juce::String, juce::String> stockEffectStates, sidechainTracks;
     static juce::String effectSlot(bool output, std::size_t channel, int slot) {
         const auto n = static_cast<int>(channel);
         const auto id = !output ? "track-" + juce::String(n + 1)

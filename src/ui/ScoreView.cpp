@@ -44,7 +44,7 @@ class ScoreView::Panel final : public juce::Component {
         wording.setSelectedId(1, juce::dontSendNotification);
         wording.onChange = [this] {
             options.lyricDisplay = static_cast<LyricDisplay>(wording.getSelectedId() - 1);
-            grid.repaint();
+            updatePage();
         };
         for (int i = 1; i <= 7; ++i)
             staff.addItem(juce::translate(staffName(static_cast<StaffStyle>(i))), i);
@@ -61,7 +61,7 @@ class ScoreView::Panel final : public juce::Component {
         voices.setTitle(TRANS("Lyric voice"));
         voices.onChange = [this] {
             options.lyricVoice = voices.getSelectedId() > 1 ? voices.getText() : juce::String{};
-            grid.repaint();
+            updatePage();
         };
         follow.setToggleState(true, juce::dontSendNotification);
         follow.onClick = [this] { updatePage(); };
@@ -73,9 +73,59 @@ class ScoreView::Panel final : public juce::Component {
         };
         previous.onClick = [this] { step(-1); };
         next.onClick = [this] { step(1); };
-        pdf.onClick = [this] { save(true); };
+        pdf.setComponentID("sheet-print"); leavePreview.setComponentID("sheet-print-back");
+        breaks.setComponentID("sheet-page-breaks");
+        for (auto* control : std::array<juce::Component*, 6>{&margin, &breaks, &breakLabel, &sections, &barNumbers, &leavePreview})
+            addChildComponent(control);
+        for (int mm : {5, 8, 12, 16, 20, 25, 30, 35})
+            margin.addItem(TRANS("Margin") + "  " + juce::String(mm) + " mm", mm);
+        margin.setSelectedId(options.marginMm, juce::dontSendNotification);
+        margin.onChange = [this] { options.marginMm = margin.getSelectedId(); updatePage(); };
+        breaks.setTextToShowWhenEmpty("9, 17, 33", juce::Colours::grey);
+        breaks.setTitle(TRANS("Start new pages at bars"));
+        breakLabel.setText(TRANS("Start new pages at bars"), juce::dontSendNotification);
+        breaks.onTextChange = [this] {
+            std::vector<int> parsed;
+            validBreaks = true;
+            for (const auto& token : juce::StringArray::fromTokens(breaks.getText(), ", ", "")) {
+                if (token.isEmpty()) continue;
+                const auto bar = token.getIntValue();
+                if (!token.containsOnly("0123456789") || bar < 2 || bar > score.bars) { validBreaks = false; break; }
+                parsed.push_back(bar);
+            }
+            if (validBreaks) options.pageBreakBars = std::move(parsed);
+            status.setText(validBreaks ? juce::String{} : TRANS("Enter bar numbers between 2 and the final bar."), juce::dontSendNotification);
+            pdf.setEnabled(validBreaks && !busy);
+            resized();
+        };
+        sections.setToggleState(true, juce::dontSendNotification);
+        barNumbers.setToggleState(true, juce::dontSendNotification);
+        sections.onClick = barNumbers.onClick = [this] {
+            options.showSections = sections.getToggleState();
+            options.showBarNumbers = barNumbers.getToggleState();
+            updatePage();
+        };
+        leavePreview.onClick = [this]{ preview = false; update(); };
+        pdf.onClick = [this] {
+            if (preview) save(true);
+            else { preview = true; page = 0; update(); }
+        };
         xml.onClick = [this] { save(false); };
         grid.draw = [this](juce::Graphics& g) {
+            if (preview) {
+                if (paper.isNull()) {
+                    paper = juce::Image(juce::Image::RGB, 1190, 1684, true, juce::SoftwareImageType{});
+                    {
+                        juce::Graphics pg(paper);
+                        pg.addTransform(juce::AffineTransform::scale(2.f));
+                        drawSheetPage(pg, score, index(), style(), notes, lead, page, options);
+                    }
+                    paper.desaturate();
+                }
+                g.setColour(juce::Colours::white);
+                g.drawImageWithin(paper, 0, 0, grid.getWidth(), grid.getHeight(), juce::RectanglePlacement::centred);
+                return;
+            }
             if (!lead && index() < 0)
                 return;
             drawReadingGrid(g, grid.getLocalBounds(), score, style(), notes, lead, firstBar, columns, rows, options,
@@ -101,6 +151,8 @@ class ScoreView::Panel final : public juce::Component {
             options.lyricVoice = juce::String{};
         voices.setSelectedId(names.indexOf(options.lyricVoice) + 2, juce::dontSendNotification);
         if (switchMode) {
+            preview = false; page = 0; validBreaks = true;
+            options.pageBreakBars.clear(); breaks.clear();
             lead = *switchMode;
         }
         track.clear(juce::dontSendNotification);
@@ -128,6 +180,7 @@ class ScoreView::Panel final : public juce::Component {
         if (value == tick)
             return;
         tick = value;
+        if (preview) return;
         if (tick >= 0 && follow.getToggleState() && score.barTicks > 0 &&
             (tick < firstBar * score.barTicks || tick >= (firstBar + columns * rows) * score.barTicks))
             updatePage();
@@ -151,6 +204,11 @@ class ScoreView::Panel final : public juce::Component {
                 line = area.removeFromTop(32);
             c.setBounds(line.removeFromLeft(width).reduced(2, 2));
         };
+        place(margin, 144);
+        place(breakLabel, 150);
+        place(breaks, 125);
+        place(sections, 110);
+        place(barNumbers, 136);
         place(density, 112);
         place(chords, 85);
         place(scales, 85);
@@ -161,7 +219,8 @@ class ScoreView::Panel final : public juce::Component {
         place(staff, 170);
         auto bottom = area.removeFromBottom(33);
         pdf.setBounds(bottom.removeFromRight(131).reduced(2));
-        if (!lead)
+        if (preview) leavePreview.setBounds(bottom.removeFromRight(130).reduced(2));
+        if (!preview && !lead)
             xml.setBounds(bottom.removeFromRight(105).reduced(2));
         previous.setBounds(bottom.removeFromLeft(32).reduced(1));
         counter.setBounds(bottom.removeFromLeft(std::min(155, std::max(0, bottom.getWidth() - 32))));
@@ -186,8 +245,13 @@ class ScoreView::Panel final : public juce::Component {
     }
     void update() {
         const bool has = index() >= 0;
-        track.setVisible(!lead);
-        staff.setVisible(!lead);
+        for (auto* c : std::array<juce::Component*, 4>{&margin,&breakLabel,&breaks,&leavePreview}) c->setVisible(preview);
+        sections.setVisible(lead || preview); barNumbers.setVisible(lead || preview);
+        follow.setVisible(!preview); position.setVisible(!preview);
+        pdf.setButtonText(preview ? TRANS("Save PDF...") : TRANS("Print preview..."));
+        title.setText(preview ? TRANS("Print preview") + "  /  " + score.title : score.title, juce::dontSendNotification);
+        track.setVisible(!lead && !preview);
+        staff.setVisible(!lead && !preview);
         for (auto* c : std::array<juce::Component*, 4>{&density, &chords, &scales, &lyrics})
             c->setVisible(lead);
         voices.setVisible(lead && options.showLyrics && !score.lyrics.empty());
@@ -197,8 +261,8 @@ class ScoreView::Panel final : public juce::Component {
         scales.setEnabled(!score.scales.empty());
         staff.setEnabled(has);
         staff.setSelectedId(static_cast<int>(style()), juce::dontSendNotification);
-        pdf.setEnabled(!busy && (lead || has));
-        xml.setVisible(!lead);
+        pdf.setEnabled(!busy && (!preview || validBreaks) && (lead || has));
+        xml.setVisible(!lead && !preview);
         xml.setEnabled(!busy && has);
         notes = lead ? MeasureNotes{} : partMeasures(score, index(), style());
         status.setText(!lead && !has ? TRANS("No note tracks in this project.") : juce::String{},
@@ -206,12 +270,21 @@ class ScoreView::Panel final : public juce::Component {
         resized();
     }
     void step(int direction) {
+        if (preview) { page += direction; updatePage(); return; }
         if (tick >= 0)
             follow.setToggleState(false, juce::dontSendNotification);
         firstBar += direction * columns * rows;
         updatePage();
     }
     void updatePage() {
+        paper = {};
+        if (preview) {
+            const int total = sheetPages(score, lead, style(), options);
+            page = std::clamp(page, 0, total-1);
+            counter.setText(TRANS("Page") + " " + juce::String(page+1) + " / " + juce::String(total), juce::dontSendNotification);
+            previous.setEnabled(page > 0); next.setEnabled(page+1 < total); grid.repaint();
+            return;
+        }
         const int count = columns * rows;
         const int anchor =
             tick >= 0 && follow.getToggleState() && score.barTicks > 0 ? int(tick / score.barTicks) : firstBar;
@@ -311,6 +384,14 @@ class ScoreView::Panel final : public juce::Component {
     int firstBar = 0, columns = 4, rows = 1;
     juce::int64 tick = -1;
     SheetOptions options;
+    bool preview = false, validBreaks = true;
+    int page = 0;
+    juce::Image paper;
+    juce::ComboBox margin;
+    juce::Label breakLabel;
+    juce::TextEditor breaks;
+    juce::ToggleButton sections{TRANS("Sections")}, barNumbers{TRANS("Bar numbers")};
+    juce::TextButton leavePreview{TRANS("Back to score")};
     juce::ComboBox track, staff, density, voices, wording;
     juce::ToggleButton chords{TRANS("Chords")}, scales{TRANS("Scales")}, lyrics{TRANS("Lyrics")};
     juce::ToggleButton follow{TRANS("Follow playback")};

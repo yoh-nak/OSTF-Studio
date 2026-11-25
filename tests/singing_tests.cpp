@@ -109,7 +109,22 @@ static bool testRecordedVoice() {
             prev = out;
         }
     }
-    return std::abs(crossings - 352) <= 3; // 0.8 s of sustained A4 from the 200 Hz clip
+    if (std::abs(crossings - 352)>3) return false;
+    events.clear();
+    events.addEvent(juce::MidiMessage::allSoundOff(1),0);
+    events.addEvent(phoneMessage(1,45,{0,velar}),0);
+    events.addEvent(juce::MidiMessage::noteOn(1,45,juce::uint8(110)),0);
+    prev=0; crossings=0;
+    for(int b=0;b<200;++b) {
+        singer->processBlock(block,events); events.clear();
+        for(int i=0;i<256;++i) {
+            const float value=block.getSample(0,i);
+            if(b>=50 && prev<=0 && value>0) ++crossings;
+            prev=value;
+        }
+    }
+    return std::abs(crossings-88)<=3; // 0.8 s at A2, well below the recorded 200 Hz.
+
 }
 
 int main(int argc, char** argv) {
@@ -122,16 +137,17 @@ int main(int argc, char** argv) {
     int englishUnits = 0;
     for (const auto& unit : scoreUnits) {
         const auto printed = unit["text"].toString();
-        if (printed.containsAnyOf("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")) return 40;
-        if (printed.isEmpty() || printed[0]<0x30a1 || printed[0]>0x30ff) continue;
+        if (!printed.containsAnyOf("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")) continue;
         const auto reading = unit["pronunciation"].toString();
-        if (reading!=printed) return 40;
+        if (reading.isEmpty()) return 40;
         for (auto c : reading) if (c < 0x30a1 || c > 0x30ff) return 40;
         ++englishUnits;
     }
     if (englishUnits < 100) return 40;
-    for (const auto& phrase : items(demoScore["lyrics"]["phrases"]))
-        if (phrase["text"].toString().containsAnyOf("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")) return 41;
+    const auto& phrases = items(demoScore["lyrics"]["phrases"]);
+    if (std::none_of(phrases.begin(), phrases.end(), [](const auto& phrase) {
+        return phrase["text"].toString() == "If the street lights all go out";
+    })) return 41;
     const auto parts = readParts(demoScore);
     if (parts.empty() || parts.front().syllables.empty()) return 2;
     const auto kana = pronounce(juce::String::charToString(0x30ab) + juce::String::charToString(0x30bc));

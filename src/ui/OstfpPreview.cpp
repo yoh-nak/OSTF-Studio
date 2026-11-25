@@ -662,7 +662,7 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
     require(mix.tracks.size() == sourceCount || mix.tracks.size() == sourceCount + 1, "Mixer does not match the score");
     juce::var voicingMix;
     juce::var voicingRoute;
-    juce::Array<juce::var> channels, routes, devices;
+    juce::Array<juce::var> channels, routes, devices, sidechains;
     auto states = object({});
     auto attachEffects = [&](juce::var& channel, bool output, std::size_t index, const juce::StringArray& chain) {
         if (output && mix.outputNames[index].isNotEmpty()) channel.getDynamicObject()->setProperty("name", mix.outputNames[index]);
@@ -672,6 +672,13 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
                 if (fx.chainId() != chain[slot]) continue;
                 const auto id = SessionMix::effectSlot(output, index, slot);
                 ids.add(id);
+                if (const auto it=mix.sidechainTracks.find(id); it!=mix.sidechainTracks.end()) {
+                    const auto source=std::find_if(tracks.begin(),tracks.end(),[&](const auto& t){return t["id"].toString()==it->second;});
+                    if (source!=tracks.end() && juce::String(fx.name)=="OSTF Unmask")
+                        sidechains.add(object({{"id","key-"+id},{"sourceChannelId","track-"+juce::String(int(source-tracks.begin())+1)},
+                            {"targetDeviceId",id},{"targetPortId","vst3-aux-1"},{"tapPoint","preFader"},
+                            {"followMute",false},{"gainDb",0.0},{"enabled",true}}));
+                }
                 devices.add(object({{"id", id}, {"role", "effect"}, {"enabled", true}, {"bypass", false},
                     {"onUnavailable", "reportAndPreserve"}, {"plugin", object({{"format", "vst3"}, {"vendor", "OSTF Studio"},
                         {"name", fx.name}, {"pluginId", fx.classId()}})}}));
@@ -775,6 +782,7 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
         hostData[0]["data"].getDynamicObject()->setProperty("recordCycle", object({
             {"start", mix.recordCycle.getStart()}, {"end", mix.recordCycle.getEnd()}, {"enabled", mix.cycleEnabled}}));
     auto document = object({{"channels", channels}, {"devices", devices}, {"hostExtensions", hostData}});
+    if (!sidechains.isEmpty()) document.getDynamicObject()->setProperty("sidechainConnections",sidechains);
     juce::Array<juce::var> automation;
     for (const auto& c : channels) {
         const auto it = envelopes.find(c["trackId"].toString());
@@ -794,8 +802,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
     require(extensions.isEmpty() || (extensions.size() == 1 && extensions[0]["namespace"] == mixNamespace
             && extensions[0]["version"] == "1.0"),
             "This production document is outside the Studio mixer preview");
-    for (const auto* field : {"sidechainConnections"})
-        require(production[field].isVoid() || array(production[field]).isEmpty(), "Unsupported OSTFP production content");
+    std::map<juce::String,juce::String> deviceKeys;
     const auto sourceTracks = score["tracks"];
     const auto& tracks = array(sourceTracks);
     auto trackIndex = [&](const juce::var& id) {
@@ -835,6 +842,15 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
     const auto devices = deviceData.isVoid() ? juce::Array<juce::var>{} : array(deviceData);
     const auto channelData = production["channels"];
     auto channels = array(channelData);
+    if (!production["sidechainConnections"].isVoid()) for(const auto& connection : array(production["sidechainConnections"])) {
+        auto source=std::find_if(channels.begin(),channels.end(),[&](const auto& c){return c["id"]==connection["sourceChannelId"];});
+        auto device=std::find_if(devices.begin(),devices.end(),[&](const auto& d){return d["id"]==connection["targetDeviceId"];});
+        require(source!=channels.end() && (*source)["kind"]=="track" && trackIndex((*source)["trackId"])>=0
+            && device!=devices.end() && (*device)["plugin"]["name"]=="OSTF Unmask" && connection["targetPortId"]=="vst3-aux-1"
+            && connection["tapPoint"]=="preFader" && !bool(connection["followMute"]) && bool(connection["enabled"])
+            && double(connection["gainDb"])==0., "Unsupported sidechain routing");
+        require(deviceKeys.emplace((*device)["id"].toString(),(*source)["trackId"].toString()).second,"Multiple detector sources");
+    }
     if (voicingMix.isObject()) channels.add(voicingMix);
     // Legacy Studio chains can also contain cached host IDs for third-party plug-ins.
     // Translate state keys after merging those chains, so mixed chains keep slot order.
@@ -975,6 +991,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
             for (const auto& fx : stockEffects) if (chain[slot] == fx.chainId()) {
                 const auto key = SessionMix::effectSlot(output, channel, slot);
                 const juce::Identifier deviceId(voicing ? key : it->second[device++]);
+                if(auto source=deviceKeys.find(deviceId.toString()); source!=deviceKeys.end()) mix.sidechainTracks[key]=source->second;
                 const auto state = local["stockEffectStates"][deviceId];
                 if (state.isString()) mix.stockEffectStates[key] = state.toString();
                 break;

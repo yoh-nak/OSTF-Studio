@@ -9,6 +9,8 @@ class Document {
 public:
     juce::Result load(const juce::String& utf8);
     juce::Result assign(int chord, int tonic, int mode);
+    std::vector<int> scope(int first, int last, bool repeats) const;
+    juce::Result assign(const std::vector<int>& indices, int tonic, int mode);
     juce::String text, baseHash;
     juce::var score;
 };

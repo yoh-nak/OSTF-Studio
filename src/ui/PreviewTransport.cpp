@@ -85,8 +85,9 @@ bool PreviewTransport::supportsInstrument(const juce::AudioPluginInstance& instr
 }
 
 bool PreviewTransport::supportsInsert(const juce::AudioPluginInstance& effect) {
-    return !effect.getPluginDescription().isInstrument && effect.getTotalNumInputChannels() == 2
-        && effect.getTotalNumOutputChannels() == 2;
+    return !effect.getPluginDescription().isInstrument && effect.getMainBusNumInputChannels()==2
+        && effect.getTotalNumOutputChannels()==2 && effect.getBusCount(true)<=2
+        && effect.getTotalNumInputChannels()<=4;
 }
 
 juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const ostfstudio::OstfpPreview &project,
@@ -266,6 +267,9 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     pluginAudio_.setSize(0, 0);
     if (outputChannels > 0) {
         pluginAudio_.setSize(std::max(2, outputChannels), blockSize);
+        keyScratch_.setSize(2,blockSize);
+        for(auto& track:dryTracks_) track.setSize(2,inserts.keyTracks.empty() ? 0 : blockSize);
+        for(auto& midi:insertPatches_) midi.ensureSize(4096);
         for (auto& stem : stems_) stem.setSize(2, blockSize);
         cueBus_.setSize(2, blockSize);
         pluginMidi_.ensureSize(1024 * 1024);
@@ -574,13 +578,58 @@ void PreviewTransport::processEffects(const Chain& effects, juce::AudioBuffer<fl
         if (!effect) continue;
         pluginMidi_.clear();
         if (patches && effect->acceptsMidi()) pluginMidi_.addEvents(*patches, 0, -1, 0);
-        effect->processBlock(stereo, pluginMidi_);
+        const int keys = effect->getTotalNumInputChannels()-2;
+        if (keys <= 0) { effect->processBlock(stereo,pluginMidi_); continue; }
+        if (keys > 2) continue;
+        const auto source = inserts_.keyTracks.find(effect);
+        for(int ch=0;ch<keys;++ch) {
+            if(source!=inserts_.keyTracks.end() && source->second<dryTracks_.size())
+                keyScratch_.copyFrom(ch,0,dryTracks_[source->second],ch,0,count);
+            else keyScratch_.clear(ch,0,count);
+        }
+        float* ports[]{audio.getWritePointer(0),audio.getWritePointer(1),keyScratch_.getWritePointer(0),keyScratch_.getWritePointer(1)};
+        juce::AudioBuffer<float> keyed(ports,2+keys,count);
+        effect->processBlock(keyed, pluginMidi_);
+    }
+}
+
+void PreviewTransport::mixRenderedTrack(size_t track, juce::AudioBuffer<float>& block, int count, int first, double timelineStep) {
+    const auto& slot=instruments_[track];
+    processEffects(inserts_[outputCount+track],block,count,&insertPatches_[track]);
+    const auto& mix = gains_[track];
+    const auto cueGain = mix.cue.load();
+    const auto basePan = mix.pan.load();
+    const bool automated = !slot.panEnvelope.points.empty();
+    if (automated) {
+        for (int i = 0; i < count; ++i) {
+            const auto tick = clock_.tickAt((first + i * timelineStep) / sampleRate_);
+            const auto pan = float(slot.panEnvelope.valueAt(tick, basePan));
+            for (int ch = 0; ch < 2; ++ch) block.getWritePointer(ch)[i] *= ostfstudio::stereoBalance(pan, ch == 1);
+        }
+    }
+    auto& trackVu = liveVu_.vu[track];
+    for (int channel = 0; channel < 2; ++channel) {
+        const auto balance = automated ? 1.f : ostfstudio::stereoBalance(basePan, channel == 1);
+        const auto gain = mix.level.load() * balance;
+        const auto* data = block.getReadPointer(channel);
+        trackVu[channel] = vu_[track][size_t(channel)].process(data, count, gain);
+        trackMeters_[track].publish(channel, block.getMagnitude(channel, 0, count) * gain);
+        stems_[static_cast<std::size_t>(mix.bus.load())].addFrom(channel, 0, data, count, gain);
+        for (std::size_t r = 0; r < mix.sends.size(); ++r) {
+            const auto send = mix.sends[r].load();
+            if (send != 0.0f) stems_[3 + r].addFrom(channel, 0, data, count, gain * send);
+        }
+        if (cueGain != 0.0f)
+            cueBus_.addFrom(channel, 0, data, count, cueGain * balance);
     }
 }
 
 void PreviewTransport::renderInstruments(float* const* output, int channels, int count, int first, int end, bool listenToCue) {
     for (auto& stem : stems_) stem.clear(0, count);
     cueBus_.clear(0, count);
+    std::array<bool,maxTracks> rendered{};
+    const bool hasDetector = !inserts_.keyTracks.empty();
+    if(hasDetector) for(auto& dry:dryTracks_) dry.clear(0,count);
     const int audible = count;
     const auto timelineStep = double(end - first) / count;
     for (std::size_t track = 0; track < instruments_.size(); ++track) {
@@ -632,12 +681,13 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
             if (!patchMidi_.isEmpty()) slot.external->send(patchMidi_, blockTimeMs_, sampleRate_);
             continue;
         }
-        patchMidi_.clear();
+        auto& patches = insertPatches_[track];
+        patches.clear();
         if (std::any_of(chain.begin(), chain.end(), [](auto* fx) { return fx && fx->acceptsMidi(); })) {
             for (const auto event : pluginMidi_) {
                 const auto msg = event.getMessage();
                 if (msg.isProgramChange() || msg.isControllerOfType(0) || msg.isControllerOfType(32))
-                    patchMidi_.addEvent(msg, event.samplePosition);
+                    patches.addEvent(msg, event.samplePosition);
             }
         }
         block.clear();
@@ -648,33 +698,16 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
             if (slot.instance->getMainBusNumOutputChannels() == 1) block.copyFrom(1, 0, block, 0, 0, count);
         }
         for (const auto& region : slot.regions) region.mixInto(block, count, first, timelineStep, sampleRate_, clock_);
-        processEffects(chain, block, count, &patchMidi_);
-        const auto& mix = gains_[track];
-        const auto cueGain = mix.cue.load();
-        const auto basePan = mix.pan.load();
-        const bool automated = !slot.panEnvelope.points.empty();
-        if (automated) {
-            for (int i = 0; i < audible; ++i) {
-                const auto tick = clock_.tickAt((first + i * timelineStep) / sampleRate_);
-                const auto pan = float(slot.panEnvelope.valueAt(tick, basePan));
-                for (int ch = 0; ch < 2; ++ch) block.getWritePointer(ch)[i] *= ostfstudio::stereoBalance(pan, ch == 1);
-            }
-        }
-        auto& trackVu = liveVu_.vu[track];
-        for (int channel = 0; channel < 2; ++channel) {
-            const auto balance = automated ? 1.f : ostfstudio::stereoBalance(basePan, channel == 1);
-            const auto gain = mix.level.load() * balance;
-            const auto* data = block.getReadPointer(channel);
-            trackVu[channel] = vu_[track][size_t(channel)].process(data, audible, gain);
-            trackMeters_[track].publish(channel, block.getMagnitude(channel, 0, audible) * gain);
-            stems_[static_cast<std::size_t>(mix.bus.load())].addFrom(channel, 0, data, audible, gain);
-            for (std::size_t r = 0; r < mix.sends.size(); ++r) {
-                const auto send = mix.sends[r].load();
-                if (send != 0.0f) stems_[3 + r].addFrom(channel, 0, data, audible, gain * send);
-            }
-            if (cueGain != 0.0f)
-                cueBus_.addFrom(channel, 0, data, audible, cueGain * balance);
-        }
+        if(!hasDetector) { mixRenderedTrack(track,block,count,first,timelineStep); continue; }
+        for(int ch=0;ch<2;++ch) dryTracks_[track].copyFrom(ch,0,block,ch,0,count);
+        rendered[track]=true;
+    }
+    // All source taps are from this same block, including tracks later in the arrangement.
+    for(size_t track=0;track<instruments_.size();++track) {
+        if(!rendered[track]) continue;
+        juce::AudioBuffer<float> block(pluginAudio_.getArrayOfWritePointers(),2,count);
+        for(int ch=0;ch<2;++ch) block.copyFrom(ch,0,dryTracks_[track],ch,0,count);
+        mixRenderedTrack(track,block,audible,first,timelineStep);
     }
     for (std::size_t i = 1; i < stems_.size(); ++i) {
         const auto gain = outputGains_[i].load();

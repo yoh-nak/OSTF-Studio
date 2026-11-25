@@ -578,10 +578,9 @@ def sing_lantern(song):
                         "text": printed, "pronunciation": "".join(morae).replace("を", "お"),
                         "start": line_tick + half * 4 * PPQ, "duration": 4 * PPQ})
             else:
-                morae = iter(readings)
-                printed = " ".join("".join(next(morae) for _ in word.split("-")) for word in words)
+                printed = text.replace("-", "")
                 lyrics["phrases"].append({"id": line_id, "documentId": "lantern-text", "text": printed,
-                                          "start": line_tick, "duration": 8 * PPQ})
+                                          "pronunciation": " ".join(readings), "start": line_tick, "duration": 8 * PPQ})
             offsets = ([.5, 1, 1.5, 2.25, 3, 3.5, 4.25, 5, 5.5, 6.25, 6.75, 7.25] if refrain else
                        [.5, 1.25, 2, 2.5, 3, 3.5, 4.5, 5.25, 5.75, 6.25, 6.75, 7.25])
             shape = ([1, 2, 3, 2, 1, 2, 4, 3, 2, 1, 1, 0] if refrain else
@@ -615,7 +614,7 @@ def sing_lantern(song):
                 vel = (89 if refrain else 76) + [3, -2, 6, 0][i % 4]
                 lead_notes.append(note(note_id, start + offset, held, pool[tone], vel, releaseVelocity=48 if refrain else 33))
                 phrase_id = f"{line_id}-bar-{1 if i < split else 2}" if japanese else line_id
-                lyrics["units"].append({"id": unit_id, "phraseId": phrase_id, "text": syllable if japanese else readings[i], "start": at, "duration": held})
+                lyrics["units"].append({"id": unit_id, "phraseId": phrase_id, "text": syllable, "start": at, "duration": held})
                 if japanese and syllable == "を":
                     lyrics["units"][-1]["pronunciation"] = "お"
                 elif not japanese:
@@ -644,8 +643,8 @@ def sing_lantern(song):
                     harmony = note(f"{line_id}-backing", start + offset, held, pool[max(0, tone - 2)], vel - 21, releaseVelocity=32)
                     backing_notes.append(harmony)
                     lyric = f"{line_id}-ah"
-                    lyrics["phrases"].append({"id": lyric, "documentId": "lantern-backing-text", "text": "アー"})
-                    lyrics["units"].append({"id": f"{lyric}-unit", "phraseId": lyric, "text": "アー", "pronunciation": "アー", "start": at, "duration": held})
+                    lyrics["phrases"].append({"id": lyric, "documentId": "lantern-backing-text", "text": "Ah"})
+                    lyrics["units"].append({"id": f"{lyric}-unit", "phraseId": lyric, "text": "Ah", "pronunciation": "アー", "start": at, "duration": held})
                     lyrics["alignments"].append({"id": f"{lyric}-alignment", "voiceId": "backing-voice",
                                                 "unitIds": [f"{lyric}-unit"], "noteIds": [harmony["id"]]})
             for parameter, values in {
@@ -986,7 +985,7 @@ def production_session(song, cues, shared_gm=False):
         "horn": (-6, -.12, "master", -14, ["EQ", "Compressor"]),
         "arp": (-8, -.30, "bus-2", -19, ["Phaser"]),
         "voice-track": (-4, 0, "master", -13, ["EQ", "Compressor"]),
-        "backing": (-12, .24, "bus-2", -11, ["Chorus"]),
+        "backing": (-12, .24, "bus-2", -16, []),
         "keys": (-9, -.26, "bus-2", -16, ["Chorus"]),
         "bass": (-6, 0, "bus-1", None, ["Compressor"]),
         "answer": (-11, .32, "bus-2", -15, ["Phaser"]),

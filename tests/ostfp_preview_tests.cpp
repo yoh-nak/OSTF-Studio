@@ -158,10 +158,10 @@ static int checkGallery(const juce::File& directory) {
                 if (first == lane->regions.end() || first->exactBars->start != (sheet ? 5.0 : 5.125)
                     || juce::String::fromUTF8(first->label) != juce::String::fromUTF8(sheet ? "雨の音が" : "あ")) return 91;
             }
-            const bool katakanaLine=std::any_of(leadLanes.front().regions.begin(),leadLanes.front().regions.end(),[](const auto& cell) {
-                return juce::String::fromUTF8(cell.label)==juce::String::fromUTF8("イフ ザ ストリート ライツ オール ゴー アウト");
+            const bool printedLine=std::any_of(leadLanes.front().regions.begin(),leadLanes.front().regions.end(),[](const auto& cell) {
+                return juce::String::fromUTF8(cell.label)==juce::String::fromUTF8("If the street lights all go out");
             });
-            if (!katakanaLine) return 91;
+            if (!printedLine) return 91;
             const auto& backingLanes = project->partLyricLanes.at(project->trackIds.indexOf("backing"));
             if (backingLanes.size() != 2 || backingLanes[0].kind != ostfstudio::TimelineLane::displayLyrics
                 || backingLanes[1].kind != ostfstudio::TimelineLane::pronunciation
@@ -172,7 +172,7 @@ static int checkGallery(const juce::File& directory) {
                 const auto display = std::find_if(cells.begin(), cells.end(), [at](const auto& cell) {
                     return cell.exactBars->start <= at && at < cell.exactBars->end;
                 });
-                if (display == cells.end() || juce::String::fromUTF8(display->label) != juce::String::fromUTF8("アー")
+                if (display == cells.end() || juce::String::fromUTF8(display->label) != "Ah"
                     || juce::String::fromUTF8(reading.label) != juce::String::fromUTF8("アー")
                     || display->exactBars->start >= at) return 92;
             }
@@ -639,6 +639,10 @@ int main(int argc, char** argv) {
     mix.routing.busDb[3] = -4.5;
     mix.tracks[2].outputBus = 3;
     mix.outputEffects[ostfstudio::busOutput(3)].add("VST3|Test|Bus D|23");
+    for(const auto& fx:ostfstudio::stockEffects) if(juce::String(fx.name)=="OSTF Unmask") {
+        mix.outputEffects[0].add(fx.chainId());
+        mix.sidechainTracks[ostfstudio::SessionMix::effectSlot(true,0,0)]=project->trackIds[0];
+    }
     mix.routing.masterDb = -6.0;
     mix.routing.returnCount = 2;
     mix.routing.returnDb[1] = -8.0;
@@ -657,6 +661,7 @@ int main(int argc, char** argv) {
         || scoreOnly->sourceScore != package->sourceScore || scoreOnly->pitchedNotes[0].size() != 6
         || scoreOnly->pitchedNotes[1].size() != 2 || scoreOnly->pitchedNotes[1][1].velocity != 77) return 1;
     const auto& saved = *package->savedMix;
+    if (saved.sidechainTracks.empty() || saved.sidechainTracks != mix.sidechainTracks) return 1;
     if (saved.routing.busCount != 4 || saved.routing.busDb[3] != -4.5 || saved.tracks[2].outputBus != 3
         || saved.outputEffects[ostfstudio::busOutput(3)] != mix.outputEffects[ostfstudio::busOutput(3)]) return 1;
     if (saved.tracks[0].volumeDb != -9.0 || saved.tracks[0].pan != 0.5f || saved.tracks[0].outputBus != 1

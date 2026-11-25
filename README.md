@@ -2,9 +2,15 @@
 
 The transport, prompt guide and current vocal lyrics use black inset displays. Source track headers group the fader, pan and input controls above eight send slots. On narrow expanded headers the sends wrap when there is room for two rows. Each assigned return enables its corresponding send in the header and mixer.
 
-**Paper Lantern Replies** shows katakana for its English-language lines on the lead sheet and uses note-aligned katakana for the singer. Japanese verse text retains its original spelling.
+**Paper Lantern Replies** displays its English lyrics in English and uses note-aligned katakana for the singer. Japanese verse text retains its original spelling.
 
 **OSTF Scale Editor** is a VST3 instrument. Open it on a Studio instrument track, or use **Open OSTF** in another host. Select a chord, analysis lens and flow strategy to compare ranked scales. **Hear candidate** and **A/B with reference** play the original device's contextual phrases through a reference tone or a VST3 instrument selected with **Load VST3 instrument**. **Assign scale**, **Save OSTF**, and **Drag OSTF to Studio** apply, export and return the assignment.
+
+Drag across the song scale map to select a chord range. **Include matching progressions** highlights its occurrences with the same chord sequence and timing. Assign applies the selected scale to the highlighted chords in a single edit. **Undo apply** restores the previous assignments.
+
+The lead sheet and part score offer an A4 print preview with page navigation, adjustable margins and explicit page breaks. Enter the one-based bar numbers which should start a new page. PDF export shares the preview renderer. The master strip displays a stereo waveform below its phase scope and has its mute directly below its fader.
+
+**OSTF Unmask** accepts an auxiliary VST3 audio input. In Studio, insert it on the signal to attenuate, open its FX chain, and choose the detector track under **Key**. This uses that track's pre-insert signal independently of its fader and mute. External hosts route audio to its Sidechain bus.
 
 Japanese long-vowel marks within one unit extend the vowel recording. With English dictionary input, the Japanese bank chooses a consonant recording shaped for the following vowel.
 

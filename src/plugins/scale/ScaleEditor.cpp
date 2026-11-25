@@ -103,11 +103,59 @@ public:
     std::unique_ptr<juce::XmlElement> unavailableInstrument;
 };
 
+class ChordMap final : public juce::Component {
+public:
+    static constexpr int cell = 82;
+    juce::StringArray chords, scales;
+    int anchor = 0, end = 0;
+    std::vector<int> targets;
+    std::function<void(int,int)> selected;
+    ChordMap() { setViewportIgnoreDragFlag(true); setTitle("Song scale map"); }
+    void paint(juce::Graphics& g) override {
+        const auto clip = g.getClipBounds();
+        for (int i = std::max(0,clip.getX()/cell); i < chords.size() && i <= clip.getRight()/cell; ++i) {
+            juce::Rectangle<int> tile(i*cell,0,cell-2,getHeight()-1);
+            const bool active = i>=std::min(anchor,end) && i<=std::max(anchor,end);
+            g.setColour(juce::Colour(active ? 0xff27675e : std::binary_search(targets.begin(),targets.end(),i) ? 0xff404f70 : 0xff26343e));
+            g.fillRoundedRectangle(tile.toFloat(),3);
+            g.setColour(juce::Colours::white);
+            g.setFont(juce::FontOptions(13.f,juce::Font::bold));
+            g.drawText(juce::String(i+1)+"  "+chords[i],tile.removeFromTop(22).reduced(4,0),juce::Justification::centredLeft);
+            g.setColour(juce::Colour(0xffb5d4cc)); g.setFont(juce::FontOptions(11.f));
+            g.drawText(scales[i],tile.reduced(4,0),juce::Justification::centredLeft);
+        }
+    }
+    int hit(const juce::MouseEvent& e) const {return std::clamp(e.x/cell,0,std::max(0,chords.size()-1));}
+    void mouseDown(const juce::MouseEvent& e) override { if (!e.mods.isShiftDown()) anchor=hit(e); end=hit(e); repaint(); }
+    void mouseDrag(const juce::MouseEvent& e) override {
+        if (auto* view=findParentComponentOfClass<juce::Viewport>()) view->autoScroll(e.getEventRelativeTo(view).x,0,24,12);
+        end=hit(e); repaint();
+    }
+    void mouseUp(const juce::MouseEvent&) override {
+        if(selected && !chords.isEmpty()) selected(std::min(anchor,end),std::max(anchor,end));
+    }
+};
+
 class Editor final : public juce::AudioProcessorEditor, private juce::ChangeListener {
 public:
     explicit Editor(Processor& p) : AudioProcessorEditor(p), proc(p) {
         for (juce::Component* c : std::initializer_list<juce::Component*>{&song,&chords,&roots,&modes,&apply,&open,&refresh,&save,&drag,&status,&back,&forward,&strategy,&lens,&choices,&details,&notes,&audition,&compare,&stop,&loadInstrument,&showInstrument})
             addAndMakeVisible(c);
+        for (juce::Component* c : std::initializer_list<juce::Component*>{&mapView,&repeats,&rangeLabel,&undo})
+            addAndMakeVisible(c);
+        mapView.setViewedComponent(&map,false); mapView.setScrollBarsShown(false,true);
+        repeats.onClick=[this]{updateScope();};
+        map.selected=[this](int first,int last) {
+            chords.setSelectedItemIndex(first,juce::dontSendNotification);
+            selectChord(); map.anchor=first; map.end=last; updateScope();
+        };
+        undo.setEnabled(false);
+        undo.onClick=[this] {
+            const juce::ScopedLock lock(proc.stateLock);
+            if (!previousDocument || undoAtText != proc.document.text) { sync(); return; }
+            proc.document=std::move(*previousDocument); previousDocument.reset(); undo.setEnabled(false);
+            sync(); proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+        };
         js.maximumExecutionTime=juce::RelativeTime::seconds(6);
         engineStatus=js.execute(juce::String::fromUTF8(ScaleAssets::Adviser_js,ScaleAssets::Adviser_jsSize));
         if(engineStatus.wasOk()) engineStatus=js.execute(juce::String::fromUTF8(ScaleAssets::AdviserBridge_js,ScaleAssets::AdviserBridge_jsSize));
@@ -116,7 +164,7 @@ public:
         strategy.addItemList({"Balanced","Smooth voice leading","Tension / resolution"},1);
         lens.addItemList({"Chord scale","Key and mode","Performance"},1);
         strategy.setSelectedId(1,juce::dontSendNotification); lens.setSelectedId(1,juce::dontSendNotification);
-        strategy.onChange=lens.onChange=[this]{selectChord();};
+        strategy.onChange=lens.onChange=[this]{selectChord(false);};
         choices.setTitle("Ranked scale candidates");
         choices.onChange=[this]{selectCandidate();};
         loadInstrument.onClick=[this]{chooseInstrument();};
@@ -133,15 +181,21 @@ public:
         chords.onChange = [this]{ selectChord(); };
         apply.onClick = [this]{
             const juce::ScopedLock lock(proc.stateLock);
-            const auto r = proc.document.assign(chords.getSelectedItemIndex(),roots.getSelectedItemIndex(),modes.getSelectedItemIndex());
-            if (r.wasOk()) { proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true)); selectChord(); }
+            const auto before = proc.document;
+            const auto r = proc.document.assign(map.targets,roots.getSelectedItemIndex(),modes.getSelectedItemIndex());
+            if (r.wasOk()) {
+                previousDocument = before; undoAtText = proc.document.text; undo.setEnabled(true);
+                const auto first=map.anchor, last=map.end;
+                proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true)); sync();
+                map.anchor=first; map.end=last; updateScope();
+            }
             else status.setText(r.getErrorMessage(),juce::dontSendNotification);
         };
         open.onClick = [this]{ choose(false); }; save.onClick = [this]{ choose(true); };
         refresh.onClick = [this]{ requestLoad(proc.offered); };
         proc.addChangeListener(this);
         sync();
-        setResizable(true,false); setResizeLimits(640,450,1400,850); setSize(780,480);
+        setResizable(true,false); setResizeLimits(700,565,1600,1000); setSize(900,625);
     }
     ~Editor() override { proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this); }
     void resized() override {
@@ -151,6 +205,10 @@ public:
         open.setBounds(files.removeFromLeft(105).reduced(1)); refresh.setBounds(files.removeFromLeft(150).reduced(1));
         save.setBounds(files.removeFromLeft(110).reduced(1)); drag.setBounds(files.reduced(1));
         a.removeFromTop(10);
+        auto scopeRow=a.removeFromTop(28);
+        undo.setBounds(scopeRow.removeFromRight(90)); repeats.setBounds(scopeRow.removeFromRight(210));
+        rangeLabel.setBounds(scopeRow);
+        mapView.setBounds(a.removeFromTop(61)); map.setSize(std::max(1,map.chords.size()*ChordMap::cell),45);
         auto nav=a.removeFromTop(32);
         back.setBounds(nav.removeFromLeft(38).reduced(1)); forward.setBounds(nav.removeFromRight(38).reduced(1)); chords.setBounds(nav.reduced(1));
         auto policy=a.removeFromTop(32);
@@ -181,10 +239,20 @@ private:
         bool started=false;
     };
     void changeListenerCallback(juce::ChangeBroadcaster*) override { sync(); }
-    void selectChord() {
+    void updateScope() {
+        const juce::ScopedLock lock(proc.stateLock);
+        map.targets=proc.document.scope(std::min(map.anchor,map.end),std::max(map.anchor,map.end),repeats.getToggleState());
+        rangeLabel.setText("Song scale map   /   "+juce::String(int(map.targets.size()))+" chords   ·   Drag to select",juce::dontSendNotification);
+        map.repaint();
+    }
+    void selectChord(bool resetRange = true) {
         const juce::ScopedLock lock(proc.stateLock);
         auto chord=proc.document.score["harmony"]["chords"][chords.getSelectedItemIndex()];
         if (!chord.isObject()) return;
+        if (resetRange) map.anchor=map.end=chords.getSelectedItemIndex();
+        updateScope();
+        const int left=map.anchor*ChordMap::cell;
+        if(left<mapView.getViewPositionX() || left+ChordMap::cell>mapView.getViewArea().getRight()) mapView.setViewPosition(left,0);
         auto tonic=chord["root"];
         int mode=1; juce::String label;
         const auto scales=proc.document.score["harmony"]["scales"];
@@ -281,6 +349,10 @@ private:
     }
     void sync() {
         const juce::ScopedLock lock(proc.stateLock);
+        if (previousDocument && undoAtText != proc.document.text) {
+            previousDocument.reset();
+            undo.setEnabled(false);
+        }
         auto score=proc.document.score;
         song.setText("OSTF Scale Editor   /   "+score["song"]["title"].toString(),juce::dontSendNotification);
         const int selected=chords.getSelectedItemIndex();
@@ -288,6 +360,15 @@ private:
         const auto events=score["harmony"]["chords"];
         if (const auto* list=events.getArray()) for(const auto& c:*list)
             chords.addItem(juce::String(chords.getNumItems()+1)+".    "+c["label"].toString()+"    /    tick "+c["start"].toString(),chords.getNumItems()+1);
+        map.chords.clear(); map.scales.clear();
+        std::map<juce::String,juce::String> labels;
+        if (auto* list=score["harmony"]["scales"].getArray()) for(const auto& s:*list)
+            for (int i=0;i<s["targets"].size();++i) if (s["targets"][i]["type"].toString()=="chord")
+                labels[s["targets"][i]["id"].toString()]=s["label"].toString();
+        if(auto* list=events.getArray()) for(const auto& c:*list) {
+            map.chords.add(c["label"].toString()); map.scales.add(labels[c["id"].toString()]);
+        }
+        map.setSize(std::max(1,map.chords.size()*ChordMap::cell),45);
         chords.setSelectedId(juce::jlimit(0,chords.getNumItems(),std::max(1,selected+1)),juce::dontSendNotification);
         const bool ready=chords.getNumItems()>0;
         for(juce::Component* c:std::initializer_list<juce::Component*>{&apply,&roots,&modes,&chords}) c->setEnabled(ready);
@@ -322,6 +403,7 @@ private:
         const juce::ScopedLock lock(proc.stateLock);
         const auto r=proc.document.load(source);
         if(r.failed()) {status.setText(r.getErrorMessage(),juce::dontSendNotification); return;}
+        previousDocument.reset(); undo.setEnabled(false);
         sync(); proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
     void choose(bool writing) {
@@ -346,6 +428,13 @@ private:
     juce::Result engineStatus=juce::Result::ok();
     juce::String loadedText,lastError;
     juce::var rows;
+    ChordMap map;
+    juce::Viewport mapView;
+    juce::ToggleButton repeats{"Include matching progressions"};
+    juce::TextButton undo{"Undo apply"};
+    juce::Label rangeLabel;
+    std::optional<Document> previousDocument;
+    juce::String undoAtText;
     juce::Label song,status,notes,details;
     juce::TextButton back{"<"},forward{">"},audition{"Hear candidate"},compare{"A/B with reference"},stop{"Stop"},
         loadInstrument{"Load VST3 instrument..."},showInstrument;

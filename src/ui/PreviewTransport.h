@@ -22,7 +22,9 @@ public:
     static constexpr std::size_t outputCount = std::tuple_size_v<decltype(ostfstudio::MeterFrame::outputs)>;
     static_assert(maxTracks >= ostfstudio::OstfpPreview::maxTracks + 1);
     using Chain = std::array<juce::AudioPluginInstance*, ostfstudio::SessionMix::maxEffects>;
-    using Inserts = std::array<Chain, outputCount + maxTracks>;
+    struct Inserts : std::array<Chain, outputCount + maxTracks> {
+        std::map<juce::AudioPluginInstance*, size_t> keyTracks;
+    };
     struct MidiDestination {
         std::function<void(const juce::MidiBuffer&, double, double)> send;
         std::function<void()> clearPending;
@@ -91,6 +93,7 @@ private:
     bool pendingNotes_ = false;
     std::vector<TrackSetup> playbackRoutes_;
     int playbackShift_ = 0;
+    void mixRenderedTrack(size_t track, juce::AudioBuffer<float>&, int count, int first, double timelineStep);
     void renderInstruments(float* const* output, int channels, int count, int first, int end, bool listenToCue);
     void audioDeviceIOCallbackWithContext(const float* const*, int, float* const*, int, int,
                                            const juce::AudioIODeviceCallbackContext&) override;
@@ -130,7 +133,9 @@ private:
         std::vector<ostfstudio::AudioRegionPlayback> regions;
     };
     std::array<InstrumentTrack, maxTracks> instruments_;
-    juce::AudioBuffer<float> pluginAudio_;
+    juce::AudioBuffer<float> pluginAudio_, keyScratch_;
+    std::array<juce::AudioBuffer<float>,maxTracks> dryTracks_;
+    std::array<juce::MidiBuffer,maxTracks> insertPatches_;
     juce::MidiBuffer pluginMidi_, patchMidi_;
     Inserts inserts_ {};
     std::array<juce::AudioBuffer<float>, outputCount> stems_;

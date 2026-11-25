@@ -107,6 +107,29 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
     const auto desc = instance.getPluginDescription();
     if (!PreviewTransport::supportsInsert(instance) || desc.manufacturerName != "OSTF Studio"
         || fx.chainId() != "VST3|OSTF Studio|" + desc.name + "|" + juce::String(desc.uniqueId)) return false;
+    if (desc.name == "OSTF Unmask") {
+        if(instance.getBusCount(true)!=2 || !instance.getBus(true,1)->enable(true)) return false;
+        instance.setRateAndBufferSizeDetails(48000,256); instance.prepareToPlay(48000,256);
+        juce::AudioBuffer<float> audio(4,256); juce::MidiBuffer midi;
+        double dry=0,wet=0;
+        for(int b=0;b<80;++b) {
+            audio.clear();
+            for(int i=0;i<256;++i) {
+                const float tone=.3f*std::sin(float((256*b+i)*2*juce::MathConstants<double>::pi*440./48000.));
+                audio.setSample(0,i,tone);
+                if(b>=20) audio.setSample(3,i,tone);
+            }
+            juce::AudioBuffer<float> original(audio);
+            instance.processBlock(audio,midi);
+            if(audio.getMagnitude(1,0,256)>1.e-7f) return false;
+            for(int i=0;i<256;++i) {
+                if(b<20 && audio.getSample(0,i)!=original.getSample(0,i)) return false;
+                if(b>65) {dry+=std::abs(original.getSample(0,i));wet+=std::abs(audio.getSample(0,i));}
+            }
+        }
+        instance.releaseResources();
+        return wet>0 && wet<.85*dry;
+    }
     if (desc.name == "OSTF Harmonizer") return checkHarmonizer(instance);
     instance.setRateAndBufferSizeDetails(48000, 256);
     instance.prepareToPlay(48000, 256);
@@ -288,6 +311,34 @@ int checkStudioInstruments(const juce::StringArray& args) {
         return 11;
     }
     return 0;
+}
+
+static bool checkStudioSidechain(ostfstudio::OstfpPreview& song, juce::AudioPluginInstance& effect) {
+    if (song.audio.empty() || song.sourceTrackCount()<2 || !effect.getBus(true,1)->enable(true)) return false;
+    // A silent key channel placed after the audible track must drive this block's detector.
+    auto original=song.audio;
+    auto signal=original.front(); signal.track=0;
+    auto detector=signal; detector.track=1;
+    song.audio={signal,detector};
+    auto measure=[&](bool connect) {
+        PreviewTransport engine;
+        PreviewTransport::Inserts inserts{};
+        inserts[PreviewTransport::outputCount][0]=&effect;
+        if(connect) inserts.keyTracks[&effect]=1;
+        if(engine.preparePlayback(song,{},inserts,48000,256).failed()) return -1.;
+        for(size_t i=0;i<song.sourceTrackCount();++i) engine.setChannelMix(i,{},i==0,0);
+        engine.setOutputMix({}); engine.seekToTick(signal.startTick);
+        juce::AudioBuffer<float> audio(2,256);
+        double energy=0;
+        for(int b=0;b<90;++b) {
+            engine.renderBlock(audio.getArrayOfWritePointers(),2,256);
+            for(int i=0;i<256;++i) energy+=std::abs(audio.getSample(0,i));
+        }
+        engine.stop(); return energy;
+    };
+    const auto dry=measure(false),wet=measure(true);
+    song.audio=std::move(original);
+    return dry>1 && wet>0 && wet<dry*.98;
 }
 
 static bool checkCueMonitoring(ostfstudio::OstfpPreview& song) {
@@ -501,6 +552,10 @@ int checkStockEffects(const juce::StringArray& args) {
     juce::FileInputStream mediaFile(juce::File(args[3]).getSiblingFile("paper-lantern-replies.ostfp"));
     std::unique_ptr<ostfstudio::OstfpPreview> cue;
     if (ostfstudio::readOstfpPreview(mediaFile, cue).failed() || cue->audio.size() != 1 || !cue->savedMix) return 29;
+    {
+        auto unmask=load(formats,directory.getChildFile("OSTF Unmask.vst3"));
+        if(!unmask || !checkStudioSidechain(*cue,*unmask)) {std::cerr<<"Studio sidechain failed\n";return 76;}
+    }
     if (!checkCueMonitoring(*cue)) { std::cerr << "Cue bus or monitor routing failed\n"; return 52; }
     const auto lyricScore = juce::JSON::parse(cue->sourceScore.toString());
     const auto lyricId = lyricScore["lyrics"]["alignments"][0]["noteIds"][0].toString();

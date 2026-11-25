@@ -51,6 +51,38 @@ int main(int argc,char** argv) {
     float peak=0;
     for(int i=0;i<200;++i) {midi.clear();processor->processBlock(block,midi);peak=std::max(peak,block.getMagnitude(0,0,256));}
     if(peak<.001f) return 8;
+    juce::ComboBox* chordTrack = nullptr;
+    juce::ToggleButton* repeats = nullptr;
+    juce::TextButton *apply = nullptr, *undo = nullptr;
+    for (auto* child : editor->getChildren()) {
+        if (child->getTitle() == "Chord track") chordTrack = dynamic_cast<juce::ComboBox*>(child);
+        if (auto* toggle = dynamic_cast<juce::ToggleButton*>(child); toggle && toggle->getButtonText() == "Include matching progressions")
+            repeats = toggle;
+        if (auto* button = dynamic_cast<juce::TextButton*>(child)) {
+            if (button->getButtonText() == "Assign scale") apply = button;
+            if (button->getButtonText() == "Undo apply") undo = button;
+        }
+    }
+    if (!chordTrack || !repeats || !apply || !undo || undo->isEnabled()) return 9;
+    const auto scoreText = [&] {
+        processor->getStateInformation(bytes);
+        auto xml = juce::AudioProcessor::getXmlFromBinary(bytes.getData(), int(bytes.getSize()));
+        return xml->getChildByName("Score")->getAllSubText();
+    };
+    const auto before = scoreText();
+    const auto scales = [](const juce::String& text) { return juce::JSON::parse(text)["harmony"]["scales"].size(); };
+    chordTrack->setSelectedItemIndex(3, juce::sendNotificationSync);
+    repeats->setToggleState(true, juce::dontSendNotification);
+    repeats->onClick(); apply->onClick();
+    if (!undo->isEnabled() || scales(scoreText()) < scales(before) + 2) return 10;
+    const auto imagePath = juce::SystemStats::getEnvironmentVariable("OSTF_SCALE_MAP_PNG", {});
+    if (imagePath.isNotEmpty()) {
+        juce::FileOutputStream image{juce::File(imagePath)};
+        if (!image.openedOk() || !image.setPosition(0) || image.truncate().failed()
+            || !juce::PNGImageFormat().writeImageToStream(editor->createComponentSnapshot(editor->getLocalBounds()),image)) return 12;
+    }
+    undo->onClick();
+    if (undo->isEnabled() || scoreText() != before) return 11;
     editor.reset(); processor->releaseResources();
     return 0;
 }

@@ -151,6 +151,30 @@ inline void drawMasterDetails(juce::Graphics& g, juce::Rectangle<float> bounds, 
     }
 }
 
+inline void drawStereoWave(juce::Graphics& g, juce::Rectangle<float> bounds, const MasterReadout& data) {
+    if (bounds.getHeight() < 26 || bounds.getWidth() < 40) return;
+    drawLcd(g, bounds.toNearestInt());
+    auto screen = bounds.reduced(8, 4);
+    g.setColour(lcdInk);
+    g.setFont(juce::FontOptions(10.f, juce::Font::bold));
+    g.drawText("WAVEFORM   L / R", screen.removeFromTop(14), juce::Justification::centredLeft);
+    for (int channel = 0; channel < 2; ++channel) {
+        auto lane = channel == 0 ? screen.removeFromTop(screen.getHeight() / 2) : screen;
+        const float middle = lane.getCentreY();
+        g.setColour(juce::Colour(0xff354b42));
+        g.drawHorizontalLine(juce::roundToInt(middle), lane.getX(), lane.getRight());
+        juce::Path wave;
+        for (size_t i = 0; i < data.scope.size(); ++i) {
+            const float sample = data.scope[(data.nextPoint + i) % data.scope.size()][channel];
+            const float x = lane.getX() + lane.getWidth() * float(i) / (data.scope.size() - 1);
+            const float y = middle - std::clamp(sample, -1.f, 1.f) * lane.getHeight() * .48f;
+            if (i == 0) wave.startNewSubPath(x, y); else wave.lineTo(x, y);
+        }
+        g.setColour(channel == 0 ? lcdInk : juce::Colour(0xffe4b775));
+        g.strokePath(wave, juce::PathStrokeType(1.2f));
+    }
+}
+
 inline void drawPhaseScope(juce::Graphics& g, juce::Rectangle<float> bounds, const MasterReadout& data) {
     if (bounds.isEmpty()) return;
     drawLcd(g,bounds.toNearestInt());

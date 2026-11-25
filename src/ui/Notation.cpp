@@ -792,9 +792,9 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
             g.fillRect(cell);
         auto body = cell.reduced(6, 3);
         auto heading = body.removeFromTop(22);
-        juce::String label(bar + 1);
+        juce::String label = options.showBarNumbers ? juce::String(bar + 1) : juce::String{};
         for (const auto& section : song.sections)
-            if (section.at >= from && section.at < to)
+            if (options.showSections && section.at >= from && section.at < to)
                 label += "    " + section.text;
         g.setColour(lead ? juce::Colour(0xff9bc8c5) : accent);
         text(g, label, heading.getX(), heading.getY(), heading.getWidth(), heading.getHeight(), 13, true);
@@ -843,13 +843,29 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
 int barsPerPage(bool lead, StaffStyle style, const SheetOptions& options) {
     return lead ? 8 * juce::jlimit(1, 16, options.barsPerLine) : style == StaffStyle::grand ? 8 : 10;
 }
+std::vector<int> sheetPageStarts(const NotationScore& score, bool lead, StaffStyle style, const SheetOptions& options) {
+    std::vector<int> forced;
+    for (int bar : options.pageBreakBars)
+        if (bar > 1 && bar <= score.bars) forced.push_back(bar - 1);
+    std::sort(forced.begin(), forced.end());
+    std::vector<int> starts{0};
+    const int capacity = barsPerPage(lead, style, options);
+    while (starts.back() + capacity < score.bars || (!forced.empty() && starts.back() < forced.back())) {
+        const auto next = std::upper_bound(forced.begin(), forced.end(), starts.back());
+        starts.push_back(std::min(starts.back() + capacity, next == forced.end() ? score.bars : *next));
+    }
+    return starts;
+}
 int sheetPages(const NotationScore& s, bool lead, StaffStyle style, const SheetOptions& options) {
-    const int count = barsPerPage(lead, style, options);
-    return std::max(1, (s.bars + count - 1) / count);
+    return int(sheetPageStarts(s, lead, style, options).size());
 }
 void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffStyle style, const MeasureNotes& notes,
                    bool lead, int page, const SheetOptions& options) {
     g.fillAll(juce::Colours::white);
+    juce::Graphics::ScopedSaveState pageState(g);
+    const float margin = std::clamp(options.marginMm, 5, 35) * 72.f / 25.4f;
+    const auto sx = (595.f - 2*margin) / 531.f, sy = (842.f - 2*margin) / 790.f;
+    g.addTransform(juce::AffineTransform::translation(-32.f,-25.f).scaled(sx,sy).translated(margin,margin));
     g.setColour(accent);
     const auto heading = lead ? TRANS("Lead sheet") : (part >= 0 ? s.parts[part].name : TRANS("Score"));
     text(g, heading, 33, 27, 530, 17, 13, true);
@@ -866,15 +882,18 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
     g.setColour(soft);
     text(g, meta.joinIntoString("    /    "), 34, 89, 527, 19, 12);
     g.drawLine(33, 117, 562, 117, 1);
-    const int cols = lead ? juce::jlimit(1, 16, options.barsPerLine) : 2, per = barsPerPage(lead, style, options),
-              first = page * per;
+    const int cols = lead ? juce::jlimit(1, 16, options.barsPerLine) : 2, per = barsPerPage(lead, style, options);
+    const auto starts = sheetPageStarts(s, lead, style, options);
+    const int pageCount = int(starts.size());
+    if (page < 0 || page >= pageCount) return;
+    const int first = starts[page], endBar = page + 1 < pageCount ? starts[page+1] : s.bars;
     const float rowH = 640.f / (per / cols);
-    for (int r = 0; r < per / cols && first + r * cols < s.bars; ++r) {
+    for (int r = 0; r < per / cols && first + r * cols < endBar; ++r) {
         const float y = 134 + r * rowH, startX = lead ? 33.f : 58.f, width = (562 - startX) / cols;
         const float top = y + (style == StaffStyle::grand ? 40 : 51);
         const int lines = tuning(style).empty() ? 5 : static_cast<int>(tuning(style).size());
         if (!lead) {
-            const float right = startX + std::min(cols, s.bars - first - r * cols) * width;
+            const float right = startX + std::min(cols, endBar - first - r * cols) * width;
             staffLines(g, 33, right, top, lines);
             drawClef(g, style == StaffStyle::grand ? StaffStyle::treble : style, 34, top);
             if (style == StaffStyle::grand) {
@@ -884,19 +903,19 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
         }
         for (int c = 0; c < cols; ++c) {
             const int bar = first + r * cols + c;
-            if (bar >= s.bars)
+            if (bar >= endBar)
                 break;
             const float x = startX + c * width;
             const Tick from = bar * s.barTicks, to = from + s.barTicks;
             juce::StringArray labels;
             for (const auto& section : s.sections)
-                if (section.at >= from && section.at < to)
+                if (options.showSections && section.at >= from && section.at < to)
                     labels.add(section.text);
             for (const auto& tempo : s.tempos)
                 if (tempo.at > 0 && tempo.at >= from && tempo.at < to)
                     labels.add(tempo.text + " BPM");
             g.setColour(accent);
-            text(g, juce::String(bar + 1) + "   " + labels.joinIntoString(" / "), x + 4, y, width - 8, 16, 10, true);
+            text(g, (options.showBarNumbers ? juce::String(bar + 1) + "   " : juce::String{}) + labels.joinIntoString(" / "), x + 4, y, width - 8, 16, 10, true);
             if (lead) {
                 g.setColour(juce::Colour(0xffcad4d1));
                 g.drawLine(x, y + 20, x, y + rowH - 7, .7f);
@@ -913,7 +932,7 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
     g.setColour(soft);
     g.drawLine(33, 790, 562, 790, .8f);
     text(g, "OSTF Studio", 34, 796, 200, 17, 10);
-    text(g, juce::String(page + 1) + " / " + juce::String(sheetPages(s, lead, style, options)), 510, 796, 55, 17, 11);
+    text(g, juce::String(page + 1) + " / " + juce::String(pageCount), 510, 796, 55, 17, 11);
 }
 
 juce::Result writeSheetPdf(juce::OutputStream& out, const NotationScore& s, int part, StaffStyle style,

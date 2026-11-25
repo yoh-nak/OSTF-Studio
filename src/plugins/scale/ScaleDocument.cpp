@@ -52,38 +52,64 @@ juce::Result Document::load(const juce::String& utf8) {
     } catch (const std::exception& e) { return juce::Result::fail(juce::String::fromUTF8(e.what())); }
 }
 juce::Result Document::assign(int chordIndex, int tonic, int mode) {
+    return assign(std::vector<int>{chordIndex}, tonic, mode);
+}
+std::vector<int> Document::scope(int first, int last, bool repeats) const {
     const auto chords = score["harmony"]["chords"];
-    if (chordIndex < 0 || chordIndex >= chords.size() || tonic < 0 || tonic >= 12 || mode < 0 || mode >= int(catalog().size()))
+    if (first < 0 || first > last || last >= chords.size()) return {};
+    std::vector<int> selected;
+    const int length = last - first + 1;
+    for (int start = repeats ? 0 : first; start <= (repeats ? chords.size() - length : first); ++start) {
+        bool matches = true;
+        for (int i = 0; i < length && matches; ++i) {
+            auto a = chords[first+i], b = chords[start+i];
+            matches = a["label"] == b["label"] && a["duration"] == b["duration"]
+                && a["root"]["step"] == b["root"]["step"] && a["root"]["alter"] == b["root"]["alter"]
+                && a["intervals"] == b["intervals"] && a["bass"]["step"] == b["bass"]["step"] && a["bass"]["alter"] == b["bass"]["alter"]
+                && juce::int64(a["start"]) - juce::int64(chords[first]["start"])
+                    == juce::int64(b["start"]) - juce::int64(chords[start]["start"]);
+        }
+        if (matches) for (int i=0; i<length; ++i)
+            if (selected.empty() || selected.back() < start+i) selected.push_back(start+i);
+    }
+    return selected;
+}
+juce::Result Document::assign(const std::vector<int>& indices, int tonic, int mode) {
+    const auto chords = score["harmony"]["chords"];
+    if (indices.empty() || std::any_of(indices.begin(),indices.end(),[&](int i){return i<0 || i>=chords.size();})
+        || tonic < 0 || tonic >= 12 || mode < 0 || mode >= int(catalog().size()))
         return juce::Result::fail("Select a chord, tonic and scale.");
     try {
         using Json = jsoncons::ojson;
         const auto options = jsoncons::json_options{}.lossless_number(true).bignum_format(jsoncons::bignum_format_kind::raw);
         auto doc = Json::parse(text.toStdString(),options);
         auto& harmony = doc.at("harmony");
-        const auto& chord = harmony.at("chords").at(chordIndex);
         auto& scales = harmony.at("scales");
-        auto target = Json::parse(R"([{"type":"chord","id":""}])");
-        target[0]["id"] = chord.at("id");
-        Json* assigned = nullptr;
-        for (auto& item : scales.array_range()) {
-            if (!item.contains("targets") || item.at("targets") != target || item.at("start") != chord.at("start")
-                    || item.at("duration") != chord.at("duration")) continue;
-            if (assigned) return juce::Result::fail("This chord already has several targeted scales.");
-            assigned = &item;
+        for (const int chordIndex : indices) {
+            const auto& chord = harmony.at("chords").at(chordIndex);
+            auto target = Json::parse(R"([{"type":"chord","id":""}])");
+            target[0]["id"] = chord.at("id");
+            Json* assigned = nullptr;
+            for (auto& item : scales.array_range()) {
+                if (!item.contains("targets") || item.at("targets") != target || item.at("start") != chord.at("start")
+                        || item.at("duration") != chord.at("duration")) continue;
+                if (assigned) return juce::Result::fail("This chord already has several targeted scales.");
+                assigned = &item;
+            }
+            if (!assigned) {
+                scales.push_back(Json());
+                assigned = &scales.at(scales.size()-1);
+                (*assigned)["id"] = ("scale-" + juce::Uuid().toString()).toStdString();
+                (*assigned)["targets"] = target;
+                (*assigned)["start"] = chord.at("start");
+                (*assigned)["duration"] = chord.at("duration");
+            }
+            const std::string name = tonicNames[tonic];
+            (*assigned)["tonic"]["step"] = name.substr(0,1);
+            (*assigned)["tonic"]["alter"] = name.size() == 1 ? 0 : (name[1] == 'b' ? -1 : 1);
+            (*assigned)["label"] = name + " " + catalog()[mode].name;
+            (*assigned)["intervals"] = catalog()[mode].intervals;
         }
-        if (!assigned) {
-            scales.push_back(Json());
-            assigned = &scales.at(scales.size()-1);
-            (*assigned)["id"] = ("scale-" + juce::Uuid().toString()).toStdString();
-            (*assigned)["targets"] = target;
-            (*assigned)["start"] = chord.at("start");
-            (*assigned)["duration"] = chord.at("duration");
-        }
-        const std::string name = tonicNames[tonic];
-        (*assigned)["tonic"]["step"] = name.substr(0,1);
-        (*assigned)["tonic"]["alter"] = name.size() == 1 ? 0 : (name[1] == 'b' ? -1 : 1);
-        (*assigned)["label"] = name + " " + catalog()[mode].name;
-        (*assigned)["intervals"] = catalog()[mode].intervals;
         if (doc.contains("document")) {
             auto& meta = doc.at("document");
             Json parent;

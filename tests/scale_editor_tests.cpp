@@ -31,5 +31,11 @@ int main(int argc, char** argv) {
     restored["harmony"].getDynamicObject()->setProperty("scales",original["harmony"]["scales"]);
     if (original.hasProperty("document")) restored.getDynamicObject()->setProperty("document",original["document"]);
     if (juce::JSON::toString(original,true,17)!=juce::JSON::toString(restored,true,17)) return 11;
+    auto range = doc.scope(3, 4, false);
+    auto repeats = doc.scope(3, 4, true);
+    if (range != std::vector<int>{3,4} || repeats.size() <= range.size() || doc.scope(1,0,true).size()) return 12;
+    if (!check(doc.assign(repeats,9,5))) return 13;
+    const auto committed = doc.text;
+    if (doc.assign(std::vector<int>{0,30000},9,5).wasOk() || doc.text != committed) return 14;
     return 0;
 }

@@ -231,6 +231,7 @@ private:
     struct EffectSlot {
         juce::String id;
         juce::String savedState;
+        juce::String keyTrackId;
         std::unique_ptr<juce::AudioPluginInstance> effect;
         std::unique_ptr<juce::DocumentWindow> editor;
     };

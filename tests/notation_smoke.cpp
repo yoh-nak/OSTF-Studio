@@ -469,6 +469,10 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
     if (s.lyrics.empty() || s.sections.empty() || s.chords.empty() || s.parts.empty() ||
         sheetPages(s, true, StaffStyle::treble) < 2)
         return 2;
+    SheetOptions split;
+    split.pageBreakBars = {9, 5, 5, -3, s.bars + 1};
+    const auto pages = sheetPageStarts(s, true, StaffStyle::treble, split);
+    if (pages.size() < 3 || pages[0] != 0 || pages[1] != 4 || pages[2] != 8) return 93;
     if (sheetPages(s, true, StaffStyle::treble, SheetOptions{2, {}}) != 4 || s.lyrics.front().voice.isEmpty())
         return 12;
     if (!save(dir.getChildFile("lead.pdf"),
@@ -555,6 +559,20 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
     if (lyrics->isVisible())
         return 20;
     choose(*words, true);
+    auto* print=dynamic_cast<juce::Button*>(content->findChildWithID("sheet-print"));
+    auto* close=dynamic_cast<juce::Button*>(content->findChildWithID("sheet-print-back"));
+    auto* breaks=dynamic_cast<juce::TextEditor*>(content->findChildWithID("sheet-page-breaks"));
+    if(!print || !close || !breaks) return 94;
+    print->onClick();
+    if(!breaks->isVisible() || !range->getText().contains(TRANS("Page"))) return 94;
+    breaks->setText("5, 9",false); breaks->onTextChange();
+    auto previewImage=grid->createComponentSnapshot(grid->getLocalBounds());
+    if(previewImage.isNull() || range->getText()!=TRANS("Page")+" 1 / "+juce::String(pages.size())) return 95;
+    breaks->setText("9999",false); breaks->onTextChange(); if(print->isEnabled()) return 96;
+    breaks->setText("5, 9",false); breaks->onTextChange(); if(!print->isEnabled()) return 97;
+    split.marginMm=20;
+    if(!save(dir.getChildFile("lead-with-breaks.pdf"),[&](auto& out){return writeSheetPdf(out,s,0,StaffStyle::treble,{},true,split);})) return 98;
+    close->onClick();
     const auto opening = range->getText();
     PreviewTransport playback;
     juce::AudioBuffer<float> block(2, 1024);
