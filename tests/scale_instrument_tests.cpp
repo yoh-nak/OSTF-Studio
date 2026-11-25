@@ -97,6 +97,19 @@ int main(int argc,char** argv) {
     undo->onClick();automatic->onClick();
     if(scales(scoreText())<chordTrack->getNumItems()) return 24;
     undo->onClick(); if(scoreText()!=before) return 25;
+    juce::ComboBox *workspace=nullptr,*scope=nullptr;
+    for(auto* c:editor->getChildren()) {
+        if(c->getTitle()=="Scale workspace") workspace=dynamic_cast<juce::ComboBox*>(c);
+        if(c->getTitle()=="Scale assignment scope") scope=dynamic_cast<juce::ComboBox*>(c);
+    }
+    if(!workspace || !scope) return 26;
+    workspace->setSelectedId(3,juce::sendNotificationSync);
+    auto* fitList=dynamic_cast<juce::ListBox*>(editor->findChildWithID("scale-note-fit"));
+    if(!fitList || !fitList->isVisible() || !fitList->getModel() || fitList->getModel()->getNumRows()==0) return 27;
+    scope->setSelectedId(3,juce::sendNotificationSync);
+    apply->onClick();
+    if(scales(scoreText())<chordTrack->getNumItems()) return 28;
+    undo->onClick(); if(scoreText()!=before) return 29;
     editor.reset(); processor->releaseResources();
     return 0;
 }

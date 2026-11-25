@@ -24,6 +24,8 @@ public:
     std::function<juce::String(juce::int64, const Note&)> theoryHint;
     std::vector<Note> notes;
     juce::StringArray selection;
+    juce::Range<juce::int64> editSection;
+    bool acceptsOnset(juce::int64 t) const { return editSection.isEmpty() || editSection.contains(t); }
     double grid = 1;
     juce::int64 endTick = 1, quarter = 1;
     int low = 52, high = 70;
@@ -180,6 +182,18 @@ public:
     }
     void paint(juce::Graphics& g) override {
         if (!editable || !tickRange) return;
+        if (!editSection.isEmpty()) {
+            const auto range = tickRange();
+            const auto x = [&](juce::int64 tick) {
+                return juce::roundToInt(std::clamp((tick-range.getStart())/std::max(1.,range.getLength()),0.,1.)*getWidth());
+            };
+            const int left=x(editSection.getStart()), right=x(editSection.getEnd());
+            g.setColour(juce::Colour(0x880a1319));
+            g.fillRect(0,0,left,getHeight()); g.fillRect(right,0,getWidth()-right,getHeight());
+            g.setColour(juce::Colour(0xff84d4c9));
+            if (left>0 && left<getWidth()) g.drawVerticalLine(left,0.f,float(getHeight()));
+            if (right>0 && right<getWidth()) g.drawVerticalLine(right,0.f,float(getHeight()));
+        }
         g.setColour(juce::Colour(0xffffc57e));
         for (const auto& n : notes) if (selection.contains(n.id)) {
             const auto r = box(n);
@@ -228,6 +242,7 @@ public:
         anchor = current = e.getPosition();
         auto* hit = hitNote(e.position);
         if (!hit) {
+            if (!acceptsOnset(newNoteAt(e).startTick)) return;
             if (!e.mods.isShiftDown()) selection.clear();
             originalSelection = selection;
             if (pencil && !e.mods.isShiftDown()) {
@@ -240,6 +255,7 @@ public:
                 setDescription({});
             } else gesture = marquee;
         } else {
+            if (!acceptsOnset(hit->startTick)) return;
             if (inspectNote) inspectNote(*hit);
             if (e.mods.isShiftDown() && selection.contains(hit->id)) { selection.removeString(hit->id); if (selectionChanged) selectionChanged(); repaint(); return; }
             if (!selection.contains(hit->id)) {
@@ -256,12 +272,13 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& e) override {
         if (TimelinePan::requested(e.mods)) return;
         if (editable && !pencil && editLyrics && e.mods.isLeftButtonDown())
-            if (const auto* n = hitNote(e.position)) { editLyrics(*n); return; }
+            if (const auto* n = hitNote(e.position)) { if (acceptsOnset(n->startTick)) editLyrics(*n); return; }
         if (pencil || !editable || rowCount() == 0 || !e.mods.isLeftButtonDown() || e.mods.isPopupMenu() ||
             hitNote(e.position) || getHeight() < 1)
             return;
         cancel();
-        commit({{Edit::insert, newNoteAt(e)}});
+        const auto note = newNoteAt(e);
+        if (acceptsOnset(note.startTick)) commit({{Edit::insert, note}});
     }
     void mouseDrag(const juce::MouseEvent& e) override {
         if (viewportPan.move(e)) return;
@@ -278,7 +295,7 @@ public:
         } else if (gesture == marquee) {
             selection = originalSelection;
             const auto rect = juce::Rectangle<int>(anchor, current).toFloat();
-            for (const auto& n : notes) if (rect.intersects(box(n))) selection.addIfNotAlreadyThere(n.id);
+            for (const auto& n : notes) if (acceptsOnset(n.startTick) && rect.intersects(box(n))) selection.addIfNotAlreadyThere(n.id);
             if (selectionChanged) selectionChanged();
         } else {
             const auto dx = (current.x - anchor.x) * tickRange().getLength() / std::max(1, getWidth());
@@ -310,7 +327,7 @@ public:
         const auto m = k.getModifiers();
         if (m.isCommandDown()) {
             if (k.isKeyCode('Z') || k.isKeyCode('Y')) { cancel(); undoRedo(m.isShiftDown() || k.isKeyCode('Y')); return true; }
-            if (k.isKeyCode('A')) { selection.clear(); for (const auto& n : notes) selection.add(n.id); if (selectionChanged) selectionChanged(); repaint(); return true; }
+            if (k.isKeyCode('A')) { selection.clear(); for (const auto& n : notes) if (acceptsOnset(n.startTick)) selection.add(n.id); if (selectionChanged) selectionChanged(); repaint(); return true; }
             return false;
         }
         if (k.isKeyCode(juce::KeyPress::escapeKey)) { cancel(); selection.clear(); if (selectionChanged) selectionChanged(); return true; }
@@ -377,7 +394,7 @@ private:
         pending.clear();
         for (auto i = std::min(first, last); i <= std::max(first, last); ++i) {
             const auto start = boundary(i);
-            if (!occupiedOnsets.contains(start))
+            if (acceptsOnset(start) && !occupiedOnsets.contains(start))
                 pending.push_back({Edit::insert, {start, std::min(endTick, boundary(i + 1)), pitchAt(anchor.y), 96, true, {}}});
         }
     }
@@ -415,6 +432,8 @@ private:
         pending.clear();
         // One shared delta preserves chord intervals and timing at the song and MIDI limits.
         for (const auto& n : notes) if (selection.contains(n.id)) {
+            if (!editSection.isEmpty() && (gesture==move || gesture==trimStart))
+                dt=std::clamp(dt, editSection.getStart()-n.startTick, editSection.getEnd()-1-n.startTick);
             if (gesture == move) {
                 dt = std::clamp(dt, -n.startTick, endTick - n.endTick);
                 dp = percussion ? std::clamp(dp, pitchRow(n.pitch) - rowCount() + 1, pitchRow(n.pitch))
@@ -473,7 +492,7 @@ public:
         float best = std::numeric_limits<float>::max();
         for (const auto& n : grid.notes) {
             const auto dx = std::abs(e.position.x - grid.box(n).getX());
-            if (dx > 7) continue;
+            if (dx > 7 || !grid.acceptsOnset(n.startTick)) continue;
             const float distance = dx * dx + std::pow(e.position.y - yAt(n.velocity.value_or(96)), 2.f);
             if (distance < best || (distance == best && grid.selection.contains(n.id))) { nearest = &n; best = distance; }
         }

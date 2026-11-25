@@ -231,20 +231,9 @@ class SyllableVoice {
             // of the resampled period to avoid a pulse at every glottal closure.
             return float(value - std::lerp(double(source.sampleAt(first)), double(source.sampleAt(last)), phase));
         };
-        // For upward transposition retain the recorded formant frequencies.
-        // Two complementary windows are locked to the same output epoch. At
-        // lower pitches use one native cycle so no second pulse fits in a period.
-        const auto centre = source.pitchMarks[size_t(newMark)];
-        const auto preceding = source.pitchMarks[size_t(oldMark)];
-        const double span = source.rate / pitch;
-        const double nativePeriod = source.pitchMarks[size_t(newMark+1)] - centre;
-        const float periodic = std::lerp(sampleCycle(oldMark), sampleCycle(newMark), mix);
-        float out = periodic;
-        if (span < nativePeriod && preceding>=span && centre>=span) {
-            const auto native = std::lerp(source.sampleAt(preceding + phase*span),
-                                          source.sampleAt(centre - (1.-phase)*span),mix);
-            out = std::lerp(periodic,native,float(std::clamp(4.*(1.-span/nativePeriod),0.,1.)));
-        }
+        // Both periods travel through the same phase. Shortening a second
+        // unretuned window here introduces extra harmonics on higher notes.
+        const float out = std::lerp(sampleCycle(oldMark), sampleCycle(newMark), mix);
         phase += std::min(.45, pitch / sr);
         if (phase >= 1) {
             phase -= 1;

@@ -118,6 +118,9 @@ class ScoreView::Panel final : public juce::Component {
             updatePage();
         };
         addChildComponent(printer);
+        addChildComponent(credits);
+        credits.setToggleState(options.showCredits, juce::dontSendNotification);
+        credits.onClick = [this] { options.showCredits = credits.getToggleState(); updatePage(); };
         printer.onClick = [this] {
 #if JUCE_WINDOWS || JUCE_MAC
             const auto result=printSheet(*this,score,index(),style(),notes,lead,options);
@@ -231,6 +234,7 @@ class ScoreView::Panel final : public juce::Component {
         place(breakLabel, 150);
         place(breaks, 125);
         place(sections, 110);
+        place(credits, 118);
         place(barNumbers, 136);
         place(density, 112);
         place(chords, 85);
@@ -254,8 +258,8 @@ class ScoreView::Panel final : public juce::Component {
         status.setBounds(area.removeFromBottom(status.getText().isNotEmpty() ? 22 : 0));
         grid.setBounds(area.reduced(0, 4));
         columns = lead ? options.barsPerLine : std::clamp(grid.getWidth() / 330, 1, 4);
-        const int rowHeight =
-            lead ? (options.showLyrics && options.showScales ? 128 : 106) : (style() == StaffStyle::grand ? 192 : 132);
+        const int rowHeight = lead ? (options.showLyrics && options.showScales ? 128 : 106)
+            : (style() == StaffStyle::grand ? 192 : 132) + (options.showLyrics ? 24 : 0);
         rows = std::max(1, grid.getHeight() / rowHeight);
         updatePage();
     }
@@ -273,15 +277,16 @@ class ScoreView::Panel final : public juce::Component {
         const bool has = index() >= 0;
         for (auto* c : std::array<juce::Component*, 6>{&paperSize,&orientation,&margin,&breakLabel,&breaks,&leavePreview}) c->setVisible(preview);
         sections.setVisible(lead || preview); barNumbers.setVisible(lead || preview);
+        credits.setVisible(preview);
         follow.setVisible(!preview); position.setVisible(!preview);
         pdf.setButtonText(preview ? TRANS("Save PDF...") : TRANS("Print preview..."));
         title.setText(preview ? TRANS("Print preview") + "  /  " + score.title : score.title, juce::dontSendNotification);
-        track.setVisible(!lead && !preview);
-        staff.setVisible(!lead && !preview);
-        for (auto* c : std::array<juce::Component*, 4>{&density, &chords, &scales, &lyrics})
-            c->setVisible(lead);
-        voices.setVisible(lead && options.showLyrics && !score.lyrics.empty());
-        wording.setVisible(voices.isVisible());
+        track.setVisible(!lead);
+        staff.setVisible(!lead);
+        density.setVisible(lead);
+        scales.setVisible(lead);
+        voices.setVisible(options.showLyrics && !score.lyrics.empty());
+        wording.setVisible(options.showLyrics && (!score.lyrics.empty() || !score.displayPhrases.empty()));
         lyrics.setEnabled(!score.lyrics.empty() || !score.displayPhrases.empty());
         chords.setEnabled(!score.chords.empty());
         scales.setEnabled(!score.scales.empty());
@@ -417,6 +422,7 @@ class ScoreView::Panel final : public juce::Component {
     juce::Label breakLabel;
     juce::TextEditor breaks;
     juce::ToggleButton sections{TRANS("Sections")}, barNumbers{TRANS("Bar numbers")};
+    juce::ToggleButton credits{TRANS("Credits")};
     juce::TextButton printer{TRANS("Print...")};
     juce::TextButton leavePreview{TRANS("Back to score")};
     juce::ComboBox track, staff, density, voices, wording;

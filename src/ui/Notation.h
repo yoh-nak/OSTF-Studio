@@ -34,7 +34,7 @@ struct SheetOptions {
         return landscape ? juce::Point<int>{longEdge, shortEdge} : juce::Point<int>{shortEdge, longEdge};
     }
     std::vector<int> pageBreakBars; // One-based first bars of explicitly chosen pages.
-    bool showSections = true, showBarNumbers = true;
+    bool showSections = true, showBarNumbers = true, showCredits = true;
 };
 struct NotationScore {
     juce::String title, key;

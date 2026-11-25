@@ -168,6 +168,22 @@ public:
             heading->setColour(juce::Label::textColourId,juce::Colour(0xff7fe0c0));
             heading->setFont(juce::FontOptions(15.f,juce::Font::bold));
         }
+        for (juce::Component* c : std::initializer_list<juce::Component*>{&inspectMode,&fitRows,&compareText,&scopeMode,&nextUnassigned,&resetA}) addAndMakeVisible(c);
+        inspectMode.addItemList({"Scale inspector","Compare A / B","Note Fit"},1);
+        fitRows.setComponentID("scale-note-fit");
+        inspectMode.setTitle("Scale workspace"); inspectMode.setSelectedId(1,juce::dontSendNotification);
+        inspectMode.onChange=[this]{ updateInspector(); };
+        scopeMode.addItemList({"Chord / drag range","Section","Whole song"},1);
+        scopeMode.setSelectedId(1,juce::dontSendNotification); scopeMode.setTitle("Scale assignment scope");
+        scopeMode.onChange=[this]{updateScope();};
+        nextUnassigned.onClick=[this] {
+            const int total=map.chords.size(), selected=chords.getSelectedItemIndex();
+            for (int step=1;step<=total;++step) {
+                const int i=(selected+step)%total;
+                if (map.scales[i].isEmpty()) { chords.setSelectedItemIndex(i,juce::sendNotificationSync); return; }
+            }
+        };
+        resetA.onClick=[this]{call("resetReference",{});updateInspector();};
         source.setMultiLine(true); source.setReadOnly(true); source.setScrollbarsShown(true);
         addChildComponent(source);
         sourceToggle.onClick=[this] {
@@ -181,6 +197,7 @@ public:
         mapView.setViewedComponent(&map,false); mapView.setScrollBarsShown(false,true);
         repeats.onClick=[this]{updateScope();};
         map.selected=[this](int first,int last) {
+            scopeMode.setSelectedId(1,juce::dontSendNotification);
             chords.setSelectedItemIndex(first,juce::dontSendNotification);
             selectChord(); map.anchor=first; map.end=last; updateScope();
         };
@@ -193,7 +210,7 @@ public:
             proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
         };
         autoSet.onClick=[this]{applySongPlan();};
-        pin.onClick=[this]{call("pinReference",{choices.getSelectedItemIndex()});};
+        pin.onClick=[this]{call("pinReference",{choices.getSelectedItemIndex()});inspectMode.setSelectedId(2,juce::dontSendNotification);updateInspector();};
         undo.setEnabled(false);
         undo.onClick=[this] {
             const juce::ScopedLock lock(proc.stateLock);
@@ -264,11 +281,12 @@ public:
         auto footer=area.removeFromBottom(32);
         loadInstrument.setBounds(footer.removeFromLeft(175).reduced(1)); showInstrument.setBounds(footer.removeFromLeft(150).reduced(1)); status.setBounds(footer);
         auto mapArea=area.removeFromBottom(91);
-        auto scope=mapArea.removeFromTop(28); repeats.setBounds(scope.removeFromRight(208)); rangeLabel.setBounds(scope);
+        auto scope=mapArea.removeFromTop(28); scopeMode.setBounds(scope.removeFromLeft(148)); nextUnassigned.setBounds(scope.removeFromRight(140));
+        repeats.setBounds(scope.removeFromRight(185)); rangeLabel.setBounds(scope);
         mapView.setBounds(mapArea.reduced(1)); map.setSize(std::max(1,map.chords.size()*ChordMap::cell),45);
         auto left=area.removeFromLeft(area.getWidth()/4); area.removeFromLeft(8);
         auto mid=area.removeFromLeft(area.getWidth()/2); area.removeFromLeft(8);
-        timelineTitle.setBounds(left.removeFromTop(32)); candidateTitle.setBounds(mid.removeFromTop(32)); inspectorTitle.setBounds(area.removeFromTop(32));
+        timelineTitle.setBounds(left.removeFromTop(32)); candidateTitle.setBounds(mid.removeFromTop(32)); inspectMode.setBounds(area.removeFromTop(32).reduced(1));
         auto nav=left.removeFromBottom(30); back.setBounds(nav.removeFromLeft(32)); forward.setBounds(nav.removeFromRight(32)); chords.setBounds(nav);
         timeline.setBounds(left.reduced(0,2));
         auto policy=mid.removeFromTop(28); strategy.setBounds(policy.removeFromLeft(policy.getWidth()/2)); lens.setBounds(policy);
@@ -276,9 +294,10 @@ public:
         notes.setBounds(area.removeFromTop(37));
         auto edit=area.removeFromBottom(31); roots.setBounds(edit.removeFromLeft(51)); modes.setBounds(edit);
         apply.setBounds(area.removeFromBottom(32).reduced(1));
-        auto ab=area.removeFromBottom(32); pin.setBounds(ab.removeFromRight(std::min(94,ab.getWidth()/3)).reduced(1));compare.setBounds(ab.reduced(1));
+        auto ab=area.removeFromBottom(32); resetA.setBounds(ab.removeFromRight(61).reduced(1)); pin.setBounds(ab.removeFromRight(58).reduced(1));compare.setBounds(ab.reduced(1));
         auto play=area.removeFromBottom(31); stop.setBounds(play.removeFromRight(60).reduced(1)); audition.setBounds(play.reduced(1));
         details.setBounds(area.reduced(3));
+        compareText.setBounds(details.getBounds()); fitRows.setBounds(details.getBounds());
     }
     void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff111923));}
 private:
@@ -297,8 +316,31 @@ private:
     void changeListenerCallback(juce::ChangeBroadcaster*) override { sync(); }
     void updateScope() {
         const juce::ScopedLock lock(proc.stateLock);
-        map.targets=proc.document.scope(std::min(map.anchor,map.end),std::max(map.anchor,map.end),repeats.getToggleState());
-        rangeLabel.setText("Song scale map   /   "+juce::String(int(map.targets.size()))+" chords   ·   Drag to select",juce::dontSendNotification);
+        int first=std::min(map.anchor,map.end), last=std::max(map.anchor,map.end);
+        if(scopeMode.getSelectedId()==3) {first=0; last=map.chords.size()-1;}
+        if(scopeMode.getSelectedId()==2 && first>=0 && first<map.chords.size()) {
+            const auto events=proc.document.score["harmony"]["chords"];
+            const juce::int64 at=events[first]["start"];
+            const auto sections=proc.document.score["timeline"]["sections"];
+            bool found=false;
+            if (auto* list=sections.getArray()) for (const auto& section:*list) {
+                const juce::int64 start=section["start"], end=start+juce::int64(section["duration"]);
+                if (at<start || at>=end) continue;
+                found=true;
+                last=first;
+                while(first>0 && juce::int64(events[first-1]["start"])>=start) --first;
+                while(last+1<events.size() && juce::int64(events[last+1]["start"])<end) ++last;
+                break;
+            }
+            if (!found) {
+                map.targets.clear(); apply.setEnabled(false); repeats.setEnabled(false);
+                rangeLabel.setText("No section at this chord",juce::dontSendNotification); map.repaint(); return;
+            }
+        }
+        map.targets=proc.document.scope(first,last,repeats.getToggleState() && scopeMode.getSelectedId()==1);
+        apply.setEnabled(!map.targets.empty());
+        repeats.setEnabled(scopeMode.getSelectedId()==1);
+        rangeLabel.setText("Song scale map   /   "+juce::String(int(map.targets.size()))+" chords",juce::dontSendNotification);
         map.repaint();
     }
     void selectChord(bool resetRange = true) {
@@ -406,6 +448,23 @@ private:
         notes.setText(item["pitches"].toString(),juce::dontSendNotification);
         const auto caution=item["warnings"].toString();
         details.setText(item["description"].toString()+"\n"+(caution.isNotEmpty()?caution:item["reason"].toString()),juce::dontSendNotification);
+        updateInspector();
+    }
+    void updateInspector() {
+        const auto tab=inspectMode.getSelectedId(), index=choices.getSelectedItemIndex();
+        details.setVisible(tab==1); compareText.setVisible(tab==2); fitRows.setVisible(tab==3);
+        if(tab==2) compareText.setText(index>=0 ? call("compareNotes",{index}).toString() : juce::String{},juce::dontSendNotification);
+        if(tab==3) {
+            fitRows.labels.clear(); fitRows.subtitles.clear();
+            const auto stats=index>=0 ? juce::JSON::parse(call("noteFit",{index}).toString()) : juce::var{};
+            if (auto* list=stats.getArray()) for(const auto& row:*list) {
+                const int pct=row["percent"];
+                fitRows.labels.add(row["track"].toString() + "    " + (pct>=0 ? juce::String(pct)+"%" : juce::String::charToString(0x2014)));
+                const auto outside=row["outside"].toString();
+                fitRows.subtitles.add(pct<0 ? "No notes in this chord" : outside.isEmpty() ? "All notes in scale" : "Outside   "+outside);
+            }
+            fitRows.updateContent(); fitRows.repaint();
+        }
     }
     void listen(bool ab) {
         auto events=juce::JSON::parse(call("listenTo",{choices.getSelectedItemIndex(),ab}).toString());
@@ -456,6 +515,7 @@ private:
         map.setSize(std::max(1,map.chords.size()*ChordMap::cell),45);
         chords.setSelectedId(juce::jlimit(0,chords.getNumItems(),std::max(1,selected+1)),juce::dontSendNotification);
         const bool ready=chords.getNumItems()>0;
+        nextUnassigned.setEnabled(ready && map.scales.contains(juce::String{})); scopeMode.setEnabled(ready);
         autoSet.setEnabled(ready); pin.setEnabled(ready);
         if(redoDocument && redoAtText!=proc.document.text){redoDocument.reset();redo.setEnabled(false);}
         for(juce::Component* c:std::initializer_list<juce::Component*>{&apply,&roots,&modes,&chords}) c->setEnabled(ready);
@@ -463,7 +523,7 @@ private:
         for(int i=0;i<timeline.labels.size();++i) timeline.labels.set(i,juce::String(i+1)+"   "+timeline.labels[i]);
         timeline.updateContent();
         if (source.isVisible()) source.setText(proc.document.text,false);
-        if (!ready) { candidates.labels.clear(); candidates.subtitles.clear(); candidates.updateContent(); }
+        if (!ready) { candidates.labels.clear(); candidates.subtitles.clear(); candidates.updateContent(); choices.clear(juce::dontSendNotification); updateInspector(); }
         refresh.setEnabled(proc.offered.isNotEmpty()); save.setEnabled(!proc.document.text.isEmpty()); drag.setEnabled(save.isEnabled());
         back.setEnabled(false);forward.setEnabled(false);audition.setEnabled(ready);compare.setEnabled(ready);
         updateInstrument();
@@ -521,6 +581,10 @@ private:
     juce::String loadedText,lastError;
     juce::var rows;
     ScaleRows timeline,candidates;
+    ScaleRows fitRows;
+    juce::ComboBox inspectMode,scopeMode;
+    juce::Label compareText;
+    juce::TextButton nextUnassigned{"Next unassigned"},resetA{"Reset A"};
     juce::Label timelineTitle{"","Chord timeline"},candidateTitle{"","Compare scales"},inspectorTitle{"","Scale inspector"};
     juce::TextButton sourceToggle{"OSTF text"};
     juce::TextEditor source;

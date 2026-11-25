@@ -95,6 +95,7 @@ static bool testRecordedVoice() {
     juce::AudioBuffer<float> block(2, 256);
     int crossings = 0;
     float prev = 0;
+    double energy=0., inPhase=0., quadrature=0.;
     double position = 0;
     const auto* reference = bank->find({0,velar});
     for (int b = 0; b < 200; ++b) {
@@ -108,10 +109,17 @@ static bool testRecordedVoice() {
                 if (b >= 3 && std::abs(out - expected * (110.f / 127)) > .002f) return false;
             }
             if (b >= 50 && prev <= 0 && out > 0) ++crossings;
+            if (b >= 50) {
+                const auto phase = juce::MathConstants<double>::twoPi * 440. * (b*256+i) / 48000.;
+                inPhase += out*std::cos(phase); quadrature += out*std::sin(phase); energy += out*out;
+            }
             prev = out;
         }
     }
     if (std::abs(crossings - 352)>3) return false;
+    // A transposed pure vowel must remain a single tone; a crossing count alone misses added harmonics.
+    const auto fundamentalFraction = 2.*(inPhase*inPhase + quadrature*quadrature)/(38400.*energy);
+    if (!(fundamentalFraction > .994)) return false;
     events.clear();
     events.addEvent(juce::MidiMessage::allSoundOff(1),0);
     events.addEvent(phoneMessage(1,45,{0,velar}),0);

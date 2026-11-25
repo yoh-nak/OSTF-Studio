@@ -1833,6 +1833,10 @@ int checkTrackView(const juce::File& fixture) {
     }
     tracks->setSelectedItemIndex(0,juce::sendNotificationSync);
     if (!click("Live session")) return 284;
+    auto* defaultMatrix = descendant<LiveSectionMatrix>(main);
+    auto* stageSelector = findControl<juce::TextButton>(main,TRANS("Stage"));
+    if (!defaultMatrix || !defaultMatrix->isVisible() || !stageSelector) return 325;
+    stageSelector->onClick();
     auto* session=descendant<LiveSections>(main);
     auto* sectionGrid=descendant<PianoNoteGrid>(main);
     if (!session || !session->isVisible() || session->sections.empty() || !sectionGrid || !sectionGrid->isVisible()) return 285;
@@ -1920,6 +1924,17 @@ int checkTrackView(const juce::File& fixture) {
     if (editId.isEmpty() || !click("Arrangement") || !hasInserted()) return 318;
     sectionGrid->undoRedo(false);
     if (hasInserted() || !click("Live session") || !matrix->isVisible() || hasInserted()) return 319;
+    const auto boundary = session->range().getEnd();
+    sectionGrid->commit({{NoteEdit::insert,{boundary-1,boundary+32,54,90,true,{}}}});
+    const auto crossing = sectionGrid->selection[0];
+    if (crossing.isEmpty() || !std::any_of(sectionGrid->notes.begin(),sectionGrid->notes.end(),[&](const auto& n){
+        return n.id==crossing && n.endTick==boundary+32; })) return 326;
+    session->list.selectRow(1);
+    if (sectionGrid->acceptsOnset(boundary-1)) return 327;
+    sectionGrid->commit({{NoteEdit::erase,{boundary-1,boundary+32,54,90,true,crossing}}});
+    if (!std::any_of(sectionGrid->notes.begin(),sectionGrid->notes.end(),[&](const auto& n){return n.id==crossing;})) return 328;
+    session->list.selectRow(0);
+    sectionGrid->undoRedo(false);
     if (const auto path = juce::SystemStats::getEnvironmentVariable("OSTF_LIVE_MATRIX_PNG",{}); path.isNotEmpty()) {
         juce::FileOutputStream out{juce::File(path)};
         if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed() ||

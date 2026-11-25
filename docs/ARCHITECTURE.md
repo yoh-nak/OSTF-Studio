@@ -198,6 +198,10 @@ The key, chord and scale readouts use unfiltered source regions. A chord ends at
 
 ## Notation and transcription
 
+The live section matrix selects a track and a half-open source tick interval. Membership for note editing uses the note onset. The end can extend past the interval and neighbouring notes remain visible when the user scrolls. Arrangement and live edits share note IDs and undo. Session scrolling has its own bar range. Matrix header controls call the same track routing and plug-in actions as the arrangement.
+
+Score view, print preview and printed staves draw harmony from the song timeline and lyrics from the chosen voice, independently of the notated part. Written phrases and note-linked pronunciation use two separate lines when both are enabled. The print layout counts visible credits when calculating the first page's available staff area.
+
 Arrangement, Lead sheet and Score share the main workspace and transport. A single embedded notation view reads a projection of the open song. Source ticks define bar boundaries, chord and scale spans, lyric timing and note durations. The transport timer supplies the sample-derived position to both reading modes. The grid fits rows to the current viewport and follows the active bar unless the user turns off follow. A selected lyric voice and optional pronunciation come from the OSTF data. The derived chord voicing is available as a part. Staff and TAB choices belong to the open view.
 
 Screen and print have distinct layouts and share musical content and drawing routines. The live view uses a moving playhead and highlights lyrics and harmony. PDF export snapshots the selected layers and renders printable A4 pages off the message thread. MusicXML 4.0 exports one selected part, preserving tick durations and splitting sustained notes across bar lines with ties. Standard tunings are E–A–D–G–B–E and E–A–D–G, low to high. Fingering is indicative.

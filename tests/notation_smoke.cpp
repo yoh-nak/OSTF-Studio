@@ -475,6 +475,10 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
         for(int i=0;i<15;++i) credited.printCredits.add("Performer " + juce::String(i+1));
         const auto starts=sheetPageStarts(credited,true,StaffStyle::treble,{});
         if(starts.size()<3 || starts[1]>=starts[2]-starts[1]) return 103;
+        SheetOptions hidden;
+        hidden.showCredits=false;
+        auto empty=credited; empty.printCredits.clear();
+        if (sheetPageStarts(credited,false,StaffStyle::treble,hidden)!=sheetPageStarts(empty,false,StaffStyle::treble,{})) return 105;
         credited.bars=s.bars;
         if (!save(dir.getChildFile("lead-credits.pdf"), [&](auto& out){return writeSheetPdf(out,credited,0,StaffStyle::treble,{},true);})) return 104;
     }
@@ -493,6 +497,23 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
         return 4;
     const int index = static_cast<int>(piano - s.parts.begin());
     const auto notes = partMeasures(s, index, StaffStyle::grand);
+    // A keyboard part uses the same vocal source as the lead. Each lyric mode and the chord switch must alter the staff.
+    const auto staffSample = [&](const SheetOptions& options) {
+        juce::Image sheet(juce::Image::RGB,900,220,true,juce::SoftwareImageType{});
+        juce::Graphics g(sheet);
+        drawReadingGrid(g,sheet.getBounds(),s,StaffStyle::grand,notes,false,int(s.lyrics.front().at/s.barTicks),2,1,options,-1);
+        juce::MemoryOutputStream out; juce::PNGImageFormat().writeImageToStream(sheet,out);
+        return out.getMemoryBlock();
+    };
+    SheetOptions notation;
+    const auto written=staffSample(notation);
+    notation.lyricDisplay=LyricDisplay::pronunciation;
+    const auto pronounced=staffSample(notation);
+    notation.lyricDisplay=LyricDisplay::both;
+    if (staffSample(notation)==written || staffSample(notation)==pronounced) return 106;
+    if (!save(dir.getChildFile("piano-chords-and-lyrics.pdf"),[&](auto& out){return writeSheetPdf(out,s,index,StaffStyle::grand,notes,false,notation);})) return 107;
+    notation.lyricDisplay=LyricDisplay::text; notation.showChords=false;
+    if (staffSample(notation)==written) return 108;
     if (!save(dir.getChildFile("piano.musicxml"),
               [&](auto& out) { return writePartXml(out, s, index, StaffStyle::grand, notes); }))
         return 13;

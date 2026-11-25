@@ -49,12 +49,14 @@ public:
                 g.strokePath(turn, juce::PathStrokeType(1.7f)); break;
             }
             case Icon::printLead:
+                g.drawRoundedRectangle(x+.5f,y+1,19,16,2,1.3f);
+                g.setFont(juce::FontOptions(14.f,juce::Font::bold));
+                g.drawText("C7",int(x),int(y),20,15,juce::Justification::centred);
+                line(4,15,8,15); line(10,15,16,15); break;
             case Icon::printScore:
-                g.drawRoundedRectangle(x+1,y+5,18,9,2,1.4f); g.drawRect(x+4,y,12.f,5.f,1.4f);
-                g.fillRect(x+4,y+10,12.f,7.f);
-                g.setColour(juce::Colour(0xff263239));
-                if (icon==Icon::printLead) { line(6,12,13,12); line(6,15,11,15); }
-                else { line(12,11,12,14); g.fillEllipse(x+8,y+13,5,3); } break;
+                for (int i : {7,10,13,16}) g.fillRect(x,y+i,20.f,.8f);
+                line(7,13,7,4); line(7,4,17,1); line(17,1,17,10);
+                g.fillEllipse(x+1,y+11,7,5); g.fillEllipse(x+11,y+8,7,5); break;
             case Icon::liveSession: {
                 // Angled handheld microphone on a live boom stand.
                 g.fillEllipse(x+12.f, y+.5f, 7.f, 7.f);

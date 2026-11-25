@@ -399,7 +399,9 @@ private:
     LiveSectionMatrix liveMatrix_;
     juce::TextButton playView_{TRANS("Stage")}, inputView_{TRANS("Section input")};
     juce::Label fitLegend_;
-    bool sectionInput_ = false;
+    bool sectionInput_ = true;
+    juce::ScrollBar livePianoScroll_{false};
+    juce::Range<juce::int64> liveScrollSection_;
     juce::Rectangle<int> livePianoPanel_;
     juce::Range<double> pianoBars() const;
     void layoutPianoPanel(juce::Rectangle<int> editor, int inlineReview);

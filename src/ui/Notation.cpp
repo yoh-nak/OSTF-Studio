@@ -770,6 +770,60 @@ void drawLeadContents(juce::Graphics& g, const NotationScore& song, Tick from, j
     line.setWordWrap(juce::AttributedString::byWord);
     line.draw(g, area.reduced(3, 0));
 }
+
+void staffChords(juce::Graphics& g, const NotationScore& song, Tick from, juce::Rectangle<float> row) {
+    const auto to = from + song.barTicks;
+    g.setColour(ink);
+    for (const auto& chord : song.chords) {
+        if (chord.at >= to) break;
+        if (chord.end <= from) continue;
+        const float x = row.getX() + row.getWidth() * float(std::max(from,chord.at)-from)/song.barTicks;
+        const float end = row.getX() + row.getWidth() * float(std::min(to,chord.end)-from)/song.barTicks;
+        text(g,chord.text,x+2,row.getY(),std::max(1.f,end-x-3),row.getHeight(),13,true);
+    }
+}
+
+void staffLyrics(juce::Graphics& g, const NotationScore& song, Tick from, juce::Rectangle<float> row,
+                 const SheetOptions& options) {
+    const auto to = from + song.barTicks;
+    const auto voice = song.voiceDocuments.find(options.lyricVoice);
+    const auto& document = voice == song.voiceDocuments.end() ? song.primaryDocument : voice->second;
+    const auto put = [&](const juce::String& label, Tick start, Tick end, juce::Rectangle<float> lane) {
+        const float x = lane.getX() + lane.getWidth() * float(start-from)/song.barTicks;
+        const float right = lane.getX() + lane.getWidth() * float(std::min(to,end)-from)/song.barTicks;
+        g.setFont(juce::FontOptions(10.f));
+        g.drawFittedText(label, juce::Rectangle<float>(x+1,lane.getY(),std::max(1.f,right-x-2),lane.getHeight()).toNearestInt(),
+                         juce::Justification::centredLeft,lane.getHeight() >= 20.f ? 2 : 1,0.45f);
+    };
+    const auto written = options.lyricDisplay == LyricDisplay::both ? row.removeFromTop(row.getHeight()*.5f) : row;
+    bool hasPhrase = false;
+    g.setColour(ink);
+    if (options.lyricDisplay != LyricDisplay::pronunciation) {
+        for (const auto& phrase : song.displayPhrases) {
+            if (phrase.start >= to) break;
+            if (phrase.document != document || phrase.end <= from) continue;
+            hasPhrase = true;
+            if (phrase.start >= from) put(phrase.text,phrase.start,phrase.end,written);
+        }
+    }
+    const auto visible = [&](const auto& unit) {
+        if (options.lyricVoice.isNotEmpty()) return unit.voice == options.lyricVoice;
+        const auto source = song.voiceDocuments.find(unit.voice);
+        return source == song.voiceDocuments.end() || source->second == document;
+    };
+    for (auto it = std::lower_bound(song.lyrics.begin(),song.lyrics.end(),from,
+             [](const auto& unit, Tick tick) { return unit.at < tick; }); it != song.lyrics.end(); ++it) {
+        const auto& unit = *it;
+        if (unit.at >= to) break;
+        if (!visible(unit)) continue;
+        const auto next = std::find_if(std::next(it),song.lyrics.end(),[&](const auto& later) {
+            return later.at >= to || (later.at > unit.at && visible(later));
+        });
+        const Tick limit = next == song.lyrics.end() ? to : std::min(to,next->at);
+        if (!hasPhrase && options.lyricDisplay != LyricDisplay::pronunciation) put(unit.text,unit.at,limit,written);
+        if (options.lyricDisplay != LyricDisplay::text) put(unit.pronunciation.isEmpty() ? unit.text : unit.pronunciation,unit.at,limit,row);
+    }
+}
 } // namespace
 
 void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const NotationScore& song, StaffStyle style,
@@ -807,6 +861,8 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
             drawLeadContents(g, song, from, body, options, true, tick);
         } else if (bar < static_cast<int>(notes.size())) {
             body = body.withX(cell.getX()).withWidth(cell.getWidth());
+            auto harmony = options.showChords ? body.removeFromTop(19.f) : juce::Rectangle<float>{};
+            auto words = options.showLyrics ? body.removeFromBottom(options.lyricDisplay == LyricDisplay::both ? 32.f : 18.f) : juce::Rectangle<float>{};
             left = body.getX();
             right = body.getRight();
             const bool beginsLine = i % columns == 0;
@@ -834,6 +890,8 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
             }
             left += (noteStart + 8) * scale;
             right -= 8 * scale;
+            if (!harmony.isEmpty()) staffChords(g,song,from,harmony.withX(left).withWidth(std::max(1.f,right-left)));
+            if (!words.isEmpty()) staffLyrics(g,song,from,words.withX(left).withWidth(std::max(1.f,right-left)),options);
         }
         if (current) {
             const float x = left + (right - left) * float(double(tick - from) / song.barTicks);
@@ -857,9 +915,10 @@ static int creditLinesPerPage(const SheetOptions& o) {
     return std::max(1,int((o.paperPoints().y - 2.f*std::clamp(o.marginMm,5,35)*72.f/25.4f - 300.f)/15.f));
 }
 static int creditPages(const NotationScore& s,const SheetOptions& o) {
-    return s.printCredits.isEmpty() ? 0 : (s.printCredits.size()-1)/creditLinesPerPage(o);
+    return !o.showCredits || s.printCredits.isEmpty() ? 0 : (s.printCredits.size()-1)/creditLinesPerPage(o);
 }
 static float musicTop(const NotationScore& s,const SheetOptions& o,int page) {
+    if (!o.showCredits) return page == 0 ? 134.f : 68.f;
     const int offset=page*creditLinesPerPage(o);
     if (offset>=s.printCredits.size() && page>0) return 68.f;
     return 134.f + 15.f*std::clamp(s.printCredits.size()-offset,0,creditLinesPerPage(o));
@@ -892,11 +951,12 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
     g.addTransform(juce::AffineTransform::translation(margin-32.f, margin-25.f));
     g.setColour(accent);
     const auto heading = lead ? TRANS("Lead sheet") : (part >= 0 ? s.parts[part].name : TRANS("Score"));
-    text(g, heading, 33, 27, width-1, 17, 13, true);
+    const bool front = page <= creditPages(s,options);
+    if (front) text(g, heading, 33, 27, width-1, 17, 13, true);
     g.setColour(ink);
     const float musicY = musicTop(s,options,page);
-    const bool front = page <= creditPages(s,options);
-    text(g, s.title, front ? 32.f : 155.f, front ? 50.f : 26.f, front ? width : width-124.f, front ? 37.f : 22.f, front ? 29.f : 15.f, true);
+    if (front) text(g,s.title,32,50,width,37,29,true);
+    else text(g,heading + "   /   " + s.title,32,26,width,22,15,true);
     juce::StringArray meta;
     meta.add(juce::String(s.beats) + "/" + juce::String(s.beatType));
     if (s.key.isNotEmpty())
@@ -909,7 +969,7 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
     if (front) {
         text(g, meta.joinIntoString("    /    "), 34, 89, width-2, 19, 12);
         const int base=page*creditLinesPerPage(options);
-        for (int i=0;i<creditLinesPerPage(options) && base+i<s.printCredits.size();++i)
+        for (int i=0;options.showCredits && i<creditLinesPerPage(options) && base+i<s.printCredits.size();++i)
             text(g,s.printCredits[base+i],34,111.f+15.f*i,width-3,15.f,11.f);
     }
     g.drawLine(33,musicY-9,rightEdge,musicY-9,1);
@@ -953,6 +1013,10 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
                 g.drawLine(x, y + 19, x + width, y + 19, .7f);
                 drawLeadContents(g, s, from, {x, y + 21, width, rowH - 28}, options, false, -1);
             } else {
+                if (options.showChords) staffChords(g,s,from,{x+8,y+16,width-16,16});
+                const float bottom = top + (style == StaffStyle::grand ? 71.f : 5.f*(lines-1));
+                if (options.showLyrics) staffLyrics(g,s,from,{x+8,bottom+12,width-16,
+                    std::max(12.f,y+rowH-bottom-14)},options);
                 g.setColour(ink);
                 g.drawLine(x + width, top, x + width, top + (style == StaffStyle::grand ? 71 : 5 * (lines - 1)), .8f);
                 if (bar < static_cast<int>(notes.size()))

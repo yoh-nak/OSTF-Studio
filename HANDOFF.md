@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## Live session grid, annotated scores and instrument updates
+
+The Windows x64 build is in `dist/windows-live-session-grid/Portable`. **Live session** (ライブセッション) opens with track settings above the section grid. Select a MIDI cell to edit its source notes below. Neighbouring sections scroll into view and are shaded. A note is editable from its starting section and may extend across the boundary. Audio-track cells show overlapping region names.
+
+The staff view and print preview support song chord symbols and an independently chosen lyric voice. Written lyrics and pronunciation can be shown together. Credit visibility participates in print pagination. The lead-sheet print icon uses C7 and the score-print icon uses beamed notes. A piano-part PDF with English lyrics and Japanese pronunciation is generated at `build-win-plugins/notation-check/piano-chords-and-lyrics.pdf` by the notation test.
+
+The Scale Editor adds a pinned A/B scale comparison, per-track Note Fit weighted by the time each note sounds during the chord, navigation to the next unassigned chord, and safe assignment over a selected range, section or song. The original Max device's Scale Flow and Connections screens still need a full native port. Formant Singer uses one phase-aligned playback path for pitched vowel cycles, including upward transpositions. A solo Mei render is at `build-visuals/mei-single-period-prechorus.wav`.
+
+Windows Release coverage includes section-onset locking and cross-boundary sustains, score annotations on an instrumental part, credit pagination, Scale Editor assignment and undo, Note Fit, and vowel pitch purity. Physical printers, macOS and listening on the user's audio chain still need verification.
+
 ## Live section input and stage navigation
 
 Branch `feat/live-sections-track-console`. The microphone icon opens Live session. Under **Section input**, select a section-row and MIDI-track-column cell to edit the shared arrangement piano roll. Chord boundaries, chord fit and scale fit appear inside the cells. Row launch and extra-pass controls operate on the full section independently of the selected track. Stage rows show the first and last bar and section length. Audio tracks can be monitored from Stage. Independent cross-section clip playback and AI performers are outside this implementation.

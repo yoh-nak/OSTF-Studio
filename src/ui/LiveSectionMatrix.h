@@ -10,11 +10,14 @@ class LiveSectionMatrix final : public juce::Component, private juce::ListBoxMod
                                 private juce::ScrollBar::Listener {
 public:
     std::function<void(std::size_t, int)> editCell;
+    std::function<void(std::size_t, int, juce::Component*)> trackAction;
     std::function<void(int)> launchRow;
     std::function<void(int, int)> changeRepeats;
 
     LiveSectionMatrix() {
         addAndMakeVisible(list_);
+        addAndMakeVisible(header_);
+        header_.setInterceptsMouseClicks(false,true);
         addChildComponent(horizontal_);
         horizontal_.addListener(this);
         horizontal_.setSingleStepSize(100.);
@@ -30,7 +33,7 @@ public:
     void bind(const ostfstudio::OstfpPreview& song, const LiveSections& session,
               const LiveTrackSelector& filter, std::optional<std::size_t> selectedTrack, bool recording,
               const ostfstudio::TheoryGuide* theory, const std::vector<std::vector<ostfstudio::TheoryGuide::TrackCell>>& fits,
-              bool showChord, bool showScale) {
+              bool showChord, bool showScale, const juce::String& armed) {
         session_ = &session;
         selectedTrack_ = selectedTrack;
         recording_ = recording;
@@ -38,10 +41,19 @@ public:
         scaleFit_ = showScale;
         columns_.clear();
         for (std::size_t i = 0; i < song.sourceTrackCount(); ++i) {
-            if (!filter.includesTrack(i) || song.trackKinds[i] == ostfstudio::TrackKind::audio) continue;
+            if (!filter.includesTrack(i)) continue;
             Column column{i, juce::String::fromUTF8(song.trackLanes[i].label), juce::Colour(song.trackColour(i)),
                           std::vector<int>(session.sections.size()), {}};
             column.progressions.resize(session.sections.size());
+            if (song.trackKinds[i] == ostfstudio::TrackKind::audio) {
+                column.audio=true;
+                column.clips.resize(session.sections.size());
+                for (size_t j=0;j<session.sections.size();++j)
+                    for (const auto& region:song.audio)
+                        if (region.track==i && session.sections[j].ticks.intersects({region.startTick,region.startTick+region.durationTicks}))
+                            column.clips[j].add(region.path.replaceCharacter('\\','/').fromLastOccurrenceOf("/",false,false));
+                columns_.push_back(std::move(column)); continue;
+            }
             if (theory) for (std::size_t s = 0; s < session.sections.size(); ++s) {
                 const auto ticks = session.sections[s].ticks;
                 auto& segments = column.progressions[s];
@@ -77,13 +89,33 @@ public:
             count(song.drumNotes[i]);
             columns_.push_back(std::move(column));
         }
+        while (settings_.size() < columns_.size()) {
+            const auto col = settings_.size();
+            auto& group = settings_.emplace_back(std::make_unique<TrackSettings>());
+            header_.addAndMakeVisible(*group);
+            for (int action=0; action<4; ++action) {
+                auto& b = group->buttons[size_t(action)];
+                b.onClick = [this,col,action] {
+                    if (trackAction && col < columns_.size())
+                        trackAction(columns_[col].track,action,&settings_[col]->buttons[size_t(action)]);
+                };
+            }
+        }
+        for (size_t i=0;i<settings_.size();++i) {
+            auto& group = *settings_[i];
+            group.setVisible(i<columns_.size());
+            if (i>=columns_.size()) continue;
+            group.setEnabled(!recording);
+            group.buttons[2].setEnabled(!columns_[i].audio);
+            group.buttons[1].setToggleState(song.trackIds[int(columns_[i].track)]==armed,juce::dontSendNotification);
+        }
         resized();
         list_.updateContent();
         repaint();
     }
 
     int preferredHeight() const {
-        return headerHeight + rowHeight * std::clamp(getNumRowsForLayout(), 1, 7) + 12;
+        return headerHeight + rowHeight * std::max(1,getNumRowsForLayout()) + 12;
     }
 
     void refreshVisibleRows() {
@@ -96,7 +128,8 @@ public:
 
     void resized() override {
         auto bounds = getLocalBounds();
-        bounds.removeFromTop(headerHeight);
+        auto head = bounds.removeFromTop(headerHeight);
+        header_.setBounds(head.withTrimmedLeft(sidebarWidth()).withTrimmedTop(23));
         const int available = std::max(1, getWidth() - sidebarWidth() - list_.getViewport()->getScrollBarThickness());
         const int total = int(columns_.size()) * columnWidth();
         horizontal_.setVisible(total > available);
@@ -116,17 +149,32 @@ public:
         g.drawText(TRANS("Section"), left.removeFromLeft(left.getWidth() - 88).reduced(5,0), juce::Justification::centredLeft);
         g.drawText(TRANS("Extra passes"), left, juce::Justification::centred);
         g.reduceClipRegion(head);
-        if (columns_.empty()) g.drawText(TRANS("No MIDI tracks in this filter"), head.reduced(5,0), juce::Justification::centredLeft);
+        if (columns_.empty()) g.drawText(TRANS("No tracks in this filter"), head.reduced(5,0), juce::Justification::centredLeft);
         for (std::size_t col = 0; col < columns_.size(); ++col) {
             auto r = head.withX(head.getX() + columnX(col)).withWidth(columnWidth()).reduced(2, 1);
             g.setColour(columns_[col].colour);
             g.fillRect(r.removeFromBottom(2));
             g.setColour(juce::Colour(0xffe0e9ec));
-            g.drawText(columns_[col].name, r.reduced(5, 0), juce::Justification::centredLeft);
+            g.drawText(columns_[col].name, r.removeFromTop(20).reduced(5, 0), juce::Justification::centredLeft);
         }
     }
 
 private:
+    struct TrackSettings : juce::Component {
+        std::array<juce::TextButton,4> buttons;
+        TrackSettings() {
+            const juce::StringArray labels{TRANS("Input"),"R",TRANS("Instrument"),"FX"};
+            for (int i=0;i<4;++i) {
+                auto& b=buttons[size_t(i)];
+                b.setButtonText(labels[i]); b.setTitle(i==1 ? TRANS("Arm") : labels[i]);
+                b.setTooltip(b.getTitle()); addAndMakeVisible(b);
+            }
+        }
+        void resized() override {
+            auto row=getLocalBounds().reduced(2,1);
+            for (int i=0;i<4;++i) buttons[size_t(i)].setBounds(row.removeFromLeft(row.getWidth()/(4-i)).reduced(1,0));
+        }
+    };
     struct Segment {
         int chord;
         juce::String name;
@@ -139,6 +187,8 @@ private:
         juce::Colour colour;
         std::vector<int> notes;
         std::vector<std::vector<Segment>> progressions;
+        bool audio=false;
+        std::vector<juce::StringArray> clips;
     };
     class Slot final : public juce::TextButton {
     public:
@@ -188,8 +238,9 @@ private:
     class Row final : public juce::Component {
     public:
         explicit Row(LiveSectionMatrix& matrix) : owner(matrix) {
-            for (juce::Component* c : std::initializer_list<juce::Component*>{&launch, &name, &less, &count, &more, &cells})
+            for (juce::Component* c : std::initializer_list<juce::Component*>{&launch, &name, &bars, &less, &count, &more, &cells})
                 addAndMakeVisible(c);
+            bars.setFont(juce::FontOptions(10.f)); bars.setColour(juce::Label::textColourId,juce::Colour(0xffbdd3d6));
             count.setJustificationType(juce::Justification::centred);
             launch.setButtonText(juce::String::charToString(0x25b6));
             launch.onClick = [this] { if (owner.launchRow) owner.launchRow(index); };
@@ -200,6 +251,7 @@ private:
             index = row;
             const auto& section = owner.session_->sections[std::size_t(row)];
             name.setText(section.name, juce::dontSendNotification);
+            bars.setText(owner.session_->barDetails[row],juce::dontSendNotification);
             name.setTooltip(section.name + "  /  " + owner.session_->barDetails[row]);
             launch.setTitle(TRANS("Play section") + " / " + section.name);
             launch.setTooltip(launch.getTitle());
@@ -226,6 +278,11 @@ private:
                 button.setButtonText(n ? juce::String(n) + " " + TRANS("notes") : "+");
                 button.setTitle(section.name + " / " + column.name);
                 button.setTooltip(TRANS("Edit in piano roll") + " / " + button.getTitle());
+                if (column.audio) {
+                    const auto& clips=column.clips[std::size_t(row)];
+                    button.setButtonText(clips.isEmpty() ? juce::String::charToString(0x2014) : clips.joinIntoString(" / "));
+                    button.setTooltip(button.getTitle()+"  /  "+TRANS("Audio"));
+                }
                 button.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff223039).interpolatedWith(column.colour, n ? .29f : .04f));
                 button.setColour(juce::TextButton::buttonOnColourId, column.colour.darker(.45f));
                 button.setEnabled(!owner.recording_);
@@ -251,7 +308,8 @@ private:
             more.setBounds(side.removeFromRight(29).reduced(1, 3));
             count.setBounds(side.removeFromRight(30));
             less.setBounds(side.removeFromRight(29).reduced(1, 3));
-            name.setBounds(side);
+            name.setBounds(side.removeFromTop(side.getHeight()/2+2));
+            bars.setBounds(side);
             cells.setBounds(bounds);
             for (std::size_t col = 0; col < buttons.size(); ++col)
                 buttons[col]->setBounds(juce::Rectangle<int>(owner.columnX(col), 0, owner.columnWidth(), getHeight()).reduced(2, 3));
@@ -261,7 +319,7 @@ private:
         LiveSectionMatrix& owner;
         int index = 0;
         juce::TextButton launch, less{"-"}, more{"+"};
-        juce::Label name, count;
+        juce::Label name, bars, count;
         juce::Component cells;
         std::vector<std::unique_ptr<Slot>> buttons;
     };
@@ -280,6 +338,8 @@ private:
         return result.release();
     }
     void relayoutRows() {
+        for (size_t i=0;i<settings_.size();++i)
+            settings_[i]->setBounds(columnX(i),0,columnWidth(),header_.getHeight()-2);
         const int first = std::max(0, list_.getRowContainingPosition(1, 1));
         const int end = std::min(getNumRows(), first + list_.getNumRowsOnScreen() + 2);
         for (int row = first; row < end; ++row)
@@ -287,7 +347,9 @@ private:
     }
     void scrollBarMoved(juce::ScrollBar*, double) override { relayoutRows(); repaint(); }
 
-    static constexpr int headerHeight = 26, rowHeight = 34;
+    static constexpr int headerHeight = 50, rowHeight = 40;
+    juce::Component header_;
+    std::vector<std::unique_ptr<TrackSettings>> settings_;
     const LiveSections* session_ = nullptr;
     std::optional<std::size_t> selectedTrack_;
     bool recording_ = false;
