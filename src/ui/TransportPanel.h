@@ -121,6 +121,13 @@ public:
             readout.setMinimumHorizontalScale(0.75f);
             addAndMakeVisible(readout);
         }
+        addChildComponent(camelot_);
+        camelot_.setComponentID("transport-camelot");
+        camelot_.setTitle("Camelot");
+        camelot_.setJustificationType(juce::Justification::centred);
+        camelot_.setBorderSize({});
+        camelot_.setFont(juce::FontOptions(13.f,juce::Font::bold));
+        camelot_.setColour(juce::Label::textColourId,juce::Colour(0xff142027));
         stop.setToggleState(true, juce::dontSendNotification);
         setComponentID("transport");
     }
@@ -149,6 +156,19 @@ public:
         set(2, rate == 1 ? song.contextAt(ostfstudio::TimelineLane::tempo, tick) : juce::String(song.clock.bpmAt(tick) * rate, 2));
         set(3, juce::String(meter.numerator) + "/" + juce::String(meter.denominator));
         set(4, ostfstudio::shiftedLabel(song.contextAt(ostfstudio::TimelineLane::key, tick), shift));
+        const auto nextKey = std::upper_bound(song.camelotKeys.begin(),song.camelotKeys.end(),tick,
+            [](auto at,const auto& event){ return at < event.first; });
+        const int code = nextKey == song.camelotKeys.begin() ? 0 : std::prev(nextKey)->second;
+        const int number = code ? ((code-1 + 7*(shift%12))%12 + 12)%12 + 1 : 0;
+        const auto badge = code ? juce::String(number) + (code <= 12 ? "A" : "B") : juce::String{};
+        if (camelot_.getText() != badge) {
+            camelot_.setText(badge,juce::dontSendNotification);
+            camelot_.setTooltip("Camelot " + badge);
+            camelot_.setColour(juce::Label::backgroundColourId,juce::Colour::fromHSV(
+                std::fmod(.71f + number/12.f,1.f),code <= 12 ? .53f : .35f,.95f,1.f));
+            camelot_.setVisible(code != 0);
+            resized();
+        }
         set(5, ostfstudio::shiftedLabel(song.contextAt(ostfstudio::TimelineLane::scale, tick), shift));
         set(6, ostfstudio::shiftedLabel(song.contextAt(ostfstudio::TimelineLane::chord, tick), shift));
         set(7, song.contextAt(ostfstudio::TimelineLane::section, tick));
@@ -172,6 +192,12 @@ public:
             fields_[i] = rest.removeFromLeft(i == fieldCount - 1 ? rest.getWidth() : width * weights[i - 2] / 100).reduced(1, 0);
         for (int i = 0; i < fieldCount; ++i)
             readouts_[i].setBounds(fields_[i].reduced(7, 2).withTrimmedTop(14));
+        if (camelot_.isVisible()) {
+            auto key = readouts_[4].getBounds();
+            auto badge = key.removeFromRight(std::min(32,key.getWidth()/2));
+            camelot_.setBounds(badge.withSizeKeepingCentre(badge.getWidth(),std::min(19,badge.getHeight())));
+            readouts_[4].setBounds(key.withTrimmedRight(2));
+        }
     }
     void paint(juce::Graphics& g) override {
         const auto bounds = getLocalBounds().toFloat().reduced(0.5f);
@@ -197,6 +223,7 @@ private:
     const std::array<juce::String, fieldCount> captions_{TRANS("Bar / Beat / Tick"), TRANS("Timecode / 30 fps"),
         TRANS("Tempo (BPM)"), TRANS("Meter"), TRANS("Key"), TRANS("Scale"), TRANS("Chord"), TRANS("Section")};
     std::array<juce::Label, fieldCount> readouts_;
+    juce::Label camelot_;
     struct CountStyle final : juce::LookAndFeel_V4 {
         void drawComboBox(juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& combo) override {
             g.setColour(juce::Colour(0xff61757e));

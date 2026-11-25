@@ -323,6 +323,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
     };
     std::vector<ArrangementRegion> keys;
     auto key = keyName(score["song"]["key"]);
+    out->camelotKeys.emplace_back(0,camelotCode(score["song"]["key"]));
     juce::int64 keyStart = 0;
     if (const auto keyChanges = timeline["keyChanges"]; keyChanges.isArray()) {
         for (const auto& change : array(keyChanges)) {
@@ -331,6 +332,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             if (tick > keyStart && key.isNotEmpty()) keys.push_back(region(keyStart, tick, key));
             keyStart = tick;
             key = keyName(change["key"]);
+            out->camelotKeys.emplace_back(tick,camelotCode(change["key"]));
             if (key.isEmpty()) key = change["label"].toString();
         }
     }

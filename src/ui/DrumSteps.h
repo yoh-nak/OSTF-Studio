@@ -82,6 +82,10 @@ public:
         const Tick firstTick = Tick(loopFirst - 1) * song->ticksPerBar;
         return {firstTick, std::min(song->playbackEndTick(), firstTick + Tick(loopBars) * song->ticksPerBar)};
     }
+    void useVisibleLoopRange() {
+        customLoop = false;
+        notifyRange();
+    }
     void setLoopBars(int firstBar, int length) {
         if (!song || song->ticksPerBar <= 0) return;
         customLoop = true;
@@ -124,7 +128,7 @@ public:
         locate.setBounds(top.removeFromLeft(79).reduced(1));
         bars.setBounds(top.removeFromLeft(80).reduced(1));
         loop.setBounds(top.removeFromLeft(64));
-        loopSettings.setBounds(top.removeFromLeft(93).reduced(1));
+        loopSettings.setBounds(top.removeFromLeft(140).reduced(1));
         repeats.setBounds(top.removeFromLeft(112).reduced(1));
         fill.setBounds(top.removeFromLeft(104).reduced(1));
     }
@@ -223,7 +227,7 @@ private:
         if (ticks.isEmpty()) { loopSettings.setButtonText(TRANS("Loop range")); return; }
         const auto firstBar = 1 + ticks.getStart() / song->ticksPerBar;
         const auto lastBar = 1 + (ticks.getEnd() - 1) / song->ticksPerBar;
-        loopSettings.setButtonText(juce::String(firstBar) + " - " + juce::String(lastBar)
+        loopSettings.setButtonText(TRANS("Loop range") + "  " + juce::String(firstBar) + " - " + juce::String(lastBar)
                                    + "  " + juce::String::charToString(0x25be));
     }
     void showLoopSettings() {
@@ -231,6 +235,7 @@ private:
         struct BarEditor final : juce::Component {
             juce::Label fromLabel, lengthLabel;
             juce::Slider from, length;
+            juce::TextButton follow{TRANS("Use visible step range")};
             BarEditor(DrumSteps& owner) {
                 const auto range = owner.loopRange();
                 const int last = owner.song->bars.endBar - 1;
@@ -262,7 +267,15 @@ private:
                     target->setLoopBars(int(from.getValue()),int(length.getValue()));
                 };
                 from.onValueChange = length.onValueChange = change;
-                setSize(225,76);
+                addAndMakeVisible(follow);
+                follow.setBounds(5,76,214,26);
+                follow.onClick = [this,target=juce::Component::SafePointer<DrumSteps>(&owner),project=owner.song,trackIndex=owner.track] {
+                    if (target && target->song==project && target->track==trackIndex) {
+                        target->useVisibleLoopRange();
+                    }
+                    if (auto* popup=findParentComponentOfClass<juce::CallOutBox>()) popup->dismiss();
+                };
+                setSize(225,108);
             }
         };
         juce::CallOutBox::launchAsynchronously(std::make_unique<BarEditor>(*this), loopSettings.getScreenBounds(), nullptr);

@@ -2438,7 +2438,13 @@ function lightPreview(tag,ev){
  }
  $('listenStatus').textContent=tag+' · '+SA.flow.fmt(ev.note)+' · '+(ev.role==='difference'?'color difference':ev.role==='resolution'?'resolving':ev.role==='lead-in'?'preceding chord':'chord phrase');
 }
-function scheduleAudition(p,tag,offset=0){
+function studioPreview(notes){
+ const backend=window.__JUCE__?.backend;
+ if(!backend)return false;
+ backend.emitEvent('ostfScalePreview',notes);
+ return true;
+}
+function scheduleAudition(p,tag,offset=0,studio=false){
  if(!p)return;
  const token=auditionToken,row=tag==='A'?'playheadA':'playheadB';
  timers.push(setTimeout(()=>{if(token!==auditionToken)return;
@@ -2448,7 +2454,7 @@ function scheduleAudition(p,tag,offset=0){
  },offset));
  // In Max, note-on/off is scheduled by Max itself. These UI timers ONLY
  // animate the cursor. The actual note highlights come from saPreviewTick.
- if(!native)for(const ev of p.events)timers.push(setTimeout(()=>{if(token===auditionToken){tone(ev.note,ev.velocity,ev.ms);lightPreview(tag,ev);}},offset+ev.at));
+ if(!native)for(const ev of p.events)timers.push(setTimeout(()=>{if(token===auditionToken){if(!studio)tone(ev.note,ev.velocity,ev.ms);lightPreview(tag,ev);}},offset+ev.at));
  const count=Math.ceil(p.duration/100);
  for(let j=0;j<=count;j++)timers.push(setTimeout(()=>{if(token!==auditionToken)return;
   const el=$(row);if(el){el.classList.add('visible');el.style.left=((87+(Math.min(1,j/count)*623))/730*100)+'%';}
@@ -2597,7 +2603,9 @@ function playSimplePreview(notes,label){
    queueMidiPhrase(notes.map(e=>[Math.round(e.at),Math.round(e.note),Math.round(e.velocity),Math.round(e.ms),'B',String(e.role),Number(e.beat)||0]),duration,[],label);
    $('listenStatus').textContent=label+' · listening';
   }catch(e){previewPending=null;error(e);}
- }else for(const ev of notes)timers.push(setTimeout(()=>tone(ev.note,ev.velocity,ev.ms),ev.at));
+ }else if(!studioPreview(notes)){
+  for(const ev of notes)timers.push(setTimeout(()=>tone(ev.note,ev.velocity,ev.ms),ev.at));
+ }
 }
 function playCompare(which){
  let m=compareModel();if(!m?.plans.a||!m.plans.b){status('Choose a chord and a scale before playback.','error');return;}
@@ -2616,7 +2624,8 @@ function playCompare(which){
 }
 function startPreviewVisual(segments,which){
  const end=segments[segments.length-1].offset+segments[segments.length-1].plan.duration+160;
- for(const seg of segments)scheduleAudition(seg.plan,seg.tag,seg.offset);
+ const studio=studioPreview(segments.flatMap(seg=>seg.plan.events.map(ev=>({...ev,at:seg.offset+ev.at}))));
+ for(const seg of segments)scheduleAudition(seg.plan,seg.tag,seg.offset,studio);
  timers.push(setTimeout(()=>{
   if(which==='AB')status('A/B complete. Compare the pitch paths, then Apply.','success');
   else status('Preview complete: '+segments[0].plan.scale+'.','success');
@@ -3051,8 +3060,8 @@ async function save(mode='save'){
  }catch(e){error(e);await dialog('Export could not be prepared',e.message);}
 }
 function saveAs(){return save('saveas');}
-function stop(){previewPending=null;const wasStreaming=!!liveStream;liveStream=null;auditionToken++;for(const t of timers)clearTimeout(t);timers=[];for(const n of nodes)try{n.stop();}catch(_){}nodes=[];if(activePreviewTx)hostSend('previewStop',activePreviewTx);activePreviewTx='';if(wasStreaming&&native){hostSend('phrase_stop');hostSend('stopnotes');}for(const id of ['playheadA','playheadB'])$(id)?.classList.remove('visible');document.querySelectorAll('.note-firing,.playing-note').forEach(el=>el.classList.remove('note-firing','playing-note'));for(const id of ['hearReference','hearCandidate','hearAB'])$(id)?.classList.remove('playing');if($('listenStatus')){$('listenStatus').dataset.playing='';$('listenStatus').textContent=native?'Ready to audition · following Instrument':'Ready to audition';}}
-function tone(p,v=78,ms=250){if(hostSend('auditionnote',Math.round(p),Math.round(v),Math.round(ms))){markMidiSubmitted();return;}try{if(!audio)audio=new(window.AudioContext||window.webkitAudioContext)();if(audio.state!=='running')audio.resume();let o=audio.createOscillator(),g=audio.createGain(),now=audio.currentTime;o.type='triangle';o.frequency.value=440*Math.pow(2,(p-69)/12);g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(v/127*.12,now+.012);g.gain.exponentialRampToValueAtTime(.0001,now+ms/1000);o.connect(g);g.connect(audio.destination);o.start();o.stop(now+ms/1000+.04);nodes.push(o);o.onended=()=>{o.disconnect();g.disconnect();nodes=nodes.filter(x=>x!==o);};}catch(e){error(Error('Audition unavailable: '+e.message));}}
+function stop(){studioPreview([]);previewPending=null;const wasStreaming=!!liveStream;liveStream=null;auditionToken++;for(const t of timers)clearTimeout(t);timers=[];for(const n of nodes)try{n.stop();}catch(_){}nodes=[];if(activePreviewTx)hostSend('previewStop',activePreviewTx);activePreviewTx='';if(wasStreaming&&native){hostSend('phrase_stop');hostSend('stopnotes');}for(const id of ['playheadA','playheadB'])$(id)?.classList.remove('visible');document.querySelectorAll('.note-firing,.playing-note').forEach(el=>el.classList.remove('note-firing','playing-note'));for(const id of ['hearReference','hearCandidate','hearAB'])$(id)?.classList.remove('playing');if($('listenStatus')){$('listenStatus').dataset.playing='';$('listenStatus').textContent=native?'Ready to audition · following Instrument':'Ready to audition';}}
+function tone(p,v=78,ms=250){if(studioPreview([{at:0,note:p,velocity:v,ms}]))return;if(hostSend('auditionnote',Math.round(p),Math.round(v),Math.round(ms))){markMidiSubmitted();return;}try{if(!audio)audio=new(window.AudioContext||window.webkitAudioContext)();if(audio.state!=='running')audio.resume();let o=audio.createOscillator(),g=audio.createGain(),now=audio.currentTime;o.type='triangle';o.frequency.value=440*Math.pow(2,(p-69)/12);g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(v/127*.12,now+.012);g.gain.exponentialRampToValueAtTime(.0001,now+ms/1000);o.connect(g);g.connect(audio.destination);o.start();o.stop(now+ms/1000+.04);nodes.push(o);o.onended=()=>{o.disconnect();g.disconnect();nodes=nodes.filter(x=>x!==o);};}catch(e){error(Error('Audition unavailable: '+e.message));}}
 function setMidiModeUI(){
  for(const [id,mode] of [['modeDirect','direct'],['modeStandard','standard']]){
   const button=$(id);if(!button)continue;

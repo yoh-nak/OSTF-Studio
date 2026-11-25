@@ -184,6 +184,32 @@ void RecordedMora::preparePitchMarks() {
     std::reverse(pitchMarks.begin(),pitchMarks.end());
     follow(1);
 
+    // Use the evolving vowel in the recording. The short crossfade loop is a
+    // fallback for raw playback and may contain only twelve glottal pulses.
+    vowelFirst = loopStart;
+    vowelLast = std::max(loopStart,loopEnd-int(period));
+    if (pitchMarks.size() >= 4) {
+        const auto anchorIt = std::lower_bound(pitchMarks.begin(),pitchMarks.end(),anchor);
+        const int anchorIndex = int(anchorIt-pitchMarks.begin());
+        const auto similar = [&](int i) {
+            const int a=pitchMarks[i], b=pitchMarks[i+1], c=pitchMarks[i+2];
+            if (std::abs((b-a)-(c-b))>.18*period) return false;
+            double xy=0., xx=0., yy=0.;
+            for (int n=0;n<48;++n) {
+                const double x=frames[a+(b-a)*n/48], y=frames[b+(c-b)*n/48];
+                xy+=x*y; xx+=x*x; yy+=y*y;
+            }
+            return std::min(xx,yy)>.004 && xy>.80*std::sqrt(xx*yy);
+        };
+        int first=anchorIndex, last=anchorIndex;
+        while(first>1 && pitchMarks[first-1]>=consonantFrames && first+1<int(pitchMarks.size()) && similar(first-1)) --first;
+        while(last+3<int(pitchMarks.size()) && similar(last)) ++last;
+        if (last-first>=3) {
+            vowelFirst=pitchMarks[first];
+            vowelLast=pitchMarks[last];
+        }
+    }
+
     // A nasal or voiced stop can already carry the singer's original pitch
     // well before the configured vowel boundary. Require adjacent, similar
     // cycles so that a single burst of unvoiced noise cannot start retuning.

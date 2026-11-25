@@ -163,6 +163,9 @@ int checkPianoEdits(const juce::File& fixture) {
         if (steps.loopRange() != juce::Range<juce::int64>(3840,11520) || steps.range().getStart() != 0) return 131;
         steps.setLoopBars(3,8);
         if (steps.loopRange() != juce::Range<juce::int64>(7680,11520)) return 132;
+        steps.useVisibleLoopRange();
+        if (steps.loopRange() != steps.range()) return 134;
+        steps.setLoopBars(2, 2);
         steps.bind(nullptr,0,0,240);
         steps.bind(&score,0,0,240);
         if (steps.loopRange() != steps.range()) return 133;

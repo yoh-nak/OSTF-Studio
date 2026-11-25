@@ -4,11 +4,20 @@
 #include "InstrumentRack.h"
 #include "ScaleAssets.h"
 #include <juce_javascript/juce_javascript.h>
+#include <juce_gui_extra/juce_gui_extra.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <cstring>
 
 namespace {
 using namespace ostfstudio::scale;
+class WorkspaceBrowser final : public juce::WebBrowserComponent {
+public:
+    using WebBrowserComponent::WebBrowserComponent;
+    bool pageAboutToLoad(const juce::String& url) override {
+        return url == "about:blank" || url == getResourceProviderRoot()
+            || url.startsWith(getResourceProviderRoot() + "#");
+    }
+};
 class Processor final : public juce::AudioProcessor, public juce::VST3ClientExtensions,
                         public juce::ChangeBroadcaster {
 public:
@@ -283,6 +292,7 @@ public:
         proc.addChangeListener(this);
         sync();
         setResizable(true,false); setResizeLimits(795,655,1700,1150); setSize(1120,800);
+        showWorkspaceForFirstScore();
     }
     ~Editor() override { proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this); }
     void resized() override {
@@ -321,6 +331,7 @@ public:
         auto play=area.removeFromBottom(31); stop.setBounds(play.removeFromRight(60).reduced(1)); audition.setBounds(play.reduced(1));
         details.setBounds(area.reduced(3));
         compareText.setBounds(details.getBounds()); fitRows.setBounds(details.getBounds());
+        if (workspace) workspace->setBounds(getLocalBounds().reduced(12).withTrimmedTop(66).withTrimmedBottom(35));
     }
     void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff111923));}
 private:
@@ -336,7 +347,13 @@ private:
         }
         bool started=false;
     };
-    void changeListenerCallback(juce::ChangeBroadcaster*) override { sync(); }
+    void showWorkspaceForFirstScore() {
+        if (!openedFirstScore && proc.document.text.isNotEmpty()) {
+            openedFirstScore = true;
+            openFullWorkspace();
+        }
+    }
+    void changeListenerCallback(juce::ChangeBroadcaster*) override { sync(); showWorkspaceForFirstScore(); }
     void updateScope() {
         const juce::ScopedLock lock(proc.stateLock);
         int first=std::min(map.anchor,map.end), last=std::max(map.anchor,map.end);
@@ -599,21 +616,86 @@ private:
         const auto r=proc.document.load(source);
         if(r.failed()) {status.setText(r.getErrorMessage(),juce::dontSendNotification); return;}
         previousDocument.reset(); undo.setEnabled(false); redoDocument.reset(); redo.setEnabled(false);
-        sync(); proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+        if (workspace && workspace->isVisible()) {
+            workspace.reset();
+            openedFirstScore = false;
+        }
+        sync(); showWorkspaceForFirstScore();
+        proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
     void openFullWorkspace() {
+        if (workspace && workspace->isVisible()) {
+            workspace->setVisible(false);
+            fullWorkspace.setButtonText("Full editor");
+            returnWorkspace.setEnabled(false);
+            return;
+        }
         const auto snapshot=proc.document.text;
         if(snapshot.isEmpty()) return;
+        if (workspace && workspaceHash==digest(snapshot)) {
+            workspace->setVisible(true); workspace->toFront(false);
+            fullWorkspace.setButtonText("Native controls"); returnWorkspace.setEnabled(true); return;
+        }
         const auto html=juce::String::fromUTF8(ScaleAssets::ScaleWorkspace_html,ScaleAssets::ScaleWorkspace_htmlSize)
             .replace("<!--STUDIO_SCORE-->",juce::Base64::toBase64(snapshot));
+        using Browser = juce::WebBrowserComponent;
+        auto options = Browser::Options{}.withKeepPageLoadedWhenBrowserIsHidden();
+       #if JUCE_WINDOWS
+        options = options.withBackend(Browser::Options::Backend::webview2)
+            .withWinWebView2Options(Browser::Options::WinWebView2{}.withUserDataFolder(
+                juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("OSTF Scale WebView")));
+       #endif
+       #if JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE
+        if (Browser::areOptionsSupported(options)) {
+            options = options.withNativeIntegrationEnabled()
+                .withEventListener("ostfScalePreview", [self=juce::Component::SafePointer<Editor>(this)](juce::var notes) {
+                    if (!self || !notes.isArray() || notes.size() > 2048) return;
+                    if (notes.size()) self->proc.rack.audition(notes);
+                    else self->proc.rack.stopPreview();
+                });
+            options = options.withResourceProvider([html](const juce::String& path)->std::optional<Browser::Resource>{
+                if(path!="/") return {};
+                const auto* bytes=reinterpret_cast<const std::byte*>(html.toRawUTF8());
+                return Browser::Resource{std::vector<std::byte>(bytes,bytes+html.getNumBytesAsUTF8()),"text/html"};
+            });
+            workspace=std::make_unique<WorkspaceBrowser>(options);
+            workspace->setComponentID("scale-full-workspace");
+            addAndMakeVisible(*workspace); resized();
+            workspace->goToURL(Browser::getResourceProviderRoot());
+            workspaceHash=digest(snapshot);
+            fullWorkspace.setButtonText("Native controls");
+            returnWorkspace.setButtonText("Apply scales"); returnWorkspace.setEnabled(true);
+            return;
+        }
+       #endif
         auto file=std::make_unique<juce::TemporaryFile>(".html");
         if(!file->getFile().replaceWithText(html) || !file->getFile().startAsProcess()) {
             status.setText("Could not open the local Scale Editor in your browser.",juce::dontSendNotification); return;
         }
         workspaceFile=std::move(file); workspaceHash=digest(snapshot);
+        returnWorkspace.setButtonText("Import edited scales");
         returnWorkspace.setEnabled(true);
     }
     void importFullWorkspace() {
+        if(workspace && workspace->isVisible()) {
+            const auto opened=workspaceHash;
+            workspace->evaluateJavascript("window.ScaleAdviserApp.exportText()",
+                [self=juce::Component::SafePointer<Editor>(this),opened](auto result){
+                    if(!self) return;
+                    const auto* value=result.getResult();
+                    if(!value || !value->isString()) { self->status.setText("The full editor is still loading.",juce::dontSendNotification); return; }
+                    const juce::ScopedLock lock(self->proc.stateLock);
+                    const auto before=self->proc.document;
+                    const auto r=self->proc.document.importWorkspaceScales(value->toString(),opened);
+                    if(r.failed()){self->status.setText(r.getErrorMessage(),juce::dontSendNotification);return;}
+                    self->previousDocument=before; self->undoAtText=self->proc.document.text;
+                    self->undo.setEnabled(true); self->redoDocument.reset(); self->redo.setEnabled(false);
+                    self->workspaceHash=digest(self->proc.document.text);
+                    self->sync(); self->proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+                    self->status.setText("Scales applied to the plug-in score.",juce::dontSendNotification);
+                });
+            return;
+        }
         chooser=std::make_unique<juce::FileChooser>("Import the full editor's exported scales",juce::File{},"*.ostf");
         chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,
             [self=juce::Component::SafePointer<Editor>(this)](const juce::FileChooser& fc) {
@@ -658,8 +740,10 @@ private:
     ScaleRows reviewList;
     juce::Array<int> reviewIndices;
     bool showingReview=false;
-    juce::TextButton fullWorkspace{"Full editor (browser)"}, returnWorkspace{"Import edited scales"};
+    juce::TextButton fullWorkspace{"Full editor"}, returnWorkspace{"Apply scales"};
+    std::unique_ptr<juce::WebBrowserComponent> workspace;
     juce::String workspaceHash;
+    bool openedFirstScore = false;
     std::unique_ptr<juce::TemporaryFile> workspaceFile;
     juce::Label flowKey;
     bool showConnections=false;

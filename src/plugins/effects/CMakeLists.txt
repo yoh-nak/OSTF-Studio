@@ -15,7 +15,10 @@ foreach(i RANGE 0 ${last_effect})
         PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE "${code}" PRODUCT_NAME "${name}" PLUGIN_NAME "${plugin_name}"
         FORMATS VST3 VST3_CATEGORIES Fx "${category}"
         VST3_COPY_DIR "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" COPY_PLUGIN_AFTER_BUILD FALSE)
-    if(type STREQUAL "Analyzer")
+    if(type STREQUAL "EffectRack")
+        target_sources(${target} PRIVATE ../rack/Factory.cpp)
+        target_link_libraries(${target} PRIVATE ostf_rack_host juce::juce_audio_processors)
+    elseif(type STREQUAL "Analyzer")
         target_sources(${target} PRIVATE WaveAnalyzer.cpp)
     elseif(type STREQUAL "Unmask")
         target_sources(${target} PRIVATE Unmask.cpp)
@@ -56,7 +59,10 @@ foreach(i RANGE 0 ${last_instrument})
         PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE "${code}" PRODUCT_NAME "${name}" PLUGIN_NAME "${plugin_name}"
         IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE FORMATS VST3 VST3_CATEGORIES Instrument Synth
         VST3_COPY_DIR "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" COPY_PLUGIN_AFTER_BUILD FALSE)
-    if(type STREQUAL "Singer")
+    if(type STREQUAL "InstrumentRack")
+        target_sources(${target} PRIVATE ../rack/Factory.cpp)
+        target_link_libraries(${target} PRIVATE ostf_rack_host juce::juce_audio_processors)
+    elseif(type STREQUAL "Singer")
         juce_add_binary_data(OSTFMeiVoice NAMESPACE MeiVoiceData HEADER_NAME MeiVoiceData.h
             SOURCES "${PROJECT_SOURCE_DIR}/assets/voices/mei-cv.zip" "${PROJECT_SOURCE_DIR}/assets/voices/english-phones.bin")
         target_link_libraries(${target} PRIVATE OSTFMeiVoice PUBLIC OSTFEnglishLexicon)

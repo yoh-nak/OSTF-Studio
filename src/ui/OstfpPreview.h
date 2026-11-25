@@ -205,6 +205,7 @@ struct OstfpPreview {
     TempoMap clock;
     int meterBeats = 4, beatUnit = 4;
     std::vector<MeterPoint> meters;
+    std::vector<std::pair<juce::int64,int>> camelotKeys;
     juce::String defaultScale;
     juce::StringArray trackIds;
     std::map<juce::String,StudioMidiTakes> midiTakes;

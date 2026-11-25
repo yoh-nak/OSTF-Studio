@@ -49,6 +49,10 @@ Formant Singer plays a recorded consonant onset at its source rate, then transit
 
 ## Shared instruments, track ordering and voice processing
 
+Instrument Rack and Effect Rack are VST3s with an internal JUCE processor graph. Each layer has a serial chain and a gain stage feeding the shared stereo output. Instrument layers receive the same timestamped MIDI. Effect layers receive the same input audio. The plug-in state contains the ordered device descriptions and their parameter-state bytes. A missing device preserves its state and silences its layer. The host can reopen a moved stock device from its portable or installed VST3 folder.
+
+Scale Editor serves the original offline workspace and an opening score snapshot from memory. Applying a workspace edit reads the exported score through the embedded browser and passes it through the existing scale-only import check. The singer estimates the continuous periodic part of each recorded vowel at bank load and uses the period on each side of a pitch mark when overlapping grains.
+
 The scanner retains file paths for incremental scans. The browser and instrument/FX menus share a catalogue keyed by VST3 component identity and manufacturer. It prefers an existing portable bundle and omits the retired OSTF Arranger preview. During theory analysis, each pitched part caches matching and total note ticks for each global chord and scale event. Combining those ticks yields the ensemble percentage. The derived chord voicing, percussion, audio and disabled events do not enter the ensemble denominator.
 
 Studio creates native editor windows when the user opens an instrument, an effect or Splice Sounds. JUCE associates the window with the Studio workspace so the OS keeps it above its owner. Editing an FX slot dismisses the chain popup before showing the editor. Background audio-device and control-surface setup can initialise without creating a desktop window.

@@ -759,6 +759,7 @@ countries: jp
 "Move down" = "行を下へ"
 "Strike the MIDI pad to assign" = "割り当てたいMIDIパッドを叩いてください"
 "Loop range" = "ループ範囲"
+"Use visible step range" = "ステップの表示範囲に戻す"
 "Mono input" = "モノ入力"
 "Stereo input" = "ステレオ入力"
 "Metronome" = "メトロノーム"

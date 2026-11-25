@@ -2,7 +2,11 @@
 
 ## OSTF 5.1 studio preview
 
-New songs and the seven arranged demos use Core 5.1.0. The eight gallery projects include a shared-GM alternative. Open an OSTFP from File → Demo songs for its instrument patches, routing and insert settings. In the arrangement or live cell take menu, choose an authored comp to change the materialized performance. In Live Session, **Audition take** previews another comp independently. Queue the section to keep that combination, then choose **Adopt combination** to apply it to the arrangement. The Scale Editor instrument opens the supplied Max device’s full workspace in the default browser. Export the edited OSTF there and choose **Import edited scales** in the instrument to return it to Studio. [Demo guide](examples/demo-songs/README.md)
+New songs and the seven arranged demos use Core 5.1.0. The eight gallery projects include a shared-GM alternative. Open an OSTFP from File → Demo songs for its instrument patches, routing and insert settings. In the arrangement or live cell take menu, choose an authored comp to change the materialized performance. In Live Session, **Audition take** previews another comp independently. Queue the section to keep that combination, then choose **Adopt combination** to apply it to the arrangement. [Demo guide](examples/demo-songs/README.md)
+
+Scale Editor opens the original Max device’s scale workspace inside the VST3. Its scale and A/B previews play through the instrument on the track. Use **Apply scales** to transfer its assignments to the plug-in score, then **Drag OSTF to Studio** to return them to the arrangement. Windows uses the Edge WebView2 runtime and macOS uses the system WebKit view. When an embedded view is unavailable, the editor offers its browser and file workflow.
+
+Choose **OSTF Instrument Rack** as the track sound, then **+ Instrument layer** for each VST3 that should play the incoming notes. Choose **OSTF Effect Rack** in an FX insert to process the incoming sound in parallel. In either rack, select a layer to set its level or add serial effects with **+ Insert effect**. **Open plug-in** edits the selected device. Saving the project stores the layers and nested plug-in settings.
 
 Arm a MIDI track with R, play, and use Capture MIDI on its mixer strip or input menu. Stopped performances start at the edit cursor. During playback notes use the arrangement position. The IN selector is shared by the mixer and track header. Drop an instrument or effect from the browser onto the channel strip. The output selectors on Master and Cue offer physical channels and device settings.
 
@@ -24,7 +28,7 @@ The mixer pins the master on the far right. Independent white markers hold left 
 
 During playback and seeking, each vocal part shows the current chord’s written lyric beside its lyric lanes. The pronunciation lane follows individual notes.
 
-In the drum step sequencer, open the numbered range beside **Loop**, enter the first bar and length, then enable **Loop**. After you set a range you can page through the step grid independently. The built-in singer crossfades neighbouring syllables and times English vowel changes and consonants to the sung note.
+In the drum step sequencer, open **Loop range**, enter the first bar and length, then enable **Loop**. Page through the step grid while that range repeats, or choose **Use visible step range** to follow the grid again. The transport shows a coloured Camelot number beside a major or minor key. The built-in singer crossfades neighbouring syllables and times English vowel changes and consonants to the sung note.
 
 Enable **Chord fit** or **Scale fit** in View to see a colour-coded percentage on each corresponding global timeline region. The denominator is the total pitched note duration sounding within that region across tracks. A targeted scale counts the notes to which it applies. Hover over short regions for a numeric reading.
 

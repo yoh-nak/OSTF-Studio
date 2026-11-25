@@ -1,10 +1,11 @@
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_gui_extra/juce_gui_extra.h>
 #include <iostream>
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
-    if(argc!=3) return 1;
+    if(argc!=3 && argc!=4) return 1;
     const juce::File file{juce::String::fromUTF8(argv[1])};
     juce::VST3PluginFormat format;
     juce::OwnedArray<juce::PluginDescription> types;
@@ -36,6 +37,58 @@ int main(int argc,char** argv) {
     processor->setStateInformation(bytes.getData(),int(bytes.getSize()));
     processor->prepareToPlay(48000,256);
     std::unique_ptr<juce::AudioProcessorEditor> editor(processor->createEditorAndMakeActive());
+    if (argc == 4) {
+        auto* browser = dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
+        juce::TextButton* applyScales = nullptr;
+        for (auto* child : editor->getChildren())
+            if (auto* button = dynamic_cast<juce::TextButton*>(child); button && button->getButtonText() == "Apply scales")
+                applyScales = button;
+        if (!browser || !applyScales) return 43;
+        editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
+        editor->setVisible(true);
+        const auto title = juce::JSON::parse(juce::File(juce::String::fromUTF8(argv[2])).loadFileAsString())["song"]["title"].toString();
+        bool pending = false, applying = false, heardPreview = false;
+        int result = 44;
+        const auto deadline = juce::Time::getMillisecondCounterHiRes() + 45000.;
+        struct Poll : juce::Timer {
+            std::function<void()> poll;
+            void timerCallback() override { poll(); }
+        } timer;
+        timer.poll = [&] {
+            if (juce::Time::getMillisecondCounterHiRes() > deadline) {
+                juce::MessageManager::getInstance()->stopDispatchLoop(); return;
+            }
+            if (applying) {
+                midi.clear(); block.clear();
+                processor->processBlock(block, midi);
+                heardPreview |= block.getMagnitude(0, block.getNumSamples()) > 0.0001f;
+                processor->getStateInformation(bytes);
+                const auto stateXml = juce::AudioProcessor::getXmlFromBinary(bytes.getData(), int(bytes.getSize()));
+                const auto doc = juce::JSON::parse(stateXml->getChildByName("Score")->getAllSubText());
+                if (heardPreview && doc["song"]["title"].toString() == title && doc["harmony"]["scales"].size() == 0) {
+                    result = 0; juce::MessageManager::getInstance()->stopDispatchLoop();
+                }
+            } else if (!pending) {
+                pending = true;
+                browser->evaluateJavascript(R"JS((() => {
+                    const app = window.ScaleAdviserApp;
+                    if (!app?.state?.doc?.harmony?.scales?.length || !app.renderScaleMap || !app.renderNoteFit) return '';
+                    app.playCompare('A');
+                    app.state.doc.harmony.scales = [];
+                    return app.state.doc.song.title;
+                })())JS", [&](auto evaluated) {
+                    pending = false;
+                    const auto* value = evaluated.getResult();
+                    if (value && value->toString() == title) { applying = true; applyScales->onClick(); }
+                });
+            }
+        };
+        timer.startTimer(200);
+        juce::MessageManager::getInstance()->runDispatchLoop();
+        timer.stopTimer();
+        editor.reset(); processor->releaseResources();
+        return result;
+    }
     juce::ComboBox *choices=nullptr, *genre=nullptr;
     juce::TextButton* ab=nullptr;
     for(auto* c:editor->getChildren()) {

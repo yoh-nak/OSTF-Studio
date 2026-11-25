@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Parallel racks, voice rendering and embedded Scale Editor
+
+Branch `feat/performance-racks-and-voice`. Build both rack VST3s together with the Singer, Scale Editor and Studio app. The Scale Editor bundles the original offline workspace. The Windows build uses the pinned WebView2 SDK and ships its loader notices. The browser's scale and A/B auditions send note sequences to the plug-in's instrument. Applying assignments checks the opening score snapshot before updating the plug-in document.
+
+Windows Release checks cover summed VST3 layers with serial inserts, the embedded workspace editing a demo and auditioning its nested instrument, singer rendering, Camelot mapping and the drum loop controls. For the same 12.33-second Mei phrase, the old and new renders had zero clipped samples. The factory A vowel supplies 2,312 source samples to the new sustain trajectory. Hardware listening and the macOS WebKit/VST3 path still need validation.
+
 ## Selectable plug-in installers
 
 Branch `feat/selectable-plugin-installers`. Windows Setup and the Apple silicon PKG share the stock catalogue in `packaging/plugin_choices.py`. Run `python tests/installer_choices.py` to check both selection trees, the Windows helper payloads and macOS receipt mappings. Windows Setup and Portable ZIP were built locally from the 5.1 Studio build and 36 stock VST3s. The workflow exercises selective installation on each OS and full installation afterward. The macOS package and native install paths still need a macOS run.

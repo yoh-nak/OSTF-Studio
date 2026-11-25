@@ -155,6 +155,7 @@ int main(int argc, char** argv) {
     for(int i=0;i<4000;++i) nasal.frames.push_back(i<400 ? 0.f : float(.3*std::sin(juce::MathConstants<double>::twoPi*i/80)));
     nasal.preparePitchMarks();
     if(nasal.voicedStart<320 || nasal.voicedStart>560) return 41;
+    if(nasal.vowelFirst>1750 || nasal.vowelLast<3600) return 42;
     const auto source = juce::File(juce::String::fromUTF8(argv[1])).loadFileAsString();
     const auto demoScore = juce::JSON::parse(source);
     const auto& scoreUnits = items(demoScore["lyrics"]["units"]);
@@ -278,6 +279,9 @@ int main(int argc, char** argv) {
     // note played live without an encoded phone duration.
     const auto* vowelA = factory.find({0,vowelOnly});
     if (!vowelA || vowelA->pitchMarks.size()<3) return 17;
+    std::cout << "Factory A vowel, loop / voiced source (samples): "
+              << vowelA->loopEnd - vowelA->period - vowelA->loopStart << " / "
+              << vowelA->vowelLast - vowelA->vowelFirst << '\n';
     const int cycle = juce::roundToInt(48000. / juce::MidiMessage::getMidiNoteInHertz(60));
     double periodicError=0, energy=0;
     for (int n=600+cycle; n<a.getNumSamples(); ++n) {

@@ -568,6 +568,16 @@ int pianoCursorX(MainComponent& main) {
 }
 
 int checkTransport(const juce::File& fixture, const juce::File& dir) {
+    for (int pc=0;pc<12;++pc) {
+        auto key = juce::JSON::parse(R"({"state":"tonal","mode":"minor"})");
+        key.getDynamicObject()->setProperty("tonic",spelledClass(pc));
+        const int minor=camelotCode(key);
+        if (minor<1 || minor>12 || (pc==4 && minor!=9) || camelotCode(key,12)!=minor) return 127;
+        key.getDynamicObject()->setProperty("mode","major");
+        if(camelotCode(key,3)!=minor+12) return 128;
+        key.getDynamicObject()->setProperty("state","unknown");
+        if(camelotCode(key)!=0) return 129;
+    }
     std::unique_ptr<OstfpPreview> song;
     juce::FileInputStream input(fixture);
     if (dir.createDirectory().failed() || readOstfpPreview(input, song).failed()) return 1;

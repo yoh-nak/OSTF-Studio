@@ -26,6 +26,15 @@ inline juce::var spelledClass(int pc) {
     object->setProperty("alter", name.endsWith("b") ? -1 : int(name.endsWith("#")));
     return juce::var(object);
 }
+// The two rings share a number for relative major and minor keys.
+inline int camelotCode(const juce::var& key, int shift = 0) {
+    const auto mode = key["mode"].toString();
+    const bool minor = mode == "minor" || mode == "aeolian";
+    const int tonic = pitchClassOf(key["tonic"]);
+    if (key["state"].toString() != "tonal" || tonic < 0 || (!minor && mode != "major" && mode != "ionian")) return 0;
+    const int pc = ((tonic + shift % 12 + (minor ? 3 : 0)) % 12 + 12) % 12;
+    return (7 + 7 * pc) % 12 + 1 + (minor ? 0 : 12);
+}
 inline juce::String shiftedLabel(juce::String label, int shift) {
     if (shift % 12 == 0 || label.isEmpty()) return label;
     auto shiftHead = [shift](juce::String text) {

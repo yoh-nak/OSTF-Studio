@@ -132,8 +132,8 @@ class SyllableVoice {
                 // Pitch analysis found a contiguous voiced region here. Marks in the
                 // breath or release can jump between harmonics on consecutive cycles.
                 const double low = onset > 0. || (phone.onset != vowelOnly && !vowelSample)
-                    ? std::min(recorded->voicedStart, recorded->loopStart) : recorded->loopStart;
-                const double high = std::max(low, recorded->loopEnd - recorded->period);
+                    ? std::min(recorded->voicedStart, recorded->vowelFirst) : recorded->vowelFirst;
+                const double high = std::max(low,double(recorded->vowelLast));
                 // Advance once through the voiced recording over the scored duration.
                 // A live MIDI note has no known end, so approach its sustain gradually.
                 const double elapsed = time - onset;
@@ -226,7 +226,11 @@ class SyllableVoice {
         const double outputPeriod = source.rate / pitch;
         auto window = [&](int index, double relativePhase) {
             const auto centre = source.pitchMarks[size_t(index)];
-            const double sourcePeriod = source.pitchMarks[size_t(index + 1)] - centre;
+            // The left half of a pulse belongs to its preceding source cycle.
+            // Using the following cycle's length on both sides misaligns the
+            // two windows when the original singer's pitch is moving.
+            const double sourcePeriod = relativePhase < 0 && index > 0
+                ? centre - source.pitchMarks[size_t(index-1)] : source.pitchMarks[size_t(index+1)] - centre;
             const double span = std::clamp(outputPeriod, .65 * sourcePeriod, 1.18 * sourcePeriod);
             return source.cycleSample(centre + relativePhase * span, span * pitch / sr);
         };
