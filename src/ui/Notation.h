@@ -28,6 +28,11 @@ struct SheetOptions {
     bool showChords = true, showLyrics = true, showScales = false;
     LyricDisplay lyricDisplay = LyricDisplay::text;
     int marginMm = 12;
+    bool usLetter = false, landscape = false;
+    juce::Point<int> paperPoints() const {
+        const int shortEdge = usLetter ? 612 : 595, longEdge = usLetter ? 792 : 842;
+        return landscape ? juce::Point<int>{longEdge, shortEdge} : juce::Point<int>{shortEdge, longEdge};
+    }
     std::vector<int> pageBreakBars; // One-based first bars of explicitly chosen pages.
     bool showSections = true, showBarNumbers = true;
 };

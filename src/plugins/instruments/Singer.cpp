@@ -129,7 +129,7 @@ class SyllableVoice {
             recording = recorded->read(position, step);
             const double onset = phone.durationMs && phone.onset == vowelOnly ? .028 :
                 std::max(.067, recorded->consonantFrames / recorded->rate);
-            if (!vowelSample && recorded->period > 0 && time > onset) {
+            if (recorded->pitchMarks.size() >= 2 && time > onset) {
                 const double amount = std::min(1., (time - onset) * pitch);
                 const double low = std::max(double(recorded->consonantFrames), std::min(onset * recorded->rate, double(recorded->loopStart)));
                 const double high = std::max(low, .82 * recorded->frames.size() - recorded->period);
@@ -217,7 +217,10 @@ class SyllableVoice {
         auto sampleCycle = [&](int index) {
             const auto first = source.pitchMarks[size_t(index)];
             const auto last = source.pitchMarks[size_t(index + 1)];
-            return source.sampleAt(first + phase * (last - first));
+            const auto value = source.sampleAt(first + phase * (last - first));
+            // A pitch mark need not fall at an exact zero crossing. Match both ends
+            // of the resampled period to avoid a pulse at every glottal closure.
+            return float(value - std::lerp(double(source.sampleAt(first)), double(source.sampleAt(last)), phase));
         };
         const auto out = std::lerp(sampleCycle(oldMark), sampleCycle(newMark), mix);
         phase += std::min(.45, pitch / sr);
@@ -234,8 +237,7 @@ class SyllableVoice {
     uint64_t age = 0, noteAge = 0;
     bool released = false, nasal = false, stop = false, voiced = false, fricative = false, vowelSample = false;
 };
-// During a connected syllable change keep rendering the outgoing vowel at its
-// actual pitch and source phase, including across Japanese/English boundaries.
+// Connect the waveform at phone boundaries without rendering a second pitched source.
 class Voice : public SyllableVoice {
   public:
     void start(int ch, int pitch, float velocity, Phone p, double sr, const VoiceBank* bank) {
@@ -259,12 +261,14 @@ class Voice : public SyllableVoice {
             stageFrames = 0;
         }
         const float current = SyllableVoice::sample(sr, bend, expression);
-        if (!remaining) return current;
-        const float t = 1.f - float(remaining--) / length;
-        return std::lerp(tail.sample(sr, bend, expression), current, t*t*(3.f-2.f*t));
+        if (remaining == length) spliceOffset = lastOutput - current;
+        const float t = float(remaining) / length;
+        if (remaining > 0) --remaining;
+        lastOutput = current + spliceOffset * (t * t * (3.f - 2.f * t));
+        return lastOutput;
     }
   private:
-    SyllableVoice tail;
+    float lastOutput = 0.f, spliceOffset = 0.f;
     std::array<Phone,3> segments{};
     const VoiceBank* sourceBank = nullptr;
     int stage = 0, count = 0, stageFrames = 0;
@@ -320,9 +324,6 @@ class Voice : public SyllableVoice {
     void beginTransition(int ch, Phone incoming, double sr) {
         remaining = 0;
         if (key < 0 || channel != ch) return;
-        tail = static_cast<const SyllableVoice&>(*this);
-        // Preserve stop bursts and sibilants. Open vowels and voiced sonorants
-        // can overlap longer, so the mouth shape changes through the beat.
         const int en = incoming.english & 63;
         const bool vowel = en ? en <= 15 : incoming.onset == vowelOnly;
         const bool sonorant = en ? en >= 25 && en <= 28 :
@@ -529,8 +530,11 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
             for (auto& v : voices)
                 if (v.key >= 0)
                     sample += v.sample(rate, bend[v.channel - 1], expression[v.channel - 1]);
+            const float magnitude = std::abs(sample);
+            if (magnitude > .9f)
+                sample = std::copysign(.9f + .1f * std::tanh((magnitude - .9f) * 10.f), sample);
             for (int ch = 0; ch < b.getNumChannels(); ++ch)
-                b.setSample(ch, i, std::tanh(sample));
+                b.setSample(ch, i, sample);
         }
         expected = beat;
         midi.clear();

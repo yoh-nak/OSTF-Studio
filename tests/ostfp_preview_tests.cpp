@@ -643,6 +643,12 @@ int main(int argc, char** argv) {
         mix.outputEffects[0].add(fx.chainId());
         mix.sidechainTracks[ostfstudio::SessionMix::effectSlot(true,0,0)]=project->trackIds[0];
     }
+    for (const auto& fx : ostfstudio::stockEffects) if (fx.displayName()=="Bus Compressor") {
+        const int slot = mix.outputEffects[0].size();
+        mix.outputEffects[0].add(fx.chainId());
+        mix.sidechainTracks[ostfstudio::SessionMix::effectSlot(true,0,slot)] = project->trackIds[1];
+    }
+    mix.sidechainTracks[ostfstudio::SessionMix::effectSlot(true,ostfstudio::busOutput(3),0)] = project->trackIds[2];
     mix.routing.masterDb = -6.0;
     mix.routing.returnCount = 2;
     mix.routing.returnDb[1] = -8.0;

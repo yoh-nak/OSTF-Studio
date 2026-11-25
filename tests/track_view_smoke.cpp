@@ -405,6 +405,41 @@ private:
             studio.undoPianoEdit(false);
             if (project.sourceScore!=before) return 36;
         }
+        {
+            const auto before = project.sourceScore;
+            const auto routed = project.trackIds[lead];
+            const auto previous = studio.midiRoutes_[routed];
+            auto& route = studio.midiRoutes_[routed];
+            route.enabled = true; route.port = "test-midi"; route.channel = 2;
+            studio.mixerButton_.onClick();
+            studio.setRecordArm(lead,true);
+            if (!studio.mixer_.isVisible()) return 45;
+            const auto now = juce::Time::getMillisecondCounterHiRes()*.001;
+            {
+                const juce::SpinLock::ScopedLockType lock(studio.surfaceLock_);
+                const auto on = juce::MidiMessage::noteOn(2,69,juce::uint8(88));
+                studio.rememberMidiInput("wrong-port",on,now-.9);
+                studio.rememberMidiInput("test-midi",juce::MidiMessage::noteOn(1,60,juce::uint8(77)),now-.8);
+                if (studio.midiPerformance_.hasNotes()) return 40;
+                studio.rememberMidiInput("test-midi",on,now-.5);
+                studio.rememberMidiInput("test-midi",juce::MidiMessage::noteOff(2,69),now-.25);
+            }
+            studio.showPadInput();
+            auto* capture = findControl<juce::TextButton>(studio,studio.trackControls_[lead]->arm.getTitle().upToLastOccurrenceOf(" record arm",false,false)+" capture MIDI");
+            if (!capture || !capture->isEnabled()) return 41;
+            const auto count = project.pitchedNotes[lead].size();
+            capture->onClick();
+            if (capture->isEnabled() || project.pitchedNotes[lead].size()!=count+1) return 42;
+            if (std::none_of(project.pitchedNotes[lead].begin(),project.pitchedNotes[lead].end(),[&](const auto& n) {
+                return n.pitch==69 && n.startTick==studio.cursorTick_ && n.velocity==88 && n.endTick>n.startTick;
+            })) return 43;
+            studio.undoPianoEdit(false);
+            if (project.sourceScore!=before) return 44;
+            studio.midiRoutes_[routed]=previous;
+            studio.setRecordArm(lead,false);
+            if (!studio.mixer_.isVisible()) return 45;
+            studio.mixerButton_.onClick();
+        }
         const auto pre = project.vocalNotes.find("vocal-part-3-line-1-note-1");
         if (pre == project.vocalNotes.end() || pre->second.pronunciation != juce::String::fromUTF8("イフ")) return 32;
         studio.vocalLane_.entrance.onClick();
@@ -528,6 +563,15 @@ private:
             }) ? 0 : 13;
     }
     void timerCallback() override {
+        if (dropped) {
+            auto& chain = studio.effectChain(true,0);
+            if (chain.loading && ++polls < 600) return;
+            stopTimer();
+            if (chain.slots.empty() || !chain.slots.back().effect || chain.slots.back().effect->getName()!="EQ"
+                || !studio.mixer_.isVisible()) { finish(47); return; }
+            checkMissingSong();
+            return;
+        }
         if (opened && !studio.canEditTracks() && ++polls < 600) return;
         stopTimer();
         const int result = !sawLoading || !opened ? 1 : !studio.canEditTracks() ? 2 : verify();
@@ -536,6 +580,24 @@ private:
             finish(result);
             return;
         }
+        studio.mixerButton_.onClick();
+        auto& browser = studio.ensurePluginBrowser();
+        const auto& types = browser.types();
+        const auto eq = std::find_if(types.begin(),types.end(),[](const auto& p) {
+            return p.manufacturerName=="OSTF Studio" && p.name=="EQ";
+        });
+        auto* outputButton = findControl<juce::TextButton>(studio.mixer_, "Master hardware output");
+        if (eq==types.end() || !outputButton) { finish(46); return; }
+        auto& chain = studio.effectChain(true,0);
+        const auto initial = chain.slots.size();
+        const auto point = studio.getLocalPoint(outputButton,outputButton->getLocalBounds().getCentre());
+        juce::DragAndDropTarget::SourceDetails drag("ostf-vst3:"+eq->createIdentifierString(),&browser,point);
+        studio.itemDragMove(drag);
+        studio.itemDropped(drag);
+        if (chain.slots.size()!=initial+1) { finish(46); return; }
+        dropped=true; polls=0; startTimer(50);
+    }
+    void checkMissingSong() {
         const auto* original = studio.project_.get();
         const auto missing = juce::File::createTempFile(".ostfp");
         studio.openSongFile(missing, [this, original](bool ok) {
@@ -545,7 +607,7 @@ private:
     MainComponent studio;
     juce::File output;
     std::function<void(int)> finish;
-    bool opened = false, sawLoading = false;
+    bool opened = false, sawLoading = false, dropped = false;
     int polls = 0;
 };
 std::unique_ptr<juce::Timer> startVocalTrackCheck(const juce::File& song,const juce::File& wav,std::function<void(int)> done) {
@@ -1300,6 +1362,23 @@ int checkTrackView(const juce::File& fixture) {
     if (!mixerArm) return 106;
     arm->onClick();
     if (!arm->getToggleState() || !mixerArm->getToggleState()) return 106;
+    auto* mixIn = findControl<juce::TextButton>(main,tracks->getText()+" mixer input");
+    auto* capture = findControl<juce::TextButton>(main,tracks->getText()+" capture MIDI");
+    if (!mixIn || !mixIn->getButtonText().startsWith("IN") || !capture || capture->isEnabled()) return 260;
+    {
+        ostfstudio::MidiPerformanceBuffer recent;
+        recent.push({1.,-1,1,60,1,85}); recent.push({1.25,-1,1,60,1,0});
+        recent.push({1.5,-1,1,64,1,92}); recent.push({1.75,-1,1,64,1,0});
+        std::vector<ostfstudio::MidiPerformanceBuffer::Edge> edges;
+        auto end=recent.snapshot(edges);
+        ostfstudio::TempoMap tempo(480); tempo.append(0,120);
+        auto notes=recent.notes(edges,tempo,1920,8192,2.,-1);
+        if(notes.size()!=2 || notes[0].startTick!=1920 || notes[0].endTick!=2160 || notes[1].startTick!=2400 || notes[1].velocity!=92) return 261;
+        recent.push({3.,512,1,67,1,91}); recent.push({3.25,752,1,67,1,0});
+        recent.consume(end); edges.clear(); recent.snapshot(edges);
+        notes=recent.notes(edges,tempo,0,8192,4.,-1);
+        if(notes.size()!=1 || notes[0].startTick!=512 || notes[0].endTick!=752) return 262;
+    }
     mixerArm->onClick();
     if (arm->getToggleState() || mixerArm->getToggleState()) return 107;
     if (!click("Add chorus vocal track") || !click("Add drum / percussion track")
@@ -1311,6 +1390,13 @@ int checkTrackView(const juce::File& fixture) {
     if (audioEditor->recordRuler.cycleBars().isEmpty()) return 68;
     audioEditor->channels.setSelectedId(2, juce::sendNotificationSync);
     const auto audioTrack = tracks->getSelectedId();
+    auto* mixGain = findControl<juce::Slider>(main, tracks->getText() + " mixer input gain");
+    auto* trackGain = findControl<juce::Slider>(main, tracks->getText() + " input gain");
+    if (!mixGain || !trackGain) return 264;
+    mixGain->setValue(6.5,juce::sendNotificationSync);
+    if (trackGain->getValue()!=6.5) return 264;
+    trackGain->setValue(0,juce::sendNotificationSync);
+    if (mixGain->getValue()!=0) return 264;
     tracks->setSelectedId(1, juce::sendNotificationSync);
     if (audioEditor->isVisible()) return 52;
     tracks->setSelectedId(audioTrack, juce::sendNotificationSync);
@@ -1468,9 +1554,10 @@ int checkTrackView(const juce::File& fixture) {
         if (!click("Mixer")) return 251;
         auto* mixer = descendant<MixerPanel>(main);
         if (!mixer || !mixer->isVisible()) return 251;
-        auto* listen = findControl<juce::TextButton>(*mixer, TRANS("Listen to Cue on outputs 1-2"));
+        auto* listen = findControl<juce::TextButton>(*mixer, TRANS("Monitor Cue on the selected Master output"));
         auto* cueStatus = findControl<juce::Label>(*mixer, TRANS("Cue output"));
         if (!listen || !cueStatus || listen->getToggleState()) return 254;
+        mixer->setHardwareOutputLabels({},{},false);
         mixer->setActiveOutputCount(2);
         if (cueStatus->getText() != TRANS("Out 3-4 inactive")) return 254;
         listen->setToggleState(true, juce::sendNotificationSync);
@@ -1490,11 +1577,27 @@ int checkTrackView(const juce::File& fixture) {
             || masterMeter->getHeight()<65) return 258;
         const auto masterArea = mixer->getLocalArea(masterMute->getParentComponent(),masterMute->getParentComponent()->getLocalBounds());
         const auto trackArea = mixer->getLocalArea(output->getParentComponent(),output->getParentComponent()->getLocalBounds());
+        auto* masterOut=findControl<juce::TextButton>(*mixer,"Master hardware output");
+        auto* cueOut=findControl<juce::TextButton>(*mixer,"Cue hardware output");
+        if (!masterOut || !cueOut || !masterOut->isVisible() || !cueOut->isVisible()) return 264;
         auto* outputViewport = cueStatus->findParentComponentOfClass<juce::Viewport>();
         auto* sourceViewport = output->findParentComponentOfClass<juce::Viewport>();
         if (!sourceViewport || !outputViewport || masterArea.getWidth() <= trackArea.getWidth()
             || mixer->getLocalArea(sourceViewport, sourceViewport->getLocalBounds()).getRight() > outputViewport->getX()
             || mixer->getLocalArea(outputViewport, outputViewport->getLocalBounds()).getRight() > masterArea.getX()) return 258;
+        const auto masterPoint = mixer->getLocalPoint(masterOut,masterOut->getLocalBounds().getCentre());
+        if (mixer->dropTargetAt(masterPoint,true)!=0) {
+            std::cerr << "Master drop point " << masterPoint.toString() << " in mixer " << mixer->getLocalBounds().toString() << '\n';
+            return 265;
+        }
+        const auto viewPosition = outputViewport->getViewPosition();
+        outputViewport->setViewPositionProportionately(1.,0.);
+        const auto cuePoint = mixer->getLocalPoint(cueOut,cueOut->getLocalBounds().getCentre());
+        if (mixer->dropTargetAt(cuePoint,true)) {
+            std::cerr << "Cue drop point " << cuePoint.toString() << ", viewport " << outputViewport->getBounds().toString() << '\n';
+            return 266;
+        }
+        outputViewport->setViewPosition(viewPosition);
         const auto returns = mixer->returnCount();
         for (auto bus = mixer->routing().busCount; bus < ostfstudio::maxMixerBuses; ++bus) {
             if (!addBus->isEnabled()) return 252;
@@ -1705,7 +1808,10 @@ int checkTrackView(const juce::File& fixture) {
         meter.update({juce::Decibels::decibelsToGain(-12.f),0.f},2.);
         meter.update({},3.);
         const auto heldImage = meter.createComponentSnapshot(meter.getLocalBounds());
-        if (heldImage.getPixelAt(vertical?4:97,vertical?25:4) != juce::Colour(0xfff6ecc5)) return 263;
+        if (heldImage.getPixelAt(vertical?4:97,vertical?25:4) != juce::Colour(0xfff6ecc5)) {
+            std::cerr << "Missing held peak on " << (vertical ? "vertical" : "horizontal") << " meter\n";
+            return 263;
+        }
         meter.update({}, 8.0);
         const auto silent = meter.createComponentSnapshot(meter.getLocalBounds());
         if (silent.getPixelAt(vertical ? 4 : 60, vertical ? 60 : 4) != juce::Colour(0xff152026)) return 12;

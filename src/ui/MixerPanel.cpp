@@ -94,7 +94,7 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
     mute.setTitle(title + " mute");
     if (group == "MONITOR") {
         listenOnMain = std::make_unique<juce::TextButton>(TRANS("Listen on 1-2"));
-        listenOnMain->setTitle(TRANS("Listen to Cue on outputs 1-2"));
+        listenOnMain->setTitle(TRANS("Monitor Cue on the selected Master output"));
         listenOnMain->setTooltip(TRANS("Switch outputs 1-2 between Master and Cue."));
         listenOnMain->setClickingTogglesState(true);
         listenOnMain->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff216d68));
@@ -140,6 +140,7 @@ void MixerPanel::Strip::resized() {
     if (isTrack) instrument.setBounds(slots.removeFromLeft(slots.getWidth()/2).withTrimmedRight(3));
     selectEffect.setBounds(slots.removeFromRight(28));
     effect.setBounds(slots);
+    if (hardware.isVisible()) hardware.setBounds(area.removeFromTop(22).reduced(0,1));
     if (isMaster) {
         auto outputSection = area.removeFromRight(std::clamp(area.getWidth()/5,82,112));
         auto faderColumn = outputSection.withTrimmedRight(40);
@@ -152,6 +153,13 @@ void MixerPanel::Strip::resized() {
         return;
     }
     if (isTrack) {
+        if (input.isVisible()) {
+            auto row = area.removeFromTop(22).reduced(0,1);
+            if (capture.isVisible()) capture.setBounds(row.removeFromRight(83).withTrimmedLeft(2));
+            if (inputGain.isVisible())
+                inputGain.setBounds(row.removeFromRight(std::min(100,row.getWidth()/2)).withTrimmedLeft(2));
+            input.setBounds(row);
+        }
         output.setBounds(area.removeFromTop(21).reduced(0, 1));
         auto switches = area.removeFromBottom(21);
         mute.setBounds(switches.removeFromLeft(switches.getWidth() / (arm.isVisible() ? 4 : 3)));
@@ -240,6 +248,8 @@ void MixerPanel::Strip::updatePluginButtons() {
 
 void MixerPanel::setRecordState(std::size_t track, bool armed, bool enabled) {
     if (track >= strips_.size()) return;
+    strips_[track]->input.setEnabled(enabled);
+    if (!armed || !enabled) strips_[track]->capture.setEnabled(false);
     auto& button = strips_[track]->arm;
     button.setToggleState(armed, juce::dontSendNotification);
     button.setEnabled(enabled);
@@ -357,6 +367,29 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         strip->mute.onClick = [this, i, controls] { setMuted(i, controls->mute.getToggleState()); };
         strip->solo.onClick = [this, i, controls] { setSoloed(i, controls->solo.getToggleState()); };
         if (i < project.sourceTrackCount()) {
+            strip->input.setTitle(strip->name.getText() + " mixer input");
+            strip->addAndMakeVisible(strip->input);
+            strip->input.onClick = [this, i, controls] { if (chooseInput) chooseInput(i, &controls->input); };
+            if (project.trackKinds[i] != ostfstudio::TrackKind::audio) {
+                strip->capture.setTitle(strip->name.getText() + " capture MIDI");
+                strip->capture.setEnabled(false);
+                strip->capture.setTooltip(TRANS("Create a clip from the recent notes played while armed"));
+                strip->addAndMakeVisible(strip->capture);
+                strip->capture.onClick = [this, i] { if (captureMidi) captureMidi(i); };
+            } else {
+                auto& gain = strip->inputGain;
+                gain.setTitle(strip->name.getText() + " mixer input gain");
+                gain.setTooltip(TRANS("Recording input gain (dB)"));
+                gain.setSliderStyle(juce::Slider::LinearHorizontal);
+                gain.setTextBoxStyle(juce::Slider::TextBoxRight,false,50,17);
+                gain.setRange(-60.0,24.0,0.1);
+                gain.setDoubleClickReturnValue(true,0.0);
+                gain.setTextValueSuffix(" dB");
+                gain.onValueChange = [this,i,controls] {
+                    if (inputGainChanged) inputGainChanged(i,controls->inputGain.getValue());
+                };
+                strip->addAndMakeVisible(gain);
+            }
             strip->addAndMakeVisible(strip->arm);
             strip->arm.onClick = [this, i, controls] {
                 if (recordArmChanged) recordArmChanged(i, !controls->arm.getToggleState());
@@ -377,6 +410,12 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     master_ = std::make_unique<Strip>(TRANS("Master"), "OUTPUT", false);
     master_->isMaster = true;
     cue_ = std::make_unique<Strip>("Cue", "MONITOR", false);
+    for (auto* strip : {master_.get(), cue_.get()}) {
+        const bool cue = strip == cue_.get();
+        strip->hardware.setTitle(cue ? "Cue hardware output" : "Master hardware output");
+        strip->addAndMakeVisible(strip->hardware);
+        strip->hardware.onClick = [this, cue, strip] { if (chooseHardwareOutput) chooseHardwareOutput(cue, &strip->hardware); };
+    }
     cue_->status.setTitle(TRANS("Cue output"));
     master_->contextMenu = [this] { if (rowMenu) rowMenu(true, 0); };
     master_->mute.onClick = [this] { setOutputMuted(0, master_->mute.getToggleState()); };
@@ -543,10 +582,55 @@ void MixerPanel::setActiveOutputCount(int count) {
     updateCueStatus();
 }
 
+void MixerPanel::setInputState(size_t i, const juce::String& label, bool enabled, bool captureAvailable) {
+    if (i >= strips_.size()) return;
+    auto& strip = *strips_[i];
+    strip.input.setButtonText(label);
+    strip.input.setTooltip(label);
+    strip.input.setEnabled(enabled);
+    strip.capture.setEnabled(enabled && captureAvailable);
+}
+
+std::optional<size_t> MixerPanel::dropTargetAt(juce::Point<int> point, bool output) const {
+    auto* hit = const_cast<MixerPanel*>(this)->getComponentAt(point);
+    auto contains = [hit](const auto& strip) { return strip && (strip.get()==hit || strip->isParentOf(hit)); };
+    if (output) {
+        if (contains(master_)) return 0;
+        for (size_t i=0; i<buses_.size(); ++i) if (contains(buses_[i])) return ostfstudio::busOutput(i);
+        for (size_t i=0; i<returns_.size(); ++i) if (contains(returns_[i])) return ostfstudio::returnOutput(i);
+    } else for (size_t i=0; i<strips_.size(); ++i) if (contains(strips_[i])) return i;
+    return {};
+}
+
+void MixerPanel::highlightDrop(std::optional<size_t> track, std::optional<size_t> output) {
+    auto mark = [](const auto& strip, bool on) {
+        if (strip && strip->highlighted != on) { strip->highlighted = on; strip->repaint(); }
+    };
+    for (size_t i=0; i<strips_.size(); ++i) mark(strips_[i],track==i);
+    for (size_t i=0; i<buses_.size(); ++i) mark(buses_[i],output==ostfstudio::busOutput(i));
+    for (size_t i=0; i<returns_.size(); ++i) mark(returns_[i],output==ostfstudio::returnOutput(i));
+    mark(master_,output==0);
+}
+
+void MixerPanel::setHardwareOutputLabels(juce::String master, juce::String cue, bool cueActive) {
+    masterDestination_ = master; cueDestination_ = cue; cueDestinationActive_ = cueActive;
+    updateCueStatus();
+}
+
 void MixerPanel::updateCueStatus() {
     if (!cue_) return;
+    const auto master = masterDestination_.isEmpty() ? TRANS("Out 1-2") : masterDestination_;
+    const auto cue = cueDestination_.isEmpty() ? TRANS("Out 3-4") : cueDestination_;
+    master_->hardware.setButtonText(master + "  ▾");
+    cue_->hardware.setButtonText(cue + "  ▾");
+    master_->status.setText(master, juce::dontSendNotification);
+    cue_->listenOnMain->setButtonText(TRANS("Listen on Master"));
+    cue_->listenOnMain->setTooltip(TRANS("Monitor Cue on the selected Master output"));
     juce::String status;
-    if (activeOutputCount_ < 0) status = TRANS("Cue bus");
+    if (cueDestination_.isNotEmpty()) {
+        status = cueDestinationActive_ ? cue : TRANS("Output inactive");
+        if (listeningOnMain_) status = cueDestinationActive_ ? master + " + " + cue : master;
+    } else if (activeOutputCount_ < 0) status = TRANS("Cue bus");
     else if (activeOutputCount_ == 0) status = TRANS("No audio output");
     else if (listeningOnMain_) status = activeOutputCount_ >= 4 ? TRANS("Out 1-2 + 3-4") : TRANS("Out 1-2");
     else status = activeOutputCount_ >= 4 ? TRANS("Out 3-4") : TRANS("Out 3-4 inactive");

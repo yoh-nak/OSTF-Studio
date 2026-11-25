@@ -52,7 +52,7 @@ static bool testRecordedVoice() {
         double position=0.;
         for(int i=0;i<1024;++i) {
             const auto recorded=vowel->read(position,440.*vowel->period/48000.);
-            const auto expected=std::tanh(recorded*(110./127.)*i/1200.);
+            const auto expected=recorded*(110./127.)*i/1200.;
             if(i>=520 && std::abs(audio.getSample(0,i)-expected)>.002f) return false;
         }
     }
@@ -103,7 +103,7 @@ static bool testRecordedVoice() {
             // The recorded consonant keeps its original timing even when the sung vowel is transposed.
             if (position < reference->consonantFrames) {
                 const float expected = reference->read(position, reference->rate / 48000);
-                if (b >= 3 && std::abs(out - std::tanh(expected * (110.f / 127))) > .002f) return false;
+                if (b >= 3 && std::abs(out - expected * (110.f / 127)) > .002f) return false;
             }
             if (b >= 50 && prev <= 0 && out > 0) ++crossings;
             prev = out;
@@ -195,7 +195,7 @@ int main(int argc, char** argv) {
     auto distance = [](const auto& a,const auto& b,float gain) {
         double sum = 0;
         for (int i=0;i<a.getNumSamples();++i)
-            sum += std::abs(std::atanh(a.getSample(0,i))*gain - std::atanh(b.getSample(0,i)));
+            sum += std::abs(a.getSample(0,i)*gain - b.getSample(0,i));
         return sum/a.getNumSamples();
     };
     if (distance(meiJapanese,unaccented,.94f) > .0001) return 31;
@@ -236,14 +236,12 @@ int main(int argc, char** argv) {
     const auto timed = phoneMessage(1,60,word[1],.730);
     if (!isPhone(timed) || timed.getSysExDataSize()!=14
         || timed.getSysExData()[12] + 128*timed.getSysExData()[13] != 730) return 22;
-    // The first sample of a joined phone must continue the outgoing voice.
-    render(word[1]);
-    singer->processBlock(audio,midi);
-    const auto uninterrupted = audio.getSample(0,0);
-    render(word[1]);
+    // The single-source splice starts at the last rendered sample of the previous phone.
+    const auto previous = render(word[1]);
+    const auto lastSample = previous.getSample(0,previous.getNumSamples()-1);
     midi.addEvent(phoneMessage(1,60,{1,0}),0);
     singer->processBlock(audio,midi);
-    if (std::abs(audio.getSample(0,0)-uninterrupted) > 1.e-5f) return 23;
+    if (std::abs(audio.getSample(0,0)-lastSample) > 1.e-5f) return 23;
     const auto cluster = lyricPhones("fast");
     const auto timing = articulationPositions(cluster, .5);
     if (cluster.size() != 4 || timing[1] <= 1. - timing[3] || std::abs(timing.back() - 1.) > 1.e-10) return 27;
@@ -258,7 +256,7 @@ int main(int argc, char** argv) {
     const double step = juce::MidiMessage::getMidiNoteInHertz(60) * vowelA->period / 48000;
     for (int n=0; n<a.getNumSamples(); ++n) {
         const auto expected = vowelA->read(position,step) * (105.f/127);
-        if (n >= 512 && std::abs(a.getSample(0,n)-std::tanh(expected)) > .002f) return 17;
+        if (n >= 512 && std::abs(a.getSample(0,n)-expected) > .002f) return 17;
     }
     double difference = 0;
     for (int n = 0; n < audio.getNumSamples(); ++n) difference += std::abs(a.getSample(0,n) - i.getSample(0,n));

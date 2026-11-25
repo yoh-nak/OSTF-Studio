@@ -27,10 +27,11 @@ public:
         : processor(p), editorVisible(std::move(visible)), transportStopped(std::move(stopped)), notify(std::move(offer)) {
         for (auto* param : processor.getParameters()) {
             const auto name = param->getName(64);
-            if (processor.getName() == "OSTF GM Sound Module" && name.startsWith("MIDI Program Ch ")) {
+            if ((processor.getName() == "GM Sound Module" || processor.getName() == "OSTF GM Sound Module") && name.startsWith("MIDI Program Ch ")) {
                 const int channel = name.getTrailingIntValue();
                 if (channel >= 1 && channel <= 16) gestures.push_back(std::make_unique<Gesture>(*param, channel, 128));
-            } else if (processor.getName().startsWith("OSTF ") && name == "MIDI Program")
+            } else if (name == "MIDI Program" && (processor.getName().startsWith("OSTF ")
+                    || juce::StringArray{"FM Synth", "Analog Synth", "Wavetable Synth", "Drum Machine"}.contains(processor.getName())))
                 gestures.push_back(std::make_unique<Gesture>(*param, 0, 4));
         }
         baseline = processor.getCurrentProgram();

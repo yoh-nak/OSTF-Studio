@@ -106,8 +106,8 @@ bool checkHarmonizer(juce::AudioPluginInstance& fx) {
 bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEffect& fx) {
     const auto desc = instance.getPluginDescription();
     if (!PreviewTransport::supportsInsert(instance) || desc.manufacturerName != "OSTF Studio"
-        || fx.chainId() != "VST3|OSTF Studio|" + desc.name + "|" + juce::String(desc.uniqueId)) return false;
-    if (desc.name == "OSTF Unmask") {
+        || desc.name != fx.displayName() || fx.chainId() != "VST3|OSTF Studio|" + juce::String(fx.name) + "|" + juce::String(desc.uniqueId)) return false;
+    if (desc.name == "Unmask") {
         if(instance.getBusCount(true)!=2 || !instance.getBus(true,1)->enable(true)) return false;
         instance.setRateAndBufferSizeDetails(48000,256); instance.prepareToPlay(48000,256);
         juce::AudioBuffer<float> audio(4,256); juce::MidiBuffer midi;
@@ -130,12 +130,40 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
         instance.releaseResources();
         return wet>0 && wet<.85*dry;
     }
-    if (desc.name == "OSTF Harmonizer") return checkHarmonizer(instance);
+    if (juce::StringArray{"Compressor","Bus Compressor","Multiband Compressor","Multiband Bus Compressor",
+                          "Gate","Dynamic EQ","De-Esser"}.contains(desc.name)) {
+        auto* aux = instance.getBus(true, 1);
+        if (!aux || !aux->enable(true)) return false;
+        instance.setRateAndBufferSizeDetails(48000,256);
+        instance.prepareToPlay(48000,256);
+        juce::AudioBuffer<float> signal(4,256);
+        juce::MidiBuffer events;
+        double silentKey = 0, activeKey = 0;
+        const double hz = desc.name == "De-Esser" ? 9000 : 1200;
+        for (int block = 0; block < 200; ++block) {
+            signal.clear();
+            for (int i=0; i<256; ++i) {
+                const float wave = float(std::sin(juce::MathConstants<double>::twoPi * hz * (256*block+i)/48000.));
+                signal.setSample(0,i,.07f*wave);
+                if (block >= 100) signal.setSample(3,i,.95f*wave);
+            }
+            instance.processBlock(signal,events);
+            if (signal.getMagnitude(1,0,256) > 1.e-6f) return false;
+            if (block>=80 && block<100) silentKey += signal.getRMSLevel(0,0,256);
+            if (block>=180) activeKey += signal.getRMSLevel(0,0,256);
+        }
+        instance.releaseResources();
+        if (!aux->enable(false) || !(desc.name == "Gate" ? activeKey > silentKey*1.15 : activeKey < silentKey*.98)) {
+            std::cerr << desc.name << " detector levels " << silentKey << " / " << activeKey << '\n';
+            return false;
+        }
+    }
+    if (desc.name == "Harmonizer") return checkHarmonizer(instance);
     instance.setRateAndBufferSizeDetails(48000, 256);
     instance.prepareToPlay(48000, 256);
     // The multiband EQs intentionally load flat. Boost a mid band before measuring processing.
-    if (desc.name == "OSTF 8-Band EQ" || desc.name == "OSTF Parametric EQ" || desc.name == "OSTF Graphic EQ") {
-        const int gainIndex = desc.name == "OSTF Graphic EQ" ? 5 : desc.name == "OSTF Parametric EQ" ? 4 : 10;
+    if (desc.name == "8-Band EQ" || desc.name == "Parametric EQ" || desc.name == "Graphic EQ") {
+        const int gainIndex = desc.name == "Graphic EQ" ? 5 : desc.name == "Parametric EQ" ? 4 : 10;
         instance.getParameters()[gainIndex]->setValueNotifyingHost(.82f);
     }
     juce::AudioBuffer<float> buffer(2, 256);
@@ -144,7 +172,7 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
     float peak = 0;
     for (int block = 0; block < 160; ++block) {
         for (int i = 0; i < 256; ++i) {
-            const float x = block < 90 ? static_cast<float>((desc.name == "OSTF Gate" && block < 35 ? .008 : 1.2) * std::sin((desc.name == "OSTF De-Esser" ? .88 : .117) * (block * 256 + i))) : 0.f;
+            const float x = block < 90 ? static_cast<float>((desc.name == "Gate" && block < 35 ? .008 : 1.2) * std::sin((desc.name == "De-Esser" ? .88 : .117) * (block * 256 + i))) : 0.f;
             buffer.setSample(0, i, x); buffer.setSample(1, i, x * 0.7f);
         }
         const juce::AudioBuffer<float> dry(buffer);
@@ -157,8 +185,8 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
             if (block > 5) peak = std::max(peak, std::abs(wet));
         }
     }
-    if (desc.name == "OSTF Stem Separator") return difference == 0 && instance.getLatencySamples() == 0 && instance.hasEditor();
-    if (desc.name == "OSTF Wave Analyzer") {
+    if (desc.name == "Stem Separator") return difference == 0 && instance.getLatencySamples() == 0 && instance.hasEditor();
+    if (desc.name == "Wave Analyzer") {
         if (difference != 0 || instance.getLatencySamples() != 0 || !instance.hasEditor()) return false;
         auto* span = instance.getParameters()[0];
         span->setValueNotifyingHost(1.f);
@@ -187,8 +215,8 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
     instance.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
     instance.releaseResources();
     return difference > 1 && peak > 0.001 && std::abs(param->getValue() - .28f) < .01f
-        && (desc.name != "OSTF Limiter" || peak <= juce::Decibels::decibelsToGain(-1.2f) + .0001f)
-        && (desc.name != "OSTF Reverb" || tail > .1);
+        && (desc.name != "Limiter" || peak <= juce::Decibels::decibelsToGain(-1.2f) + .0001f)
+        && (desc.name != "Reverb" || tail > .1);
 }
 }
 
@@ -207,7 +235,7 @@ int checkStudioInstruments(const juce::StringArray& args) {
         if (track < 0) return 2;
         const auto& def = ostfstudio::stockInstruments[i];
         auto synth = load(formats,juce::File(args[1]).getChildFile(juce::String(def.name) + ".vst3"));
-        if (!synth || !PreviewTransport::supportsInstrument(*synth)
+        if (!synth || synth->getPluginDescription().name != def.displayName() || !PreviewTransport::supportsInstrument(*synth)
             || !matchesVst3Instrument(mix.instruments[track],synth->getPluginDescription())) return 3;
         const int ch = mix.midiRoutes[track].channel;
         const int key = ids[i] == "drums" ? 36 : 60;
@@ -389,6 +417,22 @@ static bool checkCueMonitoring(ostfstudio::OstfpPreview& song) {
     if (render(2, true, 0.f) != 0) return false;
     mix.volumeDb = 0;
     engine.setChannelMix(first, mix, true, 0);
+    engine.setOutputPairs(4,0);
+    engine.setListenToCue(false);
+    engine.seekToTick(tick);
+    juce::AudioBuffer<float> six(6,256);
+    float remappedPeak=0;
+    for (int b=0;b<24;++b) {
+        engine.renderBlock(six.getArrayOfWritePointers(),6,256);
+        const auto frame=engine.takeMeters();
+        for (int ch=0;ch<2;++ch) {
+            if (std::abs(six.getMagnitude(4+ch,0,256)-frame.outputs[0][ch]) > .00001f
+                || six.getMagnitude(ch,0,256)!=0 || six.getMagnitude(2+ch,0,256)!=0) return false;
+            remappedPeak=std::max(remappedPeak,frame.outputs[0][ch]);
+        }
+    }
+    if (remappedPeak<=.0001f) return false;
+    engine.setOutputPairs(0,2);
     juce::AudioBuffer<float> audio(2, 256);
     for (bool listen : {true, false}) {
         engine.setListenToCue(listen);

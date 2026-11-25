@@ -1,5 +1,7 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+Mixer and arrangement strips share the input-route and plug-in assignment handlers. Master and Cue resolve physical output pairs against the active device mask before passing packed buffer indices to the renderer. The selections are local to the device. Retrospective note input uses a bounded 4,096-event buffer and the most recent 120 seconds of performance. MIDI callback work stores fixed-size events. Clip creation, score validation and undo run on the message thread.
+
 The Studio sidechain source is tapped before track FX. Instruments and regions are rendered before inserts so even a later track can feed an earlier detector in the same block. The stock Unmask uses a stereo-linked five-band detector. A supported production-session sidechain connection names the source channel and Unmask auxiliary port, with a pre-fader tap and independent mute. Print preview and PDF export share A4 page boundaries and page painting.
 
 The Scale Editor VST3 receives an OSTF 5.0 score snapshot through a versioned in-process VST3 interface on the message thread. Other hosts can open an OSTF in the editor. Each assignment owns the exact chord span and names the chord in `harmony.scales[].targets`. Export preserves the rest of the score, including unknown extension data. Studio accepts a drag return against the source score digest and applies scale changes through global timeline editing and history. A stale return asks the user to reload the source. The digest is transport metadata in the drag filename.

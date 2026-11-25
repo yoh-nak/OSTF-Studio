@@ -139,7 +139,7 @@ public:
 class Editor final : public juce::AudioProcessorEditor, private juce::ChangeListener {
 public:
     explicit Editor(Processor& p) : AudioProcessorEditor(p), proc(p) {
-        for (juce::Component* c : std::initializer_list<juce::Component*>{&song,&chords,&roots,&modes,&apply,&open,&refresh,&save,&drag,&status,&back,&forward,&strategy,&lens,&choices,&details,&notes,&audition,&compare,&stop,&loadInstrument,&showInstrument})
+        for (juce::Component* c : std::initializer_list<juce::Component*>{&song,&chords,&roots,&modes,&apply,&open,&refresh,&save,&drag,&status,&back,&forward,&strategy,&lens,&genre,&choices,&details,&notes,&audition,&compare,&stop,&loadInstrument,&showInstrument})
             addAndMakeVisible(c);
         for (juce::Component* c : std::initializer_list<juce::Component*>{&mapView,&repeats,&rangeLabel,&undo})
             addAndMakeVisible(c);
@@ -164,7 +164,14 @@ public:
         strategy.addItemList({"Balanced","Smooth voice leading","Tension / resolution"},1);
         lens.addItemList({"Chord scale","Key and mode","Performance"},1);
         strategy.setSelectedId(1,juce::dontSendNotification); lens.setSelectedId(1,juce::dontSendNotification);
-        strategy.onChange=lens.onChange=[this]{selectChord(false);};
+        genre.setTitle("Genre for scale ranking and audition");
+        const auto styles = juce::JSON::parse(call("genreStyles",{}).toString());
+        for (int i = 0; i < styles.size(); ++i) {
+            genreIds.add(styles[i]["id"].toString());
+            genre.addItem(styles[i]["label"].toString(), i + 1);
+        }
+        genre.setSelectedId(1, juce::dontSendNotification);
+        strategy.onChange=lens.onChange=genre.onChange=[this]{selectChord(false);};
         choices.setTitle("Ranked scale candidates");
         choices.onChange=[this]{selectCandidate();};
         loadInstrument.onClick=[this]{chooseInstrument();};
@@ -212,7 +219,8 @@ public:
         auto nav=a.removeFromTop(32);
         back.setBounds(nav.removeFromLeft(38).reduced(1)); forward.setBounds(nav.removeFromRight(38).reduced(1)); chords.setBounds(nav.reduced(1));
         auto policy=a.removeFromTop(32);
-        strategy.setBounds(policy.removeFromLeft(policy.getWidth()/2).reduced(1)); lens.setBounds(policy.reduced(1));
+        const int column = policy.getWidth()/3;
+        strategy.setBounds(policy.removeFromLeft(column).reduced(1)); lens.setBounds(policy.removeFromLeft(column).reduced(1)); genre.setBounds(policy.reduced(1));
         choices.setBounds(a.removeFromTop(33).reduced(1));
         notes.setBounds(a.removeFromTop(29)); details.setBounds(a.removeFromTop(std::max(48,(a.getHeight()-175)/2)));
         auto play=a.removeFromTop(32);
@@ -280,7 +288,7 @@ private:
             call("openScore",{proc.document.text}); loadedText=proc.document.text;
         }
         const juce::StringArray strategies{"balanced","smooth","tension"}, lenses{"chord","key","performance"};
-        rows=juce::JSON::parse(call("rankChord",{chords.getSelectedItemIndex(),strategies[strategy.getSelectedItemIndex()],lenses[lens.getSelectedItemIndex()]}).toString());
+        rows=juce::JSON::parse(call("rankChord",{chords.getSelectedItemIndex(),strategies[strategy.getSelectedItemIndex()],lenses[lens.getSelectedItemIndex()],genreIds[genre.getSelectedItemIndex()]}).toString());
         choices.clear(juce::dontSendNotification);
         for(int i=0;i<rows.size();++i)
             choices.addItem(juce::String(i+1)+".   "+rows[i]["name"].toString(),i+1);
@@ -438,7 +446,8 @@ private:
     juce::Label song,status,notes,details;
     juce::TextButton back{"<"},forward{">"},audition{"Hear candidate"},compare{"A/B with reference"},stop{"Stop"},
         loadInstrument{"Load VST3 instrument..."},showInstrument;
-    juce::ComboBox choices,strategy,lens;
+    juce::ComboBox choices,strategy,lens,genre;
+    juce::StringArray genreIds;
     juce::ComboBox chords,roots,modes;
     juce::TextButton open{"Open OSTF"}, refresh{"Read Studio score"}, save{"Save OSTF..."},apply{"Assign scale"};
     Drag drag;

@@ -1,5 +1,17 @@
 # OSTF Studio development handoff
 
+## Mixer recording, output routing and MIDI capture
+
+Branch `feat/plugin-names-keys-player`. The playable Windows x64 package is `dist/windows-mixer-capture/Portable`.
+
+- The mixer shares the track header MIDI and audio input selectors and audio recording gain. Arming or recording from the mixer keeps it open. Armed MIDI tracks retain up to 4,096 note events across a 120-second performance window. Capture inserts a score clip with pitch, duration and velocity and can be undone. Stopped performances start at the edit cursor. Playing performances use transport ticks.
+- Master and Cue can select active output pairs and open device settings. Their destinations are stored locally per device. Browser instruments and inserts can be dropped onto compatible mixer strips, including effect drops on the master, buses and returns.
+- The track and global chord and scale fit indicators combine a numeric percentage with a thin colour-coded line. The snapshot is `build-visuals/mixer-capture-fit.png`.
+- Of the 36 bundled VST3 classes, 34 have generic names. OSTF Scale Editor and OSTF Formant Singer retain their prefix. Compatible dynamics processors accept a detector source through the FX key menu. Scale Editor uses its genre selector for candidate ranking and audition. Lead sheet and score exports use the preview paper size and orientation.
+- Formant Singer splices successive recorded sounds using a continuous waveform and keeps ordinary voice levels linear. The isolated English passage is `build-visuals/mei-mixer-capture-prechorus.wav` (48 kHz, 12.33 s). Perceived naturalness needs listening validation.
+
+The independent core suite passed 2/2. The final Windows Release suite passed 32/33 on its main run. The intermittent Link transport check passed on the CTest rerun and four direct runs. The portable app passed demo startup, stock effects and the vocal-track smoke, which includes filtered retrospective MIDI capture, undo and a browser-to-master EQ drop. Physical input devices, headphones on multiple outputs and other DAWs have not been validated in this build.
+
 ## Print preview, scale ranges, singer and sidechain unmasking
 
 Branch `feat/lead-print-scale-unmask`. The Windows x64 portable is in `dist/windows-print-scale-unmask/Portable`. It includes the Studio application and the new OSTF Unmask VST3.

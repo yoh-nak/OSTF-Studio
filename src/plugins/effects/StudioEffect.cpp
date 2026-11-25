@@ -144,8 +144,11 @@ private:
 class StudioEffect final : public juce::AudioProcessor {
 public:
     StudioEffect(const Design& design, const char* name)
-        : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
-                                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+        : AudioProcessor([&] {
+              auto io = BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true);
+              if (design.kind == Kind::Compressor) io = io.withInput("Sidechain", juce::AudioChannelSet::stereo(), false);
+              return io.withOutput("Output", juce::AudioChannelSet::stereo(), true);
+          }()),
           design_(design), name_(name) {
         for (int i = 0; i < 3; ++i) {
             const auto& c = design.controls[i];
@@ -167,6 +170,8 @@ public:
     void changeProgramName(int, const juce::String&) override {}
     double getTailLengthSeconds() const override { return design_.kind == Kind::Reverb ? 5.0 : 0.2; }
     bool isBusesLayoutSupported(const BusesLayout& layout) const override {
+        if (layout.inputBuses.size() > 1 && !layout.inputBuses[1].isDisabled()
+            && layout.inputBuses[1] != juce::AudioChannelSet::mono() && layout.inputBuses[1] != juce::AudioChannelSet::stereo()) return false;
         const auto input = layout.getMainInputChannelSet();
         return input == layout.getMainOutputChannelSet()
             && (input == juce::AudioChannelSet::stereo() || input == juce::AudioChannelSet::mono());
@@ -211,7 +216,8 @@ public:
         dc_ = {};
         reduction_ = 1.0f;
     }
-    void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer&) override {
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override {
+        auto audio = getBusBuffer(buffer, false, 0);
         juce::ScopedNoDenormals noDenormals;
         if (audio.getNumChannels() < 1 || audio.getNumSamples() == 0) return;
         const float a = *params_[0], b = *params_[1], c = *params_[2];
@@ -257,9 +263,11 @@ public:
                 const float input = limit ? juce::Decibels::decibelsToGain(b) : 1.0f;
                 const float attack = limit ? 0.0f : static_cast<float>(std::exp(-1.0 / (rate_ * 0.008)));
                 const float release = static_cast<float>(std::exp(-1000.0 / (rate_ * c)));
+                const bool external = !limit && getChannelCountOfBus(true, 1) > 0;
+                const auto detector = getBusBuffer(buffer, true, external ? 1 : 0);
                 for (int i = 0; i < audio.getNumSamples(); ++i) {
                     float peak = 0;
-                    for (int ch = 0; ch < audio.getNumChannels(); ++ch) peak = std::max(peak, input * std::abs(audio.getSample(ch, i)));
+                    for (int ch = 0; ch < detector.getNumChannels(); ++ch) peak = std::max(peak, input * std::abs(detector.getSample(ch, i)));
                     if (measuring) {
                         listen_.measure(peak);
                         measuring = listen_.state.load(std::memory_order_relaxed) == ostfstudio::CompressorListen::listening;

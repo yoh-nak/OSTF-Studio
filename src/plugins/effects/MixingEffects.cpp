@@ -47,9 +47,11 @@ using Biquad = juce::dsp::IIR::Filter<float>;
 class MixingEffect final : public juce::AudioProcessor {
   public:
     MixingEffect(Mode m, const char* product, const char* key)
-        : AudioProcessor(BusesProperties()
-                             .withInput("Input", juce::AudioChannelSet::stereo(), true)
-                             .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+        : AudioProcessor([&] {
+              auto io = BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true);
+              if (m == Mode::multi || m == Mode::multiBus || m == Mode::bus || m == Mode::gate || m == Mode::dynamic || m == Mode::deEss) io = io.withInput("Sidechain", juce::AudioChannelSet::stereo(), false);
+              return io.withOutput("Output", juce::AudioChannelSet::stereo(), true);
+          }()),
           mode(m), name(product), stateTag(key) {
         auto control = [&](juce::String id, juce::String title, float min, float max, float value, bool log = false) {
             juce::NormalisableRange<float> range(min, max);
@@ -140,6 +142,8 @@ class MixingEffect final : public juce::AudioProcessor {
     bool hasEditor() const override { return true; }
     juce::AudioProcessorEditor* createEditor() override { return new ostfstudio::EffectControlPanel(*this, params, mode == Mode::graphic); }
     bool isBusesLayoutSupported(const BusesLayout& b) const override {
+        if (b.inputBuses.size() > 1 && !b.inputBuses[1].isDisabled()
+            && b.inputBuses[1] != juce::AudioChannelSet::mono() && b.inputBuses[1] != juce::AudioChannelSet::stereo()) return false;
         const auto in = b.getMainInputChannelSet();
         return in == b.getMainOutputChannelSet() &&
                (in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo());
@@ -177,13 +181,15 @@ class MixingEffect final : public juce::AudioProcessor {
             for (auto& f : b)
                 f.reset();
         envelope = {};
+        keyLow = {}; keyMid = {};
         low = {};
         mid = {};
         write = 0;
         delay.clear();
         room.reset();
     }
-    void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer&) override {
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override {
+        auto audio = getBusBuffer(buffer, false, 0);
         juce::ScopedNoDenormals safe;
         const int channels = audio.getNumChannels(), samples = audio.getNumSamples();
         if (channels < 1 || channels > 2 || samples == 0)
@@ -226,7 +232,11 @@ class MixingEffect final : public juce::AudioProcessor {
                     sample = morph < 1 ? a + morph * (b - a) : b + (morph - 1) * (c - b);
                 }
         } else if (isMulti() || mode == Mode::bus || mode == Mode::gate || mode == Mode::deEss || mode == Mode::dynamic)
-            dynamics(audio);
+        {
+            const bool keyed = getChannelCountOfBus(true,1) > 0;
+            auto key = getBusBuffer(buffer, true, keyed ? 1 : 0);
+            dynamics(audio, key, keyed);
+        }
         else
             rig(audio);
     }
@@ -261,7 +271,7 @@ class MixingEffect final : public juce::AudioProcessor {
     static float compression(float level, float threshold, float exponent) {
         return level > threshold ? std::pow(threshold / level, exponent) : 1.f;
     }
-    void dynamics(juce::AudioBuffer<float>& a) {
+    void dynamics(juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& key, bool keyed) {
         const bool multi = isMulti(), spectral = mode == Mode::deEss || mode == Mode::dynamic,
                    gate = mode == Mode::gate;
         const int n = multi ? 3 : 1, base = multi ? 2 : 0;
@@ -274,9 +284,11 @@ class MixingEffect final : public juce::AudioProcessor {
             threshold[b] = gain(p(spectral ? 2 : base + 2 * b));
             exp[b] = gate || spectral ? 1 : 1 - 1 / p(base + 2 * b + 1);
         }
-        if (spectral)
-            set(0, mode == Mode::deEss ? Coeff::makeHighPass(sr, hz(p(0)), p(1))
-                                       : Coeff::makeBandPass(sr, hz(p(0)), p(1)));
+        if (spectral) {
+            const auto coeff = mode == Mode::deEss ? Coeff::makeHighPass(sr, hz(p(0)), p(1)) : Coeff::makeBandPass(sr, hz(p(0)), p(1));
+            set(0, coeff);
+            if (keyed) set(1, coeff);
+        }
         const float lowPole = multi ? pole(p(0)) : 0, highPole = multi ? pole(p(1)) : 0;
         for (int i = 0; i < a.getNumSamples(); ++i) {
             float bands[3][2]{}, peaks[3]{}, out[2]{};
@@ -294,8 +306,21 @@ class MixingEffect final : public juce::AudioProcessor {
                     out[ch] = dry - bands[0][ch];
                 } else
                     bands[0][ch] = dry;
+
+            }
+            for (int ch = 0; ch < key.getNumChannels(); ++ch) {
+                std::array<float,3> ext{};
+                if (keyed) {
+                    const float x = key.getSample(ch,i);
+                    if (multi) {
+                        keyLow[ch] += lowPole * (x-keyLow[ch]);
+                        const float upper = x-keyLow[ch];
+                        keyMid[ch] += highPole * (upper-keyMid[ch]);
+                        ext = {keyLow[ch], keyMid[ch], upper-keyMid[ch]};
+                    } else ext[0] = spectral ? filters[1][ch].processSample(x) : x;
+                }
                 for (int b = 0; b < n; ++b)
-                    peaks[b] = std::max(peaks[b], std::abs(bands[b][ch]));
+                    peaks[b] = std::max(peaks[b], std::abs(keyed ? ext[b] : bands[b][ch]));
             }
             for (int b = 0; b < n; ++b) {
                 const bool busDetector = mode == Mode::bus || mode == Mode::multiBus;
@@ -354,7 +379,7 @@ class MixingEffect final : public juce::AudioProcessor {
     juce::String name, stateTag;
     std::vector<Parameter*> params;
     std::array<std::array<Biquad, 2>, 10> filters;
-    std::array<float, 2> low{}, mid{};
+    std::array<float, 2> low{}, mid{}, keyLow{}, keyMid{};
     std::array<float, 3> envelope{};
     juce::AudioBuffer<float> delay;
     int write = 0;

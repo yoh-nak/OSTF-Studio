@@ -83,6 +83,10 @@ struct PianoLayout {
 };
 
 juce::String effectId(const juce::PluginDescription& description) {
+    if (description.pluginFormatName == "VST3" && description.manufacturerName == "OSTF Studio") {
+        for (const auto& fx : ostfstudio::stockEffects)
+            if (description.name == fx.displayName() && fx.chainId().endsWith("|" + juce::String(description.uniqueId))) return fx.chainId();
+    }
     return description.pluginFormatName + "|" + description.manufacturerName + "|" + description.name
         + "|" + juce::String(description.uniqueId);
 }
@@ -1050,6 +1054,12 @@ MainComponent::MainComponent() {
     trackPicker_.onChange = [this] {
         if (const auto id = trackPicker_.getSelectedId(); id > 0) selectTrack(static_cast<std::size_t>(id - 1));
     };
+    mixer_.inputGainChanged = [this](size_t i, double db) {
+        if (i < trackControls_.size()) trackControls_[i]->inputGain.setValue(db,juce::sendNotificationSync);
+    };
+    mixer_.chooseInput = [this](size_t i, juce::Component* anchor) { showTrackInput(i,anchor); };
+    mixer_.captureMidi = [this](size_t i) { captureArmedMidi(i); };
+    mixer_.chooseHardwareOutput = [this](bool cue, juce::Component* anchor) { chooseHardwareOutput(cue,anchor); };
     mixer_.recordArmChanged = [this](size_t track, bool armed) { setRecordArm(track, armed); };
     mixer_.channelChanged = [this](std::size_t index) {
         markSessionEdited();
@@ -1559,8 +1569,92 @@ void MainComponent::menuItemSelected(int item, int) {
 
 DeviceSettingsWindow& MainComponent::ensureDeviceSettings() {
     if (!deviceSettings_)
-        deviceSettings_ = std::make_unique<DeviceSettingsWindow>([this](int count) { mixer_.setActiveOutputCount(count); });
+        deviceSettings_ = std::make_unique<DeviceSettingsWindow>([this](int count) { mixer_.setActiveOutputCount(count); refreshHardwareOutputs(); });
     return *deviceSettings_;
+}
+
+namespace {
+struct OutputPairChoice {
+    int first, buffer;
+    juce::String label;
+};
+std::vector<OutputPairChoice> hardwarePairs(juce::AudioIODevice& device) {
+    const auto active = device.getActiveOutputChannels();
+    const auto names = device.getOutputChannelNames();
+    std::vector<OutputPairChoice> pairs;
+    int buffer = 0;
+    for (int i=0; i<std::min(64,names.size()); i+=2) {
+        const int n = int(active[i]) + int(active[i+1]);
+        if (n == 2 || (active.countNumberOfSetBits()==1 && n==1)) {
+            const int first = active[i] ? i : i+1;
+            auto label = names[first];
+            if (n==2) label += " / " + names[i+1];
+            pairs.push_back({first,buffer,label});
+        }
+        buffer += n;
+    }
+    return pairs;
+}
+juce::String outputPreference(const juce::AudioIODevice& device, bool cue) {
+    return (cue ? "cuePair-" : "masterPair-") + juce::String::toHexString((device.getTypeName()+"/"+device.getName()).hashCode64());
+}
+int physicalChoice(juce::PropertiesFile& prefs, const juce::AudioIODevice& device,
+                   const std::vector<OutputPairChoice>& pairs, bool cue) {
+    const auto index = size_t(cue);
+    return prefs.getIntValue(outputPreference(device,cue), index<pairs.size() ? pairs[index].first : (cue ? 2 : 0));
+}
+}
+void MainComponent::refreshHardwareOutputs() {
+    if (!deviceSettings_) return;
+    auto* device = deviceSettings_->midiDevices().getCurrentAudioDevice();
+    if (!device || !device->isOpen()) {
+        transport_.setOutputPairs(-1,-1);
+        mixer_.setHardwareOutputLabels(TRANS("No audio output"),TRANS("No audio output"),false);
+        return;
+    }
+    const auto pairs = hardwarePairs(*device);
+    auto& prefs = *viewPreferences_.getUserSettings();
+    std::array<int,2> buffers{-1,-1};
+    std::array<juce::String,2> labels;
+    for (int bus=0; bus<2; ++bus) {
+        const int first = physicalChoice(prefs,*device,pairs,bus==1);
+        auto it = std::find_if(pairs.begin(),pairs.end(),[first](const auto& pair){ return pair.first==first; });
+        if (it!=pairs.end() && (!bus || buffers[0]!=it->buffer)) { buffers[bus] = it->buffer; labels[bus] = it->label; }
+        else labels[bus] = first<0 ? TRANS("Off") : TRANS("Output inactive");
+    }
+    transport_.setOutputPairs(buffers[0],buffers[1]);
+    mixer_.setHardwareOutputLabels(labels[0],labels[1],buffers[1]>=0);
+}
+void MainComponent::chooseHardwareOutput(bool cue, juce::Component* anchor) {
+    auto* device = ensureDeviceSettings().devices().getCurrentAudioDevice();
+    if (!device) { menuItemSelected(showDevices,4); return; }
+    const auto pairs = hardwarePairs(*device);
+    const auto key = outputPreference(*device,cue);
+    auto& prefs = *viewPreferences_.getUserSettings();
+    const int current = physicalChoice(prefs,*device,pairs,cue);
+    juce::PopupMenu menu;
+    menu.addSectionHeader(cue ? TRANS("Cue output") : TRANS("Master output"));
+    menu.addItem(1,TRANS("Off"),true,current<0);
+    for (const auto& pair : pairs) menu.addItem(10+pair.first,pair.label,true,current==pair.first);
+    menu.addSeparator();
+    menu.addItem(2,TRANS("Audio / MIDI Devices..."));
+    menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(anchor),
+        [safe=juce::Component::SafePointer<MainComponent>(this),key,cue](int choice) {
+            if (!safe || !choice) return;
+            if (choice==2) { safe->menuItemSelected(showDevices,4); return; }
+            auto* d = safe->deviceSettings_->midiDevices().getCurrentAudioDevice();
+            if (!d || outputPreference(*d,cue)!=key) return;
+            const auto available = hardwarePairs(*d);
+            const int first = choice==1 ? -1 : choice-10;
+            if (first>=0 && std::none_of(available.begin(),available.end(),[first](const auto& p){return p.first==first;})) return;
+            auto& settings = *safe->viewPreferences_.getUserSettings();
+            const int old = physicalChoice(settings,*d,available,cue);
+            if (first>=0 && physicalChoice(settings,*d,available,!cue)==first)
+                settings.setValue(outputPreference(*d,!cue),old);
+            settings.setValue(key,first);
+            safe->refreshHardwareOutputs();
+            safe->repaint();
+        });
 }
 
 PluginBrowser& MainComponent::ensurePluginBrowser() {
@@ -1866,8 +1960,12 @@ std::optional<std::size_t> MainComponent::outputDropTrack(juce::Point<int> posit
 void MainComponent::itemDragMove(const SourceDetails& details) {
     const auto id = details.description.toString();
     const auto plugin = pluginBrowser_ && id.startsWith("ostf-vst3:") ? pluginBrowser_->find(id.substring(10)) : std::nullopt;
-    const auto output = plugin && !plugin->isInstrument ? outputDropTrack(details.localPosition) : std::nullopt;
-    auto track = pluginDropTrack(details.localPosition);
+    const bool inMixer = plugin && mixer_.isVisible() && mixer_.getBounds().contains(details.localPosition);
+    const auto p = mixer_.getLocalPoint(this,details.localPosition);
+    const auto output = plugin && !plugin->isInstrument ? (inMixer ? mixer_.dropTargetAt(p,true) : outputDropTrack(details.localPosition)) : std::nullopt;
+    auto track = inMixer ? mixer_.dropTargetAt(p,false) : pluginDropTrack(details.localPosition);
+    if (plugin && track && (trackControls_[*track]->loading || (plugin->isInstrument && project_->trackKinds[*track]==ostfstudio::TrackKind::audio))) track.reset();
+    mixer_.highlightDrop(inMixer ? track : std::nullopt,inMixer ? output : std::nullopt);
     if (id.startsWith("ostf-media:") && track && !juce::File(id.fromFirstOccurrenceOf(":", false, false)).hasFileExtension("mid;midi;ostf;ostfp")
         && project_->trackKinds[*track] != ostfstudio::TrackKind::audio) track.reset();
     const auto* part = dynamic_cast<ImportResultRow*>(details.sourceComponent.get());
@@ -1888,6 +1986,7 @@ void MainComponent::itemDragMove(const SourceDetails& details) {
 }
 
 void MainComponent::itemDragExit(const SourceDetails&) {
+    mixer_.highlightDrop({},{});
     importTrackDrop_.setVisible(false);
     if (!pluginDropHighlight_ && !outputDropHighlight_) return;
     outputDropHighlight_.reset();
@@ -1939,17 +2038,19 @@ void MainComponent::itemDropped(const SourceDetails& details) {
         placeResult(*row, track, tick, false);
         return;
     }
-    if (const auto output = outputDropTrack(details.localPosition); output && id.startsWith("ostf-vst3:")) {
+    const auto p = mixer_.getLocalPoint(this,details.localPosition);
+    const bool inMixer = mixer_.isVisible() && mixer_.getBounds().contains(details.localPosition);
+    if (const auto output = inMixer ? mixer_.dropTargetAt(p,true) : outputDropTrack(details.localPosition); output && id.startsWith("ostf-vst3:")) {
         if (const auto plugin = pluginBrowser_->find(id.substring(10)); plugin && !plugin->isInstrument)
             appendEffect(true, *output, *plugin);
         return;
     }
-    const auto track = pluginDropTrack(details.localPosition);
-    if (!track) return;
+    const auto track = inMixer ? mixer_.dropTargetAt(p,false) : pluginDropTrack(details.localPosition);
+    if (!track || trackControls_[*track]->loading) return;
     const auto plugin = pluginBrowser_->find(details.description.toString().substring(10));
     if (!plugin) return;
-    selectTrack(*track);
     if (plugin->isInstrument && project_->trackKinds[*track] == ostfstudio::TrackKind::audio) return;
+    if (!inMixer) selectTrack(*track);
     if (plugin->isInstrument) loadTrackPlugin(*track, *plugin);
     else appendEffect(false, *track, *plugin);
 }
@@ -2188,6 +2289,7 @@ void MainComponent::handleIncomingMidiMessage(juce::MidiInput* port, const juce:
             }
             return;
         }
+        rememberMidiInput(portId,message,juce::Time::getMillisecondCounterHiRes()*.001);
         bool matched = false;
         for (auto& monitor : inputMonitors_)
             if (monitor.route.accepts(portId, message.getChannel())) { monitor.received = true; matched = true; }
@@ -2204,7 +2306,19 @@ void MainComponent::handleIncomingMidiMessage(juce::MidiInput* port, const juce:
     padUpdate_.triggerAsyncUpdate();
 }
 
+void MainComponent::rememberMidiInput(const juce::String& portId, const juce::MidiMessage& message, double seconds) {
+    // Caller holds surfaceLock_, which also guards route changes and buffer snapshots.
+    if (!captureMonitor_ || capturingTake_.load() || !message.isNoteOnOrOff()
+        || !captureRoute_.accepts(portId,message.getChannel())) return;
+    const int pitch = capturePitchMap_[size_t(message.getNoteNumber())];
+    if (pitch>=0) midiPerformance_.push({seconds,transport_.inputPerformanceTick(),portId.hashCode64(),
+        pitch,message.getChannel(),message.isNoteOn() ? int(message.getVelocity()) : 0});
+}
+
 void MainComponent::showPadInput() {
+    bool haveNotes;
+    { const juce::SpinLock::ScopedLockType lock(surfaceLock_); haveNotes = midiPerformance_.hasNotes(); }
+    if (captureMonitor_) mixer_.setCaptureAvailable(*captureMonitor_,!recordTrack_ && haveNotes);
     if (!padListening_) return;
     std::array<ostfstudio::SurfaceAction, 128> events;
     size_t count;
@@ -2227,6 +2341,7 @@ void MainComponent::showPadInput() {
         viewPreferences_.getUserSettings()->setValue("padInput" + juce::String(input), target);
         drumPads_.setLearning(false);
         drumPads_.refreshAssignment();
+        refreshMidiRoutes();
         statusLabel_.setText("MIDI " + juce::String(input) + " -> " + juce::String(target), juce::dontSendNotification);
     }
     for (int i = 0; i < 128; ++i)
@@ -2380,7 +2495,7 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
             statusLabel_.setText(TRANS("Press R on the track you want to record."), juce::dontSendNotification);
             return;
         }
-        selectTrack(static_cast<std::size_t>(armed));
+        selectTrack(static_cast<std::size_t>(armed),true);
     }
     if (!project_ || (recording && (!selectedTrack_ || selectedGlobal_ == TimelineLane::tempo))) return;
     if (recording && *selectedTrack_ >= project_->sourceTrackCount()) {
@@ -2516,6 +2631,8 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
     if (take.link) lastLinkPlaying_ = true;
     activeLoop_ = recording ? take.cycle : juce::Range<juce::int64>{};
     recordTrack_ = recording ? selectedTrack_ : std::nullopt;
+    capturingTake_.store(recording);
+    if (recording) { const juce::SpinLock::ScopedLockType lock(surfaceLock_); midiPerformance_.clear(); }
     if (recording)
         refreshEditor();
     updateDrumLoop();
@@ -2588,6 +2705,7 @@ void MainComponent::stopTransport() {
         statusLabel_.setText(TRANS("Stopped"), juce::dontSendNotification);
     }
     recordTrack_.reset();
+    capturingTake_.store(false);
     transportActive_ = false;
     deck_.play.setToggleState(false, juce::dontSendNotification);
     deck_.stop.setToggleState(true, juce::dontSendNotification);
@@ -2913,6 +3031,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     ++songRequest_;
     stopTransport();
     attachPadInput(false);
+    { const juce::SpinLock::ScopedLockType lock(surfaceLock_); captureMonitor_.reset(); midiPerformance_.clear(); }
     armedId_.clear();
     midiRoutes_.clear();
     midiOutputs_.clear();
@@ -3623,7 +3742,7 @@ void MainComponent::setRecordArm(std::size_t i, bool arm) {
         startTimerHz(24);
     }
     armedId_ = arm ? project_->trackIds[int(i)] : juce::String{};
-    if (arm) selectTrack(i);
+    if (arm) selectTrack(i,true);
     refreshMidiRoutes();
     restartInputMonitor();
 }
@@ -3654,20 +3773,71 @@ void MainComponent::refreshMidiRoutes() {
             strip.input.getProperties().set("routeLabel", "IN  " + label);
             strip.input.setTooltip(TRANS("Recording input") + "  " + label);
             strip.inputGain.setValue(in.gainDb, juce::dontSendNotification);
+            mixer_.displayInputGain(i,in.gainDb);
         }
         const bool armed = armedId_.isNotEmpty() && armedId_ == id;
+        mixer_.setInputState(i,strip.input.getProperties()["routeLabel"].toString(),!recordTrack_,armed && route.enabled);
         mixer_.setRecordState(i, armed, !recordTrack_);
         strip.arm.setToggleState(armed, juce::dontSendNotification);
         strip.arm.setTooltip(armed ? TRANS("Record armed. Press Record to start.") : TRANS("Arm this track for recording"));
     }
     const juce::SpinLock::ScopedLockType lock(surfaceLock_);
     inputMonitors_ = std::move(monitors);
+    const int arm = project_->trackIds.indexOf(armedId_);
+    const auto target = arm>=0 && size_t(arm)<project_->sourceTrackCount() && inputMonitors_[size_t(arm)].route.enabled
+        ? std::optional<size_t>(size_t(arm)) : std::nullopt;
+    const auto route = target ? inputMonitors_[*target].route : ostfstudio::MidiInputRoute{};
+    if (captureTrackId_!=armedId_ || target!=captureMonitor_ || route.port!=captureRoute_.port
+        || route.channel!=captureRoute_.channel || route.enabled!=captureRoute_.enabled) midiPerformance_.clear();
+    captureMonitor_ = target;
+    captureTrackId_ = armedId_;
+    captureRoute_ = route;
+    for (int key=0;key<128;++key) {
+        int pitch = key;
+        if (target && project_->trackKinds[*target]==ostfstudio::TrackKind::drum) {
+            pitch = padMapping_[key];
+            const auto& slots=project_->slotsByTrack[*target];
+            if (std::none_of(slots.begin(),slots.end(),[pitch](const auto& s){return s.pitch==pitch;})) pitch=-1;
+        }
+        capturePitchMap_[key]=pitch;
+    }
+    if (target) mixer_.setCaptureAvailable(*target,!recordTrack_ && midiPerformance_.hasNotes());
 }
 
-void MainComponent::showTrackInput(std::size_t i) {
+void MainComponent::captureArmedMidi(size_t i) {
+    if (!project_ || recordTrack_ || i>=project_->sourceTrackCount() || armedId_!=project_->trackIds[int(i)]) return;
+    std::vector<ostfstudio::MidiPerformanceBuffer::Edge> events;
+    events.reserve(ostfstudio::MidiPerformanceBuffer::capacity);
+    uint64_t end;
+    {
+        const juce::SpinLock::ScopedLockType lock(surfaceLock_);
+        if (captureMonitor_!=i) return;
+        end = midiPerformance_.snapshot(events);
+    }
+    const auto& clock = auditionClock_ ? *auditionClock_ : project_->clock;
+    auto notes = ostfstudio::MidiPerformanceBuffer::notes(events,clock,std::max<juce::int64>(0,cursorTick_),
+        project_->playbackEndTick(),juce::Time::getMillisecondCounterHiRes()*.001,transport_.inputPerformanceTick());
+    if (notes.empty()) { statusLabel_.setText(TRANS("No MIDI notes captured"),juce::dontSendNotification); return; }
+    const bool playing = transportActive_;
+    if (playing) stopTransport();
+    juce::MemoryBlock before;
+    const auto result = project_->addRecordedClip(i,{notes.front().startTick,notes.front().endTick},notes,before,TRANS("Captured MIDI"));
+    if (result.wasOk()) {
+        bool haveNotes;
+        { const juce::SpinLock::ScopedLockType lock(surfaceLock_); midiPerformance_.consume(end); haveNotes = midiPerformance_.hasNotes(); }
+        mixer_.setCaptureAvailable(i,haveNotes);
+        rememberScoreEdit(std::move(before),"Capture MIDI");
+        refreshTrackTheory(i);
+    }
+    finishNoteEdit(playing);
+    statusLabel_.setText(result.wasOk() ? juce::String(int(notes.size())) + TRANS(" MIDI notes captured") : result.getErrorMessage(),juce::dontSendNotification);
+}
+
+void MainComponent::showTrackInput(std::size_t i, juce::Component* anchor) {
     if (!project_ || recordTrack_ || i >= project_->sourceTrackCount()) return;
     const auto id = project_->trackIds[int(i)];
-    if (project_->trackKinds[i] == ostfstudio::TrackKind::audio) { showAudioInput(i); return; }
+    if (!anchor) anchor = &trackControls_[i]->input;
+    if (project_->trackKinds[i] == ostfstudio::TrackKind::audio) { showAudioInput(i,anchor); return; }
     const auto route = midiRoutes_[id];
     const auto ports = juce::MidiInput::getAvailableDevices();
     juce::PopupMenu menu, channels;
@@ -3679,11 +3849,15 @@ void MainComponent::showTrackInput(std::size_t i) {
     channels.addItem(10, TRANS("All channels"), true, route.channel == 0);
     for (int ch = 1; ch <= 16; ++ch) channels.addItem(10 + ch, "Ch " + juce::String(ch), true, route.channel == ch);
     menu.addSubMenu(TRANS("MIDI channel"), channels);
+    bool havePerformance;
+    { const juce::SpinLock::ScopedLockType lock(surfaceLock_); havePerformance = captureMonitor_==i && midiPerformance_.hasNotes(); }
+    menu.addItem(4,TRANS("Capture MIDI"),armedId_==id && route.enabled && havePerformance);
     menu.addItem(3, TRANS("Audio / MIDI Devices..."));
-    menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&trackControls_[i]->input),
+    menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(anchor),
         [safe = juce::Component::SafePointer<MainComponent>(this), ports, id, generation = projectGeneration_](int item) {
             if (!safe || item == 0 || safe->recordTrack_ || safe->projectGeneration_ != generation) return;
             if (item == 3) { safe->menuItemSelected(showDevices, 4); return; }
+            if (item == 4) { const int track=safe->project_->trackIds.indexOf(id); if (track>=0) safe->captureArmedMidi(size_t(track)); return; }
             auto& target = safe->midiRoutes_[id];
             if (item == 1 || item == 2) { target.enabled = item == 1; target.port.clear(); target.name.clear(); }
             else if (item >= 10 && item <= 26) target.channel = item - 10;
@@ -3720,7 +3894,7 @@ void MainComponent::updateInputMeters() {
     }
 }
 
-void MainComponent::showAudioInput(std::size_t i) {
+void MainComponent::showAudioInput(std::size_t i, juce::Component* anchor) {
     auto* device = ensureDeviceSettings().devices().getCurrentAudioDevice();
     const auto id = project_->trackIds[int(i)];
     const auto first = audioInputs_[id].first;
@@ -3738,7 +3912,7 @@ void MainComponent::showAudioInput(std::size_t i) {
         }
     }
     menu.addItem(2, TRANS("Audio / MIDI Devices..."));
-    menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(&trackControls_[i]->input),
+    menu.showMenuAsync(juce::PopupMenu::Options{}.withTargetComponent(anchor),
         [safe = juce::Component::SafePointer<MainComponent>(this), id, generation = projectGeneration_](int item) {
             if (!safe || !item || safe->recordTrack_ || safe->projectGeneration_ != generation) return;
             if (item == 2) { safe->menuItemSelected(showDevices, 4); return; }
@@ -3845,6 +4019,7 @@ void MainComponent::rebuildTrackControls() {
             controls->inputGain.onValueChange = [this, i, slider = &controls->inputGain] {
                 auto db = slider->getValue();
                 audioInputs_[project_->trackIds[int(i)]].gainDb = db;
+                mixer_.displayInputGain(i,db);
                 if (recordTrack_ == i) transport_.setInputGain(db);
                 markSessionEdited();
             };
@@ -3886,7 +4061,7 @@ void MainComponent::addSharedPart(std::size_t index) {
     const auto owner = trackControls_[index]->outputTrack.value_or(index);
     const int channel = nextSharedChannel(owner);
     if (!channel || project_->sourceTrackCount() >= project_->maxTracks) return;
-    const bool gmDrums = channel == 10 && trackControls_[owner]->instance->getName() == "OSTF GM Sound Module";
+    const bool gmDrums = channel == 10 && trackControls_[owner]->instance->getName().endsWith("GM Sound Module");
     editTracks(gmDrums ? ostfstudio::TrackKind::drum : ostfstudio::TrackKind::pitched, {}, {},
                ostfstudio::MixerTrackGroup::pitched, nullptr, 0, ostfstudio::SessionMix::MidiRoute{channel, owner});
 }
@@ -4603,7 +4778,7 @@ void MainComponent::updatePresetLabel(std::size_t index) {
     const auto sharedButtonText = [&] {
         const auto& host = *trackControls_[owner];
         const auto name = host.instance ? host.instance->getName() : host.instrumentAssignment["name"].toString();
-        return (name == "OSTF GM Sound Module" ? juce::String("GM #") : juce::String("#"))
+        return ((name == "GM Sound Module" || name == "OSTF GM Sound Module") ? juce::String("GM #") : juce::String("#"))
             + juce::String(int(owner + 1)) + "  Ch " + juce::String(strip.midiChannel);
     };
     if (strip.outputTrack && owner < trackControls_.size() && owner < project_->trackLanes.size()) {
@@ -4762,7 +4937,7 @@ void MainComponent::showEffects(bool output, std::size_t index) {
                         : slot.id.upToLastOccurrenceOf("|", false, false).fromLastOccurrenceOf("|", false, false)
                             + (slot.id.isEmpty() ? TRANS("Loading...") : TRANS(" (unavailable)"));
                     juce::String key;
-                    if (name=="OSTF Unmask" && slot.effect && (output || index<self->project_->sourceTrackCount())) {
+                    if (slot.effect && slot.effect->getBusCount(true) == 2 && (output || index<self->project_->sourceTrackCount())) {
                         const int source=self->project_->trackIds.indexOf(slot.keyTrackId);
                         key=TRANS("Key") + " / " + (source>=0 ? juce::String::fromUTF8(self->project_->trackLanes[size_t(source)].label) : TRANS("Off"));
                     }
@@ -4842,6 +5017,12 @@ void MainComponent::showEffects(bool output, std::size_t index) {
                 auto* owner=current(); if(!owner || id<1 || id>ids.size()+1) return;
                 for(auto& fx:owner->effectChain(output,index).slots) if(fx.effect.get()==processor) {
                     owner->stopTransport();
+                    if (id > 1 && !owner->project_->trackIds.contains(ids[id-2])) return;
+                    if (!processor->getBus(true,1)->enable(id > 1) || !PreviewTransport::supportsInsert(*processor)) {
+                        processor->getBus(true,1)->enable(fx.keyTrackId.isNotEmpty());
+                        owner->statusLabel_.setText(TRANS("Unsupported sidechain layout"), juce::dontSendNotification);
+                        return;
+                    }
                     fx.keyTrackId=id==1 ? juce::String{} : ids[id-2];
                     owner->markSessionEdited(); break;
                 }
@@ -5395,8 +5576,6 @@ void MainComponent::loadEffect(bool output, std::size_t index, std::size_t posit
             safe->refreshTrackActions();
             auto& slot = chain.slots[position];
             if (effect) effect->disableNonMainBuses();
-            if (effect && description.name=="OSTF Unmask" && effect->getBusCount(true)==2)
-                effect->getBus(true,1)->enable(true);
             if (!effect || !PreviewTransport::supportsInsert(*effect)) {
                 if (slot.id.isEmpty()) chain.slots.pop_back();
                 safe->statusLabel_.setText(effect ? TRANS("Insert requires a stereo audio effect") : TRANS("Could not load FX: ") + error,
@@ -5888,7 +6067,7 @@ void MainComponent::mouseUp(const juce::MouseEvent& event) {
     finishNoteEdit(playing);
 }
 
-void MainComponent::selectTrack(std::size_t index) {
+void MainComponent::selectTrack(std::size_t index, bool keepMixer) {
     if (selectedTrack_ != index && chordReviewBlocksSwitch()) {
         trackPicker_.setSelectedId(selectedTrack_ ? int(*selectedTrack_+1) : 0,juce::dontSendNotification);
         return;
@@ -5900,7 +6079,7 @@ void MainComponent::selectTrack(std::size_t index) {
     if (selectedTrack_ != index) { clipLane_.selected.reset(); selectedAudioId_.clear(); }
     selectedTrack_ = index;
     trackPicker_.setSelectedId(static_cast<int>(index + 1), juce::dontSendNotification);
-    mixerSelected_ = false;
+    if (!keepMixer) mixerSelected_ = false;
     refreshEditor();
 }
 
@@ -6010,7 +6189,7 @@ juce::Rectangle<int> MainComponent::drawFitBadges(juce::Graphics& g, juce::Recta
                                                   const ostfstudio::TheoryGuide::ClipFit& fit, TimelineLane lane) const {
     const int count = int(chordFitVisible_) + int(scaleFitVisible_);
     const bool global = lane != TimelineLane::none;
-    const int width = global ? std::min(48, (caption.getWidth() + 1) / 2) : std::min(94, caption.getWidth() / std::max(1, count));
+    const int width = global ? std::min(48, (caption.getWidth() + 1) / 2) : std::min(75, caption.getWidth() / std::max(1, count));
     for (bool chord : {false, true}) {
         if (global && chord != (lane == TimelineLane::chord)) continue;
         if (chord ? !chordFitVisible_ : !scaleFitVisible_) continue;
@@ -6018,24 +6197,31 @@ juce::Rectangle<int> MainComponent::drawFitBadges(juce::Graphics& g, juce::Recta
         if (width >= 10) bounds = bounds.reduced(1, 0);
         if (bounds.isEmpty()) continue;
         const int value = (chord ? fit.chord : fit.scale).percent();
-        const juce::Colour accent(value < 0 ? 0xffb5c0cb : value < 50 ? 0xffff91a4 : value < 75 ? 0xffffb06d :
-                                  value < 90 ? 0xffffdf77 : 0xff8ce8ce);
-        const juce::Colour backing(0xff0b131b);
-        g.setColour(global ? backing.interpolatedWith(accent, .23f) : backing);
-        g.fillRoundedRectangle(bounds.toFloat(), 3.f);
+        const juce::Colour accent(value < 0 ? 0xff9daeb6 : value < 50 ? 0xffed98a2 : value < 75 ? 0xffeab68b :
+                                  value < 90 ? 0xffe4ce8c : 0xff99d5c4);
+        bounds = bounds.withTrimmedTop(1).withTrimmedBottom(1);
+        const auto face = juce::Colour(0xff24343d).interpolatedWith(accent, value < 0 ? .015f : (global ? .13f : .075f));
+        g.setColour(face);
+        g.fillRoundedRectangle(bounds.toFloat(), 2.f);
         g.setColour(accent);
-        g.drawRoundedRectangle(bounds.toFloat().reduced(.75f), 2.5f, 1.35f);
+        if (width >= 21 && value >= 0) {
+            auto line = bounds.reduced(2, 0).removeFromBottom(2);
+            g.setColour(accent.withAlpha(.18f));
+            g.fillRect(line);
+            g.setColour(accent.withAlpha(.85f));
+            g.fillRect(line.withWidth(std::max(1, line.getWidth() * value / 100)));
+        }
         if (width < 21) {
             g.fillRect(bounds.reduced(std::min(2, bounds.getWidth() / 3), 4));
             continue;
         }
         auto label = value < 0 ? juce::String::charToString(0x2014) : juce::String(value);
         if (value >= 0 && width >= 30) label += "%";
-        if (width >= 77) label = juce::translate(chord ? "Chord" : "Scale") + " " + label;
+        if (!global && width >= 66) label = juce::translate(chord ? "Chord" : "Scale") + " " + label;
         else if (!global && width >= 48) label = juce::String(chord ? "C " : "S ") + label;
-        g.setColour(global ? accent : juce::Colours::white);
-        g.setFont(juce::FontOptions(width < 30 ? 10.f : width < 55 ? 11.f : 13.f, juce::Font::bold));
-        g.drawText(label, bounds.reduced(2, 0), juce::Justification::centred);
+        g.setColour(value < 0 ? accent : juce::Colour(0xffe3eeec));
+        g.setFont(juce::FontOptions(width < 30 ? 10.f : 11.f, juce::Font::plain));
+        g.drawText(label, bounds.withTrimmedBottom(1).reduced(1, 0), juce::Justification::centred);
     }
     return caption;
 }
@@ -7458,7 +7644,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             g.drawFittedText(mixer_.outputName(i), row.withWidth(trackNameWidth).withHeight(std::min(34, row.getHeight())).reduced(5, 0),
                              juce::Justification::centredLeft, 1);
             g.setColour(juce::Colour(muted));
-            g.drawFittedText(i == 0 ? TRANS("Out 1-2") : TRANS("To Master"), row.withTrimmedLeft(trackHeaderWidth).reduced(8, 0),
+            g.drawFittedText(i == 0 ? mixer_.masterDestination() : TRANS("To Master"), row.withTrimmedLeft(trackHeaderWidth).reduced(8, 0),
                              juce::Justification::centredLeft, 1);
             if (outputDropHighlight_ == i) {
                 g.setColour(juce::Colour(hardwareAmber));

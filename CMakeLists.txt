@@ -92,7 +92,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         BUNDLE_ID "org.ostf.gmsoundmodule"
         PLUGIN_MANUFACTURER_CODE Ostf
         PLUGIN_CODE Ogm1
-        PRODUCT_NAME "OSTF GM Sound Module"
+        PRODUCT_NAME "OSTF GM Sound Module" PLUGIN_NAME "GM Sound Module"
         FORMATS VST3
         IS_SYNTH TRUE
         NEEDS_MIDI_INPUT TRUE

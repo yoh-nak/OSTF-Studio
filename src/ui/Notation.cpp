@@ -841,7 +841,10 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
 }
 
 int barsPerPage(bool lead, StaffStyle style, const SheetOptions& options) {
-    return lead ? 8 * juce::jlimit(1, 16, options.barsPerLine) : style == StaffStyle::grand ? 8 : 10;
+    const float usableHeight = options.paperPoints().y - 2.f * std::clamp(options.marginMm, 5, 35) * 72.f / 25.4f - 134.f;
+    const float rowHeight = lead ? 80.f : (style == StaffStyle::grand ? 153.f : 122.f);
+    const int rows = std::max(1, int(std::floor((usableHeight + 1.f) / rowHeight)));
+    return rows * (lead ? juce::jlimit(1, 16, options.barsPerLine) : 2);
 }
 std::vector<int> sheetPageStarts(const NotationScore& score, bool lead, StaffStyle style, const SheetOptions& options) {
     std::vector<int> forced;
@@ -864,13 +867,15 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
     g.fillAll(juce::Colours::white);
     juce::Graphics::ScopedSaveState pageState(g);
     const float margin = std::clamp(options.marginMm, 5, 35) * 72.f / 25.4f;
-    const auto sx = (595.f - 2*margin) / 531.f, sy = (842.f - 2*margin) / 790.f;
-    g.addTransform(juce::AffineTransform::translation(-32.f,-25.f).scaled(sx,sy).translated(margin,margin));
+    const auto size = options.paperPoints();
+    const float width = size.x - 2 * margin, rightEdge = 32.f + width;
+    const float footer = 25.f + size.y - 2 * margin - 23.f;
+    g.addTransform(juce::AffineTransform::translation(margin-32.f, margin-25.f));
     g.setColour(accent);
     const auto heading = lead ? TRANS("Lead sheet") : (part >= 0 ? s.parts[part].name : TRANS("Score"));
-    text(g, heading, 33, 27, 530, 17, 13, true);
+    text(g, heading, 33, 27, width-1, 17, 13, true);
     g.setColour(ink);
-    text(g, s.title, 32, 50, 531, 37, 29, true);
+    text(g, s.title, 32, 50, width, 37, 29, true);
     juce::StringArray meta;
     meta.add(juce::String(s.beats) + "/" + juce::String(s.beatType));
     if (s.key.isNotEmpty())
@@ -880,16 +885,16 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
     if (!lead)
         meta.add(juce::translate(staffName(style)));
     g.setColour(soft);
-    text(g, meta.joinIntoString("    /    "), 34, 89, 527, 19, 12);
-    g.drawLine(33, 117, 562, 117, 1);
+    text(g, meta.joinIntoString("    /    "), 34, 89, width-2, 19, 12);
+    g.drawLine(33, 117, rightEdge, 117, 1);
     const int cols = lead ? juce::jlimit(1, 16, options.barsPerLine) : 2, per = barsPerPage(lead, style, options);
     const auto starts = sheetPageStarts(s, lead, style, options);
     const int pageCount = int(starts.size());
     if (page < 0 || page >= pageCount) return;
     const int first = starts[page], endBar = page + 1 < pageCount ? starts[page+1] : s.bars;
-    const float rowH = 640.f / (per / cols);
+    const float rowH = (footer - 150.f) / (per / cols);
     for (int r = 0; r < per / cols && first + r * cols < endBar; ++r) {
-        const float y = 134 + r * rowH, startX = lead ? 33.f : 58.f, width = (562 - startX) / cols;
+        const float y = 134 + r * rowH, startX = lead ? 33.f : 58.f, width = (rightEdge - startX) / cols;
         const float top = y + (style == StaffStyle::grand ? 40 : 51);
         const int lines = tuning(style).empty() ? 5 : static_cast<int>(tuning(style).size());
         if (!lead) {
@@ -930,14 +935,14 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
         }
     }
     g.setColour(soft);
-    g.drawLine(33, 790, 562, 790, .8f);
-    text(g, "OSTF Studio", 34, 796, 200, 17, 10);
-    text(g, juce::String(page + 1) + " / " + juce::String(pageCount), 510, 796, 55, 17, 11);
+    g.drawLine(33, footer, rightEdge, footer, .8f);
+    text(g, "OSTF Studio", 34, footer + 5, 200, 17, 10);
+    text(g, juce::String(page + 1) + " / " + juce::String(pageCount), rightEdge - 55, footer + 5, 55, 17, 11);
 }
 
 juce::Result writeSheetPdf(juce::OutputStream& out, const NotationScore& s, int part, StaffStyle style,
                            const MeasureNotes& notes, bool lead, const SheetOptions& options) {
-    // Each A4 page embeds a lossless grayscale rendering of the selected musical content.
+    // Each page embeds a lossless grayscale rendering of the selected musical content.
     // This includes local font fallback for Japanese, without requiring a PDF viewer font.
     bool ok = true;
     auto ascii = [&](const juce::String& str) { ok &= out.write(str.toRawUTF8(), str.getNumBytesAsUTF8()); };
@@ -956,7 +961,9 @@ juce::Result writeSheetPdf(juce::OutputStream& out, const NotationScore& s, int 
     object();
     ascii("<< /Type /Pages /Count " + juce::String(pages) + " /Kids [" + kids + "] >>\nendobj\n");
     for (int page = 0; page < pages && ok; ++page) {
-        constexpr int scale = 3, w = 595 * scale, h = 842 * scale;
+        constexpr int scale = 3;
+        const auto size = options.paperPoints();
+        const int w = size.x * scale, h = size.y * scale;
         juce::Image image(juce::Image::RGB, w, h, true, juce::SoftwareImageType{});
         {
             juce::Graphics g(image);
@@ -981,9 +988,9 @@ juce::Result writeSheetPdf(juce::OutputStream& out, const NotationScore& s, int 
         }
         const int id = 3 + page * 3;
         object();
-        ascii("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im " +
+        ascii("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + juce::String(size.x) + " " + juce::String(size.y) + "] /Resources << /XObject << /Im " +
               juce::String(id + 2) + " 0 R >> >> /Contents " + juce::String(id + 1) + " 0 R >>\nendobj\n");
-        const juce::String paint = "q 595 0 0 842 0 0 cm /Im Do Q\n";
+        const juce::String paint = "q " + juce::String(size.x) + " 0 0 " + juce::String(size.y) + " 0 0 cm /Im Do Q\n";
         object();
         ascii("<< /Length " + juce::String(paint.length()) + " >>\nstream\n" + paint + "endstream\nendobj\n");
         object();

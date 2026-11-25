@@ -1,5 +1,7 @@
 # OSTF Studio
 
+Arm a MIDI track with R, play, and use Capture MIDI on its mixer strip or input menu. Stopped performances start at the edit cursor. During playback notes use the arrangement position. The IN selector is shared by the mixer and track header. Drop an instrument or effect from the browser onto the channel strip. The output selectors on Master and Cue offer physical channels and device settings.
+
 The transport, prompt guide and current vocal lyrics use black inset displays. Source track headers group the fader, pan and input controls above eight send slots. On narrow expanded headers the sends wrap when there is room for two rows. Each assigned return enables its corresponding send in the header and mixer.
 
 **Paper Lantern Replies** displays its English lyrics in English and uses note-aligned katakana for the singer. Japanese verse text retains its original spelling.
@@ -10,7 +12,7 @@ Drag across the song scale map to select a chord range. **Include matching progr
 
 The lead sheet and part score offer an A4 print preview with page navigation, adjustable margins and explicit page breaks. Enter the one-based bar numbers which should start a new page. PDF export shares the preview renderer. The master strip displays a stereo waveform below its phase scope and has its mute directly below its fader.
 
-**OSTF Unmask** accepts an auxiliary VST3 audio input. In Studio, insert it on the signal to attenuate, open its FX chain, and choose the detector track under **Key**. This uses that track's pre-insert signal independently of its fader and mute. External hosts route audio to its Sidechain bus.
+**Unmask** accepts an auxiliary VST3 audio input. In Studio, insert it on the signal to attenuate, open its FX chain, and choose the detector track under **Key**. This uses that track's pre-insert signal independently of its fader and mute. External hosts route audio to its Sidechain bus.
 
 Japanese long-vowel marks within one unit extend the vowel recording. With English dictionary input, the Japanese bank chooses a consonant recording shaped for the following vowel.
 
@@ -52,7 +54,7 @@ When several tracks share one instrument, open the GM Sound Module to see its so
 
 The **Audio files** toolbar button sits beside **Plug-ins**. Drop a sample onto the arrangement at the desired time. Drag the body of the resulting audio clip to move it or drag an edge to trim it. A track can hold several audio clips. On MIDI and audio tracks, drag the clip body to move it or right-click for **Split clip here**, **Join with next clip**, **Copy clip**, **Paste clip here**, and **Duplicate clip**. Click an empty time position to set the paste destination. With the arrangement focused, use Ctrl (Cmd on macOS) with C, V, D, E, or J for copy, paste, duplicate, split at the playhead, or join. Undo and redo use Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z. Clips can move to a matching track type. A placement that would overlap a clip is declined.
 
-Insert **OSTF Stem Separator** on an audio track. Drop a file into the editor or use **Capture track**, play the passage, and select **Finish capture**. Drag the estimated Drums, Bass, Other and Vocals WAV files to audio tracks. Detected notes and chords are also available as standard MIDI files. Dropping the chord MIDI onto Studio's chord lane places the timed chord symbols. The local separator uses spectral and transient estimates, so stems can contain bleed. Results are stored under the user's Music folder in `OSTF Studio/Stems`.
+Insert **Stem Separator** on an audio track. Drop a file into the editor or use **Capture track**, play the passage, and select **Finish capture**. Drag the estimated Drums, Bass, Other and Vocals WAV files to audio tracks. Detected notes and chords are also available as standard MIDI files. Dropping the chord MIDI onto Studio's chord lane places the timed chord symbols. The local separator uses spectral and transient estimates, so stems can contain bleed. Results are stored under the user's Music folder in `OSTF Studio/Stems`.
 
 In the upcoming release, mixer strips have metal-capped level faders and separate pan and send knobs with editable values. **Settings → Colour theme** offers seven finishes, including Forest Console, Midnight Indigo and Copper Console. The bundled GM Sound Module and nine stock effects use hardware-style controls. Each effect has its own rack panel and retains its existing automation parameters.
 
@@ -98,9 +100,9 @@ Select an audio track to open its waveform below the arrangement. Enable **Loop*
 
 Press **Melodyne** in the waveform editor to open the selected source as a working WAV in Melodyne standalone. Use **Replace Audio** in Melodyne, then **Apply edited WAV** in Studio to keep the edited audio in your project. The Theory Guide groups cadences directly on the degree row. The function row stays available underneath.
 
-## OSTF Wave Analyzer (development build)
+## Wave Analyzer (development build)
 
-Insert **OSTF Wave Analyzer** on a track or master bus. It shows left and right waveforms, a 4096-sample spectrum, sample peak and RMS, stereo correlation, momentary/short-term/integrated LUFS and maximum 4× interpolated true peak. Hover over the spectrum for frequency and level. Freeze holds the display while measurement continues. Reset meters starts a fresh measurement on the next audio block. The plug-in runs locally and passes its input to the output with zero added latency.
+Insert **Wave Analyzer** on a track or master bus. It shows left and right waveforms, a 4096-sample spectrum, sample peak and RMS, stereo correlation, momentary/short-term/integrated LUFS and maximum 4× interpolated true peak. Hover over the spectrum for frequency and level. Freeze holds the display while measurement continues. Reset meters starts a fresh measurement on the next audio block. The plug-in runs locally and passes its input to the output with zero added latency.
 
 ## ☕ Support development on Buy Me a Coffee
 
@@ -175,9 +177,9 @@ Open **Plug-in Browser → Audio files** and choose a local sample folder. Drag 
 
 The information button opens song details. The adjacent note-and-arrows button opens the score and audition transpose/tempo commands. The performance lane's numeric entry accepts note velocity, program, controller, aftertouch, signed pitch bend and mixer pan values. Select one or more notes first when entering velocity.
 
-### Shared instruments and OSTF GM Sound Module
+### Shared instruments and GM Sound Module
 
-Load **OSTF GM Sound Module** on one arrangement track. The module displays all 16 MIDI channels and their GM names, with channel 10 reserved for percussion. Select a channel to change its program, volume, pan, expression, tuning, pitch-bend range, sustain, mute or solo. Incoming Program Change and the supported MIDI controls update the panel. The module saves these part settings in its VST3 state.
+Load **GM Sound Module** on one arrangement track. The module displays all 16 MIDI channels and their GM names, with channel 10 reserved for percussion. Select a channel to change its program, volume, pan, expression, tuning, pitch-bend range, sustain, mute or solo. Incoming Program Change and the supported MIDI controls update the panel. The module saves these part settings in its VST3 state.
 
 Distribution builds use **FluidR3 GM** as the factory SoundFont. The bundle includes its MIT redistribution notice. The sample tables are shared by instances of the module. **Load SoundFont** still accepts a local SF2, and **Factory bank** returns to the distributed bank. For a development build with FluidR3, run `python packaging/prepare_fluid_r3.py` before configuring CMake. CI downloads the pinned Debian package and verifies its SHA-256. A build without the downloaded resources uses the original synthesized Studio Preview GM bank. [Debian package](https://packages.debian.org/sid/sound/fluid-soundfont-gm) · [Redistribution notice](https://sources.debian.org/src/fluid-soundfont/3.1-6/debian/copyright/)
 
@@ -235,7 +237,7 @@ Pending work includes full OSTFP conformance, SVP export, network sync, AI-assis
 
 ## Stock effects and mixed demos in alpha 3
 
-Insert **OSTF Harmonizer** on a track to mix its original audio with two pitch-shifted voices. **Voice A (st)** and **Voice B (st)** set fixed intervals from −12 to +12 semitones. **A / B blend %** selects the balance between the voices (0% is A only), and **Wet %** mixes the harmony with the original. The default intervals are a perfect fifth and an octave above the input.
+Insert **Harmonizer** on a track to mix its original audio with two pitch-shifted voices. **Voice A (st)** and **Voice B (st)** set fixed intervals from −12 to +12 semitones. **A / B blend %** selects the balance between the voices (0% is A only), and **Wet %** mixes the harmony with the original. The default intervals are a perfect fifth and an octave above the input.
 
 Alpha 3 includes nine stereo VST3 effects by OSTF Studio. Open **File → Demo songs → Paper Lantern Replies** and inspect the lead vocal's **EQ → Compressor** chain. Drums and bass share Bus A. Accompaniment shares Bus B. Individual post-fader sends feed a fully wet reverb on Return 1, which returns to Master. Both file formats recall the mix. The demo gallery lists starting points for listening and testing each song. [Demo mixes](examples/demo-songs/README.md)
 

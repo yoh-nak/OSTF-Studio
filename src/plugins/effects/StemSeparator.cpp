@@ -7,7 +7,7 @@ public:
     Separator() : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
                                                   .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
     ~Separator() override { pool.removeAllJobs(true, -1); }
-    const juce::String getName() const override { return "OSTF Stem Separator"; }
+    const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0; }

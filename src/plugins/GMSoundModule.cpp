@@ -52,7 +52,7 @@ public:
         loadFactoryBank();
     }
 
-    const juce::String getName() const override { return "OSTF GM Sound Module"; }
+    const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -458,7 +458,7 @@ public:
         setLookAndFeel(&consoleStyle_);
         for (auto* item : std::array<juce::Component*, 7>{&bank_, &load_, &factory_, &program_, &preset_, &part_, &heading_})
             addAndMakeVisible(*item);
-        heading_.setText("OSTF GM Sound Module", juce::dontSendNotification);
+        heading_.setText(JucePlugin_Name, juce::dontSendNotification);
         heading_.setFont(juce::FontOptions(24.0f, juce::Font::bold));
         for (int i = 0; i < 16; ++i) {
             auto& button = channels_[i];

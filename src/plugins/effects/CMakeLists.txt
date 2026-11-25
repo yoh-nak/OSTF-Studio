@@ -8,10 +8,11 @@ foreach(i RANGE 0 ${last_effect})
     foreach(key type name code category)
         string(JSON ${key} GET "${effects}" ${i} ${key})
     endforeach()
+    string(REGEX REPLACE "^OSTF " "" plugin_name "${name}")
     set(target "OSTFFx${type}")
     juce_add_plugin(${target}
         COMPANY_NAME "OSTF Studio" BUNDLE_ID "org.ostf.fx.${code}"
-        PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE "${code}" PRODUCT_NAME "${name}"
+        PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE "${code}" PRODUCT_NAME "${name}" PLUGIN_NAME "${plugin_name}"
         FORMATS VST3 VST3_CATEGORIES Fx "${category}"
         VST3_COPY_DIR "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" COPY_PLUGIN_AFTER_BUILD FALSE)
     if(type STREQUAL "Analyzer")
@@ -46,9 +47,13 @@ foreach(i RANGE 0 ${last_instrument})
         string(APPEND instrument_names "    {\"${name}\", \"${code}\"},\n")
         continue()
     endif()
+    set(plugin_name "${name}")
+    if(NOT type STREQUAL "Singer")
+        string(REGEX REPLACE "^OSTF " "" plugin_name "${name}")
+    endif()
     set(target "OSTFSynth${type}")
     juce_add_plugin(${target} COMPANY_NAME "OSTF Studio" BUNDLE_ID "org.ostf.instrument.${code}"
-        PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE "${code}" PRODUCT_NAME "${name}"
+        PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE "${code}" PRODUCT_NAME "${name}" PLUGIN_NAME "${plugin_name}"
         IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE FORMATS VST3 VST3_CATEGORIES Instrument Synth
         VST3_COPY_DIR "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" COPY_PLUGIN_AFTER_BUILD FALSE)
     if(type STREQUAL "Singer")

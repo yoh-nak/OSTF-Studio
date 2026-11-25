@@ -55,7 +55,10 @@ inline void registerBundledVst3(juce::KnownPluginList& library, const juce::Stri
         if (!bundle.isDirectory()) bundle = paths[i].getChildFile("OSTF Studio Effects").getChildFile(filename);
         if (!bundle.isDirectory()) continue;
         juce::OwnedArray<juce::PluginDescription> found;
-        library.scanAndAddFile(bundle.getFullPathName(), true, found, format);
+        const auto cached = library.getTypeForFile(bundle.getFullPathName());
+        const bool oldName = cached && cached->name.startsWith("OSTF ")
+            && cached->name != "OSTF Scale Editor" && cached->name != "OSTF Formant Singer";
+        library.scanAndAddFile(bundle.getFullPathName(), !oldName, found, format);
 #if JUCE_WINDOWS
         if (!library.getTypeForFile(bundle.getFullPathName())) continue;
         if (local.isNotEmpty()) {

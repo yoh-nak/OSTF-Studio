@@ -36,9 +36,10 @@ int main(int argc,char** argv) {
     processor->setStateInformation(bytes.getData(),int(bytes.getSize()));
     processor->prepareToPlay(48000,256);
     std::unique_ptr<juce::AudioProcessorEditor> editor(processor->createEditorAndMakeActive());
-    juce::ComboBox* choices=nullptr;
+    juce::ComboBox *choices=nullptr, *genre=nullptr;
     juce::TextButton* ab=nullptr;
     for(auto* c:editor->getChildren()) {
+        if(c->getTitle()=="Genre for scale ranking and audition") genre=dynamic_cast<juce::ComboBox*>(c);
         if(c->getTitle()=="Ranked scale candidates") choices=dynamic_cast<juce::ComboBox*>(c);
         if(auto* b=dynamic_cast<juce::TextButton*>(c); b && b->getButtonText()=="A/B with reference") ab=b;
     }
@@ -46,6 +47,9 @@ int main(int argc,char** argv) {
         for(auto* c:editor->getChildren()) if(auto* label=dynamic_cast<juce::Label*>(c)) std::cerr<<label->getText()<<"\n";
         return 7;
     }
+    if(!genre || genre->getNumItems()<3) return 19;
+    genre->setSelectedId(3,juce::sendNotificationSync);
+    if(genre->getSelectedId()!=3 || choices->getNumItems()<2) return 19;
     choices->setSelectedItemIndex(1,juce::sendNotificationSync);
     ab->onClick();
     float peak=0;

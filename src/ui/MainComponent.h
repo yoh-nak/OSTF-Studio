@@ -9,6 +9,7 @@
 #include "ui/DeviceSettingsWindow.h"
 #include "ui/TrackSendKnobs.h"
 #include "ui/MidiDragButton.h"
+#include "ui/MidiPerformanceBuffer.h"
 #include "ui/OstfpPreview.h"
 #include "ui/PluginBrowser.h"
 #include "ui/PreviewTransport.h"
@@ -112,7 +113,7 @@ private:
     juce::TextButton editorRecord_{TRANS("Record")}, cycleButton_{TRANS("Loop range")};
     std::map<juce::String, int> captureChannels_;
     std::map<juce::String, ostfstudio::AudioTrackInput> audioInputs_;
-    void showAudioInput(std::size_t track);
+    void showAudioInput(std::size_t track, juce::Component* anchor);
     void updateInputMeters();
     bool hasAudioInputs_ = false;
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
@@ -178,9 +179,13 @@ private:
     enum class SaveFormat { score, package, midi0, midi1, musicXml, chordPro };
     void saveDocument(SaveFormat);
     juce::PopupMenu timelineMenu() const;
-    void selectTrack(std::size_t index);
+    void selectTrack(std::size_t index, bool keepMixer = false);
     void rebuildTrackControls();
-    void showTrackInput(std::size_t);
+    void showTrackInput(std::size_t, juce::Component* anchor = nullptr);
+    void captureArmedMidi(size_t);
+    void rememberMidiInput(const juce::String& portId, const juce::MidiMessage&, double seconds);
+    void chooseHardwareOutput(bool cue, juce::Component*);
+    void refreshHardwareOutputs();
     void setRecordArm(std::size_t, bool);
     void refreshMidiRoutes();
     void saveMidiRoutes();
@@ -188,6 +193,12 @@ private:
     std::map<juce::String, ostfstudio::MidiInputRoute> midiRoutes_;
     struct InputMonitor { ostfstudio::MidiInputRoute route; bool received = false; };
     std::vector<InputMonitor> inputMonitors_;
+    ostfstudio::MidiPerformanceBuffer midiPerformance_;
+    std::optional<size_t> captureMonitor_;
+    juce::String captureTrackId_;
+    ostfstudio::MidiInputRoute captureRoute_;
+    std::array<int,128> capturePitchMap_{};
+    std::atomic<bool> capturingTake_{false};
     std::optional<std::size_t> drumInputMonitor_;
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
                     std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched,

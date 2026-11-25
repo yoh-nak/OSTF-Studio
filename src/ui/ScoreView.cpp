@@ -75,10 +75,21 @@ class ScoreView::Panel final : public juce::Component {
         next.onClick = [this] { step(1); };
         pdf.setComponentID("sheet-print"); leavePreview.setComponentID("sheet-print-back");
         breaks.setComponentID("sheet-page-breaks");
-        for (auto* control : std::array<juce::Component*, 6>{&margin, &breaks, &breakLabel, &sections, &barNumbers, &leavePreview})
+        for (auto* control : std::array<juce::Component*, 8>{&paperSize, &orientation, &margin, &breaks, &breakLabel, &sections, &barNumbers, &leavePreview})
             addChildComponent(control);
         for (int mm : {5, 8, 12, 16, 20, 25, 30, 35})
             margin.addItem(TRANS("Margin") + "  " + juce::String(mm) + " mm", mm);
+        paperSize.setComponentID("sheet-paper-size");
+        orientation.setComponentID("sheet-orientation");
+        paperSize.addItem("A4", 1); paperSize.addItem("US Letter", 2);
+        orientation.addItem(TRANS("Portrait"), 1); orientation.addItem(TRANS("Landscape"), 2);
+        paperSize.setSelectedId(1, juce::dontSendNotification);
+        orientation.setSelectedId(1, juce::dontSendNotification);
+        paperSize.onChange = orientation.onChange = [this] {
+            options.usLetter = paperSize.getSelectedId() == 2;
+            options.landscape = orientation.getSelectedId() == 2;
+            updatePage();
+        };
         margin.setSelectedId(options.marginMm, juce::dontSendNotification);
         margin.onChange = [this] { options.marginMm = margin.getSelectedId(); updatePage(); };
         breaks.setTextToShowWhenEmpty("9, 17, 33", juce::Colours::grey);
@@ -114,7 +125,7 @@ class ScoreView::Panel final : public juce::Component {
         grid.draw = [this](juce::Graphics& g) {
             if (preview) {
                 if (paper.isNull()) {
-                    paper = juce::Image(juce::Image::RGB, 1190, 1684, true, juce::SoftwareImageType{});
+                    paper = juce::Image(juce::Image::RGB, options.paperPoints().x * 2, options.paperPoints().y * 2, true, juce::SoftwareImageType{});
                     {
                         juce::Graphics pg(paper);
                         pg.addTransform(juce::AffineTransform::scale(2.f));
@@ -204,6 +215,8 @@ class ScoreView::Panel final : public juce::Component {
                 line = area.removeFromTop(32);
             c.setBounds(line.removeFromLeft(width).reduced(2, 2));
         };
+        place(paperSize, 100);
+        place(orientation, 106);
         place(margin, 144);
         place(breakLabel, 150);
         place(breaks, 125);
@@ -245,7 +258,7 @@ class ScoreView::Panel final : public juce::Component {
     }
     void update() {
         const bool has = index() >= 0;
-        for (auto* c : std::array<juce::Component*, 4>{&margin,&breakLabel,&breaks,&leavePreview}) c->setVisible(preview);
+        for (auto* c : std::array<juce::Component*, 6>{&paperSize,&orientation,&margin,&breakLabel,&breaks,&leavePreview}) c->setVisible(preview);
         sections.setVisible(lead || preview); barNumbers.setVisible(lead || preview);
         follow.setVisible(!preview); position.setVisible(!preview);
         pdf.setButtonText(preview ? TRANS("Save PDF...") : TRANS("Print preview..."));
@@ -387,7 +400,7 @@ class ScoreView::Panel final : public juce::Component {
     bool preview = false, validBreaks = true;
     int page = 0;
     juce::Image paper;
-    juce::ComboBox margin;
+    juce::ComboBox margin, paperSize, orientation;
     juce::Label breakLabel;
     juce::TextEditor breaks;
     juce::ToggleButton sections{TRANS("Sections")}, barNumbers{TRANS("Bar numbers")};

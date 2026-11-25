@@ -76,12 +76,17 @@ public:
                                  double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1, bool monitorOnly = false, double linkTempo = 0);
     void renderBlock(float* const* output, int channels, int samples, const float* const* input = nullptr, int inputs = 0);
     ostfstudio::MeterFrame takeMeters() noexcept;
+    // Buffer indices are the packed active channels supplied by AudioDeviceManager.
+    void setOutputPairs(int masterFirst, int cueFirst) noexcept {
+        outputPairs_.store((masterFirst + 1) | ((cueFirst + 1) << 8));
+    }
     void setListenToCue(bool listen) noexcept { listenToCue_ = listen; }
     void setChannelMix(std::size_t track, const ostfstudio::ChannelMix& mix, bool audible, double cueDb);
     void setOutputMix(const ostfstudio::MixerRouting& mix);
     bool isRunning() const { return running_.load(); }
     Cursor cursor() const;
     juce::int64 positionTick() const;
+    juce::int64 inputPerformanceTick() const { return performanceTick_.load(); }
 
 private:
     juce::Optional<PositionInfo> getPosition() const override;
@@ -140,9 +145,11 @@ private:
     Inserts inserts_ {};
     std::array<juce::AudioBuffer<float>, outputCount> stems_;
     juce::AudioBuffer<float> cueBus_;
+    std::atomic<int> outputPairs_{1 | (3 << 8)};
     std::atomic<bool> listenToCue_{false};
     std::array<std::atomic<float>, outputCount> outputGains_ {};
     std::atomic<bool> running_ {false};
+    std::atomic<juce::int64> performanceTick_{-1};
     std::atomic<juce::int64> sample_ {0};
     double sampleRate_ = 0.0;
     ostfstudio::TempoMap clock_;

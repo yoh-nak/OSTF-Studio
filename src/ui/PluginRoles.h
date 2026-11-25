@@ -14,8 +14,10 @@ inline bool isOstfArranger(const juce::PluginDescription& plugin) {
 }
 
 inline bool matchesVst3Instrument(const juce::var& reference, const juce::PluginDescription& description) {
-    if (reference["format"] != "vst3" || !description.isInstrument || description.pluginFormatName != "VST3"
-        || description.name != reference["name"].toString()) return false;
+    if (reference["format"] != "vst3" || !description.isInstrument || description.pluginFormatName != "VST3") return false;
+    const auto requestedName = reference["name"].toString();
+    if (description.name != requestedName && !(description.manufacturerName == "OSTF Studio"
+        && (requestedName == "OSTF " + description.name || description.name == "OSTF " + requestedName))) return false;
     const auto vendor = reference["vendor"].toString();
     if (vendor.isNotEmpty() && description.manufacturerName != vendor) return false;
     const auto id = reference["pluginId"].toString();

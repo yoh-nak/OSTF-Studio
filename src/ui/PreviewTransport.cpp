@@ -151,6 +151,7 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
         outputLatencyMicros_ = device->getOutputLatencyInSamples() * 1.0e6 / sampleRate_;
     }
     devices_ = &devices;
+    performanceTick_.store(monitorOnly ? -1 : positionTick());
     devices.addAudioCallback(this);
     if (!inputs && (record || monitorTrack_)) devices.addMidiInputDeviceCallback({}, this);
     return result;
@@ -299,6 +300,10 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
         inserts_ = inserts;
         for (size_t i = 0; i < instruments_.size(); ++i) if (instruments_[i].external) inserts_[outputCount + i] = {};
         for (const auto& chain : inserts_) for (auto* effect : chain) if (effect) {
+            if (auto* key = effect->getBus(true,1)) {
+                if (!key->enable(inserts_.keyTracks.contains(effect)) || !supportsInsert(*effect))
+                    return juce::Result::fail("Unsupported sidechain layout");
+            }
             effect->setPlayHead(this);
             effect->setRateAndBufferSizeDetails(sampleRate_, blockSize);
             effect->prepareToPlay(sampleRate_, blockSize);
@@ -516,6 +521,7 @@ std::vector<ostfstudio::PitchedNote> PreviewTransport::stop(Cursor* stoppedAt) {
     monitorTrack_.reset();
     sample_ = 0;
     takeMeters();
+    performanceTick_.store(-1);
     return std::exchange(recorded_, {});
 }
 
@@ -779,6 +785,16 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
     for (int c = 0; c < channels; ++c)
         if (output[c]) juce::FloatVectorOperations::clear(output[c], count);
     if (!running_) return;
+    const int pairs = outputPairs_.load();
+    std::array<float*,4> logical{};
+    for (int bus=0; bus<2; ++bus) {
+        const int first = ((pairs >> (8*bus)) & 255) - 1;
+        if (first < 0 || (bus == 1 && first + 1 >= channels)) continue;
+        for (int side=0; side<2 && first+side<channels; ++side)
+            logical[2*bus+side] = output[first+side];
+    }
+    output = logical.data();
+    channels = int(logical.size());
     const bool listenToCue = listenToCue_.load();
     if (pluginAudio_.getNumChannels() && count > pluginAudio_.getNumSamples()) { running_ = false; return; }
     const auto blockStart = juce::Time::getMillisecondCounterHiRes() + 1.0;
@@ -855,6 +871,7 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
         }
         elapsed_ += timelineFrames;
         done += part; sample_ = first + timelineFrames; loopRestart_ = false;
+        performanceTick_.store(std::llround(clock_.tickAt(double(first + timelineFrames)/sampleRate_)));
         if (loopSamples_.isEmpty() && sample_ >= lastSample_) running_ = false;
     }
     for (int c = 0; c < channels; ++c)

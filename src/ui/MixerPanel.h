@@ -30,6 +30,21 @@ public:
     };
     void setStripPlugins(bool output, size_t track, int channels, std::vector<PluginEntry> entries);
     std::function<void(bool, size_t, int)> openPlugin;
+    std::optional<size_t> dropTargetAt(juce::Point<int>, bool output) const;
+    void highlightDrop(std::optional<size_t> track, std::optional<size_t> output);
+    std::function<void(size_t, juce::Component*)> chooseInput;
+    std::function<void(size_t)> captureMidi;
+    std::function<void(size_t,double)> inputGainChanged;
+    void displayInputGain(size_t i, double db) {
+        if (i < strips_.size()) strips_[i]->inputGain.setValue(db,juce::dontSendNotification);
+    }
+    juce::String masterDestination() const { return masterDestination_.isEmpty() ? TRANS("Out 1-2") : masterDestination_; }
+    std::function<void(bool, juce::Component*)> chooseHardwareOutput;
+    void setInputState(size_t track, const juce::String& label, bool enabled, bool captureAvailable);
+    void setCaptureAvailable(size_t i, bool enabled) {
+        if (i < strips_.size()) strips_[i]->capture.setEnabled(enabled);
+    }
+    void setHardwareOutputLabels(juce::String master, juce::String cue, bool cueActive);
     bool showingAnalysis() const;
     void setSpectrum(const std::array<float,31>& bands);
     void setRecordState(std::size_t track, bool armed, bool enabled);
@@ -80,6 +95,12 @@ private:
         juce::TextButton solo {"S"}, arm {"R"};
         ViewButton cue {ViewButton::Icon::headphones};
         std::unique_ptr<juce::TextButton> listenOnMain;
+        juce::Slider inputGain;
+        juce::TextButton input, capture{TRANS("Capture MIDI")}, hardware;
+        bool highlighted = false;
+        void paintOverChildren(juce::Graphics& g) override {
+            if (highlighted) { g.setColour(juce::Colour(0xff84d7ca)); g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(1.f), 4.f, 2.f); }
+        }
         juce::ComboBox output;
         juce::Component sendRack;
         juce::Viewport sendViewport;
@@ -106,6 +127,8 @@ private:
     void updateReturnOptions();
     void refreshAudibility();
     void updateCueStatus();
+    juce::String masterDestination_, cueDestination_;
+    bool cueDestinationActive_ = false;
     int activeOutputCount_ = -1;
     bool listeningOnMain_ = false;
 

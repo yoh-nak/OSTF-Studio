@@ -30,7 +30,7 @@ public:
                                               juce::StringArray{"10 ms", "25 ms", "50 ms", "Full buffer"}, 1);
         addParameter(span);
     }
-    const String getName() const override { return "OSTF Wave Analyzer"; }
+    const String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -187,7 +187,7 @@ public:
     }
     void paint(juce::Graphics& g) override {
         g.fillAll(background);
-        label(g, {18, 13, 290, 34}, "OSTF Wave Analyzer", 25, ink, juce::Justification::centredLeft, true);
+        label(g, {18, 13, 290, 34}, JucePlugin_Name, 25, ink, juce::Justification::centredLeft, true);
         label(g, {310, 17, 155, 28},
               frame.valid ? String(frame.rate / 1000, 1) + " kHz   /   " + (frame.channels == 2 ? "Stereo" : "Mono")
                           : "Awaiting audio",

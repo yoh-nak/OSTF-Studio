@@ -572,6 +572,19 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
     breaks->setText("5, 9",false); breaks->onTextChange(); if(!print->isEnabled()) return 97;
     split.marginMm=20;
     if(!save(dir.getChildFile("lead-with-breaks.pdf"),[&](auto& out){return writeSheetPdf(out,s,0,StaffStyle::treble,{},true,split);})) return 98;
+    auto* sheetPaper = dynamic_cast<juce::ComboBox*>(print->getParentComponent()->findChildWithID("sheet-paper-size"));
+    auto* orientation = dynamic_cast<juce::ComboBox*>(print->getParentComponent()->findChildWithID("sheet-orientation"));
+    if (!sheetPaper || !orientation || !sheetPaper->isVisible()) return 99;
+    sheetPaper->setSelectedId(2, juce::sendNotificationSync);
+    orientation->setSelectedId(2, juce::sendNotificationSync);
+    split.usLetter = split.landscape = true;
+    const auto landscape = dir.getChildFile("lead-letter-landscape.pdf");
+    if (barsPerPage(true, StaffStyle::treble, split) >= barsPerPage(true, StaffStyle::treble, {})
+        || !save(landscape, [&](auto& out){return writeSheetPdf(out,s,0,StaffStyle::treble,{},true,split);})) return 99;
+    juce::MemoryBlock pdfContent;
+    if (!landscape.loadFileAsData(pdfContent)) return 99;
+    const std::string pdfBytes(static_cast<const char*>(pdfContent.getData()), pdfContent.getSize());
+    if (pdfBytes.find("/MediaBox [0 0 792 612]") == std::string::npos) return 99;
     close->onClick();
     const auto opening = range->getText();
     PreviewTransport playback;

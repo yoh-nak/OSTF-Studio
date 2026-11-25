@@ -37,6 +37,7 @@ countries: jp
 "Page" = "ページ"
 "Start new pages at bars" = "改ページする小節番号"
 "Enter bar numbers between 2 and the final bar." = "2から最終小節までの小節番号を入力してください。"
+"Unsupported sidechain layout" = "このプラグインのサイドチェーン入力構成には対応していません。"
 "Sidechain source" = "サイドチェーン入力"
 "Sections" = "セクション"
 "Chords" = "コード"
@@ -1172,3 +1173,21 @@ countries: jp
 "Length in bars" = "長さ（小節）"
 
 "Meter details" = "メーター詳細"
+
+"Capture MIDI" = "MIDIキャプチャ"
+
+"Captured MIDI" = "キャプチャしたMIDI"
+
+"Master output" = "マスター出力"
+
+"Monitor Cue on the selected Master output" = "キューをマスターの出力先で試聴"
+
+"Listen on Master" = "マスターで試聴"
+
+"Output inactive" = "出力未接続"
+
+"Create a clip from the recent notes played while armed" = "録音待機中に弾いたノートをクリップにする"
+
+"Portrait" = "縦"
+
+"Landscape" = "横"
