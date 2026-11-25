@@ -97,6 +97,12 @@ PluginBrowser::PluginBrowser() {
     addAndMakeVisible(scanButton_);
     addAndMakeVisible(scanOneButton_);
     addAndMakeVisible(filter_);
+    addAndMakeVisible(search_);
+    search_.setComponentID("plugin-search");
+    search_.setTitle(TRANS("Search plug-ins"));
+    search_.setTextToShowWhenEmpty(TRANS("Search by name or manufacturer"),juce::Colours::lightgrey);
+    search_.onTextChange = [this] { refreshTree(); };
+    search_.onEscapeKey = [this] { search_.clear(); };
     filter_.addItem(TRANS("All plug-ins"), 1);
     filter_.addItem(TRANS("Instruments"), 2);
     filter_.addItem(TRANS("Effects"), 3);
@@ -152,7 +158,7 @@ void PluginBrowser::resized() {
     auto tabs = area.removeFromTop(28);
     pluginTab_.setBounds(tabs.removeFromLeft(tabs.getWidth()/2).reduced(1,2));
     sampleTab_.setBounds(tabs.reduced(1,2));
-    for (juce::Component* control : std::array<juce::Component*,5>{&scanButton_, &scanOneButton_, &filter_, &status_, &tree_})
+    for (juce::Component* control : std::array<juce::Component*,6>{&scanButton_, &scanOneButton_, &filter_, &search_, &status_, &tree_})
         control->setVisible(!showingSamples_);
     progress_.setVisible(!showingSamples_ && scanProcess_ != nullptr);
     folder_.setVisible(showingSamples_);
@@ -166,6 +172,7 @@ void PluginBrowser::resized() {
     scanOneButton_.setBounds(buttons.removeFromRight(buttons.getWidth() / 2).reduced(2, 0));
     scanButton_.setBounds(buttons.reduced(2, 0));
     filter_.setBounds(area.removeFromTop(28).reduced(2, 2));
+    search_.setBounds(area.removeFromTop(27).reduced(2,1));
     status_.setBounds(area.removeFromTop(28));
     if (progress_.isVisible()) progress_.setBounds(area.removeFromTop(14).reduced(0, 2));
     tree_.setBounds(area);
@@ -355,9 +362,14 @@ void PluginBrowser::registerBundledPlugins() {
 void PluginBrowser::refreshTree() {
     auto types = catalog_;
     const auto filter = filter_.getSelectedId();
-    for (int i = types.size(); --i >= 0;)
-        if (filter != 1 && browserCategory(types.getReference(i)) != filter)
+    const auto words = juce::StringArray::fromTokens(search_.getText().trim()," \t",{});
+    for (int i = types.size(); --i >= 0;) {
+        const auto& plugin = types.getReference(i);
+        const auto text = plugin.name + " " + displayManufacturer(plugin) + " " + plugin.category;
+        if ((filter != 1 && browserCategory(plugin) != filter)
+            || std::any_of(words.begin(),words.end(),[&](const auto& word){return !text.containsIgnoreCase(word);}))
             types.remove(i);
+    }
     auto next = std::make_unique<Item>("VST3");
     juce::StringArray manufacturers;
     for (const auto& plugin : types)

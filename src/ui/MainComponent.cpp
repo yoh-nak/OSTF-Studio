@@ -117,7 +117,7 @@ bool stackTimelineNavigation(int innerWidth, int workspaceHeight) {
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal, exportMusicXml, exportChordPro, showSamplesPane, moveRowUp, moveRowDown,
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, trackTakeMenu, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal, exportMusicXml, exportChordPro, showSamplesPane, moveRowUp, moveRowDown,
                    printLeadSheet, printPartScore, openLiveSession };
 constexpr struct { const char* name; const char* first; const char* second; const char* third; } studioModes[] {
     {"AI Arrangement Studio", "Keep just piano and bass in the verse. Suggest an eight-bar build into the chorus.",
@@ -534,6 +534,45 @@ MainComponent::MainComponent() {
         };
     }
     liveTracks_.filterChanged = [this] { if (liveMatrix_.isVisible()) refreshEditor(); };
+    addChildComponent(takeButton_);
+    takeButton_.setComponentID("piano-takes");
+    takeButton_.onClick=[this]{if(selectedTrack_) showTakes(*selectedTrack_,takeRange(),&takeButton_);};
+    liveMatrix_.takeMenu=[this](size_t track,int row,juce::Component* anchor){
+        if(row>=0 && row<int(live_.sections.size())) showTakes(track,live_.sections[size_t(row)].ticks,anchor);
+    };
+    liveMatrix_.hasAudition=[this](size_t track,int row) {
+        const auto ticks=live_.sections[size_t(row)].ticks;
+        return std::any_of(takeAuditions_.begin(),takeAuditions_.end(),[&](const auto& a){return a.track==track && a.ticks==ticks;});
+    };
+    liveMatrix_.toggleAudition=[this](size_t track,int row) {
+        if(!project_ || recordTrack_ || row<0 || row>=int(live_.sections.size()) || track>=project_->sourceTrackCount()) return;
+        const auto ticks=live_.sections[size_t(row)].ticks;
+        const int edit=editingTake(track,ticks);
+        auditionTake(track,ticks,liveMatrix_.hasAudition(track,row) ? 0 : edit ? edit : project_->takes(track).adoptedAt(ticks.getStart()));
+    };
+    liveMatrix_.takeCaption=[this](size_t track,int row) {
+        if(!project_ || row<0 || row>=int(live_.sections.size())) return juce::String{};
+        const auto range=live_.sections[size_t(row)].ticks;
+        const auto& state=project_->takes(track);
+        auto label="T"+juce::String(state.adoptedAt(range.getStart()));
+        int last = state.adoptedAt(range.getStart());
+        for (const auto& s : state.spans) {
+            if (!s.ticks.intersects(range)) continue;
+            if (last != s.adopted) { label += "|T"+juce::String(s.adopted); last = s.adopted; }
+            if (s.ticks.getEnd() < range.getEnd() && state.adoptedAt(s.ticks.getEnd()) == 1) {
+                label += "|T1"; last = 1;
+            }
+        }
+        const auto sounding = auditionRevisions_.find(transport_.soundingTakeRevision());
+        for (const auto& c : takeAuditions_) if (c.track==track && c.ticks==range) {
+            const bool active = transportActive_ && range.contains(transport_.positionTick()) &&
+                sounding != auditionRevisions_.end() && std::any_of(sounding->second.begin(),sounding->second.end(),
+                    [&](const auto& a){return a.track==track && a.ticks==range && a.number==c.number;});
+            label += " "+juce::String::charToString(active ? 0x25b6 : 0x25b7)+"T"+juce::String(c.number);
+            break;
+        }
+        return label;
+    };
     liveMatrix_.editCell = [this](std::size_t track, int section) {
         if (!project_ || recordTrack_ || track>=project_->sourceTrackCount() || section<0 || section>=int(live_.sections.size())) return;
         liveShowsMixer_ = project_->trackKinds[track]==ostfstudio::TrackKind::audio;
@@ -542,6 +581,7 @@ MainComponent::MainComponent() {
         else refreshEditor();
     };
     liveMatrix_.launchRow = [this](int row) { live_.launchSection(row); };
+    liveMatrix_.isQueued = [this](int row){return transportActive_ && transport_.queuedLiveSection()==row;};
     liveMatrix_.changeRepeats = [this](int row,int delta) { live_.changeRepeats(row,delta); };
     liveMatrix_.trackAction = [this](size_t track, int action, juce::Component* anchor) {
         if (!project_ || track >= project_->sourceTrackCount()) return;
@@ -566,10 +606,12 @@ MainComponent::MainComponent() {
         if(liveMatrix_.isVisible()) liveMatrix_.refreshVisibleRows();
     };
     live_.launchSection=[this](int row){
-        if (recordTrack_ || row<0 || row>=int(live_.sections.size())) return;
+        if (recordTrack_ || row<0 || row>=int(live_.sections.size()) || live_.sections[size_t(row)].repeats==0) return;
         const auto tick=live_.sections[std::size_t(row)].ticks.getStart();
-        if (transportActive_) transport_.seekToTick(tick);
-        displayTransportPosition(tick); if (!transportActive_) startTransport(false);
+        if (transportActive_) {
+            transport_.queueLiveSection(size_t(row));
+            liveMatrix_.refreshVisibleRows();
+        } else { displayTransportPosition(tick); startTransport(false); }
     };
     live_.inputAction=[this](int action) {
         if(!project_ || !selectedTrack_ || *selectedTrack_>=project_->sourceTrackCount()) return;
@@ -2725,7 +2767,11 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
         ? editorCycle_ : juce::Range<juce::int64>{});
     take.controlPort = mackiePort_;
     if (monitorOnly || workspaceMode_==WorkspaceMode::live) take.cycle = {};
-    if (!recording && !monitorOnly && workspaceMode_==WorkspaceMode::live) take.sections=live_.sections;
+    if (!recording && !monitorOnly && workspaceMode_==WorkspaceMode::live) {
+        take.sections=live_.sections;
+        take.auditions=takeAuditions_;
+        auditionRevisions_[0]=takeAuditions_;
+    }
     if (inputTrack) {
         const auto input = midiRoutes_.find(project_->trackIds[int(*inputTrack)]);
         if (input != midiRoutes_.end()) take.midiInput = input->second;
@@ -2763,9 +2809,11 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
     }
     if (monitorOnly) { monitorActive_ = true; startTimerHz(24); return; }
     transportActive_ = true;
+    livePerformanceActive_ = !take.sections.empty();
     if (take.link) lastLinkPlaying_ = true;
     activeLoop_ = recording ? take.cycle : juce::Range<juce::int64>{};
     recordTrack_ = recording ? selectedTrack_ : std::nullopt;
+    recordingTake_=recordTrack_ ? editingTake(*recordTrack_,takeRange()) : 0;
     capturingTake_.store(recording);
     if (recording) { const juce::SpinLock::ScopedLockType lock(surfaceLock_); midiPerformance_.clear(); }
     if (recording)
@@ -2788,6 +2836,11 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
 }
 
 void MainComponent::stopTransport() {
+    if (transportActive_) {
+        livePerformanceActive_ = false;
+        takeAuditions_.clear();
+        auditionRevisions_.clear();
+    }
     if (transportActive_ && link_ && !followingLink_) {
         link_->stop();
         lastLinkPlaying_ = false;
@@ -2822,7 +2875,7 @@ void MainComponent::stopTransport() {
             } else failure = TRANS("No audio captured");
         } else if (!recorded.empty()) {
             juce::MemoryBlock before;
-            auto result = project_->addRecordedClip(*recordTrack_, transport_.recordedRange(), recorded, before);
+            auto result = project_->addRecordedClip(*recordTrack_, transport_.recordedRange(), recorded, before,"Recorded MIDI",{},recordingTake_);
             added = result.wasOk();
             failure = result.getErrorMessage();
             if (added) rememberScoreEdit(std::move(before), "Record MIDI");
@@ -3189,6 +3242,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     captureChannels_.clear();
     audioInputs_.clear();
     editorCycle_ = {};
+    editTakes_.clear(); takeAuditions_.clear(); auditionRevisions_.clear();
     cycleButton_.setToggleState(false, juce::dontSendNotification);
     pianoRuler_.cycleMode = audioEditor_.recordRuler.cycleMode = false;
     scoreView_.reset();
@@ -3581,6 +3635,7 @@ void MainComponent::showRowMenu(bool output, std::size_t index) {
         menu.addSeparator();
         menu.addItem(initialPatchItem, TRANS("Initial MIDI patch..."));
         menu.addItem(cursorPatchItem, TRANS("MIDI patch at cursor..."));
+        menu.addItem(trackTakeMenu, TRANS("Takes"), project_->trackKinds[index]!=ostfstudio::TrackKind::audio && !recordTrack_ && pendingReview_.empty());
     }
     menu.addItem(renameTrackItem, TRANS("Rename track..."));
     if (!output || index != 0) {
@@ -3595,6 +3650,14 @@ void MainComponent::showRowMenu(bool output, std::size_t index) {
                 return;
             }
             if (!output && (choice == moveRowUp || choice == moveRowDown)) safe->moveTrackRow(index, choice == moveRowUp ? -1 : 1);
+            if (choice == trackTakeMenu && !output) {
+                safe->selectTrack(index);
+                if(safe->workspaceMode_==WorkspaceMode::arrangement) {
+                    safe->trackEditorOpen_=true; safe->mixerSelected_=false;
+                } else if(safe->workspaceMode_==WorkspaceMode::live) safe->liveShowsMixer_=false;
+                safe->refreshEditor();
+                safe->showTakes(index,safe->takeRange(),&safe->takeButton_);
+            }
             if (choice == cursorPatchItem && !output) safe->showPatch(index, safe->cursorTick_);
             if (choice == initialPatchItem && !output) safe->showPatch(index, 0);
             if (choice == renameTrackItem) safe->renameTrack(index, output);
@@ -3997,17 +4060,20 @@ void MainComponent::captureArmedMidi(size_t i) {
         project_->playbackEndTick(),juce::Time::getMillisecondCounterHiRes()*.001,transport_.inputPerformanceTick());
     if (notes.empty()) { statusLabel_.setText(TRANS("No MIDI notes captured"),juce::dontSendNotification); return; }
     const bool playing = transportActive_;
-    if (playing) stopTransport();
+    const bool liveCapture = playing && livePerformanceActive_;
+    if (playing && !liveCapture) stopTransport();
     juce::MemoryBlock before;
-    const auto result = project_->addRecordedClip(i,{notes.front().startTick,notes.front().endTick},notes,before,TRANS("Captured MIDI"));
+    auto result = project_->addRecordedClip(i,{notes.front().startTick,notes.front().endTick},notes,before,
+        TRANS("Captured MIDI"),{},editingTake(i,takeRange()));
     if (result.wasOk()) {
         bool haveNotes;
         { const juce::SpinLock::ScopedLockType lock(surfaceLock_); midiPerformance_.consume(end); haveNotes = midiPerformance_.hasNotes(); }
         mixer_.setCaptureAvailable(i,haveNotes);
         rememberScoreEdit(std::move(before),"Capture MIDI");
         refreshTrackTheory(i);
+        if (liveCapture) result = publishTakeAuditions();
     }
-    finishNoteEdit(playing);
+    finishNoteEdit(playing && !liveCapture);
     statusLabel_.setText(result.wasOk() ? juce::String(int(notes.size())) + TRANS(" MIDI notes captured") : result.getErrorMessage(),juce::dontSendNotification);
 }
 
@@ -5830,6 +5896,128 @@ void MainComponent::applyGlobalChange(TimelineLane lane, juce::Array<juce::var> 
     repaint();
 }
 
+juce::Range<juce::int64> MainComponent::takeRange() const {
+    if (!project_) return {};
+    if (workspaceMode_==WorkspaceMode::live) return live_.range();
+    if (cycleButton_.getToggleState() && !editorCycle_.isEmpty()) return editorCycle_;
+    const auto tick=std::clamp<juce::int64>(cursorTick_,0,project_->playbackEndTick()-1);
+    for (const auto& lane:project_->globalLanes) if (lane.kind==TimelineLane::section)
+        for (const auto& region:lane.regions) if (region.exactBars) {
+            const auto at=[&](double bar){return juce::int64(std::llround((bar-1.)*project_->ticksPerBar));};
+            juce::Range<juce::int64> range{at(region.exactBars->start),at(region.exactBars->end)};
+            if (range.contains(tick)) return range;
+        }
+    return {0,project_->playbackEndTick()};
+}
+
+int MainComponent::editingTake(size_t track,juce::Range<juce::int64> range) const {
+    if (!project_ || track>=project_->sourceTrackCount()) return 0;
+    const auto it=editTakes_.find({project_->trackIds[int(track)],range.getStart()});
+    return it!=editTakes_.end() && it->second<=project_->takes(track).count ? it->second : 0;
+}
+
+juce::Result MainComponent::publishTakeAuditions() {
+    const auto revision=++takeRevision_;
+    auto result=transport_.updateLoopNotes(*project_,takeAuditions_,revision);
+    if(result.wasOk()) {
+        const auto sounding=transport_.soundingTakeRevision();
+        std::erase_if(auditionRevisions_,[&](const auto& p){return p.first!=sounding && p.first<revision;});
+        auditionRevisions_[revision]=takeAuditions_;
+    }
+    return result;
+}
+
+void MainComponent::auditionTake(size_t track,juce::Range<juce::int64> range,int number) {
+    auto row=std::find_if(live_.sections.begin(),live_.sections.end(),[&](const auto& s){return s.ticks==range;});
+    if(row==live_.sections.end() || (number && !row->repeats)) return;
+    auto previous=takeAuditions_;
+    std::erase_if(takeAuditions_,[&](const auto& a){return a.track==track && a.ticks==range;});
+    if(number) takeAuditions_.push_back({track,range,number});
+    if(transportActive_) {
+        const auto result=publishTakeAuditions();
+        if(result.failed()) {takeAuditions_=std::move(previous); statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification);}
+    } else if(number) {
+        displayTransportPosition(range.getStart());
+        startTransport(false);
+        if (!transportActive_) takeAuditions_=std::move(previous);
+    }
+    refreshEditor();
+}
+
+void MainComponent::adoptTakes(const std::vector<ostfstudio::TakeSelection>& choices) {
+    if(choices.empty()) return;
+    juce::MemoryBlock before;
+    auto result=project_->adoptMidiTakes(choices,before);
+    if(result.wasOk()) {
+        rememberScoreEdit(std::move(before),"Adopt take");
+        for(const auto& c:choices) {
+            std::erase_if(takeAuditions_,[&](const auto& a){return a.track==c.track && a.ticks==c.ticks && a.number==c.number;});
+            refreshTrackTheory(c.track);
+        }
+        if(transportActive_ && livePerformanceActive_) result=publishTakeAuditions();
+        finishNoteEdit(false);
+    }
+    if(result.failed()) statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification);
+}
+
+void MainComponent::showTakes(size_t track,juce::Range<juce::int64> range,juce::Component* anchor) {
+    if(!project_ || track>=project_->sourceTrackCount() || project_->trackKinds[track]==ostfstudio::TrackKind::audio
+       || range.isEmpty() || recordTrack_ || !pendingReview_.empty()) return;
+    const bool live=workspaceMode_==WorkspaceMode::live;
+    const auto& state=project_->takes(track);
+    const int chosen=editingTake(track,range);
+    const int number=chosen ? chosen : state.adoptedAt(range.getStart());
+    juce::PopupMenu menu,edit,adopt,listen;
+    menu.addSectionHeader(juce::String::fromUTF8(project_->trackLanes[track].label)+"   /   "+
+        TRANS("BARS")+" "+juce::String(1+range.getStart()/project_->ticksPerBar)+"-"+juce::String(1+(range.getEnd()-1)/project_->ticksPerBar));
+    menu.addItem(1,TRANS("Add empty take"));
+    for(int i=1;i<=state.count;++i) {
+        const auto label="T"+juce::String(i);
+        edit.addItem(1000+i,label,true,i==number);
+        adopt.addItem(2000+i,label,true,i==state.adoptedAt(range.getStart()));
+        listen.addItem(3000+i,label);
+    }
+    menu.addSubMenu(TRANS("Edit take"),edit);
+    if(live) menu.addSubMenu(TRANS("Audition take"),listen);
+    menu.addSubMenu(TRANS("Adopt take"),adopt);
+    if(live) {
+        menu.addItem(2,TRANS("Return to adopted take"));
+        menu.addItem(3,TRANS("Adopt sounding combination"),transportActive_ && range.contains(transport_.positionTick()));
+    }
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(anchor),
+        [safe=juce::Component::SafePointer<MainComponent>(this),gen=projectGeneration_,track,range,live](int id){
+        if(!safe || !id || safe->projectGeneration_!=gen || safe->recordTrack_) return;
+        auto& m=*safe.getComponent();
+        auto& p=*m.project_;
+        auto key=std::make_pair(p.trackIds[int(track)],range.getStart());
+        if(id==3) {
+            std::vector<ostfstudio::TakeSelection> picks;
+            auto it=m.auditionRevisions_.find(m.transport_.soundingTakeRevision());
+            if(m.transportActive_ && range.contains(m.transport_.positionTick()) && it!=m.auditionRevisions_.end())
+                for(const auto& c:it->second) if(c.ticks==range) picks.push_back(c);
+            m.adoptTakes(picks);
+            return;
+        }
+        if(id>=2001 && id<3000) { m.adoptTakes({{track,range,id-2000}}); return; }
+        if(id==2 || id>=3001) {
+            m.auditionTake(track,range,id==2 ? 0 : id-3000);
+            return;
+        }
+        if(id==1) {
+            juce::MemoryBlock before;
+            const auto result=p.addMidiTake(track,before);
+            if(result.failed()){m.statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification);return;}
+            m.rememberScoreEdit(std::move(before),"Add empty take");
+            m.editTakes_[key]=p.takes(track).count;
+        } else m.editTakes_[key]=id-1000;
+        if(live) {
+            for(int row=0;row<int(m.live_.sections.size());++row)
+                if(m.live_.sections[size_t(row)].ticks==range) {m.liveMatrix_.editCell(track,row);break;}
+        }
+        m.pianoGrid_.selection.clear(); m.refreshEditor();
+    });
+}
+
 void MainComponent::liveSectionAction(bool duplicate) {
     if (!project_ || recordTrack_ || (duplicate && live_.sections.empty())) return;
     const auto source = duplicate ? live_.range() : juce::Range<juce::int64>{0,4*project_->ticksPerBar};
@@ -5857,22 +6045,36 @@ void MainComponent::liveSectionAction(bool duplicate) {
         statusLabel_.setText(TRANS("Too many audio regions."),juce::dontSendNotification); return;
     }
     const bool playing=transportActive_;
-    if (playing) stopTransport();
+    const bool hotAppend = playing && livePerformanceActive_ && !recordTrack_;
+    if (playing && !hotAppend) stopTransport();
     juce::MemoryBlock before;
     auto result=project_->appendSection(source,name,duplicate,before);
     if (result.failed()) {
         statusLabel_.setText(juce::translate(result.getErrorMessage()),juce::dontSendNotification);
-        if (playing) startTransport(false);
+        if (playing && !hotAppend) startTransport(false);
         return;
     }
     project_->audio.insert(project_->audio.end(),added.begin(),added.end());
+    live_.bind(*project_,true);
+    if (hotAppend) {
+        const auto revision = ++takeRevision_;
+        result = transport_.extendLiveSong(*project_,live_.sections,takeAuditions_,revision);
+        if (result.failed()) {
+            project_->restoreNoteScore(before);
+            project_->audio=std::move(previousAudio);
+            live_.bind(*project_,true);
+            refreshEditor();
+            statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification);
+            return;
+        }
+        auditionRevisions_[revision]=takeAuditions_;
+    }
     rememberAudioEdit(std::move(previousAudio),std::move(before),duplicate ? "Duplicate section" : "Add section");
     waveforms_.load(project_->audio);
     theory_.reset(); refreshTheory();
-    live_.bind(*project_,true);
     live_.list.selectRow(int(live_.sections.size())-1);
     markSessionEdited();
-    finishNoteEdit(playing);
+    finishNoteEdit(playing && !hotAppend);
 }
 
 void MainComponent::editGlobalBoundary(bool split) {
@@ -6337,6 +6539,16 @@ void MainComponent::refreshPianoNotes() {
     }
     const auto& drums = project_->drumNotes[track];
     grid.notes.insert(grid.notes.end(), drums.begin(), drums.end());
+    const auto& takeState=project_->takes(track);
+    if(takeState.count>1) {
+        const auto range=takeRange();
+        const int selected=editingTake(track,range);
+        std::erase_if(grid.notes,[&](const auto& n){
+            const int number=selected && range.contains(n.startTick) ? selected : takeState.adoptedAt(n.startTick);
+            return takeState.takeOf(n.id)!=number;
+        });
+        for(auto& n:grid.notes) if(takeState.suppressed.contains(n.id)) n.enabled=true;
+    }
     grid.editSection = {};
     if (workspaceMode_ == WorkspaceMode::live) {
         grid.editSection = live_.range();
@@ -6667,7 +6879,7 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
             return;
         }
     }
-    const bool liveLoop = playing && (session || (drumSteps_.looping() && !activeLoop_.isEmpty()));
+    const bool liveLoop = playing && (livePerformanceActive_ || session || (drumSteps_.looping() && !activeLoop_.isEmpty()));
     if (playing && !liveLoop) stopTransport();
     juce::MemoryBlock before;
     juce::StringArray ids;
@@ -6675,7 +6887,8 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
     const auto affected = !session && project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::pitched
         ? ostfstudio::changedNoteRanges(project_->pitchedNotes[*selectedTrack_],edits) : std::vector<ostfstudio::ReviewRange>{};
     const auto result = project_->editNotes(*selectedTrack_, edits, before, ids,
-                                            session ? live_.range() : juce::Range<juce::int64>{});
+                                            (session || editingTake(*selectedTrack_,takeRange())) ? takeRange() : juce::Range<juce::int64>{},
+                                            editingTake(*selectedTrack_,takeRange()));
     if (result.failed()) {
         if (playing && !liveLoop) startTransport(false);
         statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
@@ -6729,8 +6942,7 @@ void MainComponent::applyNoteGesture(const std::vector<ostfstudio::NoteEdit>& ed
         pianoGrid_.low += shift; pianoGrid_.high += shift;
     }
     if (liveLoop) {
-        if (const auto result = transport_.updateLoopNotes(*project_); result.failed()) {
-            stopTransport();
+        if (const auto result = publishTakeAuditions(); result.failed()) {
             statusLabel_.setText(result.getErrorMessage(), juce::dontSendNotification);
         }
     }
@@ -6810,17 +7022,18 @@ void MainComponent::setWorkspaceMode(WorkspaceMode mode) {
         liveGeneration_=projectGeneration_;
         if (!selectedTrack_) selectTrack(project_->primaryMelodyTrack.value_or(0));
     }
-    if (transportActive_ && (wasLive || mode==WorkspaceMode::live) && !recordTrack_) {
+    if (transportActive_ && !livePerformanceActive_ && mode==WorkspaceMode::live && !recordTrack_) {
         transport_.setLoop({}); activeLoop_={};
-        const auto result=transport_.setLiveSections(mode==WorkspaceMode::live ? live_.sections : std::vector<PreviewTransport::LiveSection>{});
+        const auto result=transport_.setLiveSections(live_.sections);
+        livePerformanceActive_=result.wasOk() && !live_.sections.empty();
         if(result.failed())statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification);
     }
-    if ((wasLive || mode == WorkspaceMode::live) && armedId_.isNotEmpty() && !recordTrack_) restartInputMonitor();
+    if (!transportActive_ && (wasLive || mode == WorkspaceMode::live) && armedId_.isNotEmpty() && !recordTrack_) restartInputMonitor();
     refreshEditor();
 }
 
 void MainComponent::updateDrumLoop() {
-    if (workspaceMode_==WorkspaceMode::live || !transportActive_ || recordTrack_ || !transport_.isRunning()) return;
+    if (livePerformanceActive_ || workspaceMode_==WorkspaceMode::live || !transportActive_ || recordTrack_ || !transport_.isRunning()) return;
     const auto range = drumSteps_.looping() ? drumSteps_.loopRange() : cycleButton_.getToggleState() && !drumSteps_.isVisible()
         ? editorCycle_ : juce::Range<juce::int64>{};
     if (range == activeLoop_) return;
@@ -7018,7 +7231,6 @@ void MainComponent::refreshEditor() {
     const bool reading = project_ && !arranging && !live;
     if (reading && !scoreView_) {
         scoreView_ = std::make_unique<ScoreView>();
-        scoreView_->editCredits=[this]{editSongInformation();};
         addChildComponent(*scoreView_);
     }
     if (scoreView_) {
@@ -7053,6 +7265,13 @@ void MainComponent::refreshEditor() {
     const bool liveNotes = live && !liveShowsMixer_ && selectedTrack_ && project_->trackKinds[*selectedTrack_] != ostfstudio::TrackKind::audio
         && (!matrix || *selectedTrack_ < project_->sourceTrackCount());
     const bool piano = (editing && !audio && !tempo) || liveNotes;
+    takeButton_.setVisible(piano && selectedTrack_ && *selectedTrack_<project_->sourceTrackCount());
+    takeButton_.setEnabled(!recordTrack_ && pendingReview_.empty());
+    if (takeButton_.isVisible()) {
+        const auto range=takeRange();
+        const int n=editingTake(*selectedTrack_,range);
+        takeButton_.setButtonText(TRANS("Takes")+"  T"+juce::String(n ? n : project_->takes(*selectedTrack_).adoptedAt(range.getStart())));
+    }
     refreshPianoNotes();
     refreshHistoryControls();
     pianoGrid_.setDescription(noteFitReading());
@@ -7549,6 +7768,7 @@ void MainComponent::layoutPianoPanel(juce::Rectangle<int> editor, int inlineRevi
                               && pianoLayout.lane.getHeight() >= 20);
     editor.reduce(6, 4);
     auto toolbar = editor.removeFromTop(26);
+    if(takeButton_.isVisible()) takeButton_.setBounds(toolbar.removeFromLeft(100).reduced(1));
     if (editorRecord_.isVisible()) editorRecord_.setBounds(toolbar.removeFromRight(88).reduced(1));
     if (cycleButton_.isVisible()) cycleButton_.setBounds(toolbar.removeFromRight(90).reduced(1));
     if (midiDrag_.isVisible() && toolbar.getWidth() < 720) midiDrag_.setBounds({});

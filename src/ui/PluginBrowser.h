@@ -45,6 +45,7 @@ private:
     juce::TextButton scanButton_ {TRANS("Scan VST3")};
     juce::TextButton scanOneButton_ {TRANS("Scan one...")};
     juce::ComboBox filter_;
+    juce::TextEditor search_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String scanTarget_;
     juce::Label status_;

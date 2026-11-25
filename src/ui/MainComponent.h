@@ -399,6 +399,18 @@ private:
     LiveSections live_;
     LiveTrackSelector liveTracks_;
     LiveSectionMatrix liveMatrix_;
+    juce::TextButton takeButton_{TRANS("Takes")};
+    juce::Range<juce::int64> takeRange() const;
+    int editingTake(size_t,juce::Range<juce::int64>) const;
+    void showTakes(size_t,juce::Range<juce::int64>,juce::Component*);
+    void adoptTakes(const std::vector<ostfstudio::TakeSelection>&);
+    juce::Result publishTakeAuditions();
+    void auditionTake(size_t track,juce::Range<juce::int64>,int number);
+    std::vector<ostfstudio::TakeSelection> takeAuditions_;
+    std::map<unsigned,std::vector<ostfstudio::TakeSelection>> auditionRevisions_;
+    unsigned takeRevision_=0;
+    std::map<std::pair<juce::String,juce::int64>,int> editTakes_;
+    int recordingTake_=0;
     juce::TextButton livePiano_{TRANS("Piano Roll")}, liveMixer_{TRANS("Mixer")}, liveAddTrack_{TRANS("Tracks...")}, liveSectionsMenu_{TRANS("Sections...")};
     bool liveShowsMixer_ = false;
     double liveSplit_ = .43;
@@ -562,6 +574,7 @@ private:
     std::unique_ptr<juce::DocumentWindow> importWindow_;
     PreviewTransport transport_;
     bool transportActive_ = false;
+    bool livePerformanceActive_ = false;
     std::optional<std::size_t> recordTrack_;
     juce::Label statusLabel_;
     SystemUsageMeter systemUsage_;

@@ -17,7 +17,7 @@ std::string applyScoreFields(std::string_view original, std::string_view edited,
     auto result = jsoncons::ojson::parse(original, options);
     const auto changes = jsoncons::ojson::parse(edited, options);
     for (auto key : fields) {
-        if (key == "extensions" || key == "org.ostf.studio.midi-loops") {
+        if (key == "extensions" || key == "org.ostf.studio.midi-loops" || key == "org.ostf.studio.midi-takes") {
             const std::string_view studio = key == "extensions" ? "org.ostf.studio" : key;
             key = "extensions";
             if (changes.contains(key) && changes.at(key).contains(studio))

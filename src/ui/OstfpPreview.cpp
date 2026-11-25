@@ -371,6 +371,9 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         auto& curves = out->performanceCurves.emplace_back();
         const auto clips = track["clips"];
         out->trackIds.add(track["id"].toString());
+        const auto takeData=score["extensions"][StudioMidiTakes::extension];
+        if (takeData["version"]=="1.0" && takeData["data"].hasProperty(track["id"].toString()))
+            out->midiTakes.emplace(track["id"].toString(),StudioMidiTakes::decode(takeData["data"].getProperty(track["id"].toString(), {})));
         auto& slotList = out->slotsByTrack.emplace_back();
         auto& allHits = out->slotHits.emplace_back();
         if (track["trackType"] == "drum" && score["soundSlots"].isArray()) {
@@ -1532,8 +1535,17 @@ void remapIds(juce::var& value, const juce::String& field, const IdCopies& ids) 
     }
 }
 
-juce::var copyScoreTrack(const juce::var& original, juce::var lyrics) {
-    IdCopies ids;
+void writeTrackTakes(juce::var score, juce::var track, StudioMidiTakes& takes);
+
+void copyTakeNotes(StudioMidiTakes& target, const StudioMidiTakes& source, const IdCopies& ids) {
+    for (const auto& [oldId, newId] : ids) {
+        if (const auto owner = source.owners.find(oldId); owner != source.owners.end())
+            target.owners[newId] = owner->second;
+        if (source.suppressed.contains(oldId)) target.suppressed.insert(newId);
+    }
+}
+
+juce::var copyScoreTrack(const juce::var& original, juce::var lyrics, IdCopies& ids) {
     collectOwnedIds(original, ids, true);
     // Lyrics and text units are shared. Each singing part owns its voice and note alignments.
     auto copyRelated = [&](const char* key, auto matches) {
@@ -1576,7 +1588,16 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
         const auto revision = "studio-" + juce::Uuid().toString();
         if (duplicate) {
             require(!remove && *duplicate < sourceTrackCount() && sourceTrackCount() < maxTracks, "Cannot duplicate this track");
-            auto copy = copyScoreTrack(entries[static_cast<int>(*duplicate)], score["lyrics"]);
+            IdCopies ids;
+            auto copy = copyScoreTrack(entries[static_cast<int>(*duplicate)], score["lyrics"], ids);
+            const auto& sourceTakes = takes(*duplicate);
+            if (sourceTakes.count > 1) {
+                StudioMidiTakes cloned;
+                cloned.count = sourceTakes.count;
+                cloned.spans = sourceTakes.spans;
+                copyTakeNotes(cloned, sourceTakes, ids);
+                writeTrackTakes(score, copy, cloned);
+            }
             if (auto* colours=score["presentation"]["appearance"]["objectColors"].getArray()) {
                 juce::var clone;
                 for(const auto& c:*colours) if(c["target"]["type"]=="track" && c["target"]["id"]==entries[int(*duplicate)]["id"]) {
@@ -1590,6 +1611,7 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
         } else if (remove) {
             require(*remove < static_cast<std::size_t>(entries.size()), "Invalid track");
             const auto removed = entries[static_cast<int>(*remove)];
+            if (auto* data = extensions[StudioMidiTakes::extension]["data"].getDynamicObject()) data->removeProperty(removed["id"].toString());
             IdCopies ids;
             collectOwnedIds(removed, ids);
             auto lyrics = score["lyrics"];
@@ -1650,7 +1672,7 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
         reviseDocument(score, before, revision);
         auto next = projectScore(score);
         next->sourceScore =
-            editedScoreBytes(before, score, {"tracks", "document", "extensions", "lyrics", "soundSlots", "drumKits", "presentation"});
+            editedScoreBytes(before, score, {"tracks", "document", "extensions", "lyrics", "soundSlots", "drumKits", "presentation", StudioMidiTakes::extension});
         require(next->sourceScore.getSize() <= maxBytes, "OSTF score is too large.");
         next->sourceManifest = sourceManifest;
         next->panAutomation = panAutomation;
@@ -1692,6 +1714,7 @@ bool referencesNote(const juce::var& value, const std::set<juce::String>& ids, b
     } else if (auto* obj = value.getDynamicObject()) {
         for (const auto& property : obj->getProperties()) {
             const auto key = property.name.toString();
+            if (key==StudioMidiTakes::extension) continue;
             if (ids.contains(key) || referencesNote(property.value, ids, key == "id" || key.endsWith("Id") || key.endsWith("Ids"))) return true;
         }
     } else if (referenceField && value.isString()) return ids.contains(value.toString());
@@ -1990,7 +2013,24 @@ juce::Result OstfpPreview::appendSection(juce::Range<juce::int64> range, const j
             }
         }
         for (const auto* property : {"chords","scales"}) spans(score["harmony"],property);
-        for (const auto* property : {"phrases","units"}) spans(score["lyrics"],property);
+        for (const auto* property : {"phrases","units"}) for (const auto& entry : entries(score["lyrics"][property])) {
+            auto copy = entry.clone();
+            if (entry.hasProperty("start")) {
+                const auto at = integer(entry["start"]);
+                if (entry.hasProperty("duration")) {
+                    const auto part = intersect(entry);
+                    if (part.isEmpty()) continue;
+                    copy.getDynamicObject()->setProperty("start",destination+part.getStart()-range.getStart());
+                    copy.getDynamicObject()->setProperty("duration",part.getLength());
+                } else {
+                    if (!range.contains(at)) continue;
+                    copy.getDynamicObject()->setProperty("start",destination+at-range.getStart());
+                }
+            } else if (!ids.contains(entry["phraseId"].toString())) {
+                continue;
+            }
+            stage(score["lyrics"],property,copy);
+        }
         for (const auto& track : entries(score["tracks"])) for (const auto& clip : entries(track["clips"])) {
             const auto part = intersect(clip);
             if (part.isEmpty()) continue;
@@ -2052,8 +2092,19 @@ juce::Result OstfpPreview::appendSection(juce::Range<juce::int64> range, const j
         remapIds(copy.item,{},ids);
         arrayProperty(copy.parent,copy.property).getArray()->add(copy.item);
     }
+    if (duplicate) for (size_t i = 0; i < sourceTrackCount(); ++i) {
+        const auto& sourceTakes = takes(i);
+        if (sourceTakes.count == 1) continue;
+        auto copied = sourceTakes;
+        copyTakeNotes(copied, sourceTakes, ids);
+        for (const auto& span : sourceTakes.spans) {
+            auto overlap = span.ticks.getIntersectionWith(range);
+            if (!overlap.isEmpty()) copied.adopt(overlap + (destination - range.getStart()), span.adopted);
+        }
+        writeTrackTakes(score, score["tracks"][int(i)], copied);
+    }
     reviseDocument(score,original,"section-"+juce::Uuid().toString());
-    auto bytes = editedScoreBytes(base,score,{"timeline","harmony","tracks","lyrics",loopNamespace,"document"});
+    auto bytes = editedScoreBytes(base,score,{"timeline","harmony","tracks","lyrics",loopNamespace,StudioMidiTakes::extension,"document"});
     validateVersion("5.0.0",bytes);
     auto result=restoreNoteScore(bytes);
     if(result.wasOk()) previous=original;
@@ -2610,9 +2661,61 @@ juce::Result OstfpPreview::editVocalNote(size_t track, const juce::String& id, c
     return restoreNoteScore(editedScoreBytes(before, score, {"tracks","lyrics","document"}));
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
+const StudioMidiTakes& OstfpPreview::takes(size_t index) const {
+    static const StudioMidiTakes initial;
+    const auto it=midiTakes.find(trackIds[int(index)]);
+    return it==midiTakes.end() ? initial : it->second;
+}
+
+namespace {
+void writeTrackTakes(juce::var score, juce::var track, StudioMidiTakes& takes) {
+    takes.project(track);
+    auto extensions=score.getProperty("extensions",object({}));
+    auto ext=extensions.getProperty(StudioMidiTakes::extension,object({{"version","1.0"},{"status","current"},
+            {"dependencies",object({{"scope","document"}})},{"data",object({})}}));
+    require(ext["version"]=="1.0" && ext["data"].isObject(),"Unsupported Studio take data.");
+    ext["data"].getDynamicObject()->setProperty(track["id"].toString(),takes.encode());
+    extensions.getDynamicObject()->setProperty(StudioMidiTakes::extension,ext);
+    score.getDynamicObject()->setProperty("extensions",extensions);
+}
+}
+juce::Result OstfpPreview::addMidiTake(size_t index, juce::MemoryBlock& before) try {
+    require(index<sourceTrackCount() && trackKinds[index]!=TrackKind::audio,"Select a MIDI track.");
+    const auto original=savedScore(*this), base=savedScore(*this,true);
+    auto score=parseObject(base);
+    auto state=takes(index);
+    require(state.count<999,"Take limit reached.");
+    ++state.count;
+    writeTrackTakes(score,score["tracks"][int(index)],state);
+    reviseDocument(score,original,"take-"+juce::Uuid().toString());
+    auto bytes=editedScoreBytes(base,score,{StudioMidiTakes::extension,"tracks","document"});
+    validateVersion("5.0.0",bytes);
+    const auto result=restoreNoteScore(bytes);
+    if(result.wasOk()) before=original;
+    return result;
+} catch(const std::exception& e){return juce::Result::fail(e.what());}
+
+juce::Result OstfpPreview::adoptMidiTakes(const std::vector<TakeSelection>& choices,juce::MemoryBlock& before) try {
+    const auto original=savedScore(*this), base=savedScore(*this,true);
+    auto score=parseObject(base);
+    std::map<size_t,StudioMidiTakes> changed;
+    for (const auto& c:choices) {
+        require(c.track<sourceTrackCount() && trackKinds[c.track]!=TrackKind::audio && !c.ticks.isEmpty()
+            && c.ticks.getStart()>=0 && c.ticks.getEnd()<=playbackEndTick() && c.number>0 && c.number<=takes(c.track).count,"Invalid take selection.");
+        changed.try_emplace(c.track,takes(c.track)).first->second.adopt(c.ticks,c.number);
+    }
+    for (auto& [index,state]:changed) writeTrackTakes(score,score["tracks"][int(index)],state);
+    reviseDocument(score,original,"take-"+juce::Uuid().toString());
+    const auto bytes=editedScoreBytes(base,score,{"tracks",StudioMidiTakes::extension,"document"});
+    validateVersion("5.0.0",bytes);
+    const auto result=restoreNoteScore(bytes);
+    if(result.wasOk()) before=original;
+    return result;
+} catch(const std::exception& e){return juce::Result::fail(e.what());}
+
 juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEdit>& edits,
                                      juce::MemoryBlock& before, juce::StringArray& resultingIds,
-                                     juce::Range<juce::int64> newClipRange) try {
+                                     juce::Range<juce::int64> newClipRange,int editingTake) try {
     require(index < sourceTrackCount() && trackKinds[index] != TrackKind::audio && !edits.empty(), "Select a MIDI track.");
     before = savedScore(*this);
     auto score = parseObject(before);
@@ -2620,6 +2723,8 @@ juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEd
         materialiseKits(score, *this);
     auto track = score["tracks"][static_cast<int>(index)];
     auto clips = arrayProperty(track, "clips");
+    auto takeState=takes(index);
+    require(editingTake>=0 && editingTake<=takeState.count,"Unknown take.");
     juce::StringArray ids;
     std::set<juce::String> deleted;
     std::map<juce::String, std::pair<juce::var, juce::var>> existing;
@@ -2656,6 +2761,9 @@ juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEd
             } else {
                 event = fresh ? object({}) : event.clone();
                 event.getDynamicObject()->setProperty("id", "note-" + juce::Uuid().toString());
+                const int number=fresh ? (editingTake && (newClipRange.isEmpty() || newClipRange.contains(n.startTick)) ? editingTake : takeState.adoptedAt(n.startTick)) : takeState.takeOf(n.id);
+                if (number>1) takeState.owners[event["id"].toString()]=number;
+                if (!fresh && takeState.suppressed.contains(n.id)) event.getDynamicObject()->setProperty("enabled",true);
             }
             if (fresh || crossing) clip = editableClip(clips, n.startTick, ticksPerBar, playbackEndTick(), false, newClipRange);
             if (fresh && track["midi"]["mode"].isString() && track["midi"]["mode"] != "singleChannel")
@@ -2685,8 +2793,9 @@ juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEd
         ids.add(event["id"].toString());
     }
     if (!deleted.empty()) require(!referencesNote(score, deleted), "This note is linked to lyrics or other score data.");
+    if (takeState.count>1) writeTrackTakes(score,track,takeState);
     reviseDocument(score, before, "studio-" + juce::Uuid().toString());
-    auto data = editedScoreBytes(before, score, {"tracks", "soundSlots", "drumKits", "document"});
+    auto data = editedScoreBytes(before, score, {"tracks", "soundSlots", "drumKits", "document",StudioMidiTakes::extension});
     const auto result = restoreNoteScore(data);
     if (result.wasOk()) resultingIds = std::move(ids);
     return result;
@@ -2750,7 +2859,7 @@ bool OstfpPreview::insertGeneratorPattern(std::size_t track, int bar) {
 
 juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64> range,
                                          const std::vector<PitchedNote>& notes, juce::MemoryBlock& before, const juce::String& name,
-                                         const juce::Array<juce::var>& midiEvents) try {
+                                         const juce::Array<juce::var>& midiEvents,int editingTake) try {
     require(index < sourceTrackCount() && trackKinds[index] != TrackKind::audio && (!notes.empty() || !midiEvents.isEmpty()), "No MIDI notes captured");
     before = savedScore(*this);
     auto score = parseObject(before);
@@ -2758,6 +2867,8 @@ juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64
     if (drum) materialiseKits(score, *this);
     auto track = score["tracks"][int(index)];
     juce::Array<juce::var> events;
+    auto takeState=takes(index);
+    require(editingTake>=0 && editingTake<=takeState.count,"Unknown take.");
     for (const auto& note : notes) {
         require(note.startTick >= 0 && note.startTick < note.endTick && note.endTick <= playbackEndTick(), "Note outside the editable range.");
         range = range.getUnionWith({note.startTick, note.endTick});
@@ -2767,6 +2878,8 @@ juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64
                              {"duration", note.endTick - note.startTick}, {"velocity", note.velocity.value_or(96)}});
         if (drum) event.getDynamicObject()->setProperty("soundSlotId", drumSlot(score, track, note.pitch));
         else event.getDynamicObject()->setProperty("pitch", note.pitch);
+        const int number=editingTake ? editingTake : takeState.adoptedAt(note.startTick);
+        if (number>1) takeState.owners[event["id"].toString()]=number;
         if (track["midi"]["mode"].isString() && track["midi"]["mode"] != "singleChannel")
             event.getDynamicObject()->setProperty("channel", sourceMidiChannels[index]);
         events.add(event);
@@ -2788,8 +2901,9 @@ juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64
     }
     if (!controls.isEmpty()) clip.getDynamicObject()->setProperty("midiEvents", controls);
     arrayProperty(track, "clips").getArray()->add(clip);
+    if(takeState.count>1) writeTrackTakes(score,track,takeState);
     reviseDocument(score, before, "studio-" + juce::Uuid().toString());
-    return restoreNoteScore(editedScoreBytes(before, score, {"tracks", "drumKits", "soundSlots", "document"}));
+    return restoreNoteScore(editedScoreBytes(before, score, {"tracks", "drumKits", "soundSlots", "document",StudioMidiTakes::extension}));
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
 bool OstfpPreview::addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes) {

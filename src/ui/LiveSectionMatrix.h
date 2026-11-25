@@ -12,7 +12,12 @@ public:
     std::function<void(std::size_t, int)> editCell;
     std::function<void(std::size_t, int, juce::Component*)> trackAction;
     std::function<void(int)> launchRow;
+    std::function<bool(int)> isQueued;
     std::function<void(int, int)> changeRepeats;
+    std::function<void(size_t,int,juce::Component*)> takeMenu;
+    std::function<juce::String(size_t,int)> takeCaption;
+    std::function<bool(size_t,int)> hasAudition;
+    std::function<void(size_t,int)> toggleAudition;
 
     LiveSectionMatrix() {
         addAndMakeVisible(list_);
@@ -153,7 +158,7 @@ public:
         auto head = getLocalBounds().removeFromTop(headerHeight);
         auto left = head.removeFromLeft(sidebarWidth());
         g.drawText(TRANS("Section"), left.removeFromLeft(left.getWidth() - 88).reduced(5,0), juce::Justification::centredLeft);
-        g.drawText(TRANS("Extra passes"), left, juce::Justification::centred);
+        g.drawText(TRANS("Loop count"), left, juce::Justification::centred);
         g.reduceClipRegion(head);
         if (columns_.empty()) g.drawText(TRANS("No tracks in this filter"), head.reduced(5,0), juce::Justification::centredLeft);
         for (std::size_t col = 0; col < columns_.size(); ++col) {
@@ -203,13 +208,36 @@ private:
     };
     class Slot final : public juce::TextButton {
     public:
+        class AuditionButton final : public juce::TextButton {
+            void paintButton(juce::Graphics& g, bool hover, bool down) override {
+                auto face=findColour(getToggleState() ? buttonOnColourId : buttonColourId);
+                getLookAndFeel().drawButtonBackground(g,*this,face,hover,down);
+                const auto box=getLocalBounds().toFloat().withSizeKeepingCentre(9.f,10.f);
+                g.setColour(findColour(textColourOffId).withMultipliedAlpha(isEnabled() ? 1.f : .4f));
+                if (getToggleState()) { g.fillRect(box.withSizeKeepingCentre(8.f,8.f)); return; }
+                juce::Path play;
+                play.addTriangle(box.getX(),box.getY(),box.getRight(),box.getCentreY(),box.getX(),box.getBottom());
+                g.fillPath(play);
+            }
+        };
+        juce::TextButton take;
+        AuditionButton audition;
+        Slot() { addChildComponent(take); addChildComponent(audition); }
+        int takeWidth() const {return take.isVisible() ? std::min(take.getButtonText().length()<=3 ? 74 : 112,getWidth()/2) : 0;}
+        void resized() override {
+            auto controls=getLocalBounds().removeFromLeft(takeWidth());
+            audition.setBounds(controls.removeFromLeft(std::min(26,controls.getWidth()/3)).reduced(1));
+            take.setBounds(controls.reduced(1));
+        }
         std::vector<Segment> segments;
         bool chord = true, scale = true;
         void paintButton(juce::Graphics& g, bool hover, bool down) override {
             if (segments.empty()) { juce::TextButton::paintButton(g, hover, down); return; }
             const auto face = findColour(getToggleState() ? buttonOnColourId : buttonColourId);
             g.fillAll(hover || down ? face.brighter(.15f) : face);
-            const int width = getWidth();
+            juce::Graphics::ScopedSaveState save(g);
+            const int width = getWidth()-takeWidth();
+            g.setOrigin(takeWidth(),0);
             int left = 0;
             for (const auto& seg : segments) {
                 const int right = juce::roundToInt(width * seg.end);
@@ -242,7 +270,7 @@ private:
         juce::String getTooltip() override {
             auto text = juce::TextButton::getTooltip();
             if (segments.empty()) return text;
-            const double x = double(getMouseXYRelative().x) / std::max(1,getWidth());
+            const double x = double(getMouseXYRelative().x-takeWidth()) / std::max(1,getWidth()-takeWidth());
             auto seg = std::find_if(segments.begin(),segments.end(),[x](const auto& s){return x<s.end;});
             if (seg==segments.end()) return text;
             if (seg->name.isNotEmpty()) text += "  /  " + seg->name;
@@ -276,7 +304,7 @@ private:
             launch.setTooltip(launch.getTitle());
             launch.setEnabled(!owner.recording_);
             for (auto* button : {&less, &more}) {
-                button->setTitle(TRANS("Extra passes") + " " + button->getButtonText() + " / " + section.name);
+                button->setTitle(TRANS("Loop count") + " " + button->getButtonText() + " / " + section.name);
                 button->setTooltip(button->getTitle());
             }
             while (buttons.size() < owner.columns_.size()) {
@@ -285,6 +313,12 @@ private:
                 cells.addAndMakeVisible(b);
                 b.onClick = [this, col] {
                     if (owner.editCell) owner.editCell(owner.columns_[col].track, index);
+                };
+                b.audition.onClick=[this,col] {
+                    if(owner.toggleAudition) owner.toggleAudition(owner.columns_[col].track,index);
+                };
+                b.take.onClick=[this,col] {
+                    if(owner.takeMenu) owner.takeMenu(owner.columns_[col].track,index,&buttons[col]->take);
                 };
             }
             buttons.resize(owner.columns_.size());
@@ -296,6 +330,12 @@ private:
                 button.chord = owner.chordFit_; button.scale = owner.scaleFit_;
                 button.setButtonText(n ? juce::String(n) + " " + TRANS("notes") : "+");
                 button.setTitle(section.name + " / " + column.name);
+                button.take.setVisible(!column.audio);
+                button.audition.setVisible(!column.audio);
+                button.audition.setTitle(TRANS("Audition take")+" / "+button.getTitle());
+                button.take.setButtonText(owner.takeCaption ? owner.takeCaption(column.track,row) : "T1");
+                button.take.setTitle(TRANS("Takes")+" / "+button.getTitle());
+                button.take.setTooltip(button.take.getTitle());
                 button.setTooltip(TRANS("Edit in piano roll") + " / " + button.getTitle());
                 if (column.audio) {
                     const auto& clips=column.clips[std::size_t(row)];
@@ -317,8 +357,22 @@ private:
             count.setText(juce::String(n), juce::dontSendNotification);
             less.setEnabled(n > 0 && !owner.recording_);
             more.setEnabled(n < 99 && !owner.recording_);
-            launch.setToggleState(index == session.playing, juce::dontSendNotification);
-            launch.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff34756d));
+            const bool queued=owner.isQueued && owner.isQueued(index);
+            launch.setButtonText(juce::String::charToString(queued ? 0x25b7 : 0x25b6));
+            launch.setTooltip(queued ? TRANS("Queued section")+" / "+session.sections[size_t(index)].name : launch.getTitle());
+            launch.setToggleState(index == session.playing || queued, juce::dontSendNotification);
+            launch.setEnabled(!owner.recording_ && n>0);
+            for(size_t col=0;col<buttons.size();++col) {
+                const auto track=owner.columns_[col].track;
+                if(owner.takeCaption) buttons[col]->take.setButtonText(owner.takeCaption(track,index));
+                auto& play=buttons[col]->audition;
+                const bool pending=owner.hasAudition && owner.hasAudition(track,index);
+                play.setToggleState(pending,juce::dontSendNotification);
+                buttons[col]->resized();
+                play.setTooltip(pending ? TRANS("Return to adopted take") : TRANS("Audition take"));
+                play.setEnabled(!owner.recording_ && (n>0 || pending));
+            }
+            launch.setColour(juce::TextButton::buttonOnColourId, juce::Colour(queued ? 0xff816534 : 0xff34756d));
         }
         void resized() override {
             auto bounds = getLocalBounds();

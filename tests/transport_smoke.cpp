@@ -76,16 +76,63 @@ bool checkPerformanceAudio() {
         PreviewTransport live;
         const std::array<PreviewTransport::TrackSetup,1> sectionRoutes{{{{},&sectionInstrument,1}}};
         if(live.preparePlayback(song,sectionRoutes,{},960,96).failed())return false;
-        if(live.setLiveSections({{"a","A",{0,61},1},{"b","B",{61,121},2}}).failed())return false;
+        if(live.setLiveSections({{"skip","Skip",{0,1},0},{"a","A",{1,62},2},{"b","B",{62,122},3}}).failed())return false;
         const auto visits=live.upcomingLiveVisits(3);
         if(visits.size()!=3 || visits[0].id!="a" || visits[1].id!="a" || visits[2].id!="b" || visits[1].ticks!=visits[0].ticks) return false;
         live.renderBlock(audio.getArrayOfWritePointers(),2,96);
-        if(live.positionTick()!=35 || live.liveRepeats(0)!=0) { std::cerr << "First section ended at " << live.positionTick() << '\n'; return false; }
-        live.setLiveRepeats(1,1);
+        if(live.positionTick()!=36 || live.liveRepeats(1)!=1) { std::cerr << "First section ended at " << live.positionTick() << '\n'; return false; }
+        live.setLiveRepeats(2,2);
         live.renderBlock(audio.getArrayOfWritePointers(),2,96);
-        if(live.positionTick()!=71 || live.liveRepeats(1)!=0) { std::cerr << "Second section ended at " << live.positionTick() << '\n'; return false; }
+        if(live.positionTick()!=72 || live.liveRepeats(2)!=1) { std::cerr << "Second section ended at " << live.positionTick() << '\n'; return false; }
+        // Publish a different note set while the second visit is running. Neither
+        // the cursor nor the processors are restarted by append or by audition.
+        song.bars.endBar=3;
+        auto& take=song.midiTakes["kit"];
+        take.count=2; take.owners["alt"]=2; take.suppressed.insert("alt");
+        song.pitchedNotes[0].push_back({75,80,74,99,false,"alt"});
+        const std::array<ostfstudio::TakeSelection,1> audition{{{0,{62,122},2}}};
+        if(live.extendLiveSong(song,{{"skip","Skip",{0,1},0},{"a","A",{1,62},2},{"b","B",{62,122},3},
+                                     {"c","C",{122,200},1}},audition,7).failed()
+           || live.positionTick()!=72 || live.soundingTakeRevision()!=0) return false;
+        live.setLiveRepeats(2,2);
+        live.renderBlock(audio.getArrayOfWritePointers(),2,96);
+        bool heardAlternative=false;
+        for (const auto event : sectionInstrument.received) {
+            auto msg=event.getMessage();
+            if(msg.isNoteOn() && msg.getNoteNumber()==74) heardAlternative=true;
+        }
+        if (live.positionTick()!=108 || live.soundingTakeRevision()!=7 || !heardAlternative) return false;
+        live.renderBlock(audio.getArrayOfWritePointers(),2,32);
+        if (live.positionTick()!=140 || !live.isRunning()) return false;
+        song.pitchedNotes[0].pop_back(); song.midiTakes.clear(); song.bars.endBar=2;
         if(live.setLiveSections({{"a","A",{0,300},1},{"b","B",{200,301},1}}).wasOk())return false;
         live.stop();
+        if (live.preparePlayback(song,sectionRoutes,{},960,96).failed()
+            || live.setLiveSections({{"a","A",{0,32},1},{"skip","Skip",{32,64},0}}).failed()) return false;
+        live.renderBlock(audio.getArrayOfWritePointers(),2,64);
+        if (live.isRunning()) return false;
+        live.stop();
+        if (live.preparePlayback(song,sectionRoutes,{},960,96).failed()
+            || live.setLiveSections({{"a","A",{0,32},0},{"b","B",{32,64},0}}).failed()) return false;
+        live.renderBlock(audio.getArrayOfWritePointers(),2,64);
+        if (!live.isRunning() || live.positionTick()!=0) return false;
+        live.setLiveRepeats(1,1);
+        live.renderBlock(audio.getArrayOfWritePointers(),2,16);
+        if (!live.isRunning() || live.positionTick()!=48) return false;
+        live.stop();
+
+        song.bars.endBar=4;
+        if (live.preparePlayback(song,sectionRoutes,{},960,96).failed()
+            || live.setLiveSections({{"a","A",{0,3840},2},{"b","B",{3840,5760},1}}).failed()) return false;
+        live.renderBlock(audio.getArrayOfWritePointers(),2,16);
+        if (!live.queueLiveSection(1) || live.positionTick()!=16 || live.queuedLiveSection()!=1) return false;
+        live.setLiveRepeats(1,0);
+        if (live.queuedLiveSection()!=-1 || live.queueLiveSection(1)) return false;
+        live.setLiveRepeats(1,1);
+        if (!live.queueLiveSection(1)) return false;
+        for (int block=0;block<20;++block) live.renderBlock(audio.getArrayOfWritePointers(),2,96);
+        if (live.positionTick()!=3856 || live.queuedLiveSection()!=-1) return false;
+        live.stop(); song.bars.endBar=2;
     }
     {
         PreviewTransport inputMonitor;

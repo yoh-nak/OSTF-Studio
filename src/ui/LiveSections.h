@@ -41,14 +41,14 @@ public:
                 const juce::int64 start=s["start"], duration=s["duration"];
                 if(start<0 || start>=song.playbackEndTick() || duration<=0) continue;
                 sections.push_back({s["id"].toString(),s.getProperty("name",s["id"]).toString(),
-                    {start,start+std::min(duration,song.playbackEndTick()-start)},0});
+                    {start,start+std::min(duration,song.playbackEndTick()-start)},1});
             }
         std::stable_sort(sections.begin(),sections.end(),[](const auto& a,const auto& b){return a.ticks.getStart()<b.ticks.getStart();});
         // Overlapping/nested score sections share a boundary. Give each distinct
         // section start one launchable span, ending when the next section starts.
         for(size_t i=1;i<sections.size();++i) sections[i-1].ticks.setEnd(std::min(sections[i-1].ticks.getEnd(),sections[i].ticks.getStart()));
         std::erase_if(sections,[](const auto& s){return s.ticks.isEmpty();});
-        if(sections.empty()) sections.push_back({{},song.title,{0,song.playbackEndTick()},0});
+        if(sections.empty()) sections.push_back({{},song.title,{0,song.playbackEndTick()},1});
         barDetails.clear();
         const auto bar = std::max<juce::int64>(1, song.ticksPerBar);
         for (const auto& section : sections) {

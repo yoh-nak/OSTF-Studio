@@ -45,9 +45,13 @@ public:
     struct LiveSection {
         juce::String id, name;
         juce::Range<juce::int64> ticks;
-        int repeats = 0; // Additional passes, excluding the first visit.
+        int repeats = 1; // Total passes. Zero skips this section.
     };
+    juce::Result extendLiveSong(const ostfstudio::OstfpPreview&, const std::vector<LiveSection>&,
+                               std::span<const ostfstudio::TakeSelection>, unsigned revision);
     juce::Result setLiveSections(const std::vector<LiveSection>&);
+    bool queueLiveSection(size_t index);
+    int queuedLiveSection() const { return queuedSection_.load(); }
     void setLiveRepeats(size_t section,int repeats);
     // Message-thread look-ahead, in source-score ticks. A repeated visit keeps its section ID.
     std::vector<LiveSection> upcomingLiveVisits(size_t maximum) const;
@@ -55,6 +59,7 @@ public:
     int liveRepeats(size_t section) const;
     struct TakeOptions {
         std::vector<LiveSection> sections;
+        std::vector<ostfstudio::TakeSelection> auditions;
         juce::Range<juce::int64> cycle;
         int inputChannels = 0;
         int firstInputBuffer = 0;
@@ -83,11 +88,12 @@ public:
     void inputFromDevice(const juce::MidiMessage&, const juce::String& port = {});
     struct Cursor { juce::int64 tick; double seconds; };
     std::vector<ostfstudio::PitchedNote> stop(Cursor* stoppedAt = nullptr);
-    juce::Result updateLoopNotes(const ostfstudio::OstfpPreview&);
+    juce::Result updateLoopNotes(const ostfstudio::OstfpPreview&, std::span<const ostfstudio::TakeSelection> auditions = {}, unsigned revision = 0);
+    unsigned soundingTakeRevision() const {return soundingRevision_.load();}
     void setLoop(juce::Range<juce::int64> ticks);
     void seekToTick(juce::int64 tick);
     juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
-                                 double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1, bool monitorOnly = false, double linkTempo = 0);
+                                 double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1, bool monitorOnly = false, double linkTempo = 0, std::span<const ostfstudio::TakeSelection> auditions = {});
     void renderBlock(float* const* output, int channels, int samples, const float* const* input = nullptr, int inputs = 0);
     ostfstudio::MeterFrame takeMeters() noexcept;
     // Buffer indices are the packed active channels supplied by AudioDeviceManager.
@@ -106,10 +112,13 @@ private:
     juce::Optional<PositionInfo> getPosition() const override;
     void processEffects(const Chain& effects, juce::AudioBuffer<float>& audio, int count, const juce::MidiBuffer* patches = nullptr);
     using Timelines = std::array<juce::MidiBuffer, maxTracks>;
-    juce::Result makeMidiTimelines(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, int, Timelines&, bool patchesOnly = false) const;
+    juce::Result makeMidiTimelines(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, int, Timelines&, bool patchesOnly = false, std::span<const ostfstudio::TakeSelection> auditions = {}, const ostfstudio::TempoMap* renderClock = nullptr) const;
     void adoptPendingNotes();
     Timelines pendingTimelines_, pendingLoopEvents_;
     bool pendingNotes_ = false;
+    unsigned pendingRevision_ = 0;
+    std::atomic<unsigned> soundingRevision_{0};
+    bool liveWaiting_ = false, liveEntered_ = false, releaseOnStandby_ = false;
     std::vector<TrackSetup> playbackRoutes_;
     int playbackShift_ = 0;
     void mixRenderedTrack(size_t track, juce::AudioBuffer<float>&, int count, int first, double timelineStep);
@@ -167,6 +176,8 @@ private:
     std::atomic<juce::int64> sample_ {0};
     double sampleRate_ = 0.0;
     ostfstudio::TempoMap clock_;
+    double playbackTempoRate_ = 1.;
+    bool fixedLinkTempo_ = false;
     ostfstudio::LinkSession* launchClock_ = nullptr;
     std::int64_t launchMicros_ = 0;
     ostfstudio::LinkSession* playbackLink_ = nullptr;
@@ -187,6 +198,8 @@ private:
     std::vector<Timelines> liveStarts_, stagedStarts_, liveEnds_, stagedEnds_;
     bool liveLinearReplay_ = false;
     size_t liveIndex_ = 0;
+    std::atomic<int> queuedSection_{-1};
+    juce::int64 queuedSample_=0;
     const float* const* liveInputs_ = nullptr;
     int liveInputCount_ = 0, liveOffset_ = 0;
     juce::Range<int> loopSamples_;

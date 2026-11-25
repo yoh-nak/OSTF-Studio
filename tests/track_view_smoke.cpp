@@ -1,6 +1,7 @@
 #include "ui/MainComponent.h"
 #include "ui/GlobalTimelineEdit.h"
 #include "ui/PluginRoles.h"
+#include "ui/SongMidi.h"
 #include "ui/MediaImport.h"
 #include <BinaryData.h>
 #include <iostream>
@@ -1245,6 +1246,61 @@ int checkTrackView(const juce::File& fixture) {
         const auto clips = juce::JSON::parse(added->sourceScore.toString())["tracks"][int(index)]["clips"];
         if (clips.size()!=1 || juce::int64(clips[0]["start"])!=bar || juce::int64(clips[0]["duration"])!=2*bar
             || clips[0]["notes"].size()!=2) return 324;
+        const auto originalNotes = added->pitchedNotes[index];
+        auto check = [](const juce::Result& result) {
+            if (result.failed()) std::cerr << "MIDI takes: " << result.getErrorMessage() << '\n';
+            return result.wasOk();
+        };
+        if (!check(added->addMidiTake(index, previous)) || added->takes(index).count != 2
+            || !added->pitchedNotes[index][0].enabled) return 351;
+        if (!check(added->editNotes(index, {{NoteEdit::insert,{bar,bar+10,76,88,true,{}}}}, previous, ids,section,2))) return 352;
+        const auto alternative = ids[0];
+        auto audible = [index](const OstfpPreview& p, const juce::String& id) {
+            for (const auto& n : p.pitchedNotes[index]) if (n.id == id) return n.enabled;
+            return false;
+        };
+        if (added->takes(index).takeOf(alternative)!=2 || audible(*added, alternative)) return 353;
+        if (!check(added->adoptMidiTakes({{index,{bar,2*bar},2}},previous))) return 354;
+        if (audible(*added,originalNotes[0].id) || !audible(*added,originalNotes[1].id)
+            || !audible(*added,alternative)) return 355;
+        const auto exportedNotes = [&] {
+            juce::MemoryOutputStream bytes;
+            std::vector<int> pitches;
+            if (!check(writeSongMidi(*added,SmfFormat::multitrack,{},bytes,index))) return pitches;
+            juce::MemoryInputStream input(bytes.getData(),bytes.getDataSize(),false);
+            juce::MidiFile midi;
+            if (!midi.readFrom(input)) return pitches;
+            for (int t=0;t<midi.getNumTracks();++t)
+                for (const auto* e : *midi.getTrack(t))
+                    if (e->message.isNoteOn()) pitches.push_back(e->message.getNoteNumber());
+            return pitches;
+        };
+        if (exportedNotes()!=std::vector<int>{76,64}) return 365;
+        const auto adopted = added->sourceScore;
+        if (!check(added->restoreNoteScore(previous)) || !audible(*added,originalNotes[0].id)
+            || audible(*added,alternative) || !check(added->restoreNoteScore(adopted))) return 356;
+        SessionMix mix;
+        mix.tracks.resize(added->sourceTrackCount());
+        for (auto kind : added->trackKinds) mix.audioTracks.push_back(kind==TrackKind::audio);
+        for (bool package : {false,true}) {
+            juce::MemoryOutputStream output;
+            if (!check(package ? writeOstfpPreview(*added,mix,output) : writeOstfPreview(*added,output))) return 357;
+            juce::MemoryInputStream input(output.getData(),output.getDataSize(),false);
+            std::unique_ptr<OstfpPreview> restored;
+            if (!check(package ? readOstfpPreview(input,restored) : readOstfPreview(input,restored))
+                || restored->takes(index).count!=2 || restored->takes(index).takeOf(alternative)!=2
+                || restored->takes(index).adoptedAt(bar)!=2 || restored->takes(index).adoptedAt(2*bar)!=1
+                || audible(*restored,originalNotes[0].id) || !audible(*restored,alternative)) return 358;
+        }
+        std::unique_ptr<OstfpPreview> cloned;
+        if (!check(added->editTracks(TrackKind::pitched,{},cloned,index))) return 359;
+        const auto copy = cloned->sourceTrackCount()-1;
+        if (cloned->takes(copy).count!=2 || cloned->takes(copy).owners.size()!=1
+            || cloned->takes(copy).owners.begin()->first==alternative || cloned->takes(copy).adoptedAt(bar)!=2) return 360;
+        const auto end=added->playbackEndTick();
+        if (!check(added->appendSection(section,"Take copy",true,previous))
+            || added->takes(index).adoptedAt(end)!=2 || added->takes(index).adoptedAt(end+bar)!=1
+            || added->takes(index).owners.size()!=2) return 361;
     }
     {
         juce::MemoryInputStream input(BinaryData::neonplatforms_ostfp,BinaryData::neonplatforms_ostfpSize,false);
@@ -1515,6 +1571,14 @@ int checkTrackView(const juce::File& fixture) {
     dropTarget->itemDropped(dragging);
     plugins->onClick();
     if (files->isVisible() || !plugins->getToggleState()) return 144;
+    auto* search = dynamic_cast<juce::TextEditor*>(pane->findChildWithID("plugin-search"));
+    auto* tree = descendant<juce::TreeView>(*pane);
+    if (!search || !search->isVisible() || !tree || !tree->getRootItem()) return 362;
+    const auto makers = tree->getRootItem()->getNumSubItems();
+    search->setText("no-match-9b218b8a",false); search->onTextChange();
+    if (tree->getRootItem()->getNumSubItems()!=0) return 363;
+    search->setText({},false); search->onTextChange();
+    if (tree->getRootItem()->getNumSubItems()!=makers) return 364;
     const auto* imported = audioEditor->sourceClip();
     if (!imported || imported->localFile != sample || imported->durationTicks <= 0) return 54;
     for (auto* child : audioEditor->getChildren())
@@ -1917,7 +1981,7 @@ int checkTrackView(const juce::File& fixture) {
     const auto last = int(session->sections.size()) - 1;
     session->list.selectRow(last);
     session->changeRepeats(last, 1);
-    if (!click("Arrangement") || !click("Live session") || session->selected != last || session->sections.back().repeats != 1) return 287;
+    if (!click("Arrangement") || !click("Live session") || session->selected != last || session->sections.back().repeats != 2) return 287;
     int guitarItem = -1;
     for (int i=0; i<tracks->getNumItems(); ++i) if (tracks->getItemText(i)=="Lead Guitar") guitarItem=i;
     if (guitarItem<0) return 291;
@@ -1935,7 +1999,7 @@ int checkTrackView(const juce::File& fixture) {
     main.setSize(1450,1000);
     const auto firstName = session->sections[0].name;
     auto* firstSlot = findControl<juce::TextButton>(*matrix, firstName + " / Lead Guitar");
-    auto* moreRepeats = findControl<juce::TextButton>(*matrix, TRANS("Extra passes") + " + / " + firstName);
+    auto* moreRepeats = findControl<juce::TextButton>(*matrix, TRANS("Loop count") + " + / " + firstName);
     if (!matrix->isVisible() || session->isVisible() || !firstSlot || !moreRepeats) return 314;
     const auto beforeRepeats = session->sections[0].repeats;
     moreRepeats->onClick();

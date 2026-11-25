@@ -1,8 +1,14 @@
 # OSTF Studio development handoff
 
-## Shared take workflow specification
+## MIDI take implementation
 
-The [product specification (Japanese)](docs/TAKES_AND_LIVE_SESSION.ja.md) defines default T1, arrangement take lanes, per-cell audition, adoption, shared cuts and structural edits during live playback. It includes acceptance scenarios for the implementation. The running application still uses extra passes. The proposed total-pass control uses 1 for one pass and 0 to skip. This documentation change introduces no runtime or file-format changes. The OSTF 5.1 storage design awaits the formal specification.
+Branch `feat/live-midi-takes`. The arrangement track menu and piano roll and each live MIDI cell expose T1 and alternate takes. Selecting T2 for editing leaves T1 adopted until the user explicitly adopts T2. The live renderer stages auditions and note edits until a section boundary. The button with the filled triangle shows the active audition and the outlined triangle marks a pending audition. The current section's sounding combination can be adopted together. OSTF/OSTFP preserve MIDI take ownership and adopted intervals using a Studio extension. SMF uses the adopted notes.
+
+The cell play/stop button starts a temporary audition or returns to the adopted take. A row launch while playing is queued to the next bar or the current section end, whichever comes first. Row counts start at one. A zero row is skipped. During live playback, section append/duplicate preserves the current cursor and remaining passes. MIDI capture from an armed track can be committed during playback. Print previews select existing credit lines; the plug-in browser filters the local catalogue by name, maker and category.
+
+The Windows x64 portable is `dist/windows-midi-takes/Portable/OSTF Studio.exe`. This package reuses the 36 bundled VST3 plug-ins from the session-edit portable. Both JUCE-free core tests passed. The Windows suite passed 32 of 33 in one run, and the Link transport test passed on its isolated retry. The final transport, matrix, piano editing, notation, language and SMF tests passed together. The portable UI smoke captures `build-visuals/live-midi-takes.png`. It runs on the packaged comprehensive score, including optional lyric-unit timing.
+
+Open items include audio take lanes, resolving sustains across a comp cut, and rearranging or removing source sections/tracks during playback. Dedicated recording still uses the linear/cycle transport. macOS, hardware monitoring and real-device recording remain unverified. [Take workflow and acceptance scenarios](docs/TAKES_AND_LIVE_SESSION.ja.md)
 
 ## Live session editing and global scissors
 
