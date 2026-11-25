@@ -72,8 +72,8 @@ inline void drawChannelVu(juce::Graphics& g, juce::Rectangle<float> bounds, Ster
     drawVu(g,bounds.reduced(1,0),levels[1],"R   " + label);
 }
 
-inline void drawMasterDetails(juce::Graphics& g, juce::Rectangle<float> bounds, const MasterReadout& data,
-                              const std::array<float,31>& bands) {
+inline void drawMasterDetails(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Rectangle<float> graphs,
+                              const MasterReadout& data, const std::array<float,31>& bands) {
     g.setColour(juce::Colour(0xff101b20));
     g.fillRoundedRectangle(bounds,4.f);
     auto area = bounds.reduced(7,5);
@@ -110,6 +110,9 @@ inline void drawMasterDetails(juce::Graphics& g, juce::Rectangle<float> bounds, 
     const auto sum = levels.rms[0]+levels.rms[1];
     bipolar("BALANCE  L/R",sum > 0 ? (levels.rms[1]-levels.rms[0])/sum : 0.,sum > 0);
     bipolar("PHASE  -1/+1",levels.correlation,levels.hasCorrelation);
+    g.setColour(juce::Colour(0xff101b20));
+    g.fillRoundedRectangle(graphs,4.f);
+    area = graphs.reduced(7,5);
     g.setColour(dim); g.drawText("SHORT-TERM   /   60 s",area.removeFromTop(17),juce::Justification::centredLeft);
     auto plot = area.removeFromTop(area.getHeight() * .44f);
     auto y = [&](float level) { return plot.getBottom()-plot.getHeight()*std::clamp((level+60.f)/60.f,0.f,1.f); };

@@ -42,12 +42,13 @@ public:
 
     void resized() override {
         juce::Viewport::resized();
-        constexpr int slotWidth = 86;
+        const int slotWidth = getHeight() >= 31 ? 61 : 76;
         const int width = slotWidth * static_cast<int>(controls.size());
         const int height = std::max(0, getHeight() - (width > getWidth() ? getScrollBarThickness() : 0));
         row.setSize(width, height);
+        const int offset = std::clamp(height-25,0,10);
         for (size_t i = 0; i < controls.size(); ++i)
-            controls[i]->setBounds(static_cast<int>(i) * slotWidth, 0, slotWidth, height);
+            controls[i]->setBounds(static_cast<int>(i)*slotWidth,int(i%2)*offset,slotWidth,height-offset);
     }
 
 private:
@@ -70,8 +71,8 @@ private:
         }
         void resized() override {
             auto area = getLocalBounds();
-            knob.setBounds(area.removeFromLeft(std::min(36, area.getHeight())));
-            const bool tall = area.getHeight() >= 30;
+            knob.setBounds(area.removeFromLeft(std::min(25, area.getHeight())));
+            const bool tall = area.getHeight() >= 24;
             value.setVisible(tall);
             if (tall) value.setBounds(area.removeFromBottom(area.getHeight()/2));
             label.setBounds(area);

@@ -5,7 +5,7 @@
 #include <numeric>
 
 namespace {
-constexpr int stripWidth = 246, outputWidth = 200, masterWidth = 556;
+constexpr int stripWidth = 246, outputWidth = 200, masterWidth = 620;
 
 const char* groupName(ostfstudio::MixerTrackGroup group) {
     using enum ostfstudio::MixerTrackGroup;
@@ -26,13 +26,14 @@ MixerPanel::Send::Send() {
     knob.getProperties().set("consoleHardware", true);
     knob.setRange(0,100,1);
     knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    knob.setTextBoxStyle(juce::Slider::TextBoxBelow,false,46,16);
+    knob.setTextBoxStyle(juce::Slider::TextBoxBelow,false,38,13);
     knob.setTextValueSuffix("%");
+    name.setJustificationType(juce::Justification::centred);
     name.setFont(juce::FontOptions(11.f,juce::Font::bold));
 }
 void MixerPanel::Send::resized() {
     auto row=getLocalBounds();
-    name.setBounds(row.removeFromTop(15));
+    name.setBounds(row.removeFromTop(13));
     knob.setBounds(row);
 }
 
@@ -139,27 +140,32 @@ void MixerPanel::Strip::resized() {
     if (isTrack) instrument.setBounds(slots.removeFromLeft(slots.getWidth()/2).withTrimmedRight(3));
     selectEffect.setBounds(slots.removeFromRight(28));
     effect.setBounds(slots);
-    if (isMaster) diagnostics = area.removeFromTop(getWidth() >= 410 ? std::clamp(area.getHeight()-100,250,395) : 460);
+    if (isMaster) {
+        auto outputSection = area.removeFromRight(std::clamp(area.getWidth()/5,82,112));
+        meter.setBounds(outputSection.removeFromRight(40).withTrimmedBottom(23).reduced(1,2));
+        volume.setBounds(outputSection);
+        diagnostics = area.reduced(2);
+        return;
+    }
     if (isTrack) {
         output.setBounds(area.removeFromTop(21).reduced(0, 1));
-        const int count = int(sends.size());
-        constexpr int columns = 3, rowHeight = 80;
-        const int rows = (count + columns - 1) / columns;
-        sendViewport.setBounds(area.removeFromTop(count ? rowHeight : 0));
-        sendRack.setSize(std::max(1,sendViewport.getWidth() - (rows > 1 ? 7 : 0)),rows*rowHeight);
-        const int cell = sendRack.getWidth()/columns;
-        for (int i = 0; i < count; ++i)
-            sends[size_t(i)]->setBounds(i%columns * cell,i/columns * rowHeight,cell,rowHeight);
         auto switches = area.removeFromBottom(21);
         mute.setBounds(switches.removeFromLeft(switches.getWidth() / (arm.isVisible() ? 4 : 3)));
         solo.setBounds(switches.removeFromLeft(switches.getWidth() / (arm.isVisible() ? 3 : 2)));
         if (arm.isVisible()) arm.setBounds(switches.removeFromLeft(switches.getWidth() / 2));
         cue.setBounds(switches);
-        auto panArea = area.removeFromLeft(std::min(80,area.getWidth()/3));
-        pan.setBounds(panArea.removeFromTop(96).withTrimmedTop(14));
+        auto knobs = area.removeFromLeft(std::min(105,area.getWidth()/2)).reduced(1);
+        pan.setBounds(knobs.removeFromTop(88).withTrimmedTop(13));
+        const int count = int(sends.size());
+        constexpr int sendHeight = 61, stagger = (sendHeight + 5) / 2;
+        const int total = count ? sendHeight + (count-1)*stagger : 0;
+        sendViewport.setBounds(knobs);
+        const int width = std::max(1,knobs.getWidth() - (total > knobs.getHeight() ? sendViewport.getScrollBarThickness() : 0));
+        sendRack.setSize(width,total);
+        const int cell = width/2;
+        for (int i=0;i<count;++i) sends[size_t(i)]->setBounds((i%2)*cell,stagger*i,cell,sendHeight);
     }
-    if (isMaster) area = area.withSizeKeepingCentre(std::min(100, area.getWidth()), area.getHeight());
-    else meter.setBounds(area.removeFromRight(36).withTrimmedBottom(20).reduced(0, 2));
+    meter.setBounds(area.removeFromRight(38).withTrimmedBottom(20).reduced(0,2));
     volume.setBounds(area);
 }
 
@@ -257,15 +263,13 @@ void MixerPanel::Strip::paint(juce::Graphics& g) {
     if (!diagnostics.isEmpty()) {
         auto box = diagnostics.reduced(1, 2).toFloat();
         if (isMaster) {
-            auto details = box.getWidth() >= 400.f ? box.removeFromRight(box.getWidth() * .50f)
-                                                   : box.removeFromBottom(230.f);
-            ostfstudio::console::drawMasterDetails(g,details.reduced(2),analysis,bands);
-            box = box.reduced(2);
-            auto pair = box.removeFromTop(std::min(box.getWidth() * .26f, box.getHeight() * .43f));
-            auto left = pair.removeFromLeft(pair.getWidth() * .5f);
-            ostfstudio::console::drawVu(g, left.reduced(1, 0), analysis.vu[0], "L   VU");
-            ostfstudio::console::drawVu(g, pair.reduced(1, 0), analysis.vu[1], "R   VU");
-            ostfstudio::console::drawPhaseScope(g, box.withTrimmedTop(4), analysis);
+            const bool wide = box.getWidth() >= 390.f;
+            auto top = box.removeFromTop(wide ? 118.f : 208.f);
+            auto pair = wide ? top.removeFromLeft(top.getWidth()*.46f) : top.removeFromTop(90.f);
+            ostfstudio::console::drawChannelVu(g,pair.reduced(2),analysis.vu,2,"VU");
+            const auto graphs = box.removeFromBottom(std::min(250.f,box.getHeight()*.46f));
+            ostfstudio::console::drawPhaseScope(g,box.reduced(2),analysis);
+            ostfstudio::console::drawMasterDetails(g,top.reduced(2),graphs.reduced(2),analysis,bands);
         } else {
             ostfstudio::console::drawChannelVu(g, box, vu, meterChannels, "VU");
         }
@@ -282,7 +286,7 @@ MixerPanel::MixerPanel() {
     addAndMakeVisible(addBusButton_);
     addAndMakeVisible(addReturnButton_);
     addAndMakeVisible(masterViewport_);
-    masterViewport_.setScrollBarsShown(true, false);
+    masterViewport_.setScrollBarsShown(true, true);
     addAndMakeVisible(viewport_);
     addAndMakeVisible(outputViewport_);
     viewport_.setViewedComponent(&rack_, false);
@@ -316,6 +320,7 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     routing_.returnCount = routing_.busCount = 0;
     const auto& tracks = project.trackLanes;
     channels_.assign(tracks.size(), {});
+    if (project.chordVoicingTrack) channels_[*project.chordVoicingTrack].muted = true;
     trackOrder_.resize(tracks.size());
     std::iota(trackOrder_.begin(), trackOrder_.end(), std::size_t{0});
     std::stable_sort(trackOrder_.begin(), trackOrder_.end(), [&](auto a, auto b) { return project.mixerGroups[a] < project.mixerGroups[b]; });
@@ -331,6 +336,7 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         strip->volume.setTooltip(TRANS("Volume"));
         strip->pan.setTooltip(TRANS("Pan"));
         strip->mute.setTooltip(TRANS("Mute"));
+        strip->mute.setToggleState(channels_[i].muted,juce::dontSendNotification);
         strip->solo.setTooltip(TRANS("Solo"));
         strip->cue.setTooltip(TRANS("Send this track to Cue before its fader."));
         auto* controls = strip.get();
@@ -378,7 +384,7 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         routing_.cueDb = cue_->volume.getValue();
         if (routingChanged) routingChanged();
     };
-    master_->meter.setVisible(false);
+    master_->meter.setTitle("Master stereo peak meter");
     master_->setComponentID("master-strip");
     masterViewport_.setViewedComponent(master_.get(), false);
     outputRack_.addAndMakeVisible(*cue_);
@@ -618,9 +624,9 @@ void MixerPanel::resized() {
     const int height = std::max(468, area.getHeight() - viewport_.getScrollBarThickness());
     masterViewport_.setBounds(area.removeFromRight(std::min(masterWidth, area.getWidth() * 43 / 100)));
     if (master_) {
-        const int masterHeight = std::max(masterViewport_.getHeight(), masterViewport_.getWidth() < 430 ? 665 : 465);
+        const int masterHeight = std::max(masterViewport_.getHeight(), masterViewport_.getWidth() < 510 ? 640 : 490);
         const int scroll = masterHeight > masterViewport_.getHeight() ? masterViewport_.getScrollBarThickness() : 0;
-        master_->setSize(std::max(1, masterViewport_.getWidth() - scroll), masterHeight);
+        master_->setSize(std::max(340, masterViewport_.getWidth() - scroll), masterHeight);
     }
     area.removeFromRight(6);
     const auto outputCount = static_cast<int>(buses_.size() + returns_.size()) + 1;

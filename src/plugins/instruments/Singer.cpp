@@ -9,7 +9,7 @@ using namespace ostfstudio::singing;
 
 class SyllableVoice {
   public:
-    int channel = -1, key = -1;
+    int channel = -1, key = -1, accentPhone = 0;
     void start(int ch, int pitch, float velocity, Phone p, double sr, const VoiceBank* bank) {
         const bool connected = key >= 0 && channel == ch && envelope > .01;
         const double previousHz = hz;
@@ -79,12 +79,18 @@ class SyllableVoice {
         // Gently accent the nucleus of a stressed English syllable. Follow
         // the scored vowel length so a short word retains its consonants.
         double accent = 1.;
-        if (phone.english && (phone.english & 63) <= 15) {
+        if (accentPhone && (accentPhone & 63) <= 15) {
             const double progress = time / std::max(.08, phone.durationMs ? .001*phone.durationMs : .26);
             const double rise = std::min(1., progress/.24);
-            accent = (phone.english & 64) ? 1. + .12*rise*std::exp(-2.6*progress) : .94;
+            accent = (accentPhone & 64) ? 1. + .12*rise*std::exp(-2.6*progress) : .94;
         }
-        const auto level = gain * envelope * expression * accent * (1. - sustain * (.035 + .025 * std::sin(6.3 * held)));
+        double arc = 1.;
+        if (phone.durationMs >= 120) {
+            const double u = std::clamp(time * 1000. / phone.durationMs,0.,1.);
+            // A longer vowel blooms after the attack and eases into the next syllable.
+            arc += .065*std::sin(juce::MathConstants<double>::pi*u) - .12*u*u*u;
+        }
+        const auto level = gain * envelope * expression * accent * arc * (1. - sustain * (.035 + .025 * std::sin(6.3 * held)));
         if (englishSound) {
             const auto& sound = *englishSound;
             const auto length = double(sound.frames.size() - 2);
@@ -115,7 +121,8 @@ class SyllableVoice {
                 step = std::lerp(recorded->rate / sr, tunedStep, mix);
             }
             recording = recorded->read(position, step);
-            const double onset = std::max(.067, recorded->consonantFrames / recorded->rate);
+            const double onset = phone.durationMs && phone.onset == vowelOnly ? .028 :
+                std::max(.067, recorded->consonantFrames / recorded->rate);
             if (!vowelSample && recorded->period > 0 && time > onset) {
                 const double amount = std::min(1., (time - onset) / .040);
                 const double low = std::max(double(recorded->consonantFrames), std::min(onset * recorded->rate, double(recorded->loopStart)));
@@ -203,14 +210,25 @@ class SyllableVoice {
 class Voice : public SyllableVoice {
   public:
     void start(int ch, int pitch, float velocity, Phone p, double sr, const VoiceBank* bank) {
-        beginTransition(ch, p, sr);
-        SyllableVoice::start(ch, pitch, velocity, p, sr, bank);
+        preparePhones(p, bank);
+        beginTransition(ch, segments[0], sr);
+        SyllableVoice::start(ch, pitch, velocity, segments[0], sr, bank);
+        accentPhone = p.english;
     }
     void articulate(Phone p, double sr, const VoiceBank* bank) {
-        beginTransition(channel, p, sr);
-        SyllableVoice::articulate(p, sr, bank);
+        preparePhones(p, bank);
+        beginTransition(channel, segments[0], sr);
+        SyllableVoice::articulate(segments[0], sr, bank);
+        accentPhone = p.english;
     }
+    void stopNote() { count = 0; SyllableVoice::stopNote(); }
     float sample(double sr, double bend, float expression) {
+        if (stage+1 < count && ++stageFrames >= segments[stage].durationMs * .001 * sr) {
+            const auto next = segments[++stage];
+            beginTransition(channel,next,sr);
+            SyllableVoice::articulate(next,sr,sourceBank);
+            stageFrames = 0;
+        }
         const float current = SyllableVoice::sample(sr, bend, expression);
         if (!remaining) return current;
         const float t = 1.f - float(remaining--) / length;
@@ -218,6 +236,58 @@ class Voice : public SyllableVoice {
     }
   private:
     SyllableVoice tail;
+    std::array<Phone,3> segments{};
+    const VoiceBank* sourceBank = nullptr;
+    int stage = 0, count = 0, stageFrames = 0;
+
+    // A selected Japanese CV bank supplies every English vowel and consonant.
+    // With KAL selected, a Japanese mora uses that singer's onset, glide and vowel.
+    // Only split internal articulation time; the score note and MIDI pitch stay intact.
+    void preparePhones(Phone p, const VoiceBank* bank) {
+        sourceBank = bank;
+        count = 1; stage = stageFrames = 0;
+        segments[0] = p;
+        const int en = p.english & 63;
+        const int ms = p.durationMs > 0 ? p.durationMs : 195;
+        if (bank && en) {
+            // ARPAbet order in the bundled pronunciation dictionary.
+            constexpr int vowels[] = {0,0,0,0,4,0,0,3,0,3,1,1,4,4,2,2};
+            constexpr int onsets[] = {b,ch,d,z,f,g,h,j,velar,r,m,n,moraN,pStop,r,sibilant,sh,t,sibilant,v,w,y,z,j};
+            auto& first = segments[0];
+            first.english = 0;
+            first.vowel = en <= 15 ? vowels[en] : (en == 33 || en == 18 ? 4 : 2);
+            first.onset = en <= 15 ? vowelOnly : onsets[en-16];
+            const int offglide = en == 5 || en == 12 ? 2 : (en == 6 || en == 9 || en == 13 ? 1 : -1);
+            if (offglide >= 0 && ms >= 24) {
+                segments[1] = first;
+                first.durationMs = ms * 2 / 3;
+                segments[1].vowel = offglide;
+                segments[1].durationMs = ms - first.durationMs;
+                count = 2;
+            }
+        } else if (!bank && !en && p.onset != closure) {
+            constexpr int vowels[] = {1,11,15,7,4};
+            constexpr int onsets[] = {0,31,24,28,21,38,33,18,27,22,16,29,26,30,37,36,32,23,17,33,20,35,0,0};
+            count = 0;
+            auto add = [&](int phone, int duration) {
+                auto& part = segments[count++];
+                part = p; part.english = phone;
+                part.durationMs = std::max(1,duration);
+            };
+            if (p.onset == moraN) { add(28,ms); return; }
+            int left = ms;
+            if (onsets[p.onset]) {
+                const bool hiss = p.onset == sh || p.onset == sibilant || p.onset == f || p.onset == h;
+                const int attack = std::min(hiss ? 65 : 42,std::max(1,ms/4));
+                add(onsets[p.onset],attack); left -= attack;
+            }
+            if (p.glide && left >= 12) {
+                const int glide = std::min(32,left/3);
+                add(p.glide == 1 ? 37 : 36,glide); left -= glide;
+            }
+            add(vowels[p.vowel],left);
+        }
+    }
     int remaining = 0, length = 1;
     void beginTransition(int ch, Phone incoming, double sr) {
         remaining = 0;
@@ -235,22 +305,25 @@ class Voice : public SyllableVoice {
     }
 };
 class Singer;
-class Editor final : public juce::AudioProcessorEditor {
+class Editor final : public juce::AudioProcessorEditor, private juce::ChangeListener {
   public:
     explicit Editor(Singer&);
+    ~Editor() override;
     void resized() override;
 
   private:
     Singer& singer;
     juce::TextButton open{"Load OSTF..."};
-    juce::TextButton importVoice{"Load voice folder..."}, factory{"Use built-in voice"};
+    juce::TextButton importVoice{"Load voice folder..."};
+    juce::ComboBox voicePicker;
     juce::ComboBox parts;
     juce::Label status, voiceStatus;
     juce::ImageComponent portrait;
     std::unique_ptr<juce::FileChooser> chooser;
     void refresh();
+    void changeListenerCallback(juce::ChangeBroadcaster*) override { refresh(); }
 };
-class Singer final : public juce::AudioProcessor {
+class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster {
   public:
     const bool studioHost = juce::File::getSpecialLocation(juce::File::hostApplicationPath)
         .getFileNameWithoutExtension().equalsIgnoreCase("OSTF Studio");
@@ -310,12 +383,13 @@ class Singer final : public juce::AudioProcessor {
         index = selected;
         return names;
     }
-    bool setVoice(const juce::File& directory, juce::String& error, bool recalling = false) {
+    bool setVoice(const juce::File& directory, juce::String& error, bool recalling = false, int builtinChoice = 0) {
         auto next = directory == juce::File{} ? nullptr : VoiceBank::load(directory, error);
         if (!next && directory != juce::File{} && !recalling) return false;
         {
             const juce::SpinLock::ScopedLockType guard(lock);
             bank.swap(next);
+            builtin = builtinChoice == 1 ? 1 : 0;
             requestedVoice = directory;
             ++generation;
         }
@@ -326,7 +400,11 @@ class Singer final : public juce::AudioProcessor {
         const juce::SpinLock::ScopedLockType guard(lock);
         if (bank) return bank->name + "  /  " + juce::String(int(bank->sounds.size())) + " recorded morae";
         if (requestedVoice != juce::File{}) return "Voice folder unavailable: " + requestedVoice.getFileName() + "  /  using built-in voice";
-        return factoryBank.name + " (MMDAgent)  /  English (CMU KAL16)";
+        return builtin == 1 ? "KAL16 / CMU" : "Mei / MMDAgent";
+    }
+    int voiceChoice() const {
+        const juce::SpinLock::ScopedLockType guard(lock);
+        return requestedVoice != juce::File{} ? 3 : builtin + 1;
     }
     juce::File voicePortrait() const {
         const juce::SpinLock::ScopedLockType guard(lock);
@@ -337,6 +415,7 @@ class Singer final : public juce::AudioProcessor {
         {
             const juce::SpinLock::ScopedLockType guard(lock);
             xml.setAttribute("part", selected);
+            xml.setAttribute("builtinVoice", builtin == 1 ? "kal16" : "mei");
             if (requestedVoice != juce::File{}) xml.setAttribute("voiceFolder", requestedVoice.getFullPathName());
             xml.addTextElement(text);
         }
@@ -346,7 +425,7 @@ class Singer final : public juce::AudioProcessor {
         if (auto xml = getXmlFromBinary(b, n); xml && xml->hasTagName("OSTFSinger")) {
             const auto path = xml->getStringAttribute("voiceFolder");
             juce::String error;
-            setVoice(juce::File::isAbsolutePath(path) ? juce::File(path) : juce::File{}, error, true);
+            setVoice(juce::File::isAbsolutePath(path) ? juce::File(path) : juce::File{}, error, true, xml->getStringAttribute("builtinVoice") == "kal16" ? 1 : 0);
             auto source = xml->getAllSubText();
             if (source.isNotEmpty() && !studioHost)
                 load(source, xml->getIntAttribute("part", -1));
@@ -357,6 +436,7 @@ class Singer final : public juce::AudioProcessor {
                 selected = -1;
                 ++generation;
             }
+            sendChangeMessage();
         }
     }
     void processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer& midi) override {
@@ -468,7 +548,8 @@ class Singer final : public juce::AudioProcessor {
     std::array<Voice, 16> voices{};
     const VoiceBank& factoryBank = VoiceBank::factory();
     std::unique_ptr<VoiceBank> bank;
-    const VoiceBank* activeBank() const { return bank ? bank.get() : &factoryBank; }
+    int builtin = 0;
+    const VoiceBank* activeBank() const { return bank ? bank.get() : (builtin == 1 ? nullptr : &factoryBank); }
     juce::File requestedVoice;
     std::array<double, 16> bend{};
     std::array<float, 16> expression{};
@@ -504,8 +585,10 @@ Editor::Editor(Singer& s) : AudioProcessorEditor(s), singer(s) {
     addChildComponent(portrait);
     addAndMakeVisible(status);
     addAndMakeVisible(importVoice);
-    addAndMakeVisible(factory);
+    voicePicker.setTitle("Singer voice");
+    addAndMakeVisible(voicePicker);
     addAndMakeVisible(voiceStatus);
+    singer.addChangeListener(this);
     refresh();
     parts.onChange = [this] { singer.select(parts.getSelectedId() - 2); };
     open.onClick = [this] {
@@ -533,9 +616,16 @@ Editor::Editor(Singer& s) : AudioProcessorEditor(s), singer(s) {
                 else safe->voiceStatus.setText(error, juce::dontSendNotification);
             });
     };
-    factory.onClick = [this] { juce::String error; singer.setVoice({}, error); refresh(); };
+    voicePicker.onChange = [this] {
+        const int choice = voicePicker.getSelectedId();
+        if (choice < 1 || choice > 2) return;
+        juce::String error;
+        singer.setVoice({},error,false,choice-1);
+        refresh();
+    };
     setSize(560, singer.studioHost ? 145 : 180);
 }
+Editor::~Editor() { singer.removeChangeListener(this); }
 void Editor::refresh() {
     int index;
     const auto names = singer.trackNames(index);
@@ -545,6 +635,12 @@ void Editor::refresh() {
     parts.setSelectedId(index + 2, juce::dontSendNotification);
     status.setText(singer.studioHost ? "Studio track  /  singing the track's notes and lyrics" :
         "MIDI input or OSTF score playback", juce::dontSendNotification);
+    voicePicker.clear(juce::dontSendNotification);
+    voicePicker.addItem("Mei (Japanese CV)",1);
+    voicePicker.addItem("KAL16 (English phones)",2);
+    const auto choice = singer.voiceChoice();
+    if (choice == 3) voicePicker.addItem(singer.voiceName(),3);
+    voicePicker.setSelectedId(choice,juce::dontSendNotification);
     voiceStatus.setText(singer.voiceName(), juce::dontSendNotification);
     auto image = loadPortrait(singer.voicePortrait());
     portrait.setImage(image, juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize);
@@ -563,9 +659,9 @@ void Editor::resized() {
     r.removeFromTop(7);
     voiceStatus.setBounds(r.removeFromTop(30));
     auto voices = r.removeFromTop(30);
-    importVoice.setBounds(voices.removeFromLeft(160));
-    voices.removeFromLeft(6);
-    factory.setBounds(voices.removeFromLeft(156));
+    importVoice.setBounds(voices.removeFromRight(158));
+    voices.removeFromRight(6);
+    voicePicker.setBounds(voices);
 }
 } // namespace
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new Singer; }

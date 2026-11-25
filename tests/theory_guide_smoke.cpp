@@ -285,7 +285,7 @@ int checkTheoryGuide(const juce::File& demo) {
         mixer.setLookAndFeel(&main.getLookAndFeel());
         mixer.setTracks(*project);
         if (project->savedMix) mixer.restore(*project->savedMix);
-        mixer.addReturn();
+        for (int i = 0; i < 4; ++i) mixer.addReturn();
         mixer.setSize(2260, 680);
         ostfstudio::MeterFrame signal;
         signal.master.vu = {.78f,1.10f};
@@ -309,7 +309,10 @@ int checkTheoryGuide(const juce::File& demo) {
             const double t = .10*i;
             signal.master.scope[i] = {float(.38*std::sin(t)), float(.33*std::sin(t+.7))};
         }
+        signal.outputs[0] = {.65f, .81f};
         mixer.updateMeters(signal, 1.);
+        signal.outputs[0] = {.09f, .14f};
+        mixer.updateMeters(signal, 1.65);
         juce::FileOutputStream out{juce::File(preview)};
         if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed()
             || !juce::PNGImageFormat().writeImageToStream(mixer.createComponentSnapshot(mixer.getLocalBounds(), true, 1.25f), out))

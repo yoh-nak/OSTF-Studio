@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
     juce::MidiBuffer midi;
     auto render = [&](Phone phone) {
         singer->reset(); midi.clear();
-        midi.addEvent(phoneMessage(1,60,phone),0);
+        midi.addEvent(phoneMessage(1,60,phone, phone.durationMs / 1000.),0);
         midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(105)),0);
         singer->processBlock(audio,midi);
         return juce::AudioBuffer<float>(audio);
@@ -132,6 +132,41 @@ int main(int argc, char** argv) {
     auto accented = render({0,0,0,plain,0,65,250});
     auto unaccented = render({0,0,0,plain,0,1,250});
     if (!(accented.getRMSLevel(0,512,1536) > 1.04f * unaccented.getRMSLevel(0,512,1536))) return 30;
+    // The same simple vowel must use the selected singer in either language.
+    // The Japanese approximation of English AA differs only by its unstressed gain.
+    const auto meiJapanese = render({0,vowelOnly,0,plain,0,0,250});
+    auto distance = [](const auto& a,const auto& b,float gain) {
+        double sum = 0;
+        for (int i=0;i<a.getNumSamples();++i)
+            sum += std::abs(std::atanh(a.getSample(0,i))*gain - std::atanh(b.getSample(0,i)));
+        return sum/a.getNumSamples();
+    };
+    if (distance(meiJapanese,unaccented,.94f) > .0001) return 31;
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> editor(singer->createEditorAndMakeActive());
+        juce::ComboBox* choice = nullptr;
+        for (auto* child : editor->getChildren())
+            if (child->getTitle() == "Singer voice") choice = dynamic_cast<juce::ComboBox*>(child);
+        if (!choice || choice->getSelectedId() != 1) return 32;
+        choice->setSelectedId(2,juce::sendNotificationSync);
+        const auto kalJapanese = render({0,vowelOnly,0,plain,0,0,250});
+        const auto kalEnglish = render({0,0,0,plain,0,1,250});
+        const auto peak = kalJapanese.getMagnitude(0,0,2048);
+        const auto sameSingerError = distance(kalJapanese,kalEnglish,.94f);
+        const auto otherSingerError = distance(meiJapanese,kalJapanese,1);
+        if (peak < .008f || sameSingerError > .0001 || otherSingerError < .005) {
+            std::cerr << "KAL16 vowel peak " << peak << ", same singer difference " << sameSingerError
+                      << ", other singer difference " << otherSingerError << '\n';
+            return 33;
+        }
+        juce::MemoryBlock recall;
+        singer->getStateInformation(recall);
+        choice->setSelectedId(1,juce::sendNotificationSync);
+        singer->setStateInformation(recall.getData(),int(recall.getSize()));
+        dynamic_cast<juce::ChangeBroadcaster&>(*singer).dispatchPendingMessages();
+        if (choice->getSelectedId() != 2 || distance(render({0,0,0,plain,0,1,250}),kalEnglish,1) > .0001) return 34;
+        choice->setSelectedId(1,juce::sendNotificationSync);
+    }
     const auto word = lyricPhones("light");
     const auto city = lyricsFor(juce::JSON::parse(R"({"lyrics":{
         "phrases":[{"id":"line","text":"city"}],
@@ -194,7 +229,12 @@ int main(int argc, char** argv) {
     head.position.setIsPlaying(true); head.position.setPpqPosition(-2); restored->processBlock(audio,midi);
     if (audio.getMagnitude(0,0,2048) != 0) return 7;
     if (argc >= 3) {
-        if (argc == 4) {
+        const bool bilingual = argc == 4 && juce::String(argv[3]).startsWith("bilingual-");
+        if (bilingual) {
+            state.setAttribute("builtinVoice",juce::String(argv[3]).fromFirstOccurrenceOf("-",false,false));
+            juce::AudioProcessor::copyXmlToBinary(state,blob);
+            restored->setStateInformation(blob.getData(),int(blob.getSize()));
+        } else if (argc == 4) {
             juce::String error;
             const juce::File folder(juce::String::fromUTF8(argv[3]));
             auto bank = VoiceBank::load(folder, error);
@@ -211,7 +251,13 @@ int main(int argc, char** argv) {
         const double bpm = double(juce::JSON::parse(source)["timeline"]["tempoChanges"][0]["bpm"]);
         if (!(bpm > 0)) return 12;
         head.position.setBpm(bpm);
-        const auto start = parts.front().syllables.front().start;
+        double start = parts.front().syllables.front().start;
+        if (bilingual) {
+            const auto& line = parts.front().syllables;
+            const auto english = std::find_if(line.begin(),line.end(),[](const auto& unit){return unit.phone.english != 0;});
+            if (english == line.end() || english->start < 8.) return 35;
+            start = english->start - 8.;
+        }
         for (int pos = 0; pos < int(16 * 60 * 48000 / bpm); pos += audio.getNumSamples()) {
             head.position.setPpqPosition(start + pos * bpm / (60 * 48000));
             restored->processBlock(audio,midi);

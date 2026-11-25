@@ -341,7 +341,11 @@ private:
                 }
             }
         }
+        if (!studio.mixer_.channel(*project.chordVoicingTrack).muted
+            || studio.trackControls_[*project.chordVoicingTrack]->size.height() != 100) return 26;
         const auto& backingStrip = *studio.trackControls_[backing];
+        if (backingStrip.cue.getY() != backingStrip.mute.getY()
+            || backingStrip.cue.getBottom() != backingStrip.arm.getBottom()) return 27;
         if (!backingStrip.size.expanded() || backingStrip.size.height() != 100 || studio.trackControls_[lead]->size.height() != 100
             || !backingStrip.volume.isVisible() || !backingStrip.pan.isVisible()
             || project.trackLanes[backing].regions.empty()) return 21;
@@ -1383,7 +1387,9 @@ int checkTrackView(const juce::File& fixture) {
         if (!addBus || !addReturn || !output || addBus->getRight() > addReturn->getX()
             || main.getComponentAt(main.getLocalPoint(addBus, addBus->getLocalBounds().getCentre())) != addBus) return 251;
         auto* masterMute = findControl<juce::TextButton>(*mixer, TRANS("Master") + " mute");
-        if (!masterMute) return 258;
+        auto* masterMeter = findControl<LevelMeter>(*mixer,"Master stereo peak meter");
+        if (!masterMute || !masterMeter || !masterMeter->isVisible() || masterMeter->getWidth()<34
+            || masterMeter->getHeight()<65) return 258;
         const auto masterArea = mixer->getLocalArea(masterMute->getParentComponent(),masterMute->getParentComponent()->getLocalBounds());
         const auto trackArea = mixer->getLocalArea(output->getParentComponent(),output->getParentComponent()->getLocalBounds());
         auto* outputViewport = cueStatus->findParentComponentOfClass<juce::Viewport>();
@@ -1594,7 +1600,12 @@ int checkTrackView(const juce::File& fixture) {
         const auto lit = meter.createComponentSnapshot(meter.getLocalBounds());
         if (lit.getPixelAt(vertical ? 4 : 118, vertical ? 1 : 4) != juce::Colour(0xffff5654)
             || lit.getPixelAt(vertical ? 12 : 60, vertical ? 60 : 12) != juce::Colour(0xff152026)) return 11;
-        meter.update({}, 5.0);
+        meter.clear();
+        meter.update({juce::Decibels::decibelsToGain(-12.f),0.f},2.);
+        meter.update({},3.);
+        const auto heldImage = meter.createComponentSnapshot(meter.getLocalBounds());
+        if (heldImage.getPixelAt(vertical?4:97,vertical?25:4) != juce::Colour(0xfff6ecc5)) return 263;
+        meter.update({}, 8.0);
         const auto silent = meter.createComponentSnapshot(meter.getLocalBounds());
         if (silent.getPixelAt(vertical ? 4 : 60, vertical ? 60 : 4) != juce::Colour(0xff152026)) return 12;
     }

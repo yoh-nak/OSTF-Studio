@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Cue switches, mixer peak hold and bilingual singers
+
+Branch `feat/consistent-singer-console` aligns the track and mixer Cue switches with the other transport switches. The master has independent channel peak holds beside its fader. The mixer source strips and track headers use staggered send controls around a larger pan. Imported sessions with no voicing mix open muted. The Singer voice selector recalls Mei, KAL16 or a local voice folder for either lyric language. `ostf_singing_tests` can render the Japanese-to-English transition of Paper Lantern Replies with `bilingual-mei` or `bilingual-kal16` as its final argument.
+
+The Windows Release suite passed all 31 tests and the standalone core build passed both tests. The staged Windows executable and singer VST3 match the build outputs. The portable also passed `--vocal-track-smoke` with Paper Lantern Replies. The bilingual samples cover the same 12.33-second excerpt for each singer. These checks cover rendering and saved state, with listening quality and physical headphone output still requiring listening on a device.
+
 ## Chord lyric headers and mixer controls
 
 The header beside each vocal part’s lyric lanes follows its written chord cell. The mixer has a fixed instrument and split FX control row. The master VUs, phase scope and measurement panel share one view. Per-return send gains remain available in the mixer and track headers. Singer pitch marks use waveform similarity, with transitions timed by incoming phoneme and English vowel stress.

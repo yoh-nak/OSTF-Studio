@@ -2925,7 +2925,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     trackRows_.clear();
     verticalScroll_.setCurrentRangeStart(0, juce::dontSendNotification);
     groupDefaults_.fill(TrackRowSize::minimum);
-    for (auto group : {HeightGroup::melody, HeightGroup::vocal, HeightGroup::pitched, HeightGroup::drums, HeightGroup::audio})
+    for (auto group : {HeightGroup::voicing, HeightGroup::melody, HeightGroup::vocal, HeightGroup::pitched, HeightGroup::drums, HeightGroup::audio})
         groupDefaults_[static_cast<size_t>(group)] = 100;
     groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)] = defaultTimelineHeight;
     for (auto& output : outputControls_) {
@@ -6758,8 +6758,11 @@ void MainComponent::resized() {
             strip.input.setEnabled(!recordTrack_);
             if (!visible) continue;
             auto inputControls = [&](juce::Rectangle<int>& row) {
-                if (canArm) strip.arm.setBounds(row.removeFromLeft(26).reduced(1, 0));
-                strip.cue.setBounds(row.removeFromLeft(26).reduced(1, 0));
+                auto switchBounds = [&] {
+                    return row.removeFromLeft(26).reduced(1, 0).withY(strip.mute.getY()).withHeight(strip.mute.getHeight());
+                };
+                if (canArm) strip.arm.setBounds(switchBounds());
+                strip.cue.setBounds(switchBounds());
                 if (midi) {
                     strip.inputLamp.setBounds(row.removeFromLeft(14));
                 }
@@ -6797,7 +6800,7 @@ void MainComponent::resized() {
                 strip.mix.setBounds(inputArea.removeFromRight(48).reduced(2,1));
                 auto knobs = header.reduced(2,1);
                 auto panSlot = knobs.removeFromLeft(std::min(77, knobs.getWidth()/3));
-                strip.pan.setBounds(panSlot.removeFromRight(std::min(40,panSlot.getHeight())));
+                strip.pan.setBounds(panSlot.removeFromRight(std::min(48,panSlot.getHeight())));
                 strip.sends.setBounds(knobs);
                 if (canArm) {
                     if (audio) {

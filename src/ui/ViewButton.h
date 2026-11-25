@@ -10,6 +10,21 @@ public:
     void paintButton(juce::Graphics& g, bool hover, bool down) override {
         const auto on = getToggleState();
         const auto rect = getLocalBounds().toFloat().reduced(1);
+        if (icon_ == Icon::headphones) {
+            const auto face = on ? juce::Colour(0xff245e5c) : findColour(juce::TextButton::buttonColourId);
+            getLookAndFeel().drawButtonBackground(g,*this,face,hover,down);
+            g.setColour(juce::Colour(on ? 0xff83f2d8 : 0xffd6e2e5).withMultipliedAlpha(isEnabled() ? 1.f : .4f));
+            if (hasKeyboardFocus(false)) g.drawRoundedRectangle(rect,4.f,1.f);
+            const auto iconArea = rect.reduced(2).withSizeKeepingCentre(
+                std::min(18.f,std::max(0.f,rect.getWidth()-4)),std::min(16.f,std::max(0.f,rect.getHeight()-4)));
+            if (!iconArea.isEmpty()) {
+                juce::Graphics::ScopedSaveState state(g);
+                g.addTransform(juce::RectanglePlacement(juce::RectanglePlacement::centred)
+                    .getTransformToFit({0.f,0.f,20.f,18.f},iconArea));
+                drawIcon(g,icon_,0,0);
+            }
+            return;
+        }
         g.setColour(juce::Colour(on ? 0xff30545b : hover || down ? 0xff394651 : 0xff232c34));
         g.fillRoundedRectangle(rect, 4);
         g.setColour(juce::Colour(on ? 0xff74dfd1 : 0xffcfdae1).withMultipliedAlpha(isEnabled() ? 1.0f : 0.38f));
@@ -49,7 +64,10 @@ public:
                 line(17,9,11,9); line(14,6,11,9); line(14,12,11,9); break;
             case Icon::headphones: {
                 juce::Path band;
-                band.addCentredArc(x + 10, y + 10, 7, 8, 0, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
+                band.startNewSubPath(x+3,y+12);
+                band.lineTo(x+3,y+9);
+                band.cubicTo(x+3,y+.5f,x+17,y+.5f,x+17,y+9);
+                band.lineTo(x+17,y+12);
                 g.strokePath(band, juce::PathStrokeType(2));
                 g.fillRoundedRectangle(x + 2, y + 9, 4, 7, 1.5f);
                 g.fillRoundedRectangle(x + 14, y + 9, 4, 7, 1.5f);
