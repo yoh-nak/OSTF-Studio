@@ -1,206 +1,77 @@
 #pragma once
-
 #include "ui/OstfpPreview.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class LiveTrackSelector final : public juce::Component {
 public:
-    std::function<void(std::size_t)> selectTrack;
     std::function<void()> filterChanged;
 
-    bool includesTrack(std::size_t index) const {
-        return index < buttons_.size() && buttons_[index]->isVisible();
-    }
-
-    void showFilterOnly(bool filterOnly) {
-        filterOnly_ = filterOnly;
-        view_.setVisible(!filterOnly);
-    }
-
     LiveTrackSelector() {
-        for (auto* component : std::initializer_list<juce::Component*>{&all_, &favourites_, &editing_, &view_})
-            addAndMakeVisible(component);
-        all_.onClick = [this] { setFilter(false); };
-        favourites_.onClick = [this] { setFilter(true); };
-        all_.setTitle(TRANS("All tracks"));
-        favourites_.setTitle(TRANS("Favourites"));
-        for (auto* button : {&all_, &favourites_})
-            button->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff36616a));
-        view_.setViewedComponent(&tiles_, false);
-        view_.setScrollBarsShown(true, false);
-        view_.setScrollBarThickness(9);
-        tiles_.addChildComponent(empty_);
-        empty_.setText(TRANS("Star a track in All tracks to show it here."), juce::dontSendNotification);
-        empty_.setMinimumHorizontalScale(1.f);
+        addAndMakeVisible(choose_);
+        addAndMakeVisible(editing_);
+        choose_.setTitle(TRANS("Visible tracks"));
+        choose_.onClick = [this] { showMenu(); };
     }
-
     void openDocument(const juce::String& id, juce::PropertySet& settings) {
         settings_ = &settings;
-        settingsKey_ = id.isEmpty() ? juce::String{} : "liveTrackFilter" + juce::String::toHexString(id.hashCode64());
-        starred_.clear();
-        onlyStarred_ = false;
-        if (settingsKey_.isNotEmpty())
-            if (auto saved = settings.getXmlValue(settingsKey_)) {
-                onlyStarred_ = saved->getBoolAttribute("onlyStarred");
-                for (auto* item : saved->getChildWithTagNameIterator("TRACK"))
-                    starred_.addIfNotAlreadyThere(item->getStringAttribute("id"));
-            }
-        view_.setViewPosition(0, 0);
-        updateFilter();
+        key_ = id.isEmpty() ? juce::String{} : "liveTrackFilter" + juce::String::toHexString(id.hashCode64());
+        visible_.clear();
+        all_ = true;
+        if (key_.isNotEmpty()) if (auto saved = settings.getXmlValue(key_)) {
+            all_ = !saved->getBoolAttribute("onlyStarred");
+            for (auto* item : saved->getChildWithTagNameIterator("TRACK")) visible_.add(item->getStringAttribute("id"));
+        }
     }
-
-    void bind(const ostfstudio::OstfpPreview& song, std::optional<std::size_t> selected,
-              const juce::String& section = {}) {
-        const auto count = song.trackLanes.size();
-        while (buttons_.size() < count) {
-            const auto index = buttons_.size();
-            auto& tile = *buttons_.emplace_back(std::make_unique<Tile>());
-            tiles_.addAndMakeVisible(tile);
-            tile.name.onClick = [this, index] { if (selectTrack) selectTrack(index); };
-            tile.star.onClick = [this, index] {
-                const auto& id = buttons_[index]->id;
-                if (starred_.contains(id)) starred_.removeString(id);
-                else starred_.add(id);
-                updateFilter();
-                save();
-                if (filterChanged) filterChanged();
-            };
+    void bind(const ostfstudio::OstfpPreview& song, std::optional<std::size_t> selected, const juce::String& section) {
+        ids_.clear(); names_.clear();
+        int count = 0;
+        for (size_t i = 0; i < song.sourceTrackCount(); ++i) {
+            ids_.add("track:" + song.trackIds[int(i)]);
+            names_.add(juce::String::fromUTF8(song.trackLanes[i].label));
+            if (includesTrack(i)) ++count;
         }
-        buttons_.resize(count);
-        juce::String current;
-        for (std::size_t i = 0; i < count; ++i) {
-            auto& tile = *buttons_[i];
-            tile.id = song.chordVoicingTrack == i ? "global:voicing" : "track:" + song.trackIds[int(i)];
-            const auto name = juce::String::fromUTF8(song.trackLanes[i].label);
-            tile.name.setButtonText(name);
-            tile.name.setTitle(name);
-            tile.name.setTooltip(name);
-            tile.star.setTitle(TRANS("Favourite track") + " / " + name);
-            tile.star.setTooltip(tile.star.getTitle());
-            tile.accent = juce::Colour(song.trackColour(i));
-            tile.name.setToggleState(selected == i, juce::dontSendNotification);
-            if (selected == i) current = name;
-        }
-        if (section.isNotEmpty() && current.isNotEmpty()) current += "  /  " + section;
-        editing_.setText(current.isEmpty() ? juce::String{} : TRANS("Editing track") + "  " + current, juce::dontSendNotification);
-        editing_.setTooltip(current);
-        updateFilter();
+        choose_.setButtonText(TRANS("Visible tracks") + "  " + juce::String(count) + "/" + juce::String(ids_.size()));
+        const auto name = selected && *selected < song.trackLanes.size() ? juce::String::fromUTF8(song.trackLanes[*selected].label) : juce::String{};
+        editing_.setText(name + "  /  " + section, juce::dontSendNotification);
     }
-
-    int preferredHeight(int width) const {
-        const int rows = (int(buttons_.size()) + columns(width) - 1) / columns(width);
-        return headerHeight(width) + (filterOnly_ ? 0 : 2 + rowHeight * std::clamp(rows, 1, 2));
-    }
-
-    void paint(juce::Graphics& g) override {
-        g.fillAll(juce::Colour(0xff19242a));
-    }
-
-    void resized() override {
-        auto bounds = getLocalBounds();
-        auto header = bounds.removeFromTop(30);
-        all_.setBounds(header.removeFromLeft(std::min(98, header.getWidth() / 2)).reduced(2, 2));
-        favourites_.setBounds(header.removeFromLeft(std::min(138, header.getWidth())).reduced(2, 2));
-        if (headerHeight(getWidth()) > 30) header = bounds.removeFromTop(22);
-        editing_.setBounds(header.reduced(4, 0));
-        view_.setBounds(bounds);
-        layoutTiles();
-    }
-
-private:
-    class Star final : public juce::TextButton {
-        void paintButton(juce::Graphics& g, bool highlighted, bool down) override {
-            if (highlighted || down || hasKeyboardFocus(false)) {
-                g.setColour(juce::Colours::white.withAlpha(.12f));
-                g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(1), 3.f);
-            }
-            juce::Path star;
-            star.addStar(getLocalBounds().toFloat().getCentre(), 5, 4.f, 9.f);
-            g.setColour(juce::Colour(getToggleState() ? 0xffffce79 : 0xff98adb4));
-            if (getToggleState()) g.fillPath(star);
-            else g.strokePath(star, juce::PathStrokeType(1.4f));
-        }
-    };
-    struct Tile final : juce::Component {
-        Tile() {
-            addAndMakeVisible(name);
-            addAndMakeVisible(star);
-            name.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff36616a));
-        }
-        void resized() override {
-            auto r = getLocalBounds().reduced(1);
-            r.removeFromLeft(5);
-            star.setBounds(r.removeFromRight(28));
-            name.setBounds(r);
-        }
-        void paint(juce::Graphics& g) override {
-            g.setColour(juce::Colour(0xff26353b));
-            g.fillRoundedRectangle(getLocalBounds().toFloat(), 4.f);
-            g.setColour(accent);
-            g.fillRoundedRectangle(1.f, 4.f, 3.f, float(getHeight()-8), 1.5f);
-        }
-        juce::String id;
-        juce::Colour accent;
-        juce::TextButton name;
-        Star star;
-    };
-
-    void setFilter(bool favourites) {
-        onlyStarred_ = favourites;
-        view_.setViewPosition(0, 0);
-        updateFilter();
+    bool includesTrack(size_t i) const { return int(i)<ids_.size() && (all_ || visible_.contains(ids_[int(i)])); }
+    void toggleTrack(int i) {
+        if (!juce::isPositiveAndBelow(i,ids_.size())) return;
+        if (all_) { visible_ = ids_; all_ = false; }
+        if (visible_.contains(ids_[i])) visible_.removeString(ids_[i]); else visible_.add(ids_[i]);
+        const bool complete = std::all_of(ids_.begin(),ids_.end(),[this](const auto& id){return visible_.contains(id);});
+        if (complete) all_ = true;
         save();
+    }
+    void resized() override {
+        auto row=getLocalBounds();
+        choose_.setBounds(row.removeFromLeft(std::min(156,row.getWidth())).reduced(2,1));
+        editing_.setBounds(row.reduced(4,0));
+    }
+private:
+    void save() {
+        if (settings_ && key_.isNotEmpty()) {
+            juce::XmlElement state("LIVE_TRACKS");
+            state.setAttribute("onlyStarred",!all_);
+            for (const auto& id : visible_) state.createNewChildElement("TRACK")->setAttribute("id",id);
+            settings_->setValue(key_,&state);
+        }
         if (filterChanged) filterChanged();
     }
-    void save() const {
-        if (!settings_ || settingsKey_.isEmpty()) return;
-        juce::XmlElement state("LIVE_TRACKS");
-        state.setAttribute("onlyStarred", onlyStarred_);
-        for (const auto& id : starred_)
-            state.createNewChildElement("TRACK")->setAttribute("id", id);
-        settings_->setValue(settingsKey_, &state);
+    void showMenu() {
+        juce::PopupMenu menu;
+        menu.addItem(1,TRANS("All tracks"),true,all_);
+        menu.addSeparator();
+        for (int i=0;i<names_.size();++i) menu.addItem(i+2,names_[i],true,includesTrack(size_t(i)));
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&choose_),[safe=juce::Component::SafePointer<LiveTrackSelector>(this),ids=ids_,key=key_](int item){
+            if (!safe || safe->ids_ != ids || safe->key_ != key || !item) return;
+            if (item==1) { safe->all_=true; safe->save(); } else safe->toggleTrack(item-2);
+        });
     }
-    void updateFilter() {
-        int count = 0;
-        for (auto& tile : buttons_) {
-            const bool pinned = starred_.contains(tile->id);
-            tile->star.setToggleState(pinned, juce::dontSendNotification);
-            tile->setVisible(!onlyStarred_ || pinned);
-            tile->repaint();
-            if (pinned) ++count;
-        }
-        all_.setToggleState(!onlyStarred_, juce::dontSendNotification);
-        favourites_.setToggleState(onlyStarred_, juce::dontSendNotification);
-        favourites_.setButtonText(TRANS("Favourites") + "  " + juce::String(count));
-        empty_.setVisible(onlyStarred_ && count == 0);
-        layoutTiles();
-    }
-    static int columns(int width) { return std::max(1, (width-10) / 164); }
-    static int headerHeight(int width) { return width < 425 ? 52 : 30; }
-    void layoutTiles() {
-        const int cols = columns(view_.getWidth());
-        const int count = int(std::count_if(buttons_.begin(), buttons_.end(), [](const auto& tile) { return tile->isVisible(); }));
-        const int height = std::max(1, (count + cols - 1) / cols) * rowHeight;
-        const int width = std::max(0, view_.getWidth() - (height > view_.getHeight() ? view_.getScrollBarThickness() : 0));
-        const int tileWidth = std::min(210, width / cols);
-        tiles_.setSize(width, height);
-        empty_.setBounds(tiles_.getLocalBounds());
-        int visible = 0;
-        for (auto& tile : buttons_) {
-            if (!tile->isVisible()) continue;
-            tile->setBounds(juce::Rectangle<int>((visible % cols)*tileWidth, (visible / cols)*rowHeight, tileWidth, rowHeight).reduced(2));
-            ++visible;
-        }
-    }
-
-    static constexpr int rowHeight = 33;
-    juce::TextButton all_{TRANS("All tracks")}, favourites_;
-    juce::Label editing_, empty_;
-    juce::Component tiles_;
-    juce::Viewport view_;
-    std::vector<std::unique_ptr<Tile>> buttons_;
-    juce::PropertySet* settings_ = nullptr;
-    juce::String settingsKey_;
-    juce::StringArray starred_;
-    bool onlyStarred_ = false, filterOnly_ = false;
+    bool all_=true;
+    juce::StringArray ids_,names_,visible_;
+    juce::String key_;
+    juce::PropertySet* settings_=nullptr;
+    juce::TextButton choose_;
+    juce::Label editing_;
 };

@@ -141,6 +141,14 @@ int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     using namespace ostfstudio::singing;
     if (argc < 2 || argc > 4) return 1;
+    // A bright upper partial above output Nyquist must not fold back into a second tone.
+    RecordedMora bright;
+    bright.period=64; bright.loopStart=256; bright.loopEnd=1024;
+    for (int i=0;i<2048;++i) bright.frames.push_back(float(std::cos(juce::MathConstants<double>::twoPi*.375*i)));
+    bright.preparePitchMarks();
+    double foldedEnergy=0;
+    for (int i=200;i<600;++i) {const auto x=bright.cycleSample(i,4.); foldedEnergy+=x*x;}
+    if (foldedEnergy>0.1) return 40;
     const auto source = juce::File(juce::String::fromUTF8(argv[1])).loadFileAsString();
     const auto demoScore = juce::JSON::parse(source);
     const auto& scoreUnits = items(demoScore["lyrics"]["units"]);

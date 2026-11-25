@@ -529,7 +529,18 @@ private:
         playback.setChannelMix(lead,{},true,0);
         playback.setOutputMix({});
         constexpr int rate = 48000, block = 512;
-        if (playback.preparePlayback(project,routes,{},rate,block).failed()) return 9;
+        PreviewTransport::Inserts inserts{};
+        if (juce::SystemStats::getEnvironmentVariable("OSTF_VOCAL_INSERTS",{})=="1") {
+            for (size_t i=0;i<project.trackLanes.size();++i)
+                playback.setChannelMix(i,studio.mixer_.channel(i),i==size_t(lead),0);
+            playback.setOutputMix(studio.mixer_.routing());
+            const auto copyChain = [&](const auto& chain,size_t index) {
+                for (size_t i=0;i<chain.slots.size();++i) inserts[index][i]=chain.slots[i].effect.get();
+            };
+            copyChain(studio.trackControls_[lead]->effects,PreviewTransport::outputCount+size_t(lead));
+            for (size_t i=0;i<studio.outputControls_.size();++i) copyChain(studio.outputControls_[i].effects,i);
+        }
+        if (playback.preparePlayback(project,routes,inserts,rate,block).failed()) return 9;
         const auto start = project.pitchedNotes[lead].front().startTick;
         playback.seekToTick(start);
         std::unique_ptr<juce::AudioFormatWriter> writer;
@@ -1175,6 +1186,42 @@ int checkSamplePlacement(const juce::File& file) {
         }
         if (!main.pendingReview_.empty()) return 207;
     }
+    {
+        juce::MemoryInputStream input(BinaryData::neonplatforms_ostfp,BinaryData::neonplatforms_ostfpSize,false);
+        std::unique_ptr<ostfstudio::OstfpPreview> song;
+        if (ostfstudio::readOstfpPreview(input,song).failed()) return 336;
+        song->savedMix.reset();
+        main.openImportedSong(std::move(song));
+        main.setVisible(true);
+        using ostfstudio::TimelineLane;
+        if (!main.splitTool_.getToggleState()) main.splitTool_.onClick();
+        for (auto lane : {TimelineLane::section,TimelineLane::chord,TimelineLane::scale,TimelineLane::tempo,TimelineLane::key,TimelineLane::meter}) {
+            const int cutX=main.rowOverlay_.getX()+main.trackHeaderWidth+24;
+            int y=main.rowOverlay_.getY();
+            while (y<main.rowOverlay_.getBottom() && main.globalLaneAt({cutX,y})!=lane) ++y;
+            if(y==main.rowOverlay_.getBottom()) return 337;
+            auto* hit=main.getComponentAt(cutX,y);
+            if(hit!=&main) {std::cerr<<"Global click target "<<(hit?typeid(*hit).name():"outside")<<" at "<<cutX<<","<<y<<" lane "<<int(lane)<<"\n"; return 338;}
+            const auto original=main.project_->sourceScore;
+            main.mouseDown(drag({cutX,y},false));
+            if(original==main.project_->sourceScore) {std::cerr<<"Scissors: "<<main.statusLabel_.getText()<<"\n"; return 339;}
+            main.undoPianoEdit(false);
+        }
+        main.setWorkspaceMode(MainComponent::WorkspaceMode::live);
+        const auto rows=main.live_.sections.size();
+        main.liveSectionAction(true);
+        if(main.live_.sections.size()!=rows+1 || main.live_.selected!=int(rows)) return 340;
+        main.undoPianoEdit(false);
+        if(main.live_.sections.size()!=rows) return 341;
+        const auto beforeSplit=main.pianoDivider_.getY();
+        main.pianoDivider_.resizeAt(beforeSplit+50);
+        if(main.pianoDivider_.getY()-beforeSplit<30) return 342;
+        main.pianoDivider_.resizeAt(beforeSplit);
+        const bool muted=main.mixer_.channel(0).muted;
+        main.liveMatrix_.trackAction(0,4,nullptr);
+        if(main.mixer_.channel(0).muted==muted) return 343;
+        main.liveMatrix_.trackAction(0,4,nullptr);
+    }
     return 0;
 }
 
@@ -1198,6 +1245,35 @@ int checkTrackView(const juce::File& fixture) {
         const auto clips = juce::JSON::parse(added->sourceScore.toString())["tracks"][int(index)]["clips"];
         if (clips.size()!=1 || juce::int64(clips[0]["start"])!=bar || juce::int64(clips[0]["duration"])!=2*bar
             || clips[0]["notes"].size()!=2) return 324;
+    }
+    {
+        juce::MemoryInputStream input(BinaryData::neonplatforms_ostfp,BinaryData::neonplatforms_ostfpSize,false);
+        std::unique_ptr<OstfpPreview> song;
+        if (readOstfpPreview(input,song).failed()) return 329;
+        for (auto lane : {TimelineLane::section,TimelineLane::chord,TimelineLane::key,TimelineLane::scale,TimelineLane::meter,TimelineLane::tempo}) {
+            const auto score=juce::JSON::parse(song->sourceScore.toString());
+            const auto tick=song->ppq;
+            juce::Array<juce::var> removed,added;
+            juce::MemoryBlock before;
+            auto r=globalBoundaryEdit(score,lane,tick,song->durationTicks,true,false,removed,added);
+            if(r.wasOk()) r=song->changeGlobalEvents(lane,removed,added,before);
+            if(r.failed()) {std::cerr<<globalSource(lane).events<<": "<<r.getErrorMessage()<<"\n"; return 330;}
+            const auto after=juce::JSON::parse(song->sourceScore.toString());
+            if(juce::int64(globalEventAt(after,lane,tick)[globalSource(lane).span?"start":"at"])!=tick ||
+               song->restoreNoteScore(before).failed()) return 331;
+        }
+        const auto bar=song->ticksPerBar, end=song->playbackEndTick();
+        const auto count = song->pitchedNotes;
+        juce::MemoryBlock before;
+        const auto result=song->appendSection({0,4*bar},"Intro copy",true,before);
+        if(result.failed()) {std::cerr<<result.getErrorMessage()<<"\n"; return 332;}
+        const auto section=globalEventAt(juce::JSON::parse(song->sourceScore.toString()),TimelineLane::section,end);
+        if(section["name"]!="Intro copy" || juce::int64(section["duration"])!=4*bar) return 333;
+        for(size_t i=0;i<song->sourceTrackCount();++i) for(const auto& note:count[i]) if(note.startTick<4*bar &&
+            std::none_of(song->pitchedNotes[i].begin(),song->pitchedNotes[i].end(),[&](const auto& n){
+                return n.startTick==note.startTick+end && n.pitch==note.pitch && n.id!=note.id;})) return 334;
+        if(song->restoreNoteScore(before).failed() || song->playbackEndTick()!=end ||
+           song->appendSection({0,4*bar},"Break",false,before).failed() || song->playbackEndTick()!=end+4*bar) return 335;
     }
     if (mackieAction(juce::MidiMessage::pitchWheel(8,16383)).index != 7
         || mackieAction(juce::MidiMessage::controllerEvent(1,16,65)).value != -1
@@ -1833,77 +1909,30 @@ int checkTrackView(const juce::File& fixture) {
     }
     tracks->setSelectedItemIndex(0,juce::sendNotificationSync);
     if (!click("Live session")) return 284;
-    auto* defaultMatrix = descendant<LiveSectionMatrix>(main);
-    auto* stageSelector = findControl<juce::TextButton>(main,TRANS("Stage"));
-    if (!defaultMatrix || !defaultMatrix->isVisible() || !stageSelector) return 325;
-    stageSelector->onClick();
-    auto* session=descendant<LiveSections>(main);
-    auto* sectionGrid=descendant<PianoNoteGrid>(main);
-    if (!session || !session->isVisible() || session->sections.empty() || !sectionGrid || !sectionGrid->isVisible()) return 285;
-    const auto last=int(session->sections.size())-1;
-    session->list.selectRow(last);
-    session->more.onClick();
-    if (session->sections.back().repeats!=1 || sectionGrid->tickRange().getStart()!=session->range().getStart()) return 286;
-    if (!click("Arrangement") || !click("Live session") || session->selected!=last || session->sections.back().repeats!=1) return 287;
-    int guitarItem=-1;
-    for(int i=0;i<tracks->getNumItems();++i) if(tracks->getItemText(i)=="Lead Guitar") guitarItem=i;
-    if (guitarItem<0) return 291;
-    auto* selector = descendant<LiveTrackSelector>(main);
-    if (!selector || !selector->isVisible() || tracks->isVisible()) return 301;
-    juce::PropertySet livePrefs;
-    selector->openDocument("smoke-live", livePrefs);
-    auto* allTracks = findControl<juce::TextButton>(*selector, TRANS("All tracks"));
-    auto* favourites = findControl<juce::TextButton>(*selector, TRANS("Favourites"));
-    auto* guitarButton = findControl<juce::TextButton>(*selector, "Lead Guitar");
-    auto* guitarStar = findControl<juce::TextButton>(*selector, TRANS("Favourite track") + " / Lead Guitar");
-    const int other = (guitarItem + 1) % tracks->getNumItems();
-    auto* otherTrack = findControl<juce::TextButton>(*selector, tracks->getItemText(other));
-    auto* otherStar = findControl<juce::TextButton>(*selector, TRANS("Favourite track") + " / " + tracks->getItemText(other));
-    if (!allTracks || !favourites || !guitarButton || !guitarStar || !otherTrack || !otherStar) return 302;
-    otherTrack->onClick();
-    guitarStar->onClick();
-    favourites->onClick();
-    if (otherTrack->getParentComponent()->isVisible() || !guitarButton->getParentComponent()->isVisible() || tracks->getSelectedItemIndex() != other
-        || !otherTrack->getToggleState() || session->selected != last) return 303;
-    guitarButton->onClick();
-    if (tracks->getSelectedItemIndex() != guitarItem || !guitarButton->getToggleState()) return 304;
-    guitarStar->onClick();
-    if (guitarButton->getParentComponent()->isVisible() || !allTracks->isVisible()) return 305;
-    allTracks->onClick();
-    guitarStar->onClick();
-    otherStar->onClick();
-    favourites->onClick();
-    selector->openDocument("different-song", livePrefs);
-    if (!allTracks->getToggleState() || guitarStar->getToggleState()) return 306;
-    selector->openDocument("smoke-live", livePrefs);
-    if (!favourites->getToggleState() || !guitarStar->getToggleState() || !otherStar->getToggleState()
-        || !guitarButton->getParentComponent()->isVisible() || !otherTrack->getParentComponent()->isVisible()) return 307;
-    if (!click("Arrangement") || !click("Live session") || !favourites->getToggleState()
-        || tracks->getSelectedItemIndex() != guitarItem || session->selected != last) return 308;
-    const auto previousSize = main.getLocalBounds();
-    allTracks->onClick();
-    auto* trackViewport = descendant<juce::Viewport>(*selector);
-    if (!trackViewport || !trackViewport->isVerticalScrollBarShown()) return 310;
-    trackViewport->setViewPosition(0, trackViewport->getViewedComponent()->getHeight());
-    if (trackViewport->getViewPositionY() <= 0) return 311;
-    main.setSize(1450, 1000);
-    favourites->onClick();
-    if (guitarButton->getParentComponent()->getY() != otherTrack->getParentComponent()->getY()
-        || trackViewport->getViewPositionY() != 0) return 312;
-    if (const auto path = juce::SystemStats::getEnvironmentVariable("OSTF_LIVE_TRACKS_PNG", {}); path.isNotEmpty()) {
-        juce::FileOutputStream out{juce::File(path)};
-        if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed()
-            || !juce::PNGImageFormat().writeImageToStream(selector->createComponentSnapshot(selector->getLocalBounds()), out)) return 309;
-    }
-    main.setSize(previousSize.getWidth(), previousSize.getHeight());
     auto* matrix = descendant<LiveSectionMatrix>(main);
-    auto* inputTab = findControl<juce::TextButton>(main, TRANS("Section input"));
-    auto* stageTab = findControl<juce::TextButton>(main, TRANS("Stage"));
-    if (!matrix || !inputTab || !stageTab || session->barDetails.size()!=int(session->sections.size())
-        || session->barDetails[0] != TRANS("BARS") + " 1" + juce::String::charToString(0x2013)
-                                      + "2   /   2 " + TRANS("bars")) return 313;
-    inputTab->onClick();
-    main.setSize(1450, 1000);
+    auto* session = descendant<LiveSections>(main);
+    auto* sectionGrid = descendant<PianoNoteGrid>(main);
+    auto* selector = descendant<LiveTrackSelector>(main);
+    if (!matrix || !matrix->isVisible() || !session || session->sections.empty() || !sectionGrid || !selector) return 285;
+    const auto last = int(session->sections.size()) - 1;
+    session->list.selectRow(last);
+    session->changeRepeats(last, 1);
+    if (!click("Arrangement") || !click("Live session") || session->selected != last || session->sections.back().repeats != 1) return 287;
+    int guitarItem = -1;
+    for (int i=0; i<tracks->getNumItems(); ++i) if (tracks->getItemText(i)=="Lead Guitar") guitarItem=i;
+    if (guitarItem<0) return 291;
+    const int other = (guitarItem+1)%tracks->getNumItems();
+    juce::PropertySet livePrefs;
+    selector->openDocument("smoke-live",livePrefs);
+    selector->toggleTrack(other);
+    if (selector->includesTrack(other) || !selector->includesTrack(guitarItem)) return 303;
+    selector->openDocument("different-song",livePrefs);
+    if (!selector->includesTrack(other)) return 306;
+    selector->openDocument("smoke-live",livePrefs);
+    if (selector->includesTrack(other)) return 307;
+    selector->toggleTrack(other);
+    const auto previousSize = main.getLocalBounds();
+    main.setSize(1450,1000);
     const auto firstName = session->sections[0].name;
     auto* firstSlot = findControl<juce::TextButton>(*matrix, firstName + " / Lead Guitar");
     auto* moreRepeats = findControl<juce::TextButton>(*matrix, TRANS("Extra passes") + " + / " + firstName);
@@ -1940,12 +1969,12 @@ int checkTrackView(const juce::File& fixture) {
         if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed() ||
             !juce::PNGImageFormat().writeImageToStream(main.createComponentSnapshot(main.getLocalBounds()),out)) return 320;
     }
-    stageTab->onClick();
-    if (const auto path = juce::SystemStats::getEnvironmentVariable("OSTF_LIVE_SECTIONS_PNG",{}); path.isNotEmpty()) {
-        juce::FileOutputStream out{juce::File(path)};
-        if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed() ||
-            !juce::PNGImageFormat().writeImageToStream(session->createComponentSnapshot(session->getLocalBounds()),out)) return 321;
-    }
+    auto* lowerMixer = dynamic_cast<juce::TextButton*>(main.findChildWithID("live-mixer"));
+    auto* lowerPiano = dynamic_cast<juce::TextButton*>(main.findChildWithID("live-piano"));
+    if (!lowerMixer || !lowerPiano) return 321;
+    lowerMixer->onClick();
+    if (!matrix->isVisible() || sectionGrid->isVisible()) return 322;
+    lowerPiano->onClick();
     session->list.selectRow(last);
     main.setSize(previousSize.getWidth(), previousSize.getHeight());
     const auto area=session->range();
@@ -1954,7 +1983,7 @@ int checkTrackView(const juce::File& fixture) {
     if(sectionGrid->notes.size()!=countBefore+1) return 292;
     sectionGrid->commit({{NoteEdit::insert,{area.getEnd(),area.getEnd()+1,47,93,true,{}}}});
     if(sectionGrid->notes.size()!=countBefore+1) return 293;
-    otherTrack->onClick();
+    matrix->editCell(size_t(other),last);
     if(tracks->getSelectedItemIndex()!=other) return 294;
     if (!click("Print lead sheet")) return 288;
     auto* sheet=descendant<ScoreView>(main);

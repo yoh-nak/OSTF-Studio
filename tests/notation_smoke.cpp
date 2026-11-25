@@ -454,6 +454,20 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
         return 1;
     if (!checkInterchange(fixture,dir)) return 48;
     auto s = notationScore(*p);
+    {
+        auto info=p->songInformation();
+        info.credits.push_back({{}, {}, "composer", "Music test credit"});
+        info.credits.push_back({{}, {}, "lyricist", "Lyrics test credit"});
+        juce::MemoryBlock before;
+        if(p->applySongInformation(info,&before).failed()) return 106;
+        auto annotated=notationScore(*p);
+        juce::StringArray removed;
+        for (const auto& line : annotated.printCredits) if(line.contains("Lyrics test credit")) removed.add(line);
+        annotated.printCredits=selectedCreditLines(annotated.printCredits,removed);
+        if(removed.size()!=1 || !annotated.printCredits.joinIntoString(" ").contains("Music test credit")
+           || annotated.printCredits.joinIntoString(" ").contains("Lyrics test credit") || p->restoreNoteScore(before).failed()) return 107;
+        if(!save(dir.getChildFile("selected-credits.pdf"),[&](auto& out){return writeSheetPdf(out,annotated,0,StaffStyle::treble,{},true);})) return 108;
+    }
     juce::MemoryOutputStream leadSheet;
     if (writeChordPro(leadSheet,s).failed() ||
         !leadSheet.toString().contains(juce::String::fromUTF8("[Am9]雨の音が")) ||

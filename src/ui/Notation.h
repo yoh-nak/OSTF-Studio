@@ -22,6 +22,11 @@ struct SheetMark {
     juce::String text, voice, pronunciation, trackId, noteId;
 };
 enum class LyricDisplay { text, pronunciation, both };
+inline juce::StringArray selectedCreditLines(const juce::StringArray& available, const juce::StringArray& excluded) {
+    juce::StringArray selected;
+    for (const auto& line : available) if (!excluded.contains(line)) selected.add(line);
+    return selected;
+}
 struct SheetOptions {
     int barsPerLine = 4;
     juce::String lyricVoice;

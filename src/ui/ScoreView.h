@@ -6,6 +6,7 @@
 class ScoreView final : public juce::Component {
   public:
     ScoreView();
+    std::function<void()> editCredits;
     ~ScoreView() override;
     void resized() override;
     void openPrintPreview();

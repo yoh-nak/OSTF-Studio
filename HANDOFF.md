@@ -1,5 +1,17 @@
 # OSTF Studio development handoff
 
+## Live session editing and global scissors
+
+The Windows portable folder for this change is `dist/windows-session-edit/Portable`. Live session has one grid. Its column chooser, M/R buttons and track/section menus sit above a resizable piano roll or mixer. New four-bar sections and section copies go at the end of the arrangement. Track colours are available from the arrangement track icon, Track menu and live column header.
+
+Scissors insert a boundary inside a section, chord, key, scale, tempo or meter interval. An identical meter marker keeps the downbeat. Section splits expand finite visit references across both halves. The track-view smoke clicks each lane in Neon Platforms, exercises append/undo and checks the live divider and mute state.
+
+Print preview offers credit entry for songs without attribution and individual line selection for credited songs. Both print formats use the selection for pagination and output. Paper Lantern Replies has no supplied author names. Its bundled metadata was preserved.
+
+Formant Singer tracks periods from the steady voiced recording, filters upward-transposed cycles before playback and applies pitch gestures from the score. The Windows vocal-track smoke can render an isolated lead with the saved track and output inserts by setting `OSTF_VOCAL_INSERTS=1`. Dry and processed verse renders are in `build-visuals/paper-lantern-session-dry.wav` and `build-visuals/paper-lantern-session-fx.wav`. macOS, hardware printing, live input and listening on the user's playback system remain unverified.
+
+Windows Release verification on `feat/live-sections-track-console` covered all 33 CTest cases. The final suite passed 32 together and the GM plug-in test passed on its individual retry. Link transport also needed a retry on an earlier run. Both core-only tests passed. The selected-credits PDF was rasterised and inspected with only the chosen composer visible. The portable executable and singer module matched the built binaries.
+
 ## Live session grid, annotated scores and instrument updates
 
 The Windows x64 build is in `dist/windows-live-session-grid/Portable`. **Live session** (ライブセッション) opens with track settings above the section grid. Select a MIDI cell to edit its source notes below. Neighbouring sections scroll into view and are shaded. A note is editable from its starting section and may extend across the boundary. Audio-track cells show overlapping region names.

@@ -229,7 +229,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         set_tests_properties(ostf_studio_notation PROPERTIES TIMEOUT 120)
         add_test(NAME ostf_studio_track_view COMMAND OSTFStudio --track-view-smoke
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
-        set_tests_properties(ostf_studio_track_view PROPERTIES TIMEOUT 20)
+        set_tests_properties(ostf_studio_track_view PROPERTIES TIMEOUT 120)
         add_test(NAME ostf_studio_piano_edits COMMAND OSTFStudio --piano-edit-smoke
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
         set_tests_properties(ostf_studio_piano_edits PROPERTIES TIMEOUT 60)

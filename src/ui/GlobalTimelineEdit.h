@@ -86,9 +86,6 @@ inline juce::Result globalBoundaryEdit(const juce::var& score, TimelineLane lane
         right.getDynamicObject()->setProperty(key, tick);
         if (right.hasProperty("id")) right.getDynamicObject()->setProperty("id", "event-" + juce::Uuid().toString());
         if (source.span) {
-            // Changing a visited section's extent would silently change its performance plan.
-            if (visited(left))
-                return juce::Result::fail("This section is used in a performance plan.");
             auto first = left.clone();
             first.getDynamicObject()->setProperty("duration", tick - start);
             right.getDynamicObject()->setProperty("duration", end - tick);

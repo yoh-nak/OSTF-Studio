@@ -93,7 +93,7 @@ public:
             const auto col = settings_.size();
             auto& group = settings_.emplace_back(std::make_unique<TrackSettings>());
             header_.addAndMakeVisible(*group);
-            for (int action=0; action<4; ++action) {
+            for (int action=0; action<int(group->buttons.size()); ++action) {
                 auto& b = group->buttons[size_t(action)];
                 b.onClick = [this,col,action] {
                     if (trackAction && col < columns_.size())
@@ -105,8 +105,10 @@ public:
             auto& group = *settings_[i];
             group.setVisible(i<columns_.size());
             if (i>=columns_.size()) continue;
-            group.setEnabled(!recording);
-            group.buttons[2].setEnabled(!columns_[i].audio);
+            for (auto& button : group.buttons) button.setEnabled(!recording);
+            group.buttons[4].setEnabled(true);
+            group.buttons[5].setColour(juce::TextButton::buttonColourId,columns_[i].colour.darker(.25f));
+            group.buttons[2].setEnabled(!recording && !columns_[i].audio);
             group.buttons[1].setToggleState(song.trackIds[int(columns_[i].track)]==armed,juce::dontSendNotification);
         }
         resized();
@@ -114,6 +116,10 @@ public:
         repaint();
     }
 
+    void setTrackMute(size_t track, bool muted) {
+        for(size_t i=0;i<columns_.size();++i) if(columns_[i].track==track)
+            settings_[i]->buttons[4].setToggleState(muted,juce::dontSendNotification);
+    }
     int preferredHeight() const {
         return headerHeight + rowHeight * std::max(1,getNumRowsForLayout()) + 12;
     }
@@ -161,18 +167,23 @@ public:
 
 private:
     struct TrackSettings : juce::Component {
-        std::array<juce::TextButton,4> buttons;
+        std::array<juce::TextButton,6> buttons;
         TrackSettings() {
-            const juce::StringArray labels{TRANS("Input"),"R",TRANS("Instrument"),"FX"};
-            for (int i=0;i<4;++i) {
+            const juce::StringArray labels{TRANS("Input"),"R",TRANS("Instrument"),"FX","M",TRANS("Colour")};
+            for (int i=0;i<int(buttons.size());++i) {
                 auto& b=buttons[size_t(i)];
                 b.setButtonText(labels[i]); b.setTitle(i==1 ? TRANS("Arm") : labels[i]);
+                if(i==4) { b.setTitle(TRANS("Mute")); b.setColour(juce::TextButton::buttonOnColourId,juce::Colour(0xffd09b34)); }
                 b.setTooltip(b.getTitle()); addAndMakeVisible(b);
             }
         }
         void resized() override {
             auto row=getLocalBounds().reduced(2,1);
-            for (int i=0;i<4;++i) buttons[size_t(i)].setBounds(row.removeFromLeft(row.getWidth()/(4-i)).reduced(1,0));
+            for (int i : {4,1,0,2,3,5}) {
+                const int compact=std::min(getWidth()/8,30);
+                const int width = i==4 || i==1 ? compact : i==0 ? row.getWidth()/4 : i==2 ? row.getWidth()/2 : i==3 ? row.getWidth()/2 : row.getWidth();
+                buttons[size_t(i)].setBounds(row.removeFromLeft(width).reduced(1,0));
+            }
         }
     };
     struct Segment {
@@ -203,12 +214,20 @@ private:
             for (const auto& seg : segments) {
                 const int right = juce::roundToInt(width * seg.end);
                 auto r = juce::Rectangle<int>(left, 2, std::max(0,right-left-1), getHeight()-4);
-                const auto strip = [&](int percent) {
-                    g.setColour(ostfstudio::fitColour(percent));
-                    g.fillRect(r.removeFromBottom(4)); r.removeFromBottom(1);
+                const auto strip = [&](int percent, const char* label) {
+                    auto band = r.removeFromBottom(10);
+                    g.setColour(percent<0 ? juce::Colour(0xff303f49) : ostfstudio::fitColour(percent));
+                    g.fillRect(band);
+                    if (band.getWidth()>=39) {
+                        const auto value = percent<0 ? juce::String::charToString(0x2014) : juce::String(percent)+"%";
+                        g.setColour(percent<0 ? juce::Colour(0xffb6c3cb) : juce::Colour(0xff112026));
+                        g.setFont(juce::FontOptions(11.f,juce::Font::bold));
+                        g.drawFittedText(juce::String(label)+value,band,juce::Justification::centred,1,.84f);
+                    }
+                    r.removeFromBottom(1);
                 };
-                if (scale) strip(seg.fit.scale.percent());
-                if (chord) strip(seg.fit.chord.percent());
+                if (scale) strip(seg.fit.scale.percent(),"S ");
+                if (chord) strip(seg.fit.chord.percent(),"C ");
                 g.setColour(juce::Colour(0xffecf0f0));
                 g.setFont(juce::FontOptions(12.f));
                 if (left == 0 && getButtonText() == "+" && r.getWidth() >= 35) {
@@ -347,7 +366,7 @@ private:
     }
     void scrollBarMoved(juce::ScrollBar*, double) override { relayoutRows(); repaint(); }
 
-    static constexpr int headerHeight = 50, rowHeight = 40;
+    static constexpr int headerHeight = 50, rowHeight = 50;
     juce::Component header_;
     std::vector<std::unique_ptr<TrackSettings>> settings_;
     const LiveSections* session_ = nullptr;

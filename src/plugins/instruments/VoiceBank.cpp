@@ -128,27 +128,60 @@ void RecordedMora::preparePitchMarks() {
     const int end = int(frames.size()) - 2;
     const int radius = std::max(1,int(.28 * period));
     const int stride = std::max(1,int(period / 24));
-    double localPeriod = period;
-    int mark = 0;
-    while (mark < end) {
-        pitchMarks.push_back(mark);
-        const int predicted = mark + std::max(1,int(std::round(localPeriod)));
-        int best = predicted;
-        double bestScore = -2;
-        for (int i = std::max(mark+1,predicted-radius); i <= std::min(end,predicted+radius); ++i) {
-            if (frames[i] > 0 || frames[i+1] <= 0) continue;
-            double cross = 0, a = 0, b = 0;
-            for (int shift = -radius; shift <= radius; shift += stride) {
-                const auto x = frames[std::clamp(mark+shift,0,end)];
-                const auto y = frames[std::clamp(i+shift,0,end)];
-                cross += x*y; a += x*x; b += y*y;
-            }
-            const double score = cross/std::sqrt(a*b + 1.e-14) - .19 * std::abs(i-predicted)/radius;
-            if (score > bestScore) { bestScore = score; best = i; }
+    filtered.clear();
+    // Symmetric half-band filter centred on the corresponding original sample.
+    for (int octave=0; octave<6; ++octave) {
+        const auto& in = octave ? filtered.back() : frames;
+        if (in.size()<16) break;
+        std::vector<float> out((in.size()+1)/2);
+        constexpr float taps[]{-.001683f,0.f,.012384f,0.f,-.052345f,0.f,.291644f,.5f,
+                                 .291644f,0.f,-.052345f,0.f,.012384f,0.f,-.001683f};
+        for (size_t i=0; i<out.size(); ++i) {
+            double sum=0;
+            for (int k=-7;k<=7;++k) sum+=taps[k+7]*in[size_t(std::clamp(int(2*i)+k,0,int(in.size())-1))];
+            out[i]=float(sum);
         }
-        localPeriod = std::clamp(.78*localPeriod + .22*(best-mark),.78*period,1.22*period);
-        mark = best;
+        filtered.push_back(std::move(out));
     }
+    const int start = std::clamp(loopStart,0,end);
+    int anchor = start;
+    float bestSlope = 0;
+    for (int i=start; i<=std::min(end,start+int(period)); ++i) {
+        const auto slope=frames[i+1]-frames[i];
+        if (frames[i]<=0 && frames[i+1]>0 && slope>bestSlope) {
+            bestSlope=slope;
+            anchor=i;
+        }
+    }
+    pitchMarks.push_back(anchor);
+    const auto follow = [&](int direction) {
+        double localPeriod = period;
+        int mark=anchor;
+        for (;;) {
+            const int predicted = mark + direction*std::max(1,int(std::round(localPeriod)));
+            if(predicted<0 || predicted>end) break;
+            int best = predicted;
+            double bestScore = -2;
+            for (int i = std::max(0,predicted-radius); i <= std::min(end,predicted+radius); ++i) {
+                if (frames[i] > 0 || frames[i+1] <= 0) continue;
+                double cross = 0, a = 0, b = 0;
+                for (int shift = -radius; shift <= radius; shift += stride) {
+                    const auto x = frames[std::clamp(mark+shift,0,end)];
+                    const auto y = frames[std::clamp(i+shift,0,end)];
+                    cross += x*y; a += x*x; b += y*y;
+                }
+                const double score = cross/std::sqrt(a*b + 1.e-14) - .19 * std::abs(i-predicted)/radius;
+                if (score > bestScore) { bestScore = score; best = i; }
+            }
+            if ((best-mark)*direction<=0) break;
+            localPeriod = std::clamp(.78*localPeriod+.22*std::abs(best-mark),.78*period,1.22*period);
+            pitchMarks.push_back(best);
+            mark=best;
+        }
+    };
+    follow(-1);
+    std::reverse(pitchMarks.begin(),pitchMarks.end());
+    follow(1);
 }
 
 std::unique_ptr<VoiceBank> VoiceBank::load(const juce::File& directory, juce::String& error) {

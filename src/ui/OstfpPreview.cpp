@@ -295,8 +295,11 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         const auto at = integer(change["at"]), n = integer(change["numerator"]), d = integer(change["denominator"]);
         const auto end = i + 1 < meterEntries.size() ? integer(meterEntries[i+1]["at"]) : duration;
         require(n > 0 && n <= INT_MAX && d > 0 && d <= INT_MAX && at >= 0 && at < end && end <= duration, "Invalid meter change.");
-        require(n * denominator == numerator * d && at % ticksPerBar == 0, "Preview requires meter changes to preserve bar length at bar boundaries.");
-        out->meters.push_back({at, int(n), int(d)});
+        const bool sameMeter=i>0 && integer(meterEntries[i-1]["numerator"])==n && integer(meterEntries[i-1]["denominator"])==d;
+        require(n * denominator == numerator * d && (sameMeter || at % ticksPerBar == 0),
+                "Preview requires meter changes to preserve bar length at bar boundaries.");
+        // A cut creates an editable boundary. Starting a new metric clock there would move the downbeat.
+        if (!sameMeter || at % ticksPerBar == 0) out->meters.push_back({at,int(n),int(d)});
         meterRegions.push_back(region(at, end, juce::String(n) + "/" + juce::String(d)));
     }
     addLane(out->globalLanes, "METER", std::move(meterRegions), TimelineLane::meter);
@@ -1925,6 +1928,138 @@ juce::Result OstfpPreview::drawTempo(juce::int64 start, double from, juce::int64
     return result;
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
+juce::Result OstfpPreview::appendSection(juce::Range<juce::int64> range, const juce::String& name,
+                                         bool duplicate, juce::MemoryBlock& previous) try {
+    const auto destination = playbackEndTick(), length = range.getLength();
+    require(length > 0 && destination <= 0x0fffffff - length && name.trim().isNotEmpty(), "Invalid section range.");
+    const auto entries = [](const juce::var& v) -> const juce::Array<juce::var>& {
+        static const juce::Array<juce::var> empty;
+        return v.getArray() ? *v.getArray() : empty;
+    };
+    const auto original = savedScore(*this), base = savedScore(*this,true);
+    auto score = parseObject(base);
+    auto timeline = score["timeline"];
+    timeline.getDynamicObject()->setProperty("duration",destination + length);
+    IdCopies ids;
+    struct Copy { juce::var parent; const char* property; juce::var item; };
+    std::vector<Copy> copies;
+    std::set<juce::String> slicedClips;
+    auto stage = [&](juce::var parent, const char* property, juce::var item) {
+        // Scale targets are references and must never allocate IDs for existing tracks.
+        auto targets = item["targets"];
+        if (targets.isArray()) item.getDynamicObject()->removeProperty("targets");
+        collectOwnedIds(item,ids,true);
+        if (targets.isArray()) item.getDynamicObject()->setProperty("targets",targets);
+        copies.push_back({parent,property,item});
+    };
+    auto section = duplicate ? globalEventAt(score,TimelineLane::section,range.getStart()).clone() : juce::var{};
+    if (!section.isObject()) section = object({{"id","section-" + juce::Uuid().toString()}});
+    section.getDynamicObject()->setProperty("start",destination);
+    section.getDynamicObject()->setProperty("duration",length);
+    section.getDynamicObject()->setProperty("name",name);
+    section.getDynamicObject()->removeProperty("localizedNames");
+    stage(timeline,"sections",section);
+    if (duplicate) {
+        require(range.getStart() >= 0 && range.getEnd() <= destination,"Invalid section range.");
+        auto intersect = [&](const juce::var& item) {
+            const auto at = integer(item["start"]);
+            return range.getIntersectionWith({at,at+integer(item["duration"])});
+        };
+        auto spans = [&](juce::var group, const char* property) {
+            for (const auto& entry : entries(group[property])) {
+                const auto part = intersect(entry);
+                if (part.isEmpty()) continue;
+                auto copy = entry.clone();
+                copy.getDynamicObject()->setProperty("start",destination+part.getStart()-range.getStart());
+                copy.getDynamicObject()->setProperty("duration",part.getLength());
+                stage(group,property,copy);
+            }
+        };
+        for (auto lane : {TimelineLane::tempo,TimelineLane::meter,TimelineLane::key}) {
+            const auto property = globalSource(lane).events;
+            auto initial = globalEventAt(score,lane,range.getStart());
+            if (!initial.isObject() && lane == TimelineLane::key && score["song"]["key"].isObject())
+                initial = object({{"id","key-"+juce::Uuid().toString()},{"key",score["song"]["key"]}});
+            auto point = [&](juce::var item,juce::int64 at) {
+                auto copy=item.clone(); copy.getDynamicObject()->setProperty("at",at); stage(timeline,property,copy);
+            };
+            if (initial.isObject()) point(initial,destination);
+            for (const auto& item : entries(timeline[property])) {
+                const auto at = integer(item["at"]);
+                if (at > range.getStart() && at < range.getEnd()) point(item,destination+at-range.getStart());
+            }
+        }
+        for (const auto* property : {"chords","scales"}) spans(score["harmony"],property);
+        for (const auto* property : {"phrases","units"}) spans(score["lyrics"],property);
+        for (const auto& track : entries(score["tracks"])) for (const auto& clip : entries(track["clips"])) {
+            const auto part = intersect(clip);
+            if (part.isEmpty()) continue;
+            const auto origin = integer(clip["start"]);
+            auto copy = clip.clone();
+            copy.getDynamicObject()->setProperty("start",destination+part.getStart()-range.getStart());
+            copy.getDynamicObject()->setProperty("duration",part.getLength());
+            if (part.getStart()!=origin || part.getLength()!=integer(clip["duration"])) {
+                slicedClips.insert(clip["id"].toString());
+                // Loop repetitions already exist as score events. A partial copy is a finite slice.
+                // Only notes beginning inside this cell belong to it. Keep their full sustains.
+                for (const auto* property : {"notes","midiEvents"}) if (auto* list=copy[property].getArray())
+                    for (int i=list->size(); --i>=0;) {
+                        auto ev=list->getReference(i);
+                        const auto at=origin+integer(ev["start"]);
+                        if (!part.contains(at)) list->remove(i);
+                        else ev.getDynamicObject()->setProperty("start",at-part.getStart());
+                    }
+                auto retained = [&](const juce::var& id) {
+                    for (const auto& note : entries(copy["notes"])) if(note["id"]==id) return true;
+                    return false;
+                };
+                for (auto perf : entries(copy["vocalPerformances"])) {
+                    if (auto* list=perf["noteIds"].getArray())
+                        for (int i=list->size(); --i>=0;) if (!retained(list->getReference(i))) list->remove(i);
+                    if (perf["noteIds"].isArray() && perf["noteIds"].size()==0) perf.getDynamicObject()->removeProperty("noteIds");
+                    for (const auto* property : {"pitchCurves","expressionCurves","techniques","breathEvents","phonemeEvents"})
+                        if (auto* list=perf[property].getArray()) for (int i=list->size(); --i>=0;) {
+                            auto ev=list->getReference(i);
+                            const auto target=ev.getProperty("targetNoteId",ev["noteId"]);
+                            if (!target.isVoid() && !retained(target)) { list->remove(i); continue; }
+                            if (ev.hasProperty("start")) {
+                                const auto at=origin+integer(ev["start"]);
+                                if (target.isVoid() && !part.contains(at)) {list->remove(i); continue;}
+                                ev.getDynamicObject()->setProperty("start",at-part.getStart());
+                            }
+                            for (auto p : entries(ev["points"])) if(p.hasProperty("at"))
+                                p.getDynamicObject()->setProperty("at",origin+integer(p["at"])-part.getStart());
+                        }
+                }
+            }
+            stage(track,"clips",copy);
+        }
+        for (const auto& entry : entries(score["lyrics"]["alignments"])) {
+            auto copy = entry.clone();
+            bool complete = true;
+            for (const auto* prop : {"noteIds","unitIds"}) for (const auto& id : entries(copy[prop]))
+                if (!ids.contains(id.toString())) complete = false;
+            if (complete) stage(score["lyrics"],"alignments",copy);
+        }
+    }
+    for (auto& copy : copies) {
+        auto periods=score["extensions"][loopNamespace]["data"].getDynamicObject();
+        if (periods && std::string_view(copy.property)=="clips") {
+            const auto oldId=copy.item["id"].toString();
+            const auto period=periods->getProperty(oldId);
+            if (!period.isVoid() && !slicedClips.contains(oldId)) periods->setProperty(ids.at(oldId),period);
+        }
+        remapIds(copy.item,{},ids);
+        arrayProperty(copy.parent,copy.property).getArray()->add(copy.item);
+    }
+    reviseDocument(score,original,"section-"+juce::Uuid().toString());
+    auto bytes = editedScoreBytes(base,score,{"timeline","harmony","tracks","lyrics",loopNamespace,"document"});
+    validateVersion("5.0.0",bytes);
+    auto result=restoreNoteScore(bytes);
+    if(result.wasOk()) previous=original;
+    return result;
+} catch (const std::exception& e) {return juce::Result::fail(e.what());}
+
 juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Array<juce::var>& remove,
                                               const juce::Array<juce::var>& insert, juce::MemoryBlock& before) try {
     const auto source = globalSource(lane);
@@ -1970,6 +2105,23 @@ juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Arr
     if (lane == TimelineLane::meter || lane == TimelineLane::tempo)
         require(!list->isEmpty() && integer(list->getReference(0)[key]) == 0,
                 "The initial tempo or meter must stay at tick zero.");
+    // Keep references to both halves of a section or chord cut.
+    if (remove.size()==1 && insert.size()==2 && insert[0]["id"]==remove[0]["id"] &&
+        (lane==TimelineLane::section || lane==TimelineLane::chord)) {
+        const auto oldId=remove[0]["id"], newId=insert[1]["id"];
+        if (lane==TimelineLane::section) if (auto* plans=score["performancePlans"].getArray())
+            for (const auto& plan:*plans) if (auto* visits=plan["visits"].getArray())
+                for (const auto& visit:*visits) if (auto* ids=visit["sourceSectionIds"].getArray())
+                    for (int i=ids->size(); --i>=0;) if (ids->getReference(i)==oldId) ids->insert(i+1,newId);
+        if (auto* scales=score["harmony"]["scales"].getArray()) for (auto& scale:*scales)
+            if (auto* targets=scale["targets"].getArray()) for (int i=targets->size(); --i>=0;) {
+                const auto target=targets->getReference(i);
+                if (target["type"]==(lane==TimelineLane::section ? "section" : "chord") && target["id"]==oldId) {
+                    auto right=target.clone(); right.getDynamicObject()->setProperty("id",newId);
+                    targets->insert(i+1,right);
+                }
+            }
+    }
     // Keep any authored reference to a removed ID valid. A value edit retains the ID.
     const auto json = juce::JSON::toString(score, true, 17);
     for (const auto& item : remove) {
@@ -1982,7 +2134,7 @@ juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Arr
                 "Another score object refers to this event.");
     }
     reviseDocument(score, old, "timeline-" + juce::Uuid().toString());
-    auto bytes = editedScoreBytes(base, score, {"timeline", "harmony", "document"});
+    auto bytes = editedScoreBytes(base, score, {"timeline", "harmony", "performancePlans", "document"});
     validateVersion("5.0.0", bytes);
     auto result = restoreNoteScore(bytes);
     if (result.wasOk())

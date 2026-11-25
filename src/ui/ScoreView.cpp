@@ -119,8 +119,29 @@ class ScoreView::Panel final : public juce::Component {
         };
         addChildComponent(printer);
         addChildComponent(credits);
-        credits.setToggleState(options.showCredits, juce::dontSendNotification);
-        credits.onClick = [this] { options.showCredits = credits.getToggleState(); updatePage(); };
+        credits.setTitle(TRANS("Print credits"));
+        credits.onClick = [this] {
+            if (creditLines.isEmpty()) { if (editCredits) editCredits(); return; }
+            juce::PopupMenu menu;
+            menu.addItem(1,TRANS("Select all"),true,score.printCredits.size()==creditLines.size());
+            menu.addItem(2,TRANS("Clear selection"));
+            menu.addSeparator();
+            for (int i=0;i<creditLines.size();++i) menu.addItem(10+i,creditLines[i],true,!excluded.contains(creditLines[i]));
+            menu.addSeparator();
+            menu.addItem(3,TRANS("Edit song credits..."));
+            menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&credits),
+                [safe=juce::Component::SafePointer<Panel>(this),lines=creditLines](int id){
+                    if (!safe || !id || safe->creditLines!=lines) return;
+                    if (id==3) { if (safe->editCredits) safe->editCredits(); return; }
+                    if (id==1) safe->excluded.clear();
+                    else if (id==2) safe->excluded=lines;
+                    else if(juce::isPositiveAndBelow(id-10,lines.size())) {
+                        const auto& line=lines[id-10];
+                        if(safe->excluded.contains(line)) safe->excluded.removeString(line); else safe->excluded.add(line);
+                    }
+                    safe->filterCredits(); safe->page=0; safe->updatePage();
+                });
+        };
         printer.onClick = [this] {
 #if JUCE_WINDOWS || JUCE_MAC
             const auto result=printSheet(*this,score,index(),style(),notes,lead,options);
@@ -156,12 +177,22 @@ class ScoreView::Panel final : public juce::Component {
         };
         counter.setJustificationType(juce::Justification::centred);
     }
+    std::function<void()> editCredits;
+    void filterCredits() {
+        score.printCredits=selectedCreditLines(creditLines,excluded);
+        credits.setButtonText(creditLines.isEmpty() ? TRANS("Add credits...") :
+            TRANS("Credits") + "  " + juce::String(score.printCredits.size()) + "/" + juce::String(creditLines.size()));
+    }
     void openPrintPreview() { preview=true; page=0; update(); }
     bool showsLeadSheet() const { return lead; }
     void setSong(const OstfpPreview& project, std::optional<std::size_t> preferred, std::optional<bool> switchMode) {
         auto selected =
             index() >= 0 && index() < static_cast<int>(score.parts.size()) ? score.parts[index()].id : juce::String{};
+        if (songKey!=project.documentId+project.title) excluded.clear();
+        songKey=project.documentId+project.title;
         score = notationScore(project);
+        creditLines=score.printCredits;
+        filterCredits();
         title.setText(score.title, juce::dontSendNotification);
         juce::StringArray names;
         for (const auto& mark : score.lyrics)
@@ -234,7 +265,7 @@ class ScoreView::Panel final : public juce::Component {
         place(breakLabel, 150);
         place(breaks, 125);
         place(sections, 110);
-        place(credits, 118);
+        place(credits, 155);
         place(barNumbers, 136);
         place(density, 112);
         place(chords, 85);
@@ -422,7 +453,9 @@ class ScoreView::Panel final : public juce::Component {
     juce::Label breakLabel;
     juce::TextEditor breaks;
     juce::ToggleButton sections{TRANS("Sections")}, barNumbers{TRANS("Bar numbers")};
-    juce::ToggleButton credits{TRANS("Credits")};
+    juce::StringArray creditLines,excluded;
+    juce::String songKey;
+    juce::TextButton credits;
     juce::TextButton printer{TRANS("Print...")};
     juce::TextButton leavePreview{TRANS("Back to score")};
     juce::ComboBox track, staff, density, voices, wording;
@@ -436,6 +469,7 @@ class ScoreView::Panel final : public juce::Component {
 };
 ScoreView::ScoreView() : panel_(std::make_unique<Panel>()) {
     setComponentID("notation-workspace");
+    panel_->editCredits=[this] {if(editCredits) editCredits();};
     addAndMakeVisible(*panel_);
 }
 ScoreView::~ScoreView() = default;

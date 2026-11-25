@@ -12,14 +12,12 @@ class SyllableVoice {
     int channel = -1, key = -1, accentPhone = 0;
     void start(int ch, int pitch, float velocity, Phone p, double sr, const VoiceBank* bank) {
         const bool connected = key >= 0 && channel == ch && envelope > .01;
-        const double previousHz = hz;
         if (!connected) { envelope = 0; recorded = nullptr; }
         channel = ch; key = pitch; gain = velocity;
         if (!connected) phase = 0;
         released = false; noteAge = 0;
         articulate(p, sr, bank, connected);
         hz = juce::MidiMessage::getMidiNoteInHertz(pitch);
-        glideCents = connected ? std::clamp(125 * std::log2(previousHz / hz), -22., 22.) : 0.;
         if (!connected) for (auto& res : resonators) res.y1 = res.y2 = 0;
     }
     void articulate(Phone p, double sr, const VoiceBank* bank, bool legato) {
@@ -73,8 +71,6 @@ class SyllableVoice {
         double cents = 0;
         if (phone.delivery == vibrato) cents = vibratoCents(held,strength);
         if (phone.delivery == scoop) cents = scoopCents(held,strength);
-        const double settling = std::max(0., 1. - held / .032);
-        cents += glideCents * settling * settling;
         const double sustain = std::clamp((held - .15) / .28, 0., 1.);
         const auto pitch = hz * bendRatio * (cents == 0 ? 1 : std::exp2(cents / 1200));
         // Gently accent the nucleus of a stressed English syllable. Follow
@@ -205,7 +201,6 @@ class SyllableVoice {
     std::array<Resonator, 3> resonators{};
     const RecordedMora* recorded = nullptr;
     const RecordedMora* englishSound = nullptr;
-    double glideCents{};
     bool grainReady = false, joinedRecording = false;
     float lastAttack = 0.f, joinDelta = 0.f;
     int oldMark = 0, newMark = 0;
@@ -226,10 +221,11 @@ class SyllableVoice {
         auto sampleCycle = [&](int index) {
             const auto first = source.pitchMarks[size_t(index)];
             const auto last = source.pitchMarks[size_t(index + 1)];
-            const auto value = source.sampleAt(first + phase * (last - first));
+            const double step=(last-first)*pitch/sr;
+            const auto value = source.cycleSample(first + phase * (last - first),step);
             // A pitch mark need not fall at an exact zero crossing. Match both ends
             // of the resampled period to avoid a pulse at every glottal closure.
-            return float(value - std::lerp(double(source.sampleAt(first)), double(source.sampleAt(last)), phase));
+            return float(value - std::lerp(double(source.cycleSample(first,step)), double(source.cycleSample(last,step)), phase));
         };
         // Both periods travel through the same phase. Shortening a second
         // unretuned window here introduces extra harmonics on higher notes.

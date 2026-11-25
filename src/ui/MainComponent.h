@@ -221,6 +221,8 @@ private:
     void copyEffectChain(bool output, std::size_t from, std::size_t to);
     bool canEditTracks() const;
     void chooseTrackPlugin(std::size_t index, bool bundleDirectory);
+    void applyTrackColour(size_t track,int choice);
+    void showTrackColourMenu(size_t track, juce::Component* anchor);
     void showTrackPluginMenu(std::size_t index);
     int nextSharedChannel(std::size_t owner) const;
     bool hasSharedParts(std::size_t owner) const;
@@ -397,9 +399,11 @@ private:
     LiveSections live_;
     LiveTrackSelector liveTracks_;
     LiveSectionMatrix liveMatrix_;
-    juce::TextButton playView_{TRANS("Stage")}, inputView_{TRANS("Section input")};
+    juce::TextButton livePiano_{TRANS("Piano Roll")}, liveMixer_{TRANS("Mixer")}, liveAddTrack_{TRANS("Tracks...")}, liveSectionsMenu_{TRANS("Sections...")};
+    bool liveShowsMixer_ = false;
+    double liveSplit_ = .43;
+    void liveSectionAction(bool duplicate);
     juce::Label fitLegend_;
-    bool sectionInput_ = true;
     juce::ScrollBar livePianoScroll_{false};
     juce::Range<juce::int64> liveScrollSection_;
     juce::Rectangle<int> livePianoPanel_;

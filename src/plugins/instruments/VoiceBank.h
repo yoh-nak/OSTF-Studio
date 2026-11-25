@@ -9,7 +9,22 @@ struct RecordedMora {
     double rate{}, period{};
     int loopStart{}, loopEnd{}, fade{}, consonantFrames{};
     std::vector<int> pitchMarks;
+    // Octave-spaced low-pass versions used when a period is played faster than recorded.
+    std::vector<std::vector<float>> filtered;
     void preparePitchMarks();
+    float cycleSample(double at, double step) const {
+        if (step <= 1. || filtered.empty()) return sampleAt(at);
+        const auto level = std::clamp(std::log2(step),0.,double(filtered.size()));
+        const int low = int(level), high = std::min(low+1,int(filtered.size()));
+        const auto lookup = [&](int octave) {
+            if (!octave) return sampleAt(at);
+            const auto& data=filtered[size_t(octave-1)];
+            const auto pos=std::clamp(std::ldexp(at,-octave),0.,double(data.size()-1));
+            const auto i=size_t(pos);
+            return std::lerp(data[i],data[std::min(i+1,data.size()-1)],float(pos-i));
+        };
+        return std::lerp(lookup(low),lookup(high),float(level-low));
+    }
     int nearestMark(double at) const {
         const auto next = std::lower_bound(pitchMarks.begin(), pitchMarks.end(), at);
         if (next == pitchMarks.begin()) return *next;

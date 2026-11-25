@@ -1,4 +1,5 @@
 #include "ui/MainComponent.h"
+#include "ui/FitColour.h"
 
 using namespace ostfstudio;
 
@@ -343,12 +344,11 @@ int checkTheoryGuide(const juce::File& demo) {
     juce::ScopeGuard restoreLanes([&] { set("Chords", chordLane.checked); set("Scales", scaleLane.checked); });
     set("Chords", true); set("Scales", true);
     vertical->setCurrentRangeStart(0, juce::sendNotificationSync);
-    // Only global badges use these tinted fills. Both independent View switches must reach the rendered lanes.
+    // Each View switch must put its fit colours on the rendered timeline.
     const auto badgePixels = [&] {
         const auto picture = main.createComponentSnapshot(main.getLocalBounds());
         int pixels = 0;
-        for (auto accent : {0xffed98a2, 0xffeab68b, 0xffe4ce8c, 0xff99d5c4, 0xff9daeb6}) {
-            const auto fill = juce::Colour(accent==0xff9daeb6 ? 0xff29353e : 0xff15222a).interpolatedWith(juce::Colour(accent), accent == 0xff9daeb6 ? .01f : .09f);
+        for (auto fill : {fitColour(0), fitColour(50), fitColour(75), fitColour(90), fitColour(100), juce::Colour(0xff303f49)}) {
             for (int y = 0; y < grid->getY(); y += 2)
                 for (int x = grid->getX(); x < grid->getRight(); x += 2)
                     pixels += picture.getPixelAt(x, y) == fill;
