@@ -2,6 +2,10 @@
 
 ## Section performance and presentation
 
+A performance cue captures a section, pass count and source-track take ranges. Pending cues have distinct identities even if the section repeats. Queued MIDI and chase events are prepared on the message thread. The renderer switches them at the section boundary. The shared chord guide reads the same visit order as the transport. Studio keeps the queue in memory and writes adopted takes through the existing Studio extension to OSTF 5.0.
+
+Cell audition uses a separate transport and isolated local plug-in instances. Each audition reads one source track over its section, with its own loop and position. Armed audio inputs share a recording clock and capture buffer. Each selected physical channel range is written to a separate region with its track's gain.
+
 The section-input matrix projects a single editable slot per section and source MIDI track from the existing score. Existing clips keep their identities. The matrix and arrangement share the same piano roll, editing actions and undo history. Slots select source ticks independently of launching a whole section or adjusting its remaining passes. The harmony display groups analysis cells by chord event within each section, summing matched and total note durations for that track before calculating percentages. Undefined fits stay neutral. The grid uses inclusive displayed bar numbers and the actual length of each finite section span.
 
 The first note entered into an empty slot creates a score clip spanning the section. If existing clips occupy part of the section, new clips fit the free interval around the note. Later edits use the clip already covering that tick.

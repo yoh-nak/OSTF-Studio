@@ -72,6 +72,21 @@ bool checkPerformanceAudio() {
         audio.getSample(1, 95) < .45f)
         return false;
     {
+        PerformanceProbe clipVoice;
+        PreviewTransport audition;
+        const std::array<PreviewTransport::TrackSetup,1> solo{{{{},&clipVoice,1}}};
+        const auto songPosition=engine.positionTick();
+        if(audition.preparePlayback(song,solo,{},960,96).failed()) return false;
+        audition.seekToTick(300);
+        if(audition.setLiveSections({{"part","Part",{300,348},1}}).failed()) return false;
+        audition.setLoop({300,348});
+        audition.renderBlock(audio.getArrayOfWritePointers(),2,72);
+        if(audition.positionTick()!=324 || engine.positionTick()!=songPosition) return false;
+        audition.setLoop({});
+        audition.renderBlock(audio.getArrayOfWritePointers(),2,48);
+        if(audition.isRunning() || engine.positionTick()!=songPosition || !engine.isRunning()) return false;
+    }
+    {
         PerformanceProbe sectionInstrument;
         PreviewTransport live;
         const std::array<PreviewTransport::TrackSetup,1> sectionRoutes{{{{},&sectionInstrument,1}}};
@@ -127,11 +142,16 @@ bool checkPerformanceAudio() {
         live.renderBlock(audio.getArrayOfWritePointers(),2,16);
         if (!live.queueLiveSection(1) || live.positionTick()!=16 || live.queuedLiveSection()!=1) return false;
         live.setLiveRepeats(1,0);
-        if (live.queuedLiveSection()!=-1 || live.queueLiveSection(1)) return false;
+        if (!live.hasQueuedSection(1) || live.queueLiveSection(1)) return false;
         live.setLiveRepeats(1,1);
-        if (!live.queueLiveSection(1)) return false;
+        if (!live.enqueueCue({0,2,{},71}) || !live.editCue(1,3,71) || live.editCue(1,1,72)) return false;
+        const auto queue=live.pendingCues();
+        if (queue.size()!=2 || queue[0].section!=1 || queue[1].repeats!=3) return false;
+        if (!live.moveCue(71,-1) || live.queuedLiveSection()!=0 || live.moveCue(71,-1) || !live.moveCue(71,1)) return false;
+        for (int block=0;block<80;++block) live.renderBlock(audio.getArrayOfWritePointers(),2,96);
+        if (live.positionTick()!=3856 || live.queuedLiveSection()!=0) return false;
         for (int block=0;block<20;++block) live.renderBlock(audio.getArrayOfWritePointers(),2,96);
-        if (live.positionTick()!=3856 || live.queuedLiveSection()!=-1) return false;
+        if (live.positionTick()!=16 || live.queuedLiveSection()!=-1) return false;
         live.stop(); song.bars.endBar=2;
     }
     {
@@ -276,10 +296,12 @@ bool checkPerformanceAudio() {
         setup.firstInputBuffer = route.bufferIndex(mask, channels ? channels : 1);
         setup.inputGainDb = route.gainDb;
         setup.countInBars = 1 + channels;
+        capture.metronome=channels>0;
         if (capture.prepareTake(setup).failed()) return false;
         capture.inputNote(juce::MidiMessage::noteOn(1, 62, juce::uint8(77)));
         capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
-        if (!capture.countingIn() || capture.positionTick() != 52 || audio.getMagnitude(0, 0, 96) < .01f) return false;
+        if (!capture.countingIn() || capture.countInSeconds()<=0 || capture.positionTick() != 52
+            || (audio.getMagnitude(0,0,96)>.01f)!=(channels>0)) return false;
         const juce::AudioBuffer<float> firstDownbeat(audio);
         for (int n = 1; n < 20 * setup.countInBars; ++n) {
             capture.renderBlock(audio.getArrayOfWritePointers(), 2, 96);
@@ -315,6 +337,33 @@ bool checkPerformanceAudio() {
             for (int c = 0; c < channels; ++c)
                 for (int i = 0; i < 64; ++i)
                     if (std::abs(check.getSample(c, i) - .5f * input.getSample(c + 1, i < 52 ? i + 44 : i - 20)) > .00005f) return false;
+        }
+    }
+    {
+        PreviewTransport duo;
+        const std::array<PreviewTransport::TrackSetup,1> inputRoute{};
+        song.trackKinds[0]=TrackKind::pitched;
+        if (duo.preparePlayback(song,inputRoute,{},960,96).failed()) return false;
+        duo.prepareRecording(song,inputRoute,0);
+        PreviewTransport::TakeOptions setup;
+        setup.inputChannels=1;
+        setup.audioTracks={{0,0,1,0},{1,1,2,-6.020599913}};
+        if (duo.prepareTake(setup).failed()) return false;
+        juce::AudioBuffer<float> inputs(3,96);
+        for(int c=0;c<3;++c) for (int i=0;i<96;++i) inputs.setSample(c,i,float(c+1)*.2f);
+        duo.inputNote(juce::MidiMessage::noteOn(1,64,juce::uint8(90)));
+        duo.renderBlock(audio.getArrayOfWritePointers(),2,96,inputs.getArrayOfReadPointers(),3);
+        const auto midi=duo.stop();
+        song.trackKinds[0]=TrackKind::drum;
+        if(midi.size()!=1 || midi.front().pitch!=64 || midi.front().startTick!=0 || midi.front().endTick!=96) return false;
+        for (int t=1;t>=0;--t) {
+            auto clip=duo.finishAudioTake(size_t(t));
+            if (!clip || clip->track!=size_t(t) || clip->startTick!=0 || clip->durationTicks!=96) return false;
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::AudioFormatReader> read(wav.createReaderFor(new juce::MemoryInputStream(clip->embedded,false),true));
+            juce::AudioBuffer<float> samples(t+1,96);
+            if (!read || read->numChannels!=unsigned(t+1) || !read->read(&samples,0,96,0,true,true)) return false;
+            for(int c=0;c<=t;++c) if (std::abs(samples.getSample(c,48)-(t==0?.2f:.1f*float(c+2)))>.00005f) return false;
         }
     }
     const auto heard = [&](int sample) {

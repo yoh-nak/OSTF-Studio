@@ -1226,6 +1226,41 @@ int checkSamplePlacement(const juce::File& file) {
     return 0;
 }
 
+int checkLiveSession(const juce::File& fixture) {
+    std::unique_ptr<ostfstudio::OstfpPreview> score;
+    juce::FileInputStream input(fixture);
+    if (!input.openedOk() || ostfstudio::readOstfPreview(input,score).failed()) return 1;
+    MainComponent main;
+    main.setSize(1536,970);
+    main.openImportedSong(std::move(score));
+    main.setWorkspaceMode(MainComponent::WorkspaceMode::live);
+    main.setVisible(true);
+    if (main.live_.sections.size()<3 || !main.liveMatrix_.isVisible()) return 2;
+    const auto tick=main.cursorTick_;
+    auto& matrix=main.liveMatrix_;
+    matrix.launchRow(1);
+    matrix.launchRow(0);
+    matrix.launchRow(1);
+    if (main.cursorTick_!=tick || main.transportActive_ || main.stagedCues_.size()!=3 || !matrix.isQueued(0)
+        || main.stagedCues_[0].serial==main.stagedCues_[2].serial || main.stagedCues_[0].takes.empty()) return 3;
+    const auto& first=main.live_.sections[1];
+    const auto chord=main.project_->contextAt(ostfstudio::TimelineLane::chord,first.ticks.getStart());
+    if (chord.isEmpty() || !main.liveGuide_.getDescription().contains(first.name+" / "+chord+" / ")) return 4;
+    matrix.toggleCellLoop(0,1);
+    if (!matrix.cellLoops(0,1) || matrix.cellLoops(0,0)) return 5;
+    main.performer_.onClick();
+    if (!main.liveGuide_.isVisible() || matrix.isVisible() || main.liveGuide_.getHeight()<150) return 6;
+    main.performer_.onClick();
+    if (!matrix.isVisible() || main.liveGuide_.getHeight()<20) return 7;
+    const auto path=juce::SystemStats::getEnvironmentVariable("OSTF_LIVE_MATRIX_PNG",{});
+    if (path.isNotEmpty()) {
+        juce::FileOutputStream out{juce::File(path)};
+        if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed() ||
+            !juce::PNGImageFormat().writeImageToStream(main.createComponentSnapshot(main.getLocalBounds()),out)) return 8;
+    }
+    return 0;
+}
+
 int checkTrackView(const juce::File& fixture) {
     const auto wave = fixture.getParentDirectory().getParentDirectory().getParentDirectory()
         .getChildFile("examples/demo-songs/assets/glass-lantern-chimes.wav");

@@ -220,6 +220,7 @@ private:
 int checkStockEffects(const juce::StringArray&);
 int checkStudioInstruments(const juce::StringArray&);
 int checkTrackView(const juce::File&);
+int checkLiveSession(const juce::File&);
 std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)>);
 std::unique_ptr<juce::Timer> startPluginFocusCheck(const juce::File&, std::function<void(int)>);
 std::unique_ptr<juce::Timer> startVocalTrackCheck(const juce::File&, const juce::File&, std::function<void(int)>);
@@ -271,10 +272,11 @@ public:
             });
             return;
         }
-        if (args.size() == 2 && (args[0] == "--track-view-smoke" || args[0] == "--piano-edit-smoke" || args[0] == "--theory-guide-smoke")) {
+        if (args.size() == 2 && (args[0] == "--live-session-smoke" || args[0] == "--track-view-smoke" || args[0] == "--piano-edit-smoke" || args[0] == "--theory-guide-smoke")) {
             juce::MessageManager::callAsync([this, args] {
                 const juce::File fixture(args[1]);
-                if (args[0] == "--theory-guide-smoke") setApplicationReturnValue(checkTheoryGuide(fixture));
+                if (args[0] == "--live-session-smoke") setApplicationReturnValue(checkLiveSession(fixture));
+                else if (args[0] == "--theory-guide-smoke") setApplicationReturnValue(checkTheoryGuide(fixture));
                 else setApplicationReturnValue(args[0] == "--track-view-smoke" ? checkTrackView(fixture) : checkPianoEdits(fixture));
                 quit();
             });

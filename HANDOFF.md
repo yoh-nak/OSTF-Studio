@@ -1,6 +1,16 @@
 # OSTF Studio development handoff
 
-## MIDI take implementation
+## Live performance queue, singer onset and Scale Flow
+
+The live-session matrix has independent cell audition, per-cell looping and a section queue with take snapshots. The performer display follows the queue across section jumps. The count-in can run silently. Audio inputs can be armed together and recorded as separate regions. External MIDI destinations have no isolated cell preview.
+
+Formant Singer detects regular voicing before the annotated consonant boundary, allowing the pitched portion of an onset to follow the sung note. Scale Editor draws the original adviser's Scale Flow pitch-class matrix and Connections resolutions for the selected chord and candidate.
+
+Windows x64 verification on `feat/live-midi-takes` covers the core, section queue, transport, track view, piano editing, singer and scale instrument. Run `--live-session-smoke` with `examples/demo-songs/paper-lantern-replies.ostf` for the queue and performer view. Set `OSTF_LIVE_MATRIX_PNG` to capture that screen. The portable build also renders the lead from the packaged project using `--vocal-track-smoke <project.ostfp> <lead.wav>`. For the scale-instrument test, supply the bundled FM Synth and a score. Two players on physical inputs, timing under third-party plug-in load and macOS still require device validation.
+
+Playback supports appending and duplicating sections. Rebuilding or removing an arbitrary sounding track or section during a performance and per-track selection of multiple MIDI input ports in one recording remain open.
+
+## Previous MIDI take implementation
 
 Branch `feat/live-midi-takes`. The arrangement track menu and piano roll and each live MIDI cell expose T1 and alternate takes. Selecting T2 for editing leaves T1 adopted until the user explicitly adopts T2. The live renderer stages auditions and note edits until a section boundary. The button with the filled triangle shows the active audition and the outlined triangle marks a pending audition. The current section's sounding combination can be adopted together. OSTF/OSTFP preserve MIDI take ownership and adopted intervals using a Studio extension. SMF uses the adopted notes.
 

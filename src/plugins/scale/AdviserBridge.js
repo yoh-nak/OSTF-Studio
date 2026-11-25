@@ -61,6 +61,18 @@ function rankChord(index, strategy, lens, genre = 'auto') {
     })));
 }
 function pinReference(index) { pinned = candidates[index] || null; }
+function flowView(index) {
+    const choice = candidates?.[index];
+    if (!flow || !choice) return '{}';
+    const plan = flow.plan, chords = plan.chords;
+    const at = chords.findIndex(ch => ch.id === currentChord.id);
+    const next = chords[at+1], nextScale = next && plan.chosen[next.id];
+    return JSON.stringify({
+        matrix: SA.flow.noteMatrix(score, chords, at, choice, 'harmony', plan),
+        from: currentChord.label, to: next?.label || '',
+        motions: SA.flow.transitions(currentChord, choice, next, nextScale)
+    });
+}
 function listenTo(index, compare) {
     const choice = candidates[index];
     if (!choice || !reference) return '[]';

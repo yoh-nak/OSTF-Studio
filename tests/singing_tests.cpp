@@ -96,15 +96,16 @@ static bool testRecordedVoice() {
     int crossings = 0;
     float prev = 0;
     double energy=0., inPhase=0., quadrature=0.;
-    double position = 0;
     const auto* reference = bank->find({0,velar});
     for (int b = 0; b < 200; ++b) {
         singer->processBlock(block, events);
+        events.clear();
         for (int i = 0; i < 256; ++i) {
             const float out = block.getSample(0, i);
             if (!std::isfinite(out)) return false;
-            // The recorded consonant keeps its original timing even when the sung vowel is transposed.
-            if (position < reference->consonantFrames) {
+            // Only the unvoiced portion keeps its original waveform; OTO may mark voiced material as consonant.
+            double position=(b*256+i)*reference->rate/48000.;
+            if (position < reference->voicedStart) {
                 const float expected = reference->read(position, reference->rate / 48000);
                 if (b >= 3 && std::abs(out - expected * (110.f / 127)) > .002f) return false;
             }
@@ -149,6 +150,11 @@ int main(int argc, char** argv) {
     double foldedEnergy=0;
     for (int i=200;i<600;++i) {const auto x=bright.cycleSample(i,4.); foldedEnergy+=x*x;}
     if (foldedEnergy>0.1) return 40;
+    RecordedMora nasal;
+    nasal.period=80; nasal.loopStart=2000; nasal.loopEnd=3200; nasal.consonantFrames=1600;
+    for(int i=0;i<4000;++i) nasal.frames.push_back(i<400 ? 0.f : float(.3*std::sin(juce::MathConstants<double>::twoPi*i/80)));
+    nasal.preparePitchMarks();
+    if(nasal.voicedStart<320 || nasal.voicedStart>560) return 41;
     const auto source = juce::File(juce::String::fromUTF8(argv[1])).loadFileAsString();
     const auto demoScore = juce::JSON::parse(source);
     const auto& scoreUnits = items(demoScore["lyrics"]["units"]);

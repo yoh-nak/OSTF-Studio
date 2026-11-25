@@ -36,6 +36,7 @@ public:
         std::shared_ptr<MidiDestination> external;
         int monitorInput = -1, monitorWidth = 1;
         float monitorGain = 1.f;
+        bool playSource = true;
     };
     static bool supportsInstrument(const juce::AudioPluginInstance& instrument);
     static bool supportsInsert(const juce::AudioPluginInstance& effect);
@@ -50,14 +51,39 @@ public:
     juce::Result extendLiveSong(const ostfstudio::OstfpPreview&, const std::vector<LiveSection>&,
                                std::span<const ostfstudio::TakeSelection>, unsigned revision);
     juce::Result setLiveSections(const std::vector<LiveSection>&);
+    struct Cue {
+        size_t section;
+        int repeats;
+        std::vector<ostfstudio::TakeSelection> takes;
+        unsigned serial=0;
+        juce::String sectionId;
+        juce::StringArray trackIds;
+        juce::Range<juce::int64> sourceRange;
+    };
     bool queueLiveSection(size_t index);
+    bool enqueueCue(Cue, const ostfstudio::OstfpPreview* score=nullptr);
+    std::vector<Cue> pendingCues() const;
+    bool hasQueuedSection(size_t index) const;
+    bool editCue(size_t position, int count, unsigned serial);
+    bool moveCue(unsigned serial,int step);
+    std::vector<ostfstudio::TakeSelection> playingCueTakes() const;
     int queuedLiveSection() const { return queuedSection_.load(); }
     void setLiveRepeats(size_t section,int repeats);
     // Message-thread look-ahead, in source-score ticks. A repeated visit keeps its section ID.
     std::vector<LiveSection> upcomingLiveVisits(size_t maximum) const;
     void setMonitorGain(size_t track, double db);
+    void setMonitorInput(size_t track,int first,int width,double db);
+    void setLiveMidiInput(const ostfstudio::OstfpPreview&,std::optional<size_t>,
+                         const ostfstudio::MidiInputRoute&,const std::array<int,128>&);
     int liveRepeats(size_t section) const;
+    struct CaptureInput {
+        size_t track;
+        int first, width;
+        double gainDb;
+    };
     struct TakeOptions {
+        std::vector<CaptureInput> audioTracks;
+        std::vector<Cue> cues;
         std::vector<LiveSection> sections;
         std::vector<ostfstudio::TakeSelection> auditions;
         juce::Range<juce::int64> cycle;
@@ -73,6 +99,8 @@ public:
         ostfstudio::MidiInputRoute midiInput;
     };
     void setInputGain(double db) { captureGain_.store(juce::Decibels::decibelsToGain(float(db))); }
+    void setTrackInputGain(size_t track,double db);
+    double countInSeconds() const { return double(countRemaining_.load())/std::max(1.,sampleRate_); }
     std::atomic<bool> metronome{false};
     juce::Range<juce::int64> recordedRange() const;
     bool countingIn() const { return countRemaining_.load() > 0; }
@@ -112,6 +140,16 @@ private:
     juce::Optional<PositionInfo> getPosition() const override;
     void processEffects(const Chain& effects, juce::AudioBuffer<float>& audio, int count, const juce::MidiBuffer* patches = nullptr);
     using Timelines = std::array<juce::MidiBuffer, maxTracks>;
+    struct PreparedCue {
+        Cue cue;
+        std::unique_ptr<Timelines> events, chase;
+    };
+    // The message thread reclaims consumed entries. The render thread only swaps owners.
+    std::vector<std::unique_ptr<PreparedCue>> cues_;
+    size_t consumedCues_=0;
+    std::unique_ptr<PreparedCue> playingCue_, revisedCue_;
+    juce::Result prepareCueEvents(PreparedCue&,const ostfstudio::OstfpPreview&) const;
+    bool launchFirstCue_=false;
     juce::Result makeMidiTimelines(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, int, Timelines&, bool patchesOnly = false, std::span<const ostfstudio::TakeSelection> auditions = {}, const ostfstudio::TempoMap* renderClock = nullptr) const;
     void adoptPendingNotes();
     Timelines pendingTimelines_, pendingLoopEvents_;
@@ -199,7 +237,6 @@ private:
     bool liveLinearReplay_ = false;
     size_t liveIndex_ = 0;
     std::atomic<int> queuedSection_{-1};
-    juce::int64 queuedSample_=0;
     const float* const* liveInputs_ = nullptr;
     int liveInputCount_ = 0, liveOffset_ = 0;
     juce::Range<int> loopSamples_;
@@ -209,6 +246,8 @@ private:
     std::optional<size_t> monitorTrack_;
     std::array<bool, 128> inputPitches_{};
     int monitorChannel_ = 1;
+    std::array<bool,128> liveHeld_{};
+    bool livePedal_=false;
     juce::SpinLock liveLock_;
     juce::MidiBuffer liveMessages_;
     int queuedLiveMessages_ = 0;
@@ -222,6 +261,8 @@ private:
     juce::String controlPort_;
     ostfstudio::MidiInputRoute midiInput_;
     juce::AudioBuffer<float> captured_;
+    struct CaptureLane { size_t track; int first, width, offset; float gain; bool read=false; };
+    std::vector<CaptureLane> captureLanes_;
     int firstInputBuffer_ = 0;
     std::atomic<float> captureGain_{1};
     int captureOrigin_ = 0, captureFirst_ = 0, captureEnd_ = 0;

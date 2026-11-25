@@ -101,6 +101,9 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
     const bool drumInput = record && inputTrack && *inputTrack < project.sourceTrackCount() &&
                            project.trackKinds[*inputTrack] == ostfstudio::TrackKind::drum;
     const int inputs = record && options ? options->inputChannels : 0;
+    if (record && options) for (const auto& lane : options->audioTracks)
+        if (lane.first<0 || lane.width<1 || lane.width>2 || lane.first+lane.width>device->getActiveInputChannels().countNumberOfSetBits())
+            return juce::Result::fail("Enable the required audio input channels in Settings.");
     if (inputs && (options->firstInputBuffer < 0 || options->firstInputBuffer + inputs > device->getActiveInputChannels().countNumberOfSetBits()))
         return juce::Result::fail("Enable the required audio input channels in Settings.");
     if (record && !inputs && (!drumInput || (options && options->midiInput.port.isNotEmpty()))) {
@@ -130,10 +133,14 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
     if (options && !options->sections.empty()) {
         auto plan=setLiveSections(options->sections);
         if (plan.failed()) { stop(); return plan; }
+        for(const auto& cue:options->cues) if(!enqueueCue(cue,&project)) {
+            stop(); return juce::Result::fail("Could not prepare the queued section.");
+        }
+        launchFirstCue_=!options->cues.empty();
     }
     if (options && !options->cycle.isEmpty()) setLoop(options->cycle);
-    if (!inputs && (record || inputTrack)) prepareRecording(project, tracks, inputTrack, record);
-    if ((record || inputTrack) && options) {
+    if (inputTrack || (!inputs && record)) prepareRecording(project, tracks, inputTrack, record);
+    if (options && (record || inputTrack || options->countInBars>0)) {
         if (const auto armed = prepareTake(*options); armed.failed()) { stop(); return armed; }
     }
     launchClock_ = !monitorOnly && options ? options->link : nullptr;
@@ -157,7 +164,7 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
     devices_ = &devices;
     performanceTick_.store(monitorOnly ? -1 : positionTick());
     devices.addAudioCallback(this);
-    if (!inputs && (record || monitorTrack_)) devices.addMidiInputDeviceCallback({}, this);
+    if (monitorTrack_ || (!inputs && record)) devices.addMidiInputDeviceCallback({}, this);
     return result;
 }
 
@@ -181,6 +188,7 @@ void PreviewTransport::prepareRecording(const ostfstudio::OstfpPreview &project,
     liveMessages_.clear();
     liveMessages_.ensureSize(32768);
     queuedLiveMessages_ = 0;
+    liveHeld_.fill(false);livePedal_=false;
 }
 
 juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& project, std::span<const TrackSetup> tracks,
@@ -228,8 +236,10 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     liveBoundaries_.clear(); liveStarts_.clear(); liveEnds_.clear(); stagedStarts_.clear(); stagedEnds_.clear();
     liveIndex_=0; liveLinearReplay_=false; liveWaiting_=false; liveEntered_=false;
     soundingRevision_=0; pendingRevision_=0; queuedSection_=-1;
+    cues_.clear(); consumedCues_=0; playingCue_.reset(); revisedCue_.reset(); launchFirstCue_=false;
     loopSamples_ = {}; loopRestart_ = false;
     captured_.setSize(0, 0);
+    captureLanes_.clear();
     mapInput_ = false;
     controlPort_.clear();
     midiInput_ = {};
@@ -244,7 +254,8 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     }
     lastSample_ = static_cast<juce::int64>(std::ceil(total));
     pendingNotes_ = false;
-    int outputChannels = std::any_of(tracks.begin(),tracks.end(),[](const auto& t){return t.monitorInput>=0;}) ? 2 : 0;
+    int outputChannels = std::any_of(tracks.begin(),tracks.end(),[](const auto& t){return t.monitorInput>=0;})
+        || std::find(project.trackKinds.begin(),project.trackKinds.end(),ostfstudio::TrackKind::audio)!=project.trackKinds.end() ? 2 : 0;
     for (auto& slot : instruments_) {
         slot.timeline.clear();
         slot.seekEvents.clear();
@@ -252,7 +263,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     }
     ostfstudio::AudioRegionPlayback::SourceCache sources;
     if (!monitorOnly) for (const auto& audio : project.audio) {
-        if (audio.track >= instruments_.size()) continue;
+        if (audio.track >= instruments_.size() || (audio.track<tracks.size() && !tracks[audio.track].playSource)) continue;
         auto& region = instruments_[audio.track].regions.emplace_back();
         if (auto r = region.load(audio, clock_, sampleRate_, int(lastSample_), &sources); r.failed()) return r;
         outputChannels = 2;
@@ -337,6 +348,7 @@ juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview&
             sharedHosts[*route.outputTrack] = true;
     for (std::size_t track = 0; track < std::min(project.pitchedNotes.size(), instruments_.size()); ++track) {
         const auto setup = track < tracks.size() ? tracks[track] : TrackSetup{};
+        if (!setup.playSource) continue;
         const auto outputTrack = setup.outputTrack.value_or(track);
         if (outputTrack >= instruments_.size()) continue;
         const bool sharedPart = sharedHosts[outputTrack];
@@ -441,7 +453,31 @@ juce::Result PreviewTransport::updateLoopNotes(const ostfstudio::OstfpPreview& p
             ends[s][t]=midiAtSeek(next[t],liveBoundaries_[s].samples.getEnd());
         }
     }
+    std::vector<Cue> choices;
+    const auto snapshot=[&] {
+        if (playingCue_ && playingCue_->events) choices.push_back(playingCue_->cue);
+        for (size_t i=consumedCues_;i<cues_.size();++i) if (cues_[i]->events) choices.push_back(cues_[i]->cue);
+    };
+    if (devices_) {const juce::ScopedLock lock(devices_->getAudioCallbackLock());snapshot();} else snapshot();
+    std::vector<std::unique_ptr<PreparedCue>> replacements;
+    for (auto& choice:choices) {
+        auto prepared=std::make_unique<PreparedCue>();
+        prepared->cue=std::move(choice);
+        if (auto r=prepareCueEvents(*prepared,project);r.failed()) return r;
+        replacements.push_back(std::move(prepared));
+    }
     const auto publish = [&] {
+        for (auto& replacement:replacements) {
+            if (playingCue_ && replacement->cue.serial==playingCue_->cue.serial) {
+                revisedCue_.swap(replacement);
+                continue;
+            }
+            for (size_t i=consumedCues_;i<cues_.size();++i) if (replacement->cue.serial==cues_[i]->cue.serial) {
+                replacement->events.swap(cues_[i]->events);
+                replacement->chase.swap(cues_[i]->chase);
+                break;
+            }
+        }
         stagedStarts_.swap(starts); stagedEnds_.swap(ends);
         for (std::size_t i = 0; i < instruments_.size(); ++i) {
             next[i].swapWith(pendingTimelines_[i]);
@@ -544,6 +580,7 @@ juce::Result PreviewTransport::setLiveSections(const std::vector<LiveSection>& s
     const auto install=[&] {
         liveBoundaries_.swap(prepared); liveStarts_.swap(starts);
         queuedSection_=-1;
+        cues_.clear(); consumedCues_=0; playingCue_.reset(); launchFirstCue_=false;
         liveLinearReplay_=false; loopRestart_=false; liveWaiting_=false; liveEntered_=false;
         liveIndex_=0;
         while(liveIndex_<liveBoundaries_.size() && liveBoundaries_[liveIndex_].samples.getEnd()<=sample_.load()) ++liveIndex_;
@@ -552,27 +589,86 @@ juce::Result PreviewTransport::setLiveSections(const std::vector<LiveSection>& s
     return juce::Result::ok();
 }
 bool PreviewTransport::queueLiveSection(size_t index) {
+    if(index>=liveBoundaries_.size()) return false;
+    return enqueueCue({index,liveBoundaries_[index].source.repeats,{}});
+}
+juce::Result PreviewTransport::prepareCueEvents(PreparedCue& prepared,const ostfstudio::OstfpPreview& score) const {
+    Timelines all;
+    if(auto result=makeMidiTimelines(score,playbackRoutes_,playbackShift_,all,false,prepared.cue.takes);result.failed()) return result;
+    const auto range=liveBoundaries_[prepared.cue.section].samples;
+    prepared.events=std::make_unique<Timelines>(); prepared.chase=std::make_unique<Timelines>();
+    for(size_t t=0;t<all.size();++t) if(!all[t].isEmpty()) {
+        (*prepared.events)[t].addEvents(all[t],range.getStart(),range.getLength(),0);
+        (*prepared.chase)[t]=midiAtSeek(all[t],range.getStart());
+    }
+    return juce::Result::ok();
+}
+bool PreviewTransport::enqueueCue(Cue cue,const ostfstudio::OstfpPreview* score) {
+    const auto index=cue.section;
+    if(index>=liveBoundaries_.size() || cue.repeats<1 || cue.repeats>99) return false;
+    auto prepared=std::make_unique<PreparedCue>();
+    prepared->cue=std::move(cue);
+    if(score && prepareCueEvents(*prepared,*score).failed()) return false;
     const auto queue=[&] {
-        if (!running_ || recording_ || index>=liveBoundaries_.size() || liveBoundaries_[index].source.repeats==0) return false;
-        const auto at=sample_.load();
-        const auto after=std::upper_bound(beatSamples_.begin(),beatSamples_.end(),at,
-            [](juce::int64 sample,const auto& beat){return sample<beat.first;});
-        const auto bar=std::find_if(after,beatSamples_.end(),[](const auto& beat){return beat.second;});
-        queuedSample_=bar==beatSamples_.end() ? lastSample_ : bar->first;
-        if (liveIndex_<liveBoundaries_.size()) queuedSample_=std::min<juce::int64>(queuedSample_,liveBoundaries_[liveIndex_].samples.getEnd());
-        if (liveWaiting_) queuedSample_=at;
-        queuedSection_=int(index);
+        if(!running_ || recording_ || cues_.size()-consumedCues_>=32) return false;
+        cues_.erase(cues_.begin(),cues_.begin()+static_cast<std::ptrdiff_t>(consumedCues_));
+        consumedCues_=0;
+        cues_.push_back(std::move(prepared));
+        queuedSection_=int(cues_.front()->cue.section);
         return true;
     };
     if (devices_) {const juce::ScopedLock lock(devices_->getAudioCallbackLock());return queue();}
     return queue();
+}
+bool PreviewTransport::hasQueuedSection(size_t index) const {
+    const auto read=[&] {
+        for (size_t i=consumedCues_; i<cues_.size(); ++i) if(cues_[i]->cue.section==index) return true;
+        return false;
+    };
+    if(devices_){const juce::ScopedLock lock(devices_->getAudioCallbackLock());return read();}
+    return read();
+}
+std::vector<PreviewTransport::Cue> PreviewTransport::pendingCues() const {
+    std::vector<Cue> out;
+    const auto read=[&]{for(size_t i=consumedCues_;i<cues_.size();++i) out.push_back(cues_[i]->cue);};
+    if(devices_){const juce::ScopedLock lock(devices_->getAudioCallbackLock());read();}else read();
+    return out;
+}
+std::vector<ostfstudio::TakeSelection> PreviewTransport::playingCueTakes() const {
+    const auto read=[&]{return playingCue_?playingCue_->cue.takes:std::vector<ostfstudio::TakeSelection>{};};
+    if(devices_){const juce::ScopedLock lock(devices_->getAudioCallbackLock());return read();}return read();
+}
+bool PreviewTransport::editCue(size_t position,int count,unsigned serial) {
+    const auto change=[&]{
+        const auto at=consumedCues_+position;
+        if(at>=cues_.size() || cues_[at]->cue.serial!=serial || count<0 || count>99)return false;
+        if(count) cues_[at]->cue.repeats=count;
+        else cues_.erase(cues_.begin()+static_cast<std::ptrdiff_t>(at));
+        queuedSection_=consumedCues_<cues_.size()?int(cues_[consumedCues_]->cue.section):-1;
+        return true;
+    };
+    if(devices_){const juce::ScopedLock lock(devices_->getAudioCallbackLock());return change();}return change();
+}
+
+bool PreviewTransport::moveCue(unsigned serial,int step) {
+    if(step!=1 && step!=-1) return false;
+    const auto move=[&] {
+        for(size_t i=consumedCues_;i<cues_.size();++i) if(cues_[i]->cue.serial==serial) {
+            if ((step<0 && i==consumedCues_) || (step>0 && i+1==cues_.size())) return false;
+            std::swap(cues_[i],cues_[step<0?i-1:i+1]);
+            queuedSection_=int(cues_[consumedCues_]->cue.section);
+            return true;
+        }
+        return false;
+    };
+    if (devices_) {const juce::ScopedLock lock(devices_->getAudioCallbackLock());return move();}
+    return move();
 }
 
 void PreviewTransport::setLiveRepeats(size_t i,int count) {
     const auto apply=[&] {
         if(i>=liveBoundaries_.size()) return;
         liveBoundaries_[i].source.repeats=liveBoundaries_[i].remaining=std::clamp(count,0,99);
-        if (count<=0 && queuedSection_==int(i)) queuedSection_=-1;
         if(liveWaiting_ && count>0) liveIndex_=i;
     };
     if(devices_) {const juce::ScopedLock lock(devices_->getAudioCallbackLock());apply();} else apply();
@@ -588,11 +684,19 @@ std::vector<PreviewTransport::LiveSection> PreviewTransport::upcomingLiveVisits(
     std::vector<LiveSection> visits;
     visits.reserve(maximum);
     const auto read = [&] {
-        for (size_t i = liveIndex_; i < liveBoundaries_.size() && visits.size() < maximum; ++i) {
+        const bool explicitPlan=playingCue_ || queuedSection_>=0;
+        for (size_t i = liveIndex_; !launchFirstCue_ && i < liveBoundaries_.size() && visits.size() < maximum; ++i) {
             const auto& section = liveBoundaries_[i];
             for (int left = std::max(section.remaining, int(i==liveIndex_ && liveEntered_)); left > 0 && visits.size() < maximum; --left) {
                 visits.push_back(section.source);
                 visits.back().repeats = left;
+            }
+            if(explicitPlan) break;
+        }
+        for(size_t i=consumedCues_;i<cues_.size() && visits.size()<maximum;++i) {
+            const auto& cue=cues_[i]->cue;
+            for(int n=cue.repeats;n>0 && visits.size()<maximum;--n) {
+                visits.push_back(liveBoundaries_[cue.section].source); visits.back().repeats=n;
             }
         }
     };
@@ -608,6 +712,43 @@ void PreviewTransport::setMonitorGain(size_t track, double db) {
     };
     if (devices_) { const juce::ScopedLock lock(devices_->getAudioCallbackLock()); apply(); }
     else apply();
+}
+void PreviewTransport::setLiveMidiInput(const ostfstudio::OstfpPreview& song,std::optional<size_t> track,
+        const ostfstudio::MidiInputRoute& route,const std::array<int,128>& padMap) {
+    if (recording_ || !running_ || (track && (*track>=song.sourceTrackCount() || *track>=playbackRoutes_.size()))) return;
+    if (devices_ && monitorTrack_) devices_->removeMidiInputDeviceCallback({},this);
+    const auto apply=[&] {
+        const juce::SpinLock::ScopedLockType inputLock(liveLock_);
+        if (monitorTrack_) {
+            auto& release=instruments_[*monitorTrack_].seekEvents;
+            if(livePedal_) release.addEvent(juce::MidiMessage::controllerEvent(monitorChannel_,64,0),0);
+            for(int i=0;i<128;++i) if(liveHeld_[size_t(i)]) release.addEvent(juce::MidiMessage::noteOff(monitorChannel_,i),0);
+        }
+        liveHeld_.fill(false);livePedal_=false;liveMessages_.clear();queuedLiveMessages_=0;
+        monitorTrack_.reset();midiInput_=route;
+        mapInput_=track && song.trackKinds[*track]==ostfstudio::TrackKind::drum;
+        inputPitches_.fill(!mapInput_);
+        if (mapInput_) {
+            inputMap_=padMap;
+            for(const auto& pad:song.slotsByTrack[*track]) if(pad.pitch>=0 && pad.pitch<128) inputPitches_[size_t(pad.pitch)]=true;
+        }
+        if(track) {
+            liveMessages_.ensureSize(32768);
+            monitorTrack_=playbackRoutes_[*track].outputTrack.value_or(*track);
+            monitorChannel_=playbackRoutes_[*track].midiChannel;
+        }
+    };
+    if(devices_) {const juce::ScopedLock lock(devices_->getAudioCallbackLock());apply();} else apply();
+    if(devices_ && monitorTrack_) devices_->addMidiInputDeviceCallback({},this);
+}
+void PreviewTransport::setMonitorInput(size_t track,int first,int width,double db) {
+    const auto apply=[&] {
+        if(track>=playbackRoutes_.size()) return;
+        auto& route=playbackRoutes_[track];
+        route.monitorInput=first; route.monitorWidth=width;
+        route.monitorGain=juce::Decibels::decibelsToGain(float(db));
+    };
+    if(devices_) {const juce::ScopedLock lock(devices_->getAudioCallbackLock());apply();} else apply();
 }
 
 void PreviewTransport::setLoop(juce::Range<juce::int64> ticks) {
@@ -655,6 +796,7 @@ void PreviewTransport::seekToTick(juce::int64 tick) {
         liveIndex_=0;
         while(liveIndex_<liveBoundaries_.size() && liveBoundaries_[liveIndex_].samples.getEnd()<=sample) ++liveIndex_;
         sample_ = sample; liveEntered_=false; liveWaiting_=false; queuedSection_=-1;
+        consumedCues_=cues_.size(); playingCue_.reset(); launchFirstCue_=false;
         running_ = sample < lastSample_;
     };
     if (devices_) {
@@ -668,7 +810,7 @@ void PreviewTransport::seekToTick(juce::int64 tick) {
 std::vector<ostfstudio::PitchedNote> PreviewTransport::stop(Cursor* stoppedAt) {
     running_ = false;
     if (devices_) {
-        if (!captured_.getNumChannels() && (recording_ || monitorTrack_)) devices_->removeMidiInputDeviceCallback({}, this);
+        if (monitorTrack_ || (!captured_.getNumChannels() && recording_)) devices_->removeMidiInputDeviceCallback({}, this);
         devices_->removeAudioCallback(this);
         devices_ = nullptr;
     }
@@ -839,14 +981,16 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
             pluginMidi_.addEvent(juce::MidiMessage::controllerEvent(ch,64,0),0);
             pluginMidi_.addEvent(juce::MidiMessage::allNotesOff(ch),0);
         }
-        if (loopRestart_) pluginMidi_.addEvents(liveIndex_<liveBoundaries_.size() ? liveStarts_[liveIndex_][track] : slot.loopEvents, 0, -1, 0);
+        if (loopRestart_) pluginMidi_.addEvents(playingCue_ && playingCue_->chase ? (*playingCue_->chase)[track] :
+            liveIndex_<liveBoundaries_.size() ? liveStarts_[liveIndex_][track] : slot.loopEvents, 0, -1, 0);
         if(liveLinearReplay_ && liveIndex_>0) pluginMidi_.addEvents(liveEnds_[liveIndex_-1][track],0,-1,0);
         pluginMidi_.addEvents(slot.seekEvents, 0, -1, 0);
         slot.seekEvents.clear();
         if (!monitorOnly_) {
-            if (end - first == count) pluginMidi_.addEvents(slot.timeline, first, count, -first);
+            const auto& timeline=playingCue_ && playingCue_->events ? (*playingCue_->events)[track] : slot.timeline;
+            if (end - first == count) pluginMidi_.addEvents(timeline, first, count, -first);
             else if (end > first) {
-                for (auto it = slot.timeline.findNextSamplePosition(first); it != slot.timeline.cend(); ++it) {
+                for (auto it = timeline.findNextSamplePosition(first); it != timeline.cend(); ++it) {
                     const auto event = *it;
                     if (event.samplePosition >= end) break;
                     const int offset = std::min(count - 1, int((event.samplePosition - first) / timelineStep));
@@ -1024,18 +1168,22 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
             const auto played = countLength_ - remaining;
             const auto age = played % countBeat_;
             const int n = int(std::min<juce::int64>({count - done, remaining, countBeat_ - age}));
-            if (!listenToCue) mixClick(output, channels, done, n, int(age), played % countBar_ < countBeat_);
+            if (metronome && !listenToCue) mixClick(output, channels, done, n, int(age), played % countBar_ < countBeat_);
             countRemaining_ -= n;
             done += n;
             continue;
         }
         auto first = sample_.load();
-        if (queuedSection_>=0 && first>=queuedSample_) {
+        if (queuedSection_>=0 && (launchFirstCue_ || liveWaiting_ || liveIndex_>=liveBoundaries_.size()
+            || (first>=liveBoundaries_[liveIndex_].samples.getEnd() && liveBoundaries_[liveIndex_].remaining<=1))) {
             adoptPendingNotes();
             if (liveIndex_<liveBoundaries_.size()) liveBoundaries_[liveIndex_].remaining=liveBoundaries_[liveIndex_].source.repeats;
-            liveIndex_=size_t(queuedSection_.exchange(-1));
+            playingCue_.swap(cues_[consumedCues_++]);
+            launchFirstCue_=false;
+            liveIndex_=playingCue_->cue.section;
+            queuedSection_=consumedCues_<cues_.size()?int(cues_[consumedCues_]->cue.section):-1;
             auto& next=liveBoundaries_[liveIndex_];
-            next.remaining=next.source.repeats;
+            next.remaining=playingCue_->cue.repeats;
             first=next.samples.getStart(); sample_=first;
             liveEntered_=true; liveWaiting_=false; loopRestart_=true; liveLinearReplay_=false;
         }
@@ -1050,9 +1198,15 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
                 liveLinearReplay_=pendingNotes_ && boundary.remaining<=1;
                 adoptPendingNotes();
                 if (boundary.remaining>1) {
+                    if(playingCue_ && revisedCue_ && playingCue_->cue.serial==revisedCue_->cue.serial) {
+                        revisedCue_->events.swap(playingCue_->events);
+                        revisedCue_->chase.swap(playingCue_->chase);
+                        revisedCue_->cue.serial=0;
+                    }
                     --boundary.remaining;
                     first=boundary.samples.getStart(); sample_=first; loopRestart_=true;
                 } else {
+                    if(playingCue_) {running_=false;break;}
                     // Preserve the configured count for an explicit later launch.
                     boundary.remaining=boundary.source.repeats;
                     ++liveIndex_;
@@ -1092,7 +1246,6 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
             }
             limit=std::min(limit,juce::int64(liveBoundaries_[liveIndex_].samples.getEnd()));
         }
-        if (queuedSection_>=0) limit=std::min(limit,queuedSample_);
         if (captured_.getNumChannels()) limit = std::min(limit, juce::int64(captureOrigin_ + captured_.getNumSamples()));
         const auto available = limit - first;
         if (available <= 0) { running_ = false; break; }
@@ -1109,12 +1262,14 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
         if (pluginAudio_.getNumChannels()) renderInstruments(dest.data(), outs, part, int(first), int(first) + timelineFrames, listenToCue);
         if (captured_.getNumChannels()) {
             const int pos = int(first) - captureOrigin_;
-            const int channelsNeeded = captured_.getNumChannels();
-            if (!input || firstInputBuffer_ + channelsNeeded > inputs || !input[firstInputBuffer_]
-                || (channelsNeeded == 2 && !input[firstInputBuffer_ + 1])) { running_ = false; break; }
-            const auto gain = captureGain_.load();
-            for (int c = 0; c < channelsNeeded; ++c)
-                captured_.copyFrom(c, pos, input[firstInputBuffer_ + c] + done, part, gain);
+            for (const auto& lane:captureLanes_) {
+                if (!input || lane.first+lane.width>inputs || !input[lane.first]
+                    || (lane.width==2 && !input[lane.first+1])) {running_=false; break;}
+                const float gain=captureLanes_.size()==1 ? captureGain_.load() : lane.gain;
+                for(int c=0;c<lane.width;++c)
+                    captured_.copyFrom(lane.offset+c,pos,input[lane.first+c]+done,part,gain);
+            }
+            if (!running_) break;
             captureFirst_ = std::min(captureFirst_, pos);
             captureEnd_ = std::max(captureEnd_, pos + part);
         }
@@ -1154,13 +1309,15 @@ void PreviewTransport::inputFromDevice(const juce::MidiMessage& message, const j
 
 void PreviewTransport::inputNote(const juce::MidiMessage &message) {
     const bool note = message.isNoteOnOrOff();
-    if (!running_ || countingIn() || (!recording_ && !monitorTrack_) || captured_.getNumChannels() ||
+    if (!running_ || countingIn() || (!recording_ && !monitorTrack_) || (captured_.getNumChannels() && !monitorTrack_) ||
         message.getChannel() <= 0 || (!note && !message.isController() && !message.isPitchWheel() && !message.isChannelPressure() && !message.isAftertouch() && !message.isProgramChange()) || (note && !inputPitches_[message.getNoteNumber()]))
         return;
     if (monitorTrack_) {
         const juce::SpinLock::ScopedLockType lock(liveLock_);
         auto routed = message;
         routed.setChannel(monitorChannel_);
+        if(note) liveHeld_[size_t(routed.getNoteNumber())]=routed.isNoteOn();
+        if(routed.isControllerOfType(64)) livePedal_=routed.getControllerValue()>=64;
         if (queuedLiveMessages_ >= 1024) {
             liveMessages_.clear();
             queuedLiveMessages_ = 0;
@@ -1218,11 +1375,23 @@ juce::Result PreviewTransport::prepareTake(const TakeOptions& options) {
         setInputGain(options.inputGainDb);
         if (options.inputChannels < 1 || options.inputChannels > 2) return juce::Result::fail("Choose mono or stereo.");
         recording_ = true;
-        const int maxFrames = (16 * 1024 * 1024 - 4096) / (2 * options.inputChannels);
+        std::vector<CaptureLane> lanes;
+        int channels=0, widest=options.inputChannels;
+        for(const auto& r:options.audioTracks) {
+            if(r.track>=maxTracks || r.first<0 || r.first>63 || r.width<1 || r.width>2 || !std::isfinite(r.gainDb)
+               || r.gainDb < -60 || r.gainDb>24 || std::any_of(lanes.begin(),lanes.end(),[&](const auto& l){return l.track==r.track;}))
+                return juce::Result::fail("Invalid recording input or gain.");
+            lanes.push_back({r.track,r.first,r.width,channels,juce::Decibels::decibelsToGain(float(r.gainDb))});
+            channels+=r.width;
+            widest=std::max(widest,r.width);
+        }
+        if(lanes.empty()) {channels=options.inputChannels; lanes.push_back({maxTracks,firstInputBuffer_,channels,0,captureGain_.load()});}
+        const int maxFrames = std::min((16 * 1024 * 1024 - 4096) / (2 * widest), (64*1024*1024)/(4*channels));
         captureOrigin_ = loopSamples_.isEmpty() ? int(takeStart_) : std::min(int(takeStart_), loopSamples_.getStart());
         const int span = (loopSamples_.isEmpty() ? int(lastSample_) : loopSamples_.getEnd()) - captureOrigin_;
         if (span <= 0 || (!loopSamples_.isEmpty() && span > maxFrames)) return juce::Result::fail("Choose a shorter audio recording range.");
-        captured_.setSize(options.inputChannels, std::min(maxFrames, span));
+        captured_.setSize(channels, std::min(maxFrames, span));
+        captureLanes_=std::move(lanes);
         captureFirst_ = captured_.getNumSamples();
         captureEnd_ = 0;
     }
@@ -1250,6 +1419,8 @@ void PreviewTransport::mixClick(float* const* output, int channels, int offset, 
 std::optional<ostfstudio::ProjectAudio> PreviewTransport::finishAudioTake(size_t track) {
     jassert(!devices_);
     if (captureFirst_ >= captureEnd_ || !captured_.getNumChannels()) return {};
+    auto lane=std::find_if(captureLanes_.begin(),captureLanes_.end(),[&](const auto& l){return !l.read && (l.track==maxTracks || l.track==track);});
+    if (lane==captureLanes_.end()) return {};
     ostfstudio::ProjectAudio clip;
     clip.track = track;
     clip.path = "Recording-" + juce::Uuid().toString() + ".wav";
@@ -1259,9 +1430,18 @@ std::optional<ostfstudio::ProjectAudio> PreviewTransport::finishAudioTake(size_t
     std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::MemoryOutputStream>(clip.embedded.writable(), false);
     juce::WavAudioFormat wav;
     auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions{}.withSampleRate(sampleRate_)
-        .withNumChannels(captured_.getNumChannels()).withBitsPerSample(16));
-    if (!writer || !writer->writeFromAudioSampleBuffer(captured_, captureFirst_, end - start)) return {};
+        .withNumChannels(lane->width).withBitsPerSample(16));
+    juce::AudioBuffer<float> view(captured_.getArrayOfWritePointers()+lane->offset,lane->width,captured_.getNumSamples());
+    if (!writer || !writer->writeFromAudioSampleBuffer(view, captureFirst_, end - start)) return {};
     writer.reset();
-    captured_.setSize(0, 0);
+    lane->read=true;
+    if(std::all_of(captureLanes_.begin(),captureLanes_.end(),[](const auto& l){return l.read;})) captured_.setSize(0,0);
     return clip;
+}
+void PreviewTransport::setTrackInputGain(size_t track,double db) {
+    const auto change=[&]{
+        if(captureLanes_.size()==1) setInputGain(db);
+        else for(auto& lane:captureLanes_) if(lane.track==track) lane.gain=juce::Decibels::decibelsToGain(float(db));
+    };
+    if(devices_) {const juce::ScopedLock lock(devices_->getAudioCallbackLock());change();} else change();
 }

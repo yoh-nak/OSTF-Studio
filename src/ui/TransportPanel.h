@@ -87,7 +87,7 @@ public:
         countIn.setJustificationType(juce::Justification::centred);
         countIn.setComponentID("metronome-count-in");
         countIn.setTitle(TRANS("Count-in"));
-        countIn.setTooltip(TRANS("Bars to count before recording"));
+        countIn.setTooltip(TRANS("Count-in before recording or live playback"));
         countIn.addItem(TRANS("Off"), 1);
         for (int n = 1; n <= maxCountInBars; ++n)
             countIn.addItem(juce::String(n) + " " + (n == 1 ? TRANS("bar") : TRANS("bars")), n + 1);
@@ -132,7 +132,7 @@ public:
         const auto sub = static_cast<juce::int64>(std::floor(withinBar - beat * beatLength));
         return padded(1 + tick / song.ticksPerBar, 3) + "." + padded(beat + 1, 2) + "." + padded(sub, 3);
     }
-    void setPosition(const ostfstudio::OstfpPreview& song, juce::int64 tick, double seconds, int shift = 0, double rate = 1) {
+    void setPosition(const ostfstudio::OstfpPreview& song, juce::int64 tick, double seconds, int shift = 0, double rate = 1, double countInSeconds = 0.) {
         const auto meter = ostfstudio::activeMeter(song.meters, double(tick), {0, song.meterBeats, song.beatUnit});
         auto set = [&](int index, juce::String text) {
             if (text.isEmpty()) text = juce::String::charToString(0x2014);
@@ -143,8 +143,8 @@ public:
         };
         set(0, musicalPosition(song,tick,meter));
         if (seconds < 0) seconds = song.clock.secondsAt(tick) / rate;
-        const auto frames = static_cast<juce::int64>(std::floor(seconds * 30.0 + 1e-8));
-        set(1, padded(frames / 108000, 2) + ":" + padded(frames / 1800 % 60, 2) + ":"
+        const auto frames = static_cast<juce::int64>(countInSeconds>0 ? std::ceil(countInSeconds*30.) : std::floor(seconds * 30.0 + 1e-8));
+        set(1, (countInSeconds>0 ? "-" : "") + padded(frames / 108000, 2) + ":" + padded(frames / 1800 % 60, 2) + ":"
                + padded(frames / 30 % 60, 2) + ":" + padded(frames % 30, 2));
         set(2, rate == 1 ? song.contextAt(ostfstudio::TimelineLane::tempo, tick) : juce::String(song.clock.bpmAt(tick) * rate, 2));
         set(3, juce::String(meter.numerator) + "/" + juce::String(meter.denominator));

@@ -48,6 +48,11 @@ int main(int argc,char** argv) {
         return 7;
     }
     if(!genre || genre->getNumItems()<3) return 19;
+    auto* flow=editor->findChildWithID("scale-flow-view");
+    if (!flow || flow->getTitle()!="Scale Flow" || flow->getDescription().endsWith(" / 0 chords")) return 30;
+    for (auto* c:editor->getChildren()) if (auto* tab=dynamic_cast<juce::TextButton*>(c); tab && tab->getButtonText()=="Connections")
+        tab->onClick();
+    if (flow->getTitle()!="Connections" || flow->getDescription().endsWith(" / 0 chords")) return 31;
     genre->setSelectedId(3,juce::sendNotificationSync);
     if(genre->getSelectedId()!=3 || choices->getNumItems()<2) return 19;
     choices->setSelectedItemIndex(1,juce::sendNotificationSync);

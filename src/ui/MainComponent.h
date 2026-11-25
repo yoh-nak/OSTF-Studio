@@ -29,6 +29,7 @@
 #include "ui/LiveSections.h"
 #include "ui/LiveTrackSelector.h"
 #include "ui/LiveSectionMatrix.h"
+#include "ui/LiveChordGuide.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
@@ -190,6 +191,9 @@ private:
     void chooseHardwareOutput(bool cue, juce::Component*);
     void refreshHardwareOutputs();
     void setRecordArm(std::size_t, bool);
+    bool isArmed(const juce::String& id) const { return id==armedId_ || audioArms_.contains(id); }
+    std::set<juce::String> audioArms_;
+    void updateLiveAudioInput(size_t track);
     void refreshMidiRoutes();
     void saveMidiRoutes();
     juce::String armedId_, midiDocument_;
@@ -233,6 +237,7 @@ private:
     void addSharedPart(std::size_t index);
     void routeMidiPart(std::size_t track, std::optional<std::size_t> owner, int channel);
     friend int checkSamplePlacement(const juce::File&);
+    friend int checkLiveSession(const juce::File&);
     friend class PluginFocusProbe;
     friend class VocalTrackProbe;
     friend int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>, std::unique_ptr<juce::AudioPluginInstance>);
@@ -399,15 +404,29 @@ private:
     LiveSections live_;
     LiveTrackSelector liveTracks_;
     LiveSectionMatrix liveMatrix_;
+    LiveChordGuide liveGuide_;
+    juce::TextButton performer_{TRANS("Performer display")}, cueList_{TRANS("Queue")};
+    bool performerOnly_=false;
+    std::vector<PreviewTransport::Cue> stagedCues_;
+    unsigned nextCueId_=0;
+    void addLiveCue(int row);
+    void refreshStagedCues();
+    void showLiveQueue();
+    void updateLiveGuide();
+    using CellKey=std::pair<juce::String,juce::String>;
+    struct CellPlayer {
+        std::vector<std::unique_ptr<juce::AudioPluginInstance>> plugins;
+        PreviewTransport transport;
+    };
+    std::map<CellKey,std::unique_ptr<CellPlayer>> cellPlayers_;
+    std::set<CellKey> loopingCells_;
+    void toggleCellPlayer(size_t track,int row);
     juce::TextButton takeButton_{TRANS("Takes")};
     juce::Range<juce::int64> takeRange() const;
     int editingTake(size_t,juce::Range<juce::int64>) const;
     void showTakes(size_t,juce::Range<juce::int64>,juce::Component*);
     void adoptTakes(const std::vector<ostfstudio::TakeSelection>&);
-    juce::Result publishTakeAuditions();
-    void auditionTake(size_t track,juce::Range<juce::int64>,int number);
-    std::vector<ostfstudio::TakeSelection> takeAuditions_;
-    std::map<unsigned,std::vector<ostfstudio::TakeSelection>> auditionRevisions_;
+    juce::Result publishLiveNotes();
     unsigned takeRevision_=0;
     std::map<std::pair<juce::String,juce::int64>,int> editTakes_;
     int recordingTake_=0;

@@ -18,6 +18,8 @@ public:
     std::function<juce::String(size_t,int)> takeCaption;
     std::function<bool(size_t,int)> hasAudition;
     std::function<void(size_t,int)> toggleAudition;
+    std::function<void(size_t,int)> toggleCellLoop;
+    std::function<bool(size_t,int)> cellLoops;
 
     LiveSectionMatrix() {
         addAndMakeVisible(list_);
@@ -38,7 +40,7 @@ public:
     void bind(const ostfstudio::OstfpPreview& song, const LiveSections& session,
               const LiveTrackSelector& filter, std::optional<std::size_t> selectedTrack, bool recording,
               const ostfstudio::TheoryGuide* theory, const std::vector<std::vector<ostfstudio::TheoryGuide::TrackCell>>& fits,
-              bool showChord, bool showScale, const juce::String& armed) {
+              bool showChord, bool showScale, const juce::String& armed, const std::set<juce::String>& audioArms = {}) {
         session_ = &session;
         selectedTrack_ = selectedTrack;
         recording_ = recording;
@@ -114,7 +116,8 @@ public:
             group.buttons[4].setEnabled(true);
             group.buttons[5].setColour(juce::TextButton::buttonColourId,columns_[i].colour.darker(.25f));
             group.buttons[2].setEnabled(!recording && !columns_[i].audio);
-            group.buttons[1].setToggleState(song.trackIds[int(columns_[i].track)]==armed,juce::dontSendNotification);
+            const auto id=song.trackIds[int(columns_[i].track)];
+            group.buttons[1].setToggleState(id==armed || audioArms.contains(id),juce::dontSendNotification);
         }
         resized();
         list_.updateContent();
@@ -177,18 +180,20 @@ private:
             const juce::StringArray labels{TRANS("Input"),"R",TRANS("Instrument"),"FX","M",TRANS("Colour")};
             for (int i=0;i<int(buttons.size());++i) {
                 auto& b=buttons[size_t(i)];
-                b.setButtonText(labels[i]); b.setTitle(i==1 ? TRANS("Arm") : labels[i]);
+                b.setButtonText(i==5?juce::String{}:labels[i]); b.setTitle(i==1 ? TRANS("Arm") : labels[i]);
                 if(i==4) { b.setTitle(TRANS("Mute")); b.setColour(juce::TextButton::buttonOnColourId,juce::Colour(0xffd09b34)); }
                 b.setTooltip(b.getTitle()); addAndMakeVisible(b);
             }
         }
         void resized() override {
             auto row=getLocalBounds().reduced(2,1);
-            for (int i : {4,1,0,2,3,5}) {
-                const int compact=std::min(getWidth()/8,30);
-                const int width = i==4 || i==1 ? compact : i==0 ? row.getWidth()/4 : i==2 ? row.getWidth()/2 : i==3 ? row.getWidth()/2 : row.getWidth();
-                buttons[size_t(i)].setBounds(row.removeFromLeft(width).reduced(1,0));
-            }
+            auto upper=row.removeFromTop(row.getHeight()/2);
+            buttons[4].setBounds(upper.removeFromLeft(22).reduced(1,0));
+            buttons[1].setBounds(upper.removeFromLeft(22).reduced(1,0));
+            buttons[0].setBounds(upper.reduced(1,0));
+            buttons[5].setBounds(row.removeFromRight(25).reduced(1,0));
+            buttons[3].setBounds(row.removeFromRight(25).reduced(1,0));
+            buttons[2].setBounds(row.reduced(1,0));
         }
     };
     struct Segment {
@@ -222,17 +227,37 @@ private:
         };
         juce::TextButton take;
         AuditionButton audition;
-        Slot() { addChildComponent(take); addChildComponent(audition); }
-        int takeWidth() const {return take.isVisible() ? std::min(take.getButtonText().length()<=3 ? 74 : 112,getWidth()/2) : 0;}
+        class LoopButton final : public juce::TextButton {
+            void paintButton(juce::Graphics& g,bool over,bool down) override {
+                getLookAndFeel().drawButtonBackground(g,*this,findColour(getToggleState()?buttonOnColourId:buttonColourId),over,down);
+                const auto centre=getLocalBounds().toFloat().getCentre();
+                g.setOrigin(juce::roundToInt(centre.x),juce::roundToInt(centre.y));
+                g.setColour(getToggleState()?juce::Colour(0xff91ffe0):juce::Colour(0xffc6d3d9));
+                juce::Path arrows;
+                arrows.startNewSubPath(-6,1);arrows.lineTo(-6,-3);arrows.lineTo(5,-3);
+                arrows.lineTo(2,-6);arrows.startNewSubPath(6,-1);arrows.lineTo(6,3);arrows.lineTo(-5,3);arrows.lineTo(-2,6);
+                g.strokePath(arrows,juce::PathStrokeType(1.5f));
+            }
+        } loop;
+        Slot() { addChildComponent(take); addAndMakeVisible(audition); addAndMakeVisible(loop); }
+        int takeWidth() const {return std::min(take.isVisible()?84:52,getWidth()*3/5);}
         void resized() override {
             auto controls=getLocalBounds().removeFromLeft(takeWidth());
-            audition.setBounds(controls.removeFromLeft(std::min(26,controls.getWidth()/3)).reduced(1));
+            audition.setBounds(controls.removeFromLeft(std::min(23,controls.getWidth()/2)).reduced(1));
+            loop.setBounds(controls.removeFromLeft(std::min(23,controls.getWidth())).reduced(1));
             take.setBounds(controls.reduced(1));
         }
         std::vector<Segment> segments;
         bool chord = true, scale = true;
         void paintButton(juce::Graphics& g, bool hover, bool down) override {
-            if (segments.empty()) { juce::TextButton::paintButton(g, hover, down); return; }
+            if (segments.empty()) {
+                auto face=findColour(getToggleState()?buttonOnColourId:buttonColourId);
+                getLookAndFeel().drawButtonBackground(g,*this,face,hover,down);
+                g.setColour(juce::Colours::white);
+                g.setFont(juce::FontOptions(12.f));
+                g.drawText(getButtonText(),getLocalBounds().withTrimmedLeft(takeWidth()).reduced(2,0),juce::Justification::centredLeft,true);
+                return;
+            }
             const auto face = findColour(getToggleState() ? buttonOnColourId : buttonColourId);
             g.fillAll(hover || down ? face.brighter(.15f) : face);
             juce::Graphics::ScopedSaveState save(g);
@@ -242,30 +267,20 @@ private:
             for (const auto& seg : segments) {
                 const int right = juce::roundToInt(width * seg.end);
                 auto r = juce::Rectangle<int>(left, 2, std::max(0,right-left-1), getHeight()-4);
-                const auto strip = [&](int percent, const char* label) {
-                    auto band = r.removeFromBottom(10);
+                const auto strip = [&](int percent) {
+                    auto band = r.removeFromBottom(6);
                     g.setColour(percent<0 ? juce::Colour(0xff303f49) : ostfstudio::fitColour(percent));
                     g.fillRect(band);
-                    if (band.getWidth()>=39) {
-                        const auto value = percent<0 ? juce::String::charToString(0x2014) : juce::String(percent)+"%";
-                        g.setColour(percent<0 ? juce::Colour(0xffb6c3cb) : juce::Colour(0xff112026));
-                        g.setFont(juce::FontOptions(11.f,juce::Font::bold));
-                        g.drawFittedText(juce::String(label)+value,band,juce::Justification::centred,1,.84f);
-                    }
                     r.removeFromBottom(1);
                 };
-                if (scale) strip(seg.fit.scale.percent(),"S ");
-                if (chord) strip(seg.fit.chord.percent(),"C ");
-                g.setColour(juce::Colour(0xffecf0f0));
-                g.setFont(juce::FontOptions(12.f));
-                if (left == 0 && getButtonText() == "+" && r.getWidth() >= 35) {
-                    g.drawText("+",r.removeFromLeft(12),juce::Justification::centred);
-                }
-                if (r.getWidth()>=10) g.drawText(seg.name,r.reduced(2,0),juce::Justification::centredLeft,false);
-                if (right<width) { g.setColour(juce::Colour(0xff162329)); g.drawVerticalLine(right-1,1.f,float(getHeight()-1)); }
+                if (scale) strip(seg.fit.scale.percent());
+                if (chord) strip(seg.fit.chord.percent());
                 left = right;
             }
-            if (getToggleState() || hasKeyboardFocus(false)) { g.setColour(juce::Colour(0xffa7eee0)); g.drawRect(getLocalBounds()); }
+            g.setColour(juce::Colour(0xffecf0f0));
+            g.setFont(juce::FontOptions(12.f));
+            g.drawFittedText(getButtonText(),0,0,width,std::max(12,getHeight()-17),juce::Justification::centredLeft,1);
+            if (getToggleState() || hasKeyboardFocus(false)) { g.setColour(juce::Colour(0xffa7eee0)); g.drawRect(0,0,width,getHeight()); }
         }
         juce::String getTooltip() override {
             auto text = juce::TextButton::getTooltip();
@@ -300,7 +315,7 @@ private:
             name.setText(section.name, juce::dontSendNotification);
             bars.setText(owner.session_->barDetails[row],juce::dontSendNotification);
             name.setTooltip(section.name + "  /  " + owner.session_->barDetails[row]);
-            launch.setTitle(TRANS("Play section") + " / " + section.name);
+            launch.setTitle(TRANS("Add to queue") + " / " + section.name);
             launch.setTooltip(launch.getTitle());
             launch.setEnabled(!owner.recording_);
             for (auto* button : {&less, &more}) {
@@ -320,6 +335,9 @@ private:
                 b.take.onClick=[this,col] {
                     if(owner.takeMenu) owner.takeMenu(owner.columns_[col].track,index,&buttons[col]->take);
                 };
+                b.loop.onClick=[this,col] {
+                    if(owner.toggleCellLoop) owner.toggleCellLoop(owner.columns_[col].track,index);
+                };
             }
             buttons.resize(owner.columns_.size());
             for (std::size_t col = 0; col < buttons.size(); ++col) {
@@ -331,7 +349,9 @@ private:
                 button.setButtonText(n ? juce::String(n) + " " + TRANS("notes") : "+");
                 button.setTitle(section.name + " / " + column.name);
                 button.take.setVisible(!column.audio);
-                button.audition.setVisible(!column.audio);
+                button.audition.setVisible(true);
+                button.loop.setTitle(TRANS("Loop cell audition")+" / "+button.getTitle());
+                button.loop.setTooltip(button.loop.getTitle());
                 button.audition.setTitle(TRANS("Audition take")+" / "+button.getTitle());
                 button.take.setButtonText(owner.takeCaption ? owner.takeCaption(column.track,row) : "T1");
                 button.take.setTitle(TRANS("Takes")+" / "+button.getTitle());
@@ -358,7 +378,7 @@ private:
             less.setEnabled(n > 0 && !owner.recording_);
             more.setEnabled(n < 99 && !owner.recording_);
             const bool queued=owner.isQueued && owner.isQueued(index);
-            launch.setButtonText(juce::String::charToString(queued ? 0x25b7 : 0x25b6));
+            launch.setButtonText("+");
             launch.setTooltip(queued ? TRANS("Queued section")+" / "+session.sections[size_t(index)].name : launch.getTitle());
             launch.setToggleState(index == session.playing || queued, juce::dontSendNotification);
             launch.setEnabled(!owner.recording_ && n>0);
@@ -368,9 +388,10 @@ private:
                 auto& play=buttons[col]->audition;
                 const bool pending=owner.hasAudition && owner.hasAudition(track,index);
                 play.setToggleState(pending,juce::dontSendNotification);
+                buttons[col]->loop.setToggleState(owner.cellLoops && owner.cellLoops(track,index),juce::dontSendNotification);
                 buttons[col]->resized();
-                play.setTooltip(pending ? TRANS("Return to adopted take") : TRANS("Audition take"));
-                play.setEnabled(!owner.recording_ && (n>0 || pending));
+                play.setTooltip(pending ? TRANS("Stop audition") : TRANS("Audition take"));
+                play.setEnabled(!owner.recording_);
             }
             launch.setColour(juce::TextButton::buttonOnColourId, juce::Colour(queued ? 0xff816534 : 0xff34756d));
         }
@@ -398,7 +419,7 @@ private:
     };
 
     int sidebarWidth() const { return std::clamp(getWidth()/3, 178, 244); }
-    int columnWidth() const { return std::clamp((getWidth()-sidebarWidth()-list_.getViewport()->getScrollBarThickness()) / std::max(1,int(columns_.size())),208,460); }
+    int columnWidth() const { return std::clamp((getWidth()-sidebarWidth()-list_.getViewport()->getScrollBarThickness()) / std::max(1,int(columns_.size())),110,270); }
     int columnX(std::size_t col) const { return int(col)*columnWidth() - int(horizontal_.getCurrentRangeStart()); }
     int getNumRowsForLayout() const { return session_ ? int(session_->sections.size()) : 0; }
     int getNumRows() override { return getNumRowsForLayout(); }
@@ -420,7 +441,7 @@ private:
     }
     void scrollBarMoved(juce::ScrollBar*, double) override { relayoutRows(); repaint(); }
 
-    static constexpr int headerHeight = 50, rowHeight = 50;
+    static constexpr int headerHeight = 65, rowHeight = 44;
     juce::Component header_;
     std::vector<std::unique_ptr<TrackSettings>> settings_;
     const LiveSections* session_ = nullptr;

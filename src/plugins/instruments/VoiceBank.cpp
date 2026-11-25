@@ -124,6 +124,7 @@ std::optional<RecordedMora> readMora(std::unique_ptr<juce::InputStream> stream, 
 // to avoid switching between harmonics as the singer changes pitch or timbre.
 void RecordedMora::preparePitchMarks() {
     pitchMarks.clear();
+    voicedStart = consonantFrames;
     if (period < 2 || frames.size() < 3) return;
     const int end = int(frames.size()) - 2;
     const int radius = std::max(1,int(.28 * period));
@@ -182,6 +183,23 @@ void RecordedMora::preparePitchMarks() {
     follow(-1);
     std::reverse(pitchMarks.begin(),pitchMarks.end());
     follow(1);
+
+    // A nasal or voiced stop can already carry the singer's original pitch
+    // well before the configured vowel boundary. Require adjacent, similar
+    // cycles so that a single burst of unvoiced noise cannot start retuning.
+    int stable = 0;
+    for (size_t i=0; i+2<pitchMarks.size() && pitchMarks[i]<consonantFrames; ++i) {
+        const auto a=pitchMarks[i], b=pitchMarks[i+1], c=pitchMarks[i+2];
+        double energyA=0., energyB=0., cross=0.;
+        for (int n=0;n<32;++n) {
+            const auto x=frames[a+(b-a)*n/32], y=frames[b+(c-b)*n/32];
+            energyA+=x*x; energyB+=y*y; cross+=x*y;
+        }
+        const bool voiced=std::abs((b-a)-(c-b))<=.15*period && std::min(energyA,energyB)>.0001
+            && cross>.84*std::sqrt(energyA*energyB);
+        stable=voiced ? stable+1 : 0;
+        if(stable==3) { voicedStart=pitchMarks[i-2]; break; }
+    }
 }
 
 std::unique_ptr<VoiceBank> VoiceBank::load(const juce::File& directory, juce::String& error) {

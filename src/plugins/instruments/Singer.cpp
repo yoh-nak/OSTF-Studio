@@ -124,14 +124,15 @@ class SyllableVoice {
                 step = std::lerp(attackStep, tunedStep, mix);
             }
             const double onset = phone.onset == vowelOnly || vowelSample ? 0. :
-                recorded->consonantFrames / recorded->rate;
+                recorded->voicedStart / recorded->rate;
             if (recorded->pitchMarks.size() < 3 || time < onset) {
                 recording = recorded->read(position,step);
                 lastAttack = recording;
             } else {
                 // Pitch analysis found a contiguous voiced region here. Marks in the
                 // breath or release can jump between harmonics on consecutive cycles.
-                const double low = recorded->loopStart;
+                const double low = onset > 0. || (phone.onset != vowelOnly && !vowelSample)
+                    ? std::min(recorded->voicedStart, recorded->loopStart) : recorded->loopStart;
                 const double high = std::max(low, recorded->loopEnd - recorded->period);
                 // Advance once through the voiced recording over the scored duration.
                 // A live MIDI note has no known end, so approach its sustain gradually.

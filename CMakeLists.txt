@@ -227,6 +227,8 @@ if (OSTF_STUDIO_BUILD_GUI)
         add_test(NAME ostf_studio_notation COMMAND OSTFStudio --notation-smoke
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostfp" "${CMAKE_CURRENT_BINARY_DIR}/notation-check")
         set_tests_properties(ostf_studio_notation PROPERTIES TIMEOUT 120)
+        add_test(NAME ostf_studio_live_session COMMAND OSTFStudio --live-session-smoke
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostf")
         add_test(NAME ostf_studio_track_view COMMAND OSTFStudio --track-view-smoke
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
         set_tests_properties(ostf_studio_track_view PROPERTIES TIMEOUT 120)

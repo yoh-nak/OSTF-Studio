@@ -1,4 +1,5 @@
 #include "ScaleDocument.h"
+#include "FlowView.h"
 #include "ScoreExchange.h"
 #include "InstrumentRack.h"
 #include "ScaleAssets.h"
@@ -169,6 +170,13 @@ public:
             heading->setFont(juce::FontOptions(15.f,juce::Font::bold));
         }
         for (juce::Component* c : std::initializer_list<juce::Component*>{&inspectMode,&fitRows,&compareText,&scopeMode,&nextUnassigned,&resetA}) addAndMakeVisible(c);
+        addAndMakeVisible(flowView);
+        addAndMakeVisible(flowKey);
+        for (auto* tab : {&flowTab,&connectionsTab}) {
+            addAndMakeVisible(*tab);
+            tab->onClick=[this,tab]{showConnections=tab==&connectionsTab; updateInspector();};
+        }
+        flowView.setComponentID("scale-flow-view");
         inspectMode.addItemList({"Scale inspector","Compare A / B","Note Fit"},1);
         fitRows.setComponentID("scale-note-fit");
         inspectMode.setTitle("Scale workspace"); inspectMode.setSelectedId(1,juce::dontSendNotification);
@@ -266,7 +274,7 @@ public:
         refresh.onClick = [this]{ requestLoad(proc.offered); };
         proc.addChangeListener(this);
         sync();
-        setResizable(true,false); setResizeLimits(795,530,1700,1150); setSize(1120,695);
+        setResizable(true,false); setResizeLimits(795,655,1700,1150); setSize(1120,800);
     }
     ~Editor() override { proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this); }
     void resized() override {
@@ -278,6 +286,11 @@ public:
         undo.setBounds(files.removeFromRight(89).reduced(1)); autoSet.setBounds(files.removeFromRight(115).reduced(1)); drag.setBounds(files.reduced(1));
         area.removeFromTop(8);
         if (source.isVisible()) source.setBounds(area);
+        auto tabs=area.removeFromTop(27);
+        flowTab.setBounds(tabs.removeFromLeft(105).reduced(1));
+        connectionsTab.setBounds(tabs.removeFromLeft(115).reduced(1));
+        flowKey.setBounds(tabs.reduced(5,0));
+        flowView.setBounds(area.removeFromTop(110));
         auto footer=area.removeFromBottom(32);
         loadInstrument.setBounds(footer.removeFromLeft(175).reduced(1)); showInstrument.setBounds(footer.removeFromLeft(150).reduced(1)); status.setBounds(footer);
         auto mapArea=area.removeFromBottom(91);
@@ -452,6 +465,11 @@ private:
     }
     void updateInspector() {
         const auto tab=inspectMode.getSelectedId(), index=choices.getSelectedItemIndex();
+        flowTab.setToggleState(!showConnections,juce::dontSendNotification);
+        connectionsTab.setToggleState(showConnections,juce::dontSendNotification);
+        flowKey.setText(showConnections ? "Guide tones and approach notes  /  motion in semitones"
+                                        : "Previous, selected and next chords  /  fill: scale tones   outline: chord tones",juce::dontSendNotification);
+        flowView.update(index>=0 ? juce::JSON::parse(call("flowView",{index}).toString()) : juce::var{},showConnections);
         details.setVisible(tab==1); compareText.setVisible(tab==2); fitRows.setVisible(tab==3);
         if(tab==2) compareText.setText(index>=0 ? call("compareNotes",{index}).toString() : juce::String{},juce::dontSendNotification);
         if(tab==3) {
@@ -581,6 +599,10 @@ private:
     juce::String loadedText,lastError;
     juce::var rows;
     ScaleRows timeline,candidates;
+    FlowView flowView;
+    juce::TextButton flowTab{"Scale Flow"}, connectionsTab{"Connections"};
+    juce::Label flowKey;
+    bool showConnections=false;
     ScaleRows fitRows;
     juce::ComboBox inspectMode,scopeMode;
     juce::Label compareText;

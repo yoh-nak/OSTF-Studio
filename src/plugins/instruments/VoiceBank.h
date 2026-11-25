@@ -8,6 +8,7 @@ struct RecordedMora {
     std::vector<float> frames;
     double rate{}, period{};
     int loopStart{}, loopEnd{}, fade{}, consonantFrames{};
+    int voicedStart{}; // First sustained, periodic cycle in the attack, in source frames.
     std::vector<int> pitchMarks;
     // Octave-spaced low-pass versions used when a period is played faster than recorded.
     std::vector<std::vector<float>> filtered;
