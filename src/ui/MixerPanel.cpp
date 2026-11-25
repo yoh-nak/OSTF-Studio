@@ -469,7 +469,7 @@ void MixerPanel::addReturn() {
 void MixerPanel::updateReturnOptions() {
     for (size_t t=0;t<strips_.size();++t) {
         auto& strip = *strips_[t];
-        strip.sends.resize(routing_.returnCount);
+        strip.sends.resize(ostfstudio::maxMixerReturns);
         for (size_t r=0;r<strip.sends.size();++r) {
             auto& send = strip.sends[r];
             if (!send) {
@@ -479,13 +479,18 @@ void MixerPanel::updateReturnOptions() {
                     setSendLevel(t,r,float(knob->getValue()/100.));
                 };
             }
-            const auto label = TRANS("Send: ") + outputName(ostfstudio::returnOutput(r));
-            send->name.setText(outputName(ostfstudio::returnOutput(r)),juce::dontSendNotification);
+            const bool active = r < routing_.returnCount;
+            const auto destination = active ? outputName(ostfstudio::returnOutput(r))
+                                            : TRANS("Return ") + juce::String(int(r + 1));
+            const auto label = TRANS("Send: ") + destination;
+            send->setEnabled(active);
+            send->setAlpha(active ? 1.0f : 0.42f);
+            send->name.setText(destination, juce::dontSendNotification);
             send->name.setTooltip(label);
             send->knob.setName(strip.name.getText() + " / " + label);
             send->knob.setTitle(send->knob.getName());
             send->knob.setTooltip(label);
-            send->knob.setValue(channels_[t].returnSends[r]*100.,juce::dontSendNotification);
+            send->knob.setValue(active ? channels_[t].returnSends[r]*100. : 0.,juce::dontSendNotification);
         }
         strip.resized();
     }
@@ -607,7 +612,7 @@ void MixerPanel::restore(const ostfstudio::SessionMix& mix) {
         strip.cue.setToggleState(track.cue, juce::dontSendNotification);
         strip.output.setSelectedId(track.outputBus + 2, juce::dontSendNotification);
         for (size_t r=0;r<strip.sends.size();++r)
-            strip.sends[r]->knob.setValue(track.returnSends[r]*100.,juce::dontSendNotification);
+            strip.sends[r]->knob.setValue(r < returns ? track.returnSends[r]*100. : 0.,juce::dontSendNotification);
         if (channelChanged) channelChanged(i);
     }
     refreshAudibility();

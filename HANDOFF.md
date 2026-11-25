@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Scale Editor, sung English readings and send slots
+
+Branch `feat/scale-editor-and-vocal-reading`. Scale Editor opens a Studio chord snapshot or an OSTF file in another VST3 host. Assignments are chord-targeted timed scales. Dragging back checks the originating score and uses Studio's timeline undo history. The native editor includes the 24 scale collections from the Max device. Run `ostf_scale_editor_tests`, the stock VST3 smoke and the vocal track smoke for file, host and drop coverage. Paper Lantern Replies has separate printed English and katakana readings throughout the lead and backing parts. The bilingual-mei render now starts at the first Pre-Chorus. Eight mixer sends are displayed with inactive slots dimmed. Expanded narrow headers wrap active sends across two rows.
+
+Windows Release passed all 32 CTest cases and the independent core build passed both tests. The portable executable in `dist/windows-scale-editor/Portable` passed `--vocal-track-smoke` with the bundled Paper Lantern project, including stale-return rejection and undo. The 135 English lyric units have katakana readings in both the standalone and packaged score. `build-visuals/mei-prechorus-katakana.wav` is a 12.33-second render of the opening English pre-chorus. Commercial DAW operation, macOS and perceived vocal naturalness still need independent verification.
+
 ## Song loading, LCD panels and vocal articulation
 
 Branch `feat/song-loading-and-vocal-display` adds asynchronous song opening and a filename overlay, revises the mixer and track send layouts, and gives the prompt guide and lyric captions a common LCD face. The bridge of Paper Lantern Replies uses explicit kana readings. The singer adapts recorded consonants to the following vowel, carries long vowels and shortens closure and nasal timing. Pass `bridge-mei` as the last argument of `ostf_singing_tests` to render the opening of the bridge.

@@ -1,5 +1,9 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+The Scale Editor VST3 receives an OSTF 5.0 score snapshot through a versioned in-process VST3 interface on the message thread. Other hosts can open an OSTF in the editor. Each assignment owns the exact chord span and names the chord in `harmony.scales[].targets`. Export preserves the rest of the score, including unknown extension data. Studio accepts a drag return against the source score digest and applies scale changes through global timeline editing and history. A stale return asks the user to reload the source. The digest is transport metadata in the drag filename.
+
+The first native port reuses the 24 pitch collections of the supplied Max device. Its adviser and MIDI audition are separate future work. The next Arranger port can use the same score handoff with a preview of changed clips by track ID. A Rack port should keep plug-in instances, routings and opaque preset state in the production/session layer, with MIDI-channel assignments verified in each target host.
+
 File-picker, desktop-open and bundled demo requests share a background reader. The message thread owns the progress overlay, adopts the parsed song and restores its session. Each request has a sequence number. A late result cannot replace a newer song. Parsing failure retains the open session.
 
 The singer stores the selected voice bank in the plug-in state. Its offline phoneme mapping adapts Japanese morae or English dictionary phonemes to that bank before synthesis. Individual meter channels hold their latest peak for 1.5 seconds and then release at 18 dB per second.

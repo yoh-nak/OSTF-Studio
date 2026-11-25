@@ -1,4 +1,5 @@
 #include "ui/Notation.h"
+#include "plugins/scale/ScoreExchange.h"
 #include "ui/MainComponent.h"
 #include "ui/InstrumentProgramWatch.h"
 #include "ui/GlobalTimelineEdit.h"
@@ -4132,6 +4133,34 @@ void MainComponent::filesDropped(const juce::StringArray& files, int x, int y) {
     const bool arrangement = rowOverlay_.getBounds().contains(x, y);
     const auto tickAtDrop = arrangement && x >= rowOverlay_.getX() + trackHeaderWidth
         ? arrangementTickAt(x) : std::max<juce::int64>(0, cursorTick_);
+    if (file.hasFileExtension("ostf") && file.getFileName().startsWith("studio-scales-")) {
+        if (!project_ || !arrangement || recordTrack_) return;
+        const auto expected = "studio-scales-" + juce::SHA256(project_->sourceScore).toHexString() + "-";
+        if (!file.getFileName().startsWith(expected)) {
+            statusLabel_.setText(TRANS("The score has changed. Read the Studio score again in Scale Editor."),juce::dontSendNotification);
+            return;
+        }
+        std::unique_ptr<ostfstudio::OstfpPreview> returned;
+        juce::FileInputStream stream(file);
+        const auto result = ostfstudio::readOstfPreview(stream, returned);
+        if (result.failed()) { statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification); return; }
+        const auto current = juce::JSON::parse(project_->sourceScore.toString())["harmony"]["scales"];
+        const auto next = juce::JSON::parse(returned->sourceScore.toString())["harmony"]["scales"];
+        juce::Array<juce::var> removed, added;
+        const auto difference = [](const juce::var& a, const juce::var& b, juce::Array<juce::var>& diff) {
+            const auto* original = a.getArray(); const auto* other = b.getArray();
+            if (!original) return;
+            for (const auto& item : *original) {
+                const auto json = juce::JSON::toString(item,true,17);
+                if (!other || std::none_of(other->begin(),other->end(),[&](const auto& v){return juce::JSON::toString(v,true,17)==json;}))
+                    diff.add(item);
+            }
+        };
+        difference(current,next,removed); difference(next,current,added);
+        if (!removed.isEmpty() || !added.isEmpty()) applyGlobalChange(TimelineLane::scale,std::move(removed),std::move(added));
+        else statusLabel_.setText(TRANS("No scale changes."),juce::dontSendNotification);
+        return;
+    }
     if (file.hasFileExtension("mid;midi;ostf;ostfp")) {
         if (!arrangement) return;
         std::unique_ptr<ostfstudio::OstfpPreview> source;
@@ -5233,8 +5262,31 @@ void MainComponent::updateSplicePlayback() {
     spliceAuditionActive_ = active;
 }
 
+namespace {
+void offerScaleEditorScore(juce::AudioPluginInstance& instance, const juce::MemoryBlock& score) {
+    if (instance.getName() != "OSTF Scale Editor") return;
+    auto* vst = instance.getVST3Client();
+    auto* component = vst ? vst->getIComponentPtr() : nullptr;
+    void* out = nullptr;
+    if (component && component->queryInterface(ostfstudio::scale::scoreInputId,&out) == Steinberg::kResultOk && out) {
+        auto* input = static_cast<ostfstudio::scale::ScoreInput*>(out);
+        input->offerScore(static_cast<const char*>(score.getData()),int(score.getSize()));
+        input->release();
+    }
+}
+}
+void MainComponent::refreshScaleEditors() {
+    if (!project_) return;
+    const auto update = [this](const EffectChain& chain) {
+        for (const auto& slot : chain.slots)
+            if (slot.editor && slot.effect) offerScaleEditorScore(*slot.effect,project_->sourceScore);
+    };
+    for (const auto& track : trackControls_) update(track->effects);
+    for (const auto& output : outputControls_) update(output.effects);
+}
 void MainComponent::openEffectEditor(bool output, std::size_t index, std::size_t position) {
     auto& slot = effectChain(output, index).slots[position];
+    if (project_) offerScaleEditorScore(*slot.effect, project_->sourceScore);
     if (!slot.editor) {
         std::unique_ptr<juce::AudioProcessorEditor> editor(slot.effect->createEditorAndMakeActive());
         if (!editor) editor = std::make_unique<juce::GenericAudioProcessorEditor>(*slot.effect);
@@ -6084,6 +6136,7 @@ void MainComponent::refreshHistoryControls() {
 }
 
 void MainComponent::rememberScoreEdit(juce::MemoryBlock before, const char* label) {
+    if (before != project_->sourceScore) refreshScaleEditors();
     while (noteHistory_.size() > noteHistoryCursor_) noteHistory_.pop_back();
     if (!noteHistory_.empty() && noteHistory_.back().after != before) noteHistory_.clear();
     noteHistory_.push_back({std::move(before), project_->sourceScore});
@@ -6229,6 +6282,7 @@ void MainComponent::undoPianoEdit(bool redo) {
     }
     const auto result = project_->restoreNoteScore(redo ? revision.after : revision.before);
     if (result.wasOk()) {
+        refreshScaleEditors();
         if (redo) ++noteHistoryCursor_; else --noteHistoryCursor_;
         if (revision.reviewBefore) {
             const auto track = revision.reviewTrack;
@@ -6659,7 +6713,7 @@ void MainComponent::resized() {
     statusLabel_.setBounds(footer);
     auto editor = getWorkspace();
     trackHeaderWidth = std::min(preferredHeaderWidth_, std::max(320, editor.getWidth() - 145));
-    trackNameWidth = std::clamp(trackHeaderWidth - 315, 70, 300);
+    trackNameWidth = std::clamp(trackHeaderWidth - 295, 76, 300);
     ruler_.headerWidth = trackHeaderWidth;
     basics_.setVisible(project_ && workspaceMode_ == WorkspaceMode::arrangement);
     if (pluginBrowser_) {
@@ -6834,7 +6888,9 @@ void MainComponent::resized() {
                 placeInstrument(top.reduced(2, 1));
                 const bool manySends = mixer_.returnCount() > 3 && header.getHeight() >= 60;
                 if (manySends) {
-                    auto sendRow = header.removeFromBottom(std::clamp(header.getHeight() - 38, 27, 46));
+                    const int minSendHeight = strip.sends.getViewedComponent()->getNumChildComponents() > 4
+                        && header.getWidth() < 460 ? 42 : 30;
+                    auto sendRow = header.removeFromBottom(std::clamp(header.getHeight() - 32, minSendHeight, 56));
                     strip.sends.setBounds(sendRow.reduced(2, 0));
                 }
                 auto lower = header.removeFromLeft(std::min(trackNameWidth, 170));

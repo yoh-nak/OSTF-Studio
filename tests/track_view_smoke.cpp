@@ -381,6 +381,32 @@ private:
         if (std::none_of(studio.vocalLane_.phrases.begin(), studio.vocalLane_.phrases.end(), [](const auto& phrase) {
                 return phrase.text == juce::String::fromUTF8("雨の音が") && phrase.start > 0; }))
             return 14;
+        {
+            const auto before = project.sourceScore;
+            auto score = juce::JSON::parse(before.toString());
+            const auto chord = score["harmony"]["chords"][0];
+            auto scale = juce::JSON::parse(R"({"id":"scale-return-smoke","start":0,"duration":1,"tonic":{"step":"C","alter":0},"intervals":[0,2,4,5,7,9,11],"targets":[{"type":"chord","id":"first"}]})");
+            scale.getDynamicObject()->setProperty("start",chord["start"]);
+            scale.getDynamicObject()->setProperty("duration",chord["duration"]);
+            scale["targets"][0].getDynamicObject()->setProperty("id",chord["id"]);
+            auto scales = score["harmony"]["scales"];
+            scales.getArray()->add(scale);
+            const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+            const auto file = dir.getChildFile("studio-scales-"+juce::SHA256(before).toHexString()+"-"+juce::Uuid().toString()+".ostf");
+            juce::ScopeGuard cleanup([&]{ file.deleteFile(); });
+            if (!file.replaceWithText(juce::JSON::toString(score),false,false,nullptr)) return 33;
+            auto drop = [&]{studio.filesDropped({file.getFullPathName()},studio.rowOverlay_.getX()+studio.trackHeaderWidth+3,studio.rowOverlay_.getY()+4);};
+            drop();
+            const auto applied = project.sourceScore;
+            const auto loaded = juce::JSON::parse(applied.toString());
+            if (loaded["harmony"]["scales"].size()!=scales.size() || loaded["tracks"].size()!=score["tracks"].size()) return 34;
+            drop();
+            if (project.sourceScore!=applied) return 35;
+            studio.undoPianoEdit(false);
+            if (project.sourceScore!=before) return 36;
+        }
+        const auto pre = project.vocalNotes.find("vocal-part-3-line-1-note-1");
+        if (pre == project.vocalNotes.end() || pre->second.pronunciation != juce::String::fromUTF8("イフ")) return 32;
         studio.vocalLane_.entrance.onClick();
         if (studio.cursorTick_ != project.pitchedNotes[lead].front().startTick || studio.cursorTick_/project.ticksPerBar != 4) return 5;
         while (studio.mixer_.returnCount() < ostfstudio::maxMixerReturns) studio.mixer_.addReturn();
@@ -1448,11 +1474,14 @@ int checkTrackView(const juce::File& fixture) {
             return firstTrack + " / " + TRANS("Send: ") + mixer->outputName(ostfstudio::returnOutput(r));
         };
         for (auto r = returns; r < ostfstudio::maxMixerReturns; ++r) {
+            const auto placeholder = firstTrack + " / " + TRANS("Send: ") + TRANS("Return ") + juce::String(int(r + 1));
+            auto* inactive = findControl<juce::Slider>(*mixer, placeholder);
+            if (!inactive || inactive->isEnabled() || !inactive->isVisible()) return 259;
             if (!addReturn->isEnabled()) return 259;
             addReturn->onClick();
             auto* knob = findControl<juce::Slider>(*mixer, sendTitle(r));
             auto* header = findControl<juce::Slider>(*pan->getParentComponent(), sendTitle(r));
-            if (!knob || !header || header == knob || mixer->returnCount() != r + 1) return 259;
+            if (!knob || !knob->isEnabled() || !header || header == knob || mixer->returnCount() != r + 1) return 259;
             header->setValue(21, juce::sendNotificationSync);
             if (knob->getValue() != 21) return 259;
             knob->setValue(34, juce::sendNotificationSync);

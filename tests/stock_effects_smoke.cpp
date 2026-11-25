@@ -1,4 +1,5 @@
 #include "StockEffects.h"
+#include "plugins/scale/ScoreExchange.h"
 #include "ui/PreviewTransport.h"
 #include "ui/PluginRoles.h"
 #include <cmath>
@@ -133,7 +134,7 @@ bool checkEffect(juce::AudioPluginInstance& instance, const ostfstudio::StockEff
             if (block > 5) peak = std::max(peak, std::abs(wet));
         }
     }
-    if (desc.name == "OSTF Stem Separator") return difference == 0 && instance.getLatencySamples() == 0 && instance.hasEditor();
+    if (desc.name == "OSTF Stem Separator" || desc.name == "OSTF Scale Editor") return difference == 0 && instance.getLatencySamples() == 0 && instance.hasEditor();
     if (desc.name == "OSTF Wave Analyzer") {
         if (difference != 0 || instance.getLatencySamples() != 0 || !instance.hasEditor()) return false;
         auto* span = instance.getParameters()[0];
@@ -372,6 +373,20 @@ int checkStockEffects(const juce::StringArray& args) {
     juce::FileInputStream file{juce::File(args[3])};
     std::unique_ptr<ostfstudio::OstfpPreview> song;
     if (ostfstudio::readOstfpPreview(file, song).failed() || !song->savedMix) return 21;
+    {
+        auto editor = load(formats,directory.getChildFile("OSTF Scale Editor.vst3"));
+        if (!editor || !editor->getVST3Client()) return 68;
+        auto* component = editor->getVST3Client()->getIComponentPtr();
+        void* result = nullptr;
+        if (!component || component->queryInterface(ostfstudio::scale::scoreInputId,&result)!=Steinberg::kResultOk || !result) return 69;
+        auto* input = static_cast<ostfstudio::scale::ScoreInput*>(result);
+        const auto& bytes = song->sourceScore;
+        const bool received = input->offerScore(static_cast<const char*>(bytes.getData()),int(bytes.getSize())) == Steinberg::kResultOk;
+        input->release();
+        if (!received) return 70;
+        std::unique_ptr<juce::AudioProcessorEditor> gui(editor->createEditorIfNeeded());
+        if (!gui) return 71;
+    }
     const auto& mix = *song->savedMix;
     const auto score = juce::JSON::parse(song->sourceScore.toString());
     int piano = -1;

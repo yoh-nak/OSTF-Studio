@@ -15,11 +15,11 @@ class SyllableVoice {
         const double previousHz = hz;
         if (!connected) { envelope = 0; recorded = nullptr; }
         channel = ch; key = pitch; gain = velocity;
-        if (!connected) { phase = 0; phraseFrames = 0; }
+        if (!connected) phase = 0;
         released = false; noteAge = 0;
         articulate(p, sr, bank, connected);
         hz = juce::MidiMessage::getMidiNoteInHertz(pitch);
-        glideCents = connected ? std::clamp(520 * std::log2(previousHz / hz), -165., 165.) : 0.;
+        glideCents = connected ? std::clamp(125 * std::log2(previousHz / hz), -22., 22.) : 0.;
         if (!connected) for (auto& res : resonators) res.y1 = res.y2 = 0;
     }
     void articulate(Phone p, double sr, const VoiceBank* bank, bool legato) {
@@ -66,18 +66,15 @@ class SyllableVoice {
     float sample(double sr, double bendRatio, float expression) {
         envelope = std::clamp(envelope + (released ? -36.0 : 110.0) / sr, 0.0, 1.0);
         if (released && envelope == 0) { key = channel = -1; return 0; }
-        const double time = age++ / sr, held = noteAge++ / sr, phrase = phraseFrames++ / sr;
+        const double time = age++ / sr, held = noteAge++ / sr;
         if (phone.onset == closure) return 0;
         const double strength = phone.intensity / 127.0;
         double cents = 0;
-        if (phone.delivery == vibrato) cents = vibratoCents(time,strength);
-        if (phone.delivery == scoop) cents = scoopCents(time,strength);
-        const double settling = std::max(0., 1. - held / .060);
+        if (phone.delivery == vibrato) cents = vibratoCents(held,strength);
+        if (phone.delivery == scoop) cents = scoopCents(held,strength);
+        const double settling = std::max(0., 1. - held / .032);
         cents += glideCents * settling * settling;
         const double sustain = std::clamp((held - .15) / .28, 0., 1.);
-        if (phone.delivery == plain && sustain > 0)
-            cents += sustain * (10 * std::sin(30. * phrase + .38 * std::sin(4.7 * phrase))
-                              + 3 * std::sin(10.1 * phrase + .2 * key));
         const auto pitch = hz * bendRatio * (cents == 0 ? 1 : std::exp2(cents / 1200));
         // Gently accent the nucleus of a stressed English syllable. Follow
         // the scored vowel length so a short word retains its consonants.
@@ -211,7 +208,7 @@ class SyllableVoice {
     Phone phone;
     double hz{}, phase{}, gain{}, envelope{}, position{}, transition{}, previousNoise{};
     unsigned noise = 1397;
-    uint64_t age = 0, noteAge = 0, phraseFrames = 0;
+    uint64_t age = 0, noteAge = 0;
     bool released = false, nasal = false, stop = false, voiced = false, fricative = false, vowelSample = false;
 };
 // During a connected syllable change keep rendering the outgoing vowel at its

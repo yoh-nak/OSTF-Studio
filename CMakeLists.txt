@@ -82,6 +82,11 @@ if (OSTF_STUDIO_BUILD_GUI)
     target_link_libraries(ostf_effect_dsp PRIVATE juce::juce_audio_processors juce::juce_dsp juce::juce_recommended_config_flags)
     target_include_directories(ostf_effect_dsp INTERFACE "$<TARGET_PROPERTY:juce::juce_core,INTERFACE_JUCE_MODULE_PATH>")
 
+    set(ostf_vst_sdk "${JUCE_MODULES_DIR}/juce_audio_processors_headless/format_types/VST3_SDK")
+    add_library(ostf_scale_document STATIC src/plugins/scale/ScaleDocument.cpp
+                "${JUCE_MODULES_DIR}/juce_cryptography/juce_cryptography.cpp")
+    set_target_properties(ostf_scale_document PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+    target_link_libraries(ostf_scale_document PRIVATE jsoncons ostf_score_validation ostf_effect_dsp)
     juce_add_plugin(OSTFGMSoundModule
         COMPANY_NAME "OSTF Studio"
         BUNDLE_ID "org.ostf.gmsoundmodule"
@@ -140,6 +145,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
         src/ui/TheoryGuide.cpp tests/stock_effects_smoke.cpp tests/track_view_smoke.cpp tests/notation_smoke.cpp
         tests/transport_smoke.cpp tests/piano_edit_smoke.cpp tests/theory_guide_smoke.cpp)
+    set_property(SOURCE src/ui/MainComponent.cpp tests/stock_effects_smoke.cpp APPEND PROPERTY INCLUDE_DIRECTORIES "${ostf_vst_sdk}")
     target_include_directories(OSTFStudio PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(OSTFStudio PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
     target_compile_definitions(OSTFStudio PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)

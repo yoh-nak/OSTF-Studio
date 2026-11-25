@@ -241,6 +241,7 @@ private:
     };
     EffectChain& effectChain(bool output, std::size_t index);
     void updateEffectButton(EffectChain& chain);
+    void refreshScaleEditors();
     void queueMixerPluginRefresh();
     void refreshMixerPlugins();
     bool mixerPluginRefreshQueued_ = false;

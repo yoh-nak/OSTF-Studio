@@ -97,6 +97,16 @@ int main(int argc, char** argv) {
     using namespace ostfstudio::singing;
     if (argc < 2 || argc > 4) return 1;
     const auto source = juce::File(juce::String::fromUTF8(argv[1])).loadFileAsString();
+    const auto scoreUnits = items(juce::JSON::parse(source)["lyrics"]["units"]);
+    int englishUnits = 0;
+    for (const auto& unit : scoreUnits) {
+        if (!unit["text"].toString().containsAnyOf("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")) continue;
+        const auto reading = unit["pronunciation"].toString();
+        if (reading.isEmpty()) return 40;
+        for (auto c : reading) if (c < 0x30a1 || c > 0x30ff) return 40;
+        ++englishUnits;
+    }
+    if (englishUnits < 100) return 40;
     const auto parts = readParts(juce::JSON::parse(source));
     if (parts.empty() || parts.front().syllables.empty()) return 2;
     const auto kana = pronounce(juce::String::charToString(0x30ab) + juce::String::charToString(0x30bc));
@@ -259,17 +269,12 @@ int main(int argc, char** argv) {
         if (!(bpm > 0)) return 12;
         head.position.setBpm(bpm);
         double start = parts.front().syllables.front().start;
-        if (bridge) {
+        if (bridge || bilingual) {
             const auto score = juce::JSON::parse(source);
             const auto sections = items(score["timeline"]["sections"]);
-            const auto it = std::find_if(sections.begin(), sections.end(), [](const auto& s){ return s["name"].toString() == "Bridge"; });
+            const auto it = std::find_if(sections.begin(), sections.end(), [&](const auto& s){ return s["name"].toString() == (bridge ? "Bridge" : "Pre-Chorus"); });
             if (it == sections.end()) return 39;
             start = double((*it)["start"]) / double(score["ppq"]);
-        } else if (bilingual) {
-            const auto& line = parts.front().syllables;
-            const auto english = std::find_if(line.begin(),line.end(),[](const auto& unit){return unit.phone.english != 0;});
-            if (english == line.end() || english->start < 8.) return 35;
-            start = english->start - 8.;
         }
         for (int pos = 0; pos < int(16 * 60 * 48000 / bpm); pos += audio.getNumSamples()) {
             head.position.setPpqPosition(start + pos * bpm / (60 * 48000));

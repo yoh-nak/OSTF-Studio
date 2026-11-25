@@ -43,13 +43,16 @@ public:
     void resized() override {
         juce::Viewport::resized();
         const int count = std::max(1, static_cast<int>(controls.size()));
-        const int slotWidth = std::clamp(getWidth() / count, 53, 78);
-        const int width = slotWidth * static_cast<int>(controls.size());
+        const bool twoRows = count > 4 && getWidth() < count * 57 && getHeight() >= 42;
+        const int columns = twoRows ? (count + 1) / 2 : count;
+        const int slotWidth = std::clamp(getWidth() / columns, 48, 100);
+        const int width = slotWidth * columns;
         const int height = std::max(0, getHeight() - (width > getWidth() ? getScrollBarThickness() : 0));
         row.setSize(width, height);
-        const int offset = std::clamp(height-25,0,10);
+        const int cellHeight = twoRows ? height / 2 : height;
+        const int offset = twoRows ? 0 : std::clamp(height-25,0,8);
         for (size_t i = 0; i < controls.size(); ++i)
-            controls[i]->setBounds(static_cast<int>(i)*slotWidth,int(i%2)*offset,slotWidth,height-offset);
+            controls[i]->setBounds(int(i % columns)*slotWidth,int(i / columns)*cellHeight + int(i%2)*offset,slotWidth,cellHeight-offset);
     }
 
 private:
@@ -75,9 +78,11 @@ private:
         void resized() override {
             auto area = getLocalBounds();
             knob.setBounds(area.removeFromLeft(std::min({25, area.getHeight(), area.getWidth() - 31})));
-            const bool tall = area.getHeight() >= 24;
+            const bool sideBySide = getWidth() >= 74 && area.getHeight() < 25;
+            const bool tall = sideBySide || area.getHeight() >= 24;
             value.setVisible(tall);
-            if (tall) value.setBounds(area.removeFromBottom(area.getHeight()/2));
+            if (sideBySide) value.setBounds(area.removeFromRight(24));
+            else if (tall) value.setBounds(area.removeFromBottom(area.getHeight()/2));
             label.setBounds(area);
         }
         juce::Slider knob;

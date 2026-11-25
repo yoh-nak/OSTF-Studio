@@ -535,12 +535,19 @@ def sing_lantern(song):
         "Verse 2": [("夜明けの風が", "吹く", 7), ("君の名を", "呼んだ", 5),
                     ("小さな", "提灯", 4), ("二人の道を", "照らす", 7)],
     }
-    bridge_readings = [
-        "ワン ブレス キャン ベンド ザ ライト",
-        "ワン ワード キャン リフト ザ シェード",
-        "レット オール ザ ドアズ スウィング ワイド",
-        "アイ ウィル ノット ターン ア ウェイ",
-    ]
+    english_readings = {
+        "If the street lights all go out": "イフ ザ ストリート ライツ オール ゴー アウト",
+        "Look for the flame in my hands": "ルック フォー ザ フレイム イン マイ ハンズ",
+        "Fold a lit-tle dawn in-to the blue": "フォールド ア リ トル ドーン イン トゥ ザ ブルー",
+        "Leave a lit-tle light a-cross the room": "リーヴ ア リ トル ライト ア クロス ザ ルーム",
+        "When the ci-ty falls a-sleep a-gain": "ウェン ザ シ ティ フォールズ ア スリープ ア ゲン",
+        "My pa-per lan-tern shines for you": "マイ ペイ パー ラン ターン シャインズ フォー ユー",
+        "One breath can bend the light": "ワン ブレス キャン ベンド ザ ライト",
+        "One word can lift the shade": "ワン ワード キャン リフト ザ シェード",
+        "Let all the doors swing wide": "レット オール ザ ドアズ スウィング ワイド",
+        "I will not turn a-way": "アイ ウィル ノット ターン ア ウェイ",
+        "Let the morn-ing find us by the door": "レット ザ モーン ニング ファインド アス バイ ザ ドア",
+    }
     song["lyrics"] = lyrics
     lead = song["tracks"][0]
     backing = next(lane for lane in song["tracks"] if lane["id"] == "backing")
@@ -558,6 +565,9 @@ def sing_lantern(song):
             words = text.split()
             syllables = [syllable for word in words for syllable in word.split("-")]
             japanese = name in ("Verse 1", "Verse 2")
+            readings = [] if japanese else english_readings[text].split()
+            if not japanese and len(readings) != len(syllables):
+                raise ValueError(f"Unaligned pronunciation: {text}")
             phrase = text.replace(" ", "") if japanese else text.replace("-", "")
             line_tick = section["start"] + line * 8 * PPQ
             split = len(syllables)
@@ -606,8 +616,8 @@ def sing_lantern(song):
                 lyrics["units"].append({"id": unit_id, "phraseId": phrase_id, "text": syllable, "start": at, "duration": held})
                 if japanese and syllable == "を":
                     lyrics["units"][-1]["pronunciation"] = "お"
-                elif name == "Bridge":
-                    lyrics["units"][-1]["pronunciation"] = bridge_readings[line].split()[i]
+                elif not japanese:
+                    lyrics["units"][-1]["pronunciation"] = readings[i]
                 lyrics["alignments"].append({"id": f"{unit_id}-alignment", "voiceId": "voice",
                                              "unitIds": [unit_id], "noteIds": [note_id]})
                 if i == 0 or i + 1 == len(syllables):
@@ -633,7 +643,7 @@ def sing_lantern(song):
                     backing_notes.append(harmony)
                     lyric = f"{line_id}-ah"
                     lyrics["phrases"].append({"id": lyric, "documentId": "lantern-backing-text", "text": "Ah"})
-                    lyrics["units"].append({"id": f"{lyric}-unit", "phraseId": lyric, "text": "Ah", "start": at, "duration": held})
+                    lyrics["units"].append({"id": f"{lyric}-unit", "phraseId": lyric, "text": "Ah", "pronunciation": "アー", "start": at, "duration": held})
                     lyrics["alignments"].append({"id": f"{lyric}-alignment", "voiceId": "backing-voice",
                                                 "unitIds": [f"{lyric}-unit"], "noteIds": [harmony["id"]]})
             for parameter, values in {

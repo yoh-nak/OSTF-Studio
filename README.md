@@ -2,7 +2,11 @@
 
 Opening a demo or song file shows the filename while the score is read in the background. The prompt guide and current written lyrics use a backlit LCD treatment. Expanded track headers put four or more sends on a dedicated row. The master places the VUs and phase scope above the numerical measurements.
 
-The bridge of **Paper Lantern Replies** keeps English on the lead sheet and supplies per-note katakana readings. Japanese long-vowel marks within one unit extend the vowel recording. With English dictionary input, the Japanese bank chooses a consonant recording shaped for the following vowel.
+**Paper Lantern Replies** keeps all its English lyrics on the lead sheet and supplies per-note katakana for the lead and backing voices. The mixer shows eight send slots on every source strip. Adding a return activates its slot.
+
+**OSTF Scale Editor** is a VST3 insert. Open its editor in Studio to read the current chord track, or use Open OSTF in another host. Select a chord, tonic and scale, then Assign scale. Save OSTF writes the complete score. Drag OSTF to Studio applies the scales to the originating arrangement in one undoable edit.
+
+Japanese long-vowel marks within one unit extend the vowel recording. With English dictionary input, the Japanese bank chooses a consonant recording shaped for the following vowel.
 
 The mixer pins the master on the far right. Independent white markers hold left and right peaks for 1.5 seconds. The headphone switch lights when Cue is active in the track header and mixer. Chord Voicing opens at 100 px and defaults to muted when the project has no saved voicing mix. Each source track has a pan knob and an independent named send knob for every return in both the expanded track header and the mixer. Buses and returns each support one to eight strips. Its two VU needles show the post-fader left and right signals, with a phase scope underneath. Source strips show one needle for mono and two for stereo. Bus, return and Cue meters follow their own signals. The master shows loudness, true peak, spectrum and phase alongside its stereo VUs. Click Instrument to open the instrument editor. Click FX to reopen the selected insert, or use its arrow to select another insert. A steady sine at −18 dBFS reads 0 VU.
 
