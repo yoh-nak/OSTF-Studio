@@ -1207,6 +1207,22 @@ bool OstfpPreview::partDisplaysDocument(size_t track, const juce::String& docume
                                              : primaryMelodyTrack == track && document == displayDocument;
 }
 
+const char* OstfpPreview::displayLyricAt(size_t track, juce::int64 tick) const {
+    const auto part = partLyricLanes.find(track);
+    if (part == partLyricLanes.end() || ticksPerBar <= 0 || tick < 0) return "";
+    const double bar = 1.0 + double(tick) / ticksPerBar;
+    for (const auto& lane : part->second) {
+        if (lane.kind != TimelineLane::displayLyrics) continue;
+        const auto next = std::upper_bound(lane.regions.begin(), lane.regions.end(), bar,
+            [](double at, const ArrangementRegion& cell) { return at < cell.exactBars->start; });
+        if (next != lane.regions.begin()) {
+            const auto& cell = *std::prev(next);
+            if (bar < cell.exactBars->end && cell.label) return cell.label;
+        }
+    }
+    return "";
+}
+
 juce::String OstfpPreview::contextAt(TimelineLane kind, juce::int64 tick) const {
     if (ticksPerBar <= 0) return {};
     const double at = 1.0 + double(tick) / ticksPerBar;

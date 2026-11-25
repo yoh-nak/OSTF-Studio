@@ -2724,6 +2724,12 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, c
     if (theoryVisible_ && theory_ && tick != cursorTick_
         && theory_->firstCell(double(cursorTick_)) != theory_->firstCell(double(tick)))
         repaint(rowOverlay_.getBounds().withWidth(trackHeaderWidth).withTrimmedLeft(trackNameWidth));
+    if (project_ && tick != cursorTick_) {
+        for (const auto& [track, lanes] : project_->partLyricLanes) {
+            if (track < trackRows_.size() && project_->displayLyricAt(track, tick) != project_->displayLyricAt(track, cursorTick_))
+                repaint(trackGroupBounds(track).withWidth(trackHeaderWidth).withHeight(partLyricHeight(track)));
+        }
+    }
     cursorTick_ = tick;
     if (scoreView_ && scoreView_->isVisible()) scoreView_->playbackPosition(tick);
     if (!project_) return;
@@ -6686,9 +6692,9 @@ void MainComponent::resized() {
         int labelsWidth = headingWidth(TRANS("BARS"));
         for (const auto& lane : view.globalLanes)
             labelsWidth = std::max(labelsWidth, headingWidth(juce::translate(lane.label)));
-        if (theoryVisible_) labelsWidth = std::max({labelsWidth, headingWidth(TRANS("Degree") + " / " + TRANS("Progression")),
+        if (theoryVisible_) labelsWidth = std::max({labelsWidth, headingWidth(TRANS("Degree")),
                                                     headingWidth(TRANS("Function"))});
-        const int guideWidth = std::max(0, trackHeaderWidth - labelsWidth - 20);
+        const int guideWidth = std::max(0, trackHeaderWidth - labelsWidth - 12);
         const int remaining = globalHeight - juce::roundToInt(verticalScroll_.getCurrentRangeStart());
         const int guideHeight = std::clamp(remaining, 0, rowOverlay_.getHeight());
         promptGuide_.setBounds(0, 0, guideWidth, guideHeight);
@@ -6787,12 +6793,13 @@ void MainComponent::resized() {
                 strip.volume.setBounds(lower.removeFromTop(22).reduced(3, 0));
                 strip.meter.setBounds(lower.removeFromTop(std::min(22, lower.getHeight())).reduced(5, 0));
                 strip.preset.setBounds(lower);
-                auto knobs = header.removeFromTop(std::min(44, std::max(20, header.getHeight() - 21)));
-                strip.pan.setBounds(knobs.removeFromLeft(std::min(42, knobs.getHeight())));
-                strip.mix.setBounds(knobs.removeFromRight(45).withSizeKeepingCentre(41, 21));
+                auto inputArea = header.removeFromBottom(std::min(22, header.getHeight())).reduced(1,0);
+                strip.mix.setBounds(inputArea.removeFromRight(48).reduced(2,1));
+                auto knobs = header.reduced(2,1);
+                auto panSlot = knobs.removeFromLeft(std::min(77, knobs.getWidth()/3));
+                strip.pan.setBounds(panSlot.removeFromRight(std::min(40,panSlot.getHeight())));
                 strip.sends.setBounds(knobs);
                 if (canArm) {
-                    auto inputArea = header.removeFromTop(std::min(21, header.getHeight()));
                     if (audio) {
                         strip.inputGain.setBounds(inputArea.removeFromRight(std::min(117, inputArea.getWidth()/2)).reduced(2,0));
                         strip.recordingMeter.setBounds(inputArea.removeFromRight(inputArea.getWidth()/3).reduced(2,5));
@@ -7145,6 +7152,17 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                         drawLane(lane, lyricRow.getY(), juce::Colour(lane.kind == TimelineLane::displayLyrics ? 0xff2c6058 : 0xff314d72));
                     lyricRow.translate(0, globalLaneHeight);
                 }
+                auto caption = trackGroupBounds(i).withWidth(trackHeaderWidth).withHeight(partLyricHeight(i));
+                if (!caption.isEmpty() && caption.intersects(g.getClipBounds())) {
+                    const juce::Font heading(juce::FontOptions(15.f,juce::Font::bold));
+                    const auto labelWidth = std::max(juce::GlyphArrangement::getStringWidth(heading,TRANS("Display lyrics")),
+                                                     juce::GlyphArrangement::getStringWidth(heading,TRANS("Pronunciation")));
+                    caption = caption.withTrimmedRight(juce::roundToInt(labelWidth)+16).reduced(9,2);
+                    g.setColour(juce::Colour(0xffe7f6f2));
+                    g.setFont(juce::FontOptions(std::min(25.f,float(caption.getHeight())*.78f),juce::Font::bold));
+                    g.drawFittedText(juce::String::fromUTF8(project_->displayLyricAt(i,cursorTick_)),caption,
+                                     juce::Justification::centredLeft,caption.getHeight() > 32 ? 2 : 1,.8f);
+                }
             }
             y = trackRows_[i].getY();
             rowHeight = trackRows_[i].getHeight();
@@ -7171,6 +7189,10 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         if (project_) {
             if (trackControls_[i]->size.expanded()) {
                 g.setColour(juce::Colour(muted));
+                auto panRect = getLocalArea(&rowOverlay_,trackControls_[i]->pan.getBounds());
+                auto panLabel = panRect.withX(panRect.getX()-36).withWidth(35);
+                g.setFont(juce::FontOptions(12.f,juce::Font::bold));
+                g.drawText(TRANS("Pan"),panLabel,juce::Justification::centredRight);
                 const auto& notes = project_->trackKinds[i] == ostfstudio::TrackKind::drum
                                   ? project_->drumNotes[i] : project_->pitchedNotes[i];
                 if (!notes.empty() && project_->ticksPerBar > 0) {
@@ -7355,7 +7377,7 @@ void MainComponent::drawTheoryRows(juce::Graphics& g, juce::Rectangle<int> bound
     };
     {
         const auto degreeBand = band(bounds.getY(), bounds.getHeight() - timelineRowHeight(),
-                                     TRANS("Degree") + " / " + TRANS("Progression"), {});
+                                     TRANS("Degree"), {});
         const auto top = band(degreeBand.getBottom(), timelineRowHeight(), TRANS("Function"), {});
         if (clip.isEmpty()) return;
         auto visibleSpans = [&](const auto& list, auto draw) {

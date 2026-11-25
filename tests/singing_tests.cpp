@@ -129,6 +129,9 @@ int main(int argc, char** argv) {
         singer->processBlock(audio,midi);
         return juce::AudioBuffer<float>(audio);
     };
+    auto accented = render({0,0,0,plain,0,65,250});
+    auto unaccented = render({0,0,0,plain,0,1,250});
+    if (!(accented.getRMSLevel(0,512,1536) > 1.04f * unaccented.getRMSLevel(0,512,1536))) return 30;
     const auto word = lyricPhones("light");
     const auto city = lyricsFor(juce::JSON::parse(R"({"lyrics":{
         "phrases":[{"id":"line","text":"city"}],

@@ -76,7 +76,15 @@ class SyllableVoice {
             cents += sustain * (10 * std::sin(30. * phrase + .38 * std::sin(4.7 * phrase))
                               + 3 * std::sin(10.1 * phrase + .2 * key));
         const auto pitch = hz * bendRatio * (cents == 0 ? 1 : std::exp2(cents / 1200));
-        const auto level = gain * envelope * expression * (1. - sustain * (.035 + .025 * std::sin(6.3 * held)));
+        // Gently accent the nucleus of a stressed English syllable. Follow
+        // the scored vowel length so a short word retains its consonants.
+        double accent = 1.;
+        if (phone.english && (phone.english & 63) <= 15) {
+            const double progress = time / std::max(.08, phone.durationMs ? .001*phone.durationMs : .26);
+            const double rise = std::min(1., progress/.24);
+            accent = (phone.english & 64) ? 1. + .12*rise*std::exp(-2.6*progress) : .94;
+        }
+        const auto level = gain * envelope * expression * accent * (1. - sustain * (.035 + .025 * std::sin(6.3 * held)));
         if (englishSound) {
             const auto& sound = *englishSound;
             const auto length = double(sound.frames.size() - 2);
@@ -195,11 +203,11 @@ class SyllableVoice {
 class Voice : public SyllableVoice {
   public:
     void start(int ch, int pitch, float velocity, Phone p, double sr, const VoiceBank* bank) {
-        beginTransition(ch, sr);
+        beginTransition(ch, p, sr);
         SyllableVoice::start(ch, pitch, velocity, p, sr, bank);
     }
     void articulate(Phone p, double sr, const VoiceBank* bank) {
-        beginTransition(channel, sr);
+        beginTransition(channel, p, sr);
         SyllableVoice::articulate(p, sr, bank);
     }
     float sample(double sr, double bend, float expression) {
@@ -211,11 +219,19 @@ class Voice : public SyllableVoice {
   private:
     SyllableVoice tail;
     int remaining = 0, length = 1;
-    void beginTransition(int ch, double sr) {
+    void beginTransition(int ch, Phone incoming, double sr) {
         remaining = 0;
         if (key < 0 || channel != ch) return;
         tail = static_cast<const SyllableVoice&>(*this);
-        length = remaining = std::max(1, int(.018 * sr));
+        // Preserve stop bursts and sibilants. Open vowels and voiced sonorants
+        // can overlap longer, so the mouth shape changes through the beat.
+        const int en = incoming.english & 63;
+        const bool vowel = en ? en <= 15 : incoming.onset == vowelOnly;
+        const bool sonorant = en ? en >= 25 && en <= 28 :
+            incoming.onset == m || incoming.onset == n || incoming.onset == r || incoming.onset == moraN;
+        double seconds = vowel ? .037 : sonorant ? .026 : .008;
+        if (incoming.durationMs > 0) seconds = std::min(seconds,incoming.durationMs * .00035);
+        length = remaining = std::max(1, int(seconds * sr));
     }
 };
 class Singer;

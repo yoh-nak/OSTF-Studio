@@ -8,13 +8,17 @@ inline void drawVu(juce::Graphics& g, juce::Rectangle<float> bounds, float ampli
     const auto fit = juce::RectanglePlacement(juce::RectanglePlacement::centred)
         .getTransformToFit({0.f, 0.f, 152.f, 78.f}, bounds);
     g.addTransform(fit);
-    g.setColour(juce::Colour(0xff101516));
-    g.fillRoundedRectangle(0, 0, 152, 78, 5);
-    g.setColour(juce::Colour(0xff657072));
-    g.drawRoundedRectangle(.6f, .6f, 150.8f, 76.8f, 4, 1);
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0xffaf956b), 76, 4,
-                                            juce::Colour(0xfff6eac9), 76, 59, false));
-    g.fillRoundedRectangle(4, 4, 144, 69, 2.5f);
+    juce::ColourGradient bezel(juce::Colour(0xff88938f),0,0,juce::Colour(0xff161b1a),0,78,false);
+    bezel.addColour(.09,juce::Colour(0xff323936));
+    bezel.addColour(.86,juce::Colour(0xff101514));
+    g.setGradientFill(bezel);
+    g.fillRoundedRectangle(0,0,152,78,5);
+    g.setColour(juce::Colour(0xff171713));
+    g.fillRoundedRectangle(3,3,146,71,3);
+    juce::ColourGradient lamp(juce::Colour(0xfffff0c5),76,55,juce::Colour(0xffb39769),148,4,true);
+    lamp.addColour(.65,juce::Colour(0xffefdbaf));
+    g.setGradientFill(lamp);
+    g.fillRoundedRectangle(4,4,144,69,2.5f);
     const juce::Colour ink(0xff332e25), red(0xffaa3021);
     const juce::Point<float> pivot{76.f, 75.f};
     auto point = [&](float gain, float radius) {
@@ -47,8 +51,14 @@ inline void drawVu(juce::Graphics& g, juce::Rectangle<float> bounds, float ampli
     g.drawLine({pivot.translated(1, 1), tip.translated(1.7f, 1.4f)}, 1.8f);
     g.setColour(juce::Colour(0xff292720));
     g.drawLine({pivot, tip}, 1.4f);
-    g.setColour(juce::Colour(0xff232829));
-    g.fillRoundedRectangle(59, 68, 34, 9, 4);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff77766b),76,68,juce::Colour(0xff1e211d),76,75,false));
+    g.fillRoundedRectangle(59,68,34,9,4);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0x26ffffff),12,5,juce::Colour(0x00ffffff),26,27,false));
+    g.fillRoundedRectangle(5,5,142,26,2);
+    g.setColour(juce::Colour(0xff50534b));
+    for (float x : {2.8f,149.2f}) {
+        g.fillEllipse(x-1,73.8f,2,2);
+    }
 }
 
 inline void drawChannelVu(juce::Graphics& g, juce::Rectangle<float> bounds, StereoPeak levels, int channels,
@@ -130,8 +140,9 @@ inline void drawMasterDetails(juce::Graphics& g, juce::Rectangle<float> bounds, 
 
 inline void drawPhaseScope(juce::Graphics& g, juce::Rectangle<float> bounds, const MasterReadout& data) {
     if (bounds.isEmpty()) return;
-    g.setColour(juce::Colour(0xff101b1b));
-    g.fillRoundedRectangle(bounds, 5);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff20342f),bounds.getCentreX(),bounds.getCentreY(),
+                                            juce::Colour(0xff0b1516),bounds.getRight(),bounds.getY(),true));
+    g.fillRoundedRectangle(bounds,5);
     g.setColour(juce::Colour(0xff647572));
     g.drawRoundedRectangle(bounds.reduced(.5f), 5, 1);
     auto screen = bounds.reduced(9, 4);

@@ -49,7 +49,6 @@ struct MasterReadout {
 };
 struct MixerVuLevels {
     std::array<StereoPeak, 16> vu{};
-    std::array<std::array<StereoPeak,maxMixerReturns>,16> sendVu{};
     std::array<StereoPeak,mixerOutputCapacity> outputVu{};
     StereoPeak cueVu{};
 };

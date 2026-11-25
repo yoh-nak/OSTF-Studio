@@ -119,23 +119,35 @@ std::optional<RecordedMora> readMora(std::unique_ptr<juce::InputStream> stream, 
 }
 }
 
-// Follow one upward waveform crossing per period. Import-time analysis also applies
-// to user voice banks, whose pitch and recording phase can vary within a vowel.
+// Track the phase of the voiced recording at import time. A bright vowel can
+// have several positive crossings per cycle. Compare the surrounding waveform
+// to avoid switching between harmonics as the singer changes pitch or timbre.
 void RecordedMora::preparePitchMarks() {
     pitchMarks.clear();
     if (period < 2 || frames.size() < 3) return;
+    const int end = int(frames.size()) - 2;
+    const int radius = std::max(1,int(.28 * period));
+    const int stride = std::max(1,int(period / 24));
+    double localPeriod = period;
     int mark = 0;
-    while (mark < int(frames.size())-2) {
+    while (mark < end) {
         pitchMarks.push_back(mark);
-        const int predicted = mark + int(std::round(period));
-        int nearest = predicted;
-        double distance = period;
-        const int radius = std::max(1, int(.23 * period));
-        for (int i = std::max(mark+1,predicted-radius); i <= std::min(int(frames.size())-2,predicted+radius); ++i)
-            if (frames[i] <= 0 && frames[i+1] > 0 && std::abs(i-predicted) < distance) {
-                nearest = i; distance = std::abs(i-predicted);
+        const int predicted = mark + std::max(1,int(std::round(localPeriod)));
+        int best = predicted;
+        double bestScore = -2;
+        for (int i = std::max(mark+1,predicted-radius); i <= std::min(end,predicted+radius); ++i) {
+            if (frames[i] > 0 || frames[i+1] <= 0) continue;
+            double cross = 0, a = 0, b = 0;
+            for (int shift = -radius; shift <= radius; shift += stride) {
+                const auto x = frames[std::clamp(mark+shift,0,end)];
+                const auto y = frames[std::clamp(i+shift,0,end)];
+                cross += x*y; a += x*x; b += y*y;
             }
-        mark = nearest;
+            const double score = cross/std::sqrt(a*b + 1.e-14) - .19 * std::abs(i-predicted)/radius;
+            if (score > bestScore) { bestScore = score; best = i; }
+        }
+        localPeriod = std::clamp(.78*localPeriod + .22*(best-mark),.78*period,1.22*period);
+        mark = best;
     }
 }
 

@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Chord lyric headers and mixer controls
+
+The header beside each vocal part’s lyric lanes follows its written chord cell. The mixer has a fixed instrument and split FX control row. The master VUs, phase scope and measurement panel share one view. Per-return send gains remain available in the mixer and track headers. Singer pitch marks use waveform similarity, with transitions timed by incoming phoneme and English vowel stress.
+
+Windows Release passed 31/31 tests and the separate core build passed 2/2. The packaged executable in `dist/windows-lyric-console/Portable` also passed the hosted lead/backing vocal check. `build-visuals/lyric-console-header.png` shows the demo at the vocal entrance. `build-visuals/lyric-console-mixer.png` uses deterministic meter inputs.
+
+The same 12.33-second Paper Lantern Replies passage is rendered at 48 kHz in `build-visuals/mixer-singer-phrasing.wav` (previous) and `build-visuals/lyric-console-singer.wav` (current). The automated render does not rate perceived voice quality. On the Windows workstation, older compiler objects from the timeline and startup-fix debug builds were copied and hash-verified under `E:/OSTF-Studio-build-cache/timeline-objects-for-console-build` and `E:/OSTF-Studio-build-cache/legacy-objects-lyric-console` to make space for the portable.
+
 ## Mixer send racks, right-hand master and singer articulation
 
 Branch `feat/master-meter-plugin-strips`. A return owns a named send knob on every source track in both the arrangement and the mixer. Both views update the same channel send. Long rows scroll horizontally in the header and vertically within a two-row mixer send rack. A rotary pan remains accessible beside them. Each output kind allows one through eight members, including restored legacy mixes. Delete and duplicate commands use the same limits.

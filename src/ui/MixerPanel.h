@@ -64,10 +64,8 @@ private:
     struct Send final : juce::Component {
         juce::Label name;
         juce::Slider knob;
-        ostfstudio::StereoPeak vu{};
-        juce::Rectangle<int> dial;
+
         Send();
-        void paint(juce::Graphics&) override;
         void resized() override;
     };
     struct Strip final : juce::Component {
@@ -90,11 +88,12 @@ private:
         juce::Rectangle<int> diagnostics;
         ostfstudio::StereoPeak vu{};
         int meterChannels = 2;
-        juce::Component pluginRack;
-        juce::Viewport pluginViewport;
+        juce::TextButton instrument{TRANS("Instrument")}, effect{"FX"}, selectEffect{juce::String::charToString(0x25be)};
         std::vector<PluginEntry> entries;
-        std::vector<std::unique_ptr<juce::TextButton>> pluginRows;
-        juce::TextButton analysisButton{TRANS("Meter details")};
+        int effectSlot = -1;
+        unsigned pluginRevision = 0;
+        std::function<void(int)> openSlot;
+        void updatePluginButtons();
         std::array<float,31> bands{};
         bool isMaster = false;
         ostfstudio::MasterReadout analysis;

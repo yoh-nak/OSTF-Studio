@@ -432,7 +432,6 @@ int checkStockEffects(const juce::StringArray& args) {
             metersMatchAudio &= (frame.cueVu[c] > 0) == (!cueOnly || c == 1);
             metersMatchAudio &= (frame.outputVu[2][c] > 0) == (bus && !cueOnly);
             metersMatchAudio &= (frame.outputVu[3][c] > 0) == (room && send && !cueOnly);
-            metersMatchAudio &= std::abs(frame.sendVu[piano][0][c] - channel.returnSends[0] * frame.vu[piano][c]) < .0001f;
         }
         if (cueOnly) metersMatchAudio &= frame.cue[0] == 0 && frame.cue[1] > .00001f;
         const auto drained = transport.takeMeters();

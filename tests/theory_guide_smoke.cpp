@@ -289,6 +289,21 @@ int checkTheoryGuide(const juce::File& demo) {
         mixer.setSize(2260, 680);
         ostfstudio::MeterFrame signal;
         signal.master.vu = {.78f,1.10f};
+        signal.master.levels.momentary = -16.2;
+        signal.master.levels.shortTerm = -17.7;
+        signal.master.levels.integrated = -18.6;
+        signal.master.levels.rms = {.16f,.18f};
+        signal.master.levels.peak = {.64f,.78f};
+        signal.master.levels.maxTruePeak = {.83f,.86f};
+        signal.master.levels.correlation = .72;
+        signal.master.levels.hasCorrelation = true;
+        signal.master.historyCount = unsigned(signal.master.shortHistory.size());
+        for (size_t i=0; i<signal.master.shortHistory.size(); ++i)
+            signal.master.shortHistory[i] = float(-18. + 3.*std::sin(i*.15) + 1.5*std::sin(i*.67));
+        std::array<float,31> spectrum{};
+        for (size_t i=0; i<spectrum.size(); ++i)
+            spectrum[i] = float(.28*std::exp(-.12*i)*(.7+.3*std::cos(.8*i)));
+        mixer.setSpectrum(spectrum);
         for (size_t i=0; i<signal.vu.size(); ++i) signal.vu[i] = {.32f + .13f * (i % 6), .42f + .16f * (i % 5)};
         for (size_t i=0; i<signal.master.scope.size(); ++i) {
             const double t = .10*i;

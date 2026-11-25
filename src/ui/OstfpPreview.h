@@ -206,6 +206,7 @@ struct OstfpPreview {
     juce::Result applySongMusic(const SongMusicEdit&, juce::MemoryBlock& before);
     juce::Result checkAudition(int shift, double rate) const;
     std::vector<ArrangementLane> globalLanes, trackLanes;
+    const char* displayLyricAt(size_t track, juce::int64 tick) const;
     std::map<size_t, std::vector<ArrangementLane>> partLyricLanes;
     std::vector<std::vector<PitchedNote>> pitchedNotes, drumNotes;
     std::map<juce::String, VocalNote> vocalNotes;

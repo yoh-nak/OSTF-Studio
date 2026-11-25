@@ -270,9 +270,30 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     if (studio.trackControls_[5]->outputTrack != 1) return 222;
     studio.trackControls_[2]->plugin.onClick();
     studio.refreshMixerPlugins();
-    const auto memberButton = studio.trackControls_[1]->instance->getName() + "  #2 Ch 5";
+    const auto memberButton = juce::String::fromUTF8(studio.project_->trackLanes[5].label) + " instrument editor";
     auto* sharedEditorButton = findControl<juce::TextButton>(studio.mixer_, memberButton);
-    if (!sharedEditorButton || !sharedEditorButton->isEnabled()) return 225;
+    if (!sharedEditorButton || !sharedEditorButton->getTooltip().contains("#2 Ch 5") || !sharedEditorButton->isEnabled()) return 225;
+    // Plug-in count and missing slots must not move the source fader or open a missing insert.
+    {
+        MixerPanel rack;
+        rack.setSize(1500,620);
+        rack.setTracks(*studio.project_);
+        const auto track = juce::String::fromUTF8(studio.project_->trackLanes[0].label);
+        auto* fx = findControl<juce::TextButton>(rack,track + " effect editor");
+        auto* arrow = findControl<juce::TextButton>(rack,track + " effect selection");
+        auto* pan = findControl<juce::Slider>(rack,track + " mixer pan");
+        if (!fx || !arrow || !pan || fx->isEnabled()) return 228;
+        const auto bounds = pan->getBounds();
+        int opened = -1;
+        rack.openPlugin = [&](bool output,size_t index,int slot) { if (!output && index == 0) opened = slot; };
+        rack.setStripPlugins(false,0,2,{{"Absent",0,false},{"First",1,true},{"Second",2,true}});
+        if (!fx->isEnabled() || !arrow->isEnabled() || fx->getTooltip() != "First") return 229;
+        fx->onClick();
+        if (opened != 1 || pan->getBounds() != bounds) return 230;
+        rack.setStripPlugins(false,0,2,{{"Second",0,true}});
+        fx->onClick();
+        if (opened != 0 || fx->getTooltip() != "Second") return 231;
+    }
     sharedEditorButton->onClick();
     if (!studio.trackControls_[0]->editor) return 219;
     if (!studio.trackControls_[1]->editor) return 224;
@@ -309,6 +330,17 @@ private:
             || studio.displayedTrackOrder()[1] != size_t(lead)
             || studio.trackRows_[*project.chordVoicingTrack].getBottom() >= studio.trackGroupBounds(lead).getY()
             || studio.trackRows_[lead].getBottom() >= studio.trackGroupBounds(backing).getY()) return 16;
+        for (const auto track : {lead,backing}) {
+            for (const auto& lane : project.partLyricLanes.at(track)) {
+                if (lane.kind != ostfstudio::TimelineLane::displayLyrics) continue;
+                for (const auto& cell : lane.regions) {
+                    const auto start = std::llround((cell.exactBars->start-1)*project.ticksPerBar);
+                    const auto end = std::llround((cell.exactBars->end-1)*project.ticksPerBar);
+                    for (auto tick : {start,end-1})
+                        if (juce::String::fromUTF8(project.displayLyricAt(track,tick)) != juce::String::fromUTF8(cell.label)) return 24;
+                }
+            }
+        }
         const auto& backingStrip = *studio.trackControls_[backing];
         if (!backingStrip.size.expanded() || backingStrip.size.height() != 100 || studio.trackControls_[lead]->size.height() != 100
             || !backingStrip.volume.isVisible() || !backingStrip.pan.isVisible()
@@ -336,6 +368,20 @@ private:
             return 14;
         studio.vocalLane_.entrance.onClick();
         if (studio.cursorTick_ != project.pitchedNotes[lead].front().startTick || studio.cursorTick_/project.ticksPerBar != 4) return 5;
+        const auto headerImage = juce::SystemStats::getEnvironmentVariable("OSTF_LYRIC_HEADER_PNG",{});
+        if (headerImage.isNotEmpty()) {
+            const auto previousScroll = studio.verticalScroll_.getCurrentRangeStart();
+            studio.verticalScroll_.setCurrentRangeStart(previousScroll + studio.trackGroupBounds(lead).getY()
+                - studio.rowOverlay_.getY() - studio.timelineRowHeight(),juce::sendNotificationSync);
+            studio.resized();
+            auto crop = studio.trackGroupBounds(lead).withWidth(studio.trackHeaderWidth + 380);
+            crop = crop.getIntersection(studio.rowOverlay_.getBounds());
+            juce::FileOutputStream stream{juce::File(headerImage)};
+            if (crop.isEmpty() || !stream.openedOk() || !stream.setPosition(0) || stream.truncate().failed()
+                || !juce::PNGImageFormat().writeImageToStream(studio.createComponentSnapshot(crop),stream)) return 25;
+            studio.verticalScroll_.setCurrentRangeStart(previousScroll,juce::sendNotificationSync);
+            studio.resized();
+        }
         const auto& note = project.pitchedNotes[lead].front();
         auto kind = studio.performanceLaneNames_.indexOf("Vibrato depth");
         if (kind < 0) return 6;
@@ -1422,7 +1468,7 @@ int checkTrackView(const juce::File& fixture) {
         || connection->getY() < menus->getBottom() || connection->getBottom() > deck->getY()
         || connection->getX() < main.getWidth() / 2) return 140;
     const juce::Font heading(juce::FontOptions(15.f, juce::Font::bold));
-    const auto reserved = juce::GlyphArrangement::getStringWidth(heading, TRANS("Degree") + " / " + TRANS("Progression"));
+    const auto reserved = juce::GlyphArrangement::getStringWidth(heading, TRANS("Degree"));
     if (!promptPane || !promptPane->isVisible() || promptPane->getWidth() < 100
         || promptPane->getRight() + reserved + 5 > topRuler->headerWidth
         || promptPane->getParentComponent() != topRuler->getParentComponent()) return 141;

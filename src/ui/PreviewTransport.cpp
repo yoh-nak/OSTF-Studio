@@ -582,7 +582,6 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
     for (auto& stem : stems_) stem.clear(0, count);
     cueBus_.clear(0, count);
     const int audible = count;
-    const float vuDecay = float(std::exp(-std::log(100.) * count / (.300 * sampleRate_)));
     const auto timelineStep = double(end - first) / count;
     for (std::size_t track = 0; track < instruments_.size(); ++track) {
         auto& slot = instruments_[track];
@@ -666,16 +665,11 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
             const auto balance = automated ? 1.f : ostfstudio::stereoBalance(basePan, channel == 1);
             const auto gain = mix.level.load() * balance;
             const auto* data = block.getReadPointer(channel);
-            const float previousVu = trackVu[channel];
             trackVu[channel] = vu_[track][size_t(channel)].process(data, audible, gain);
             trackMeters_[track].publish(channel, block.getMagnitude(channel, 0, audible) * gain);
             stems_[static_cast<std::size_t>(mix.bus.load())].addFrom(channel, 0, data, audible, gain);
             for (std::size_t r = 0; r < mix.sends.size(); ++r) {
                 const auto send = mix.sends[r].load();
-                // The send gain is constant for the block. Reuse the rectifier's
-                // input contribution, retaining a separate decaying state per send.
-                auto& meter = liveVu_.sendVu[track][r][channel];
-                meter = std::max(0.f, meter * vuDecay + send * (trackVu[channel] - previousVu * vuDecay));
                 if (send != 0.0f) stems_[3 + r].addFrom(channel, 0, data, audible, gain * send);
             }
             if (cueGain != 0.0f)

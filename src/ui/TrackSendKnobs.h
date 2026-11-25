@@ -22,6 +22,7 @@ public:
                 control = std::make_unique<Control>();
                 row.addAndMakeVisible(*control);
                 control->knob.onValueChange = [this, i, slider = &control->knob] {
+                    controls[i]->value.setText(juce::String(juce::roundToInt(slider->getValue()))+"%",juce::dontSendNotification);
                     if (onChange) onChange(i, static_cast<float>(slider->getValue() / 100.0));
                 };
             }
@@ -33,6 +34,7 @@ public:
                 control->knob.setTooltip(title);
             }
             control->knob.setValue(100.0 * mixer.channel(track).returnSends[i], juce::dontSendNotification);
+            control->value.setText(juce::String(juce::roundToInt(control->knob.getValue())) + "%",juce::dontSendNotification);
         }
         if (countChanged) resized();
     }
@@ -62,14 +64,20 @@ private:
             label.setInterceptsMouseClicks(false, false);
             addAndMakeVisible(knob);
             addAndMakeVisible(label);
+            value.setFont(juce::FontOptions(11.f));
+            value.setInterceptsMouseClicks(false,false);
+            addAndMakeVisible(value);
         }
         void resized() override {
             auto area = getLocalBounds();
             knob.setBounds(area.removeFromLeft(std::min(36, area.getHeight())));
+            const bool tall = area.getHeight() >= 30;
+            value.setVisible(tall);
+            if (tall) value.setBounds(area.removeFromBottom(area.getHeight()/2));
             label.setBounds(area);
         }
         juce::Slider knob;
-        juce::Label label;
+        juce::Label label,value;
     };
     juce::Component row;
     std::vector<std::unique_ptr<Control>> controls;
