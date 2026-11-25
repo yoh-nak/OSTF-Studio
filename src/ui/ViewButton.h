@@ -4,7 +4,7 @@
 
 class ViewButton final : public juce::Button {
 public:
-    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones, samples, scissors, join, chordFit, scaleFit, undo, redo, history };
+    enum class Icon { arrangement, piano, mixer, plugins, outputs, lanes, leadSheet, score, information, melody, chorus, pitched, drums, audio, bus, send, zoomIn, zoomOut, theory, songMusic, headphones, samples, scissors, join, chordFit, scaleFit, undo, redo, history, printLead, printScore, liveSession };
     explicit ViewButton(Icon icon) : Button({}), icon_(icon) {}
 
     void paintButton(juce::Graphics& g, bool hover, bool down) override {
@@ -48,6 +48,15 @@ public:
                 turn.quadraticTo(x+px(19), y+7, x+px(17), y+16);
                 g.strokePath(turn, juce::PathStrokeType(1.7f)); break;
             }
+            case Icon::printLead:
+            case Icon::printScore:
+                g.drawRoundedRectangle(x+1,y+5,18,9,2,1.4f); g.drawRect(x+4,y,12.f,5.f,1.4f);
+                g.fillRect(x+4,y+10,12.f,7.f);
+                g.setColour(juce::Colour(0xff263239));
+                if (icon==Icon::printLead) { line(6,12,13,12); line(6,15,11,15); }
+                else { line(12,11,12,14); g.fillEllipse(x+8,y+13,5,3); } break;
+            case Icon::liveSession:
+                for (int i=0;i<3;++i) { g.fillRoundedRectangle(x+1,y+2+i*6,5.f,4.f,1.f); line(9,4+i*6,18-i*2,4+i*6); } break;
             case Icon::history:
                 g.drawEllipse(x+2,y+1,16,16,1.6f); line(10,4,10,9); line(10,9,14,11); break;
             case Icon::chordFit:

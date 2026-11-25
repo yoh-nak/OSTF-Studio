@@ -18,6 +18,8 @@ static int checkGallery(const juce::File& directory) {
         const auto& mix = *shared->savedMix;
         const int owner = shared->trackIds.indexOf("keys");
         if (owner < 0) return 95;
+        juce::MemoryBlock beforeColour;
+        if(shared->setTrackColour(size_t(owner),0xff7351a0,beforeColour).failed() || beforeColour.isEmpty())return 151;
         juce::MemoryOutputStream written;
         auto saved = packed ? ostfstudio::writeOstfpPreview(*shared, mix, written) : ostfstudio::writeOstfPreview(*shared, mix, written);
         if (saved.failed()) return 96;
@@ -25,6 +27,7 @@ static int checkGallery(const juce::File& directory) {
         std::unique_ptr<ostfstudio::OstfpPreview> reopened;
         auto again = packed ? ostfstudio::readOstfpPreview(bytes, reopened) : ostfstudio::readOstfPreview(bytes, reopened);
         if (again.failed() || !reopened->savedMix) return 97;
+        if(reopened->trackColour(size_t(owner))!=0xff7351a0) return 152;
         for (const auto* song : {shared.get(), reopened.get()}) {
             const auto& session = *song->savedMix;
             for (size_t i = 0; i < song->sourceTrackCount(); ++i) {

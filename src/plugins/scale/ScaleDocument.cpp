@@ -75,9 +75,15 @@ std::vector<int> Document::scope(int first, int last, bool repeats) const {
     return selected;
 }
 juce::Result Document::assign(const std::vector<int>& indices, int tonic, int mode) {
-    const auto chords = score["harmony"]["chords"];
-    if (indices.empty() || std::any_of(indices.begin(),indices.end(),[&](int i){return i<0 || i>=chords.size();})
-        || tonic < 0 || tonic >= 12 || mode < 0 || mode >= int(catalog().size()))
+    std::vector<Assignment> plan;
+    for(int chord:indices) plan.push_back({chord,tonic,mode});
+    return assignPlan(plan);
+}
+juce::Result Document::assignPlan(const std::vector<Assignment>& plan) {
+    const auto chords=score["harmony"]["chords"];
+    if (plan.empty() || std::any_of(plan.begin(),plan.end(),[&](const auto& a){
+            return a.chord<0 || a.chord>=chords.size() || a.tonic<0 || a.tonic>=12 || a.mode<0 || a.mode>=int(catalog().size());
+        }))
         return juce::Result::fail("Select a chord, tonic and scale.");
     try {
         using Json = jsoncons::ojson;
@@ -85,7 +91,7 @@ juce::Result Document::assign(const std::vector<int>& indices, int tonic, int mo
         auto doc = Json::parse(text.toStdString(),options);
         auto& harmony = doc.at("harmony");
         auto& scales = harmony.at("scales");
-        for (const int chordIndex : indices) {
+        for (const auto& [chordIndex,tonic,mode] : plan) {
             const auto& chord = harmony.at("chords").at(chordIndex);
             auto target = Json::parse(R"([{"type":"chord","id":""}])");
             target[0]["id"] = chord.at("id");

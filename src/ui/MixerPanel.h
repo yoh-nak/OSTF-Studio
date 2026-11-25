@@ -4,6 +4,7 @@
 #include "core/MixerState.h"
 #include "ui/OstfpPreview.h"
 #include "ui/LevelMeter.h"
+#include "ui/MidiActivityLamp.h"
 #include "ui/ViewButton.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <vector>
@@ -22,6 +23,12 @@ public:
     void resized() override;
     void updateMeters(const ostfstudio::MeterFrame& frame, double now);
     void clearMeters();
+    static ViewButton::Icon trackIcon(const ostfstudio::OstfpPreview&,size_t);
+    void setTrackColour(size_t i, juce::Colour colour) {
+        if (i < strips_.size() && strips_[i]->colour != colour) { strips_[i]->colour = colour; strips_[i]->repaint(); }
+    }
+    void pulseInput(size_t i) { if (i < strips_.size()) strips_[i]->lamp.pulse(); }
+    void updateInput(size_t i,ostfstudio::StereoPeak p,double now) { if (i < strips_.size()) strips_[i]->inputMeter.update(p,now); }
     struct PluginEntry {
         juce::String name;
         int slot = -1;
@@ -90,7 +97,10 @@ private:
         juce::Label name;
         juce::Label classification;
         juce::Slider volume, pan;
-        LevelMeter meter {true};
+        LevelMeter meter {true}, inputMeter;
+        MidiActivityLamp lamp;
+        ViewButton::Icon icon = ViewButton::Icon::outputs;
+        juce::Colour colour{0xffe4ae72};
         juce::TextButton mute {"M"};
         juce::TextButton solo {"S"}, arm {"R"};
         ViewButton cue {ViewButton::Icon::headphones};

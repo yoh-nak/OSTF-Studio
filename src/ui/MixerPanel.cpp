@@ -60,6 +60,10 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
     selectEffect.setTitle(title + " effect selection");
     effect.setConnectedEdges(juce::Button::ConnectedOnRight);
     selectEffect.setConnectedEdges(juce::Button::ConnectedOnLeft);
+    icon = group == "BUS" ? ViewButton::Icon::bus : group == "RETURN" ? ViewButton::Icon::send
+         : group == "MONITOR" ? ViewButton::Icon::headphones : ViewButton::Icon::outputs;
+    instrument.setColour(juce::TextButton::buttonColourId,juce::Colour(0xff302b25));
+    instrument.setColour(juce::TextButton::textColourOffId,juce::Colour(0xffffc479));
     if (isTrack) addAndMakeVisible(instrument);
     if (group != "MONITOR") {
         addAndMakeVisible(effect);
@@ -131,13 +135,14 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
 void MixerPanel::Strip::resized() {
     auto area = getLocalBounds().reduced(5, 3);
     classification.setBounds(area.removeFromTop(15));
-    name.setBounds(area.removeFromTop(18));
+    name.setBounds(area.removeFromTop(20).withTrimmedLeft(24).withTrimmedRight(8));
     if (!isMaster) status.setBounds(area.removeFromBottom(17));
     if (listenOnMain) listenOnMain->setBounds(area.removeFromBottom(21));
     if (!isTrack && !isMaster && mute.isVisible()) mute.setBounds(area.removeFromBottom(21).withSizeKeepingCentre(40, 21));
     diagnostics = isMaster ? juce::Rectangle<int>{} : area.removeFromTop(isTrack ? 71 : 63);
     auto slots = area.removeFromTop(26).reduced(1,2);
-    if (isTrack) instrument.setBounds(slots.removeFromLeft(slots.getWidth()/2).withTrimmedRight(3));
+    if (isTrack) instrument.setBounds(slots.removeFromLeft(slots.getWidth()*3/5).withTrimmedRight(3));
+    updatePluginButtons();
     selectEffect.setBounds(slots.removeFromRight(28));
     effect.setBounds(slots);
     if (hardware.isVisible()) hardware.setBounds(area.removeFromTop(22).reduced(0,1));
@@ -156,8 +161,12 @@ void MixerPanel::Strip::resized() {
         if (input.isVisible()) {
             auto row = area.removeFromTop(22).reduced(0,1);
             if (capture.isVisible()) capture.setBounds(row.removeFromRight(83).withTrimmedLeft(2));
-            if (inputGain.isVisible())
-                inputGain.setBounds(row.removeFromRight(std::min(100,row.getWidth()/2)).withTrimmedLeft(2));
+            if (lamp.isVisible()) lamp.setBounds(row.removeFromLeft(14));
+            if (inputGain.isVisible()) {
+                auto trim = area.removeFromTop(34);
+                inputGain.setBounds(trim.removeFromLeft(98));
+                inputMeter.setBounds(trim.reduced(4,10));
+            }
             input.setBounds(row);
         }
         output.setBounds(area.removeFromTop(21).reduced(0, 1));
@@ -237,6 +246,16 @@ void MixerPanel::Strip::updatePluginButtons() {
         if (entry.slot < 0) assigned = &entry;
         else if (entry.available && (!selected || entry.slot == effectSlot)) selected = &entry;
     }
+    auto label = assigned ? assigned->name : TRANS("Instrument");
+    const auto font = getLookAndFeel().getTextButtonFont(instrument,std::max(20,instrument.getHeight()));
+    const auto fits = [&](const juce::String& s) { return juce::GlyphArrangement::getStringWidth(font,s) <= instrument.getWidth()-12; };
+    if (instrument.getWidth() > 20 && !fits(label)) {
+        const auto ellipsis = juce::String::charToString(0x2026);
+        while (label.isNotEmpty() && !fits(label + ellipsis)) label = label.dropLastCharacters(1);
+        label += ellipsis;
+    }
+    instrument.setButtonText(label);
+    effect.setButtonText("FX " + juce::String(int(std::count_if(entries.begin(),entries.end(),[](const auto& e){return e.slot >= 0;}))));
     instrument.setEnabled(assigned && assigned->available);
     instrument.setTooltip(assigned ? assigned->name : TRANS("Instrument"));
     effectSlot = selected ? selected->slot : -1;
@@ -275,6 +294,11 @@ void MixerPanel::Strip::paint(juce::Graphics& g) {
     g.fillRoundedRectangle(bounds, 4.f);
     g.setColour(face.brighter(.30f));
     g.drawRoundedRectangle(bounds.reduced(.5f), 4.f, 1.f);
+    g.setColour(colour.withAlpha(.27f));
+    g.fillRoundedRectangle(2.f,2.f,bounds.getWidth()-4,34.f,3.f);
+    g.setColour(colour);
+    g.fillRect(4,4,3,30);
+    ViewButton::drawIcon(g,icon,10.f,16.f);
     if (!diagnostics.isEmpty()) {
         auto box = diagnostics.reduced(1, 2).toFloat();
         if (isMaster) {
@@ -333,6 +357,17 @@ void MixerPanel::renameTrack(std::size_t index, const juce::String& name) {
     }
 }
 
+ViewButton::Icon MixerPanel::trackIcon(const ostfstudio::OstfpPreview& project,size_t i) {
+    using Icon = ViewButton::Icon;
+    const auto kind = project.trackKinds[i];
+    const auto group = project.mixerGroups[i];
+    if (kind == ostfstudio::TrackKind::drum) return Icon::drums;
+    if (kind == ostfstudio::TrackKind::audio) return Icon::audio;
+    if (project.chordVoicingTrack == i) return Icon::score;
+    if (group == ostfstudio::MixerTrackGroup::vocal) return Icon::chorus;
+    if (group == ostfstudio::MixerTrackGroup::melody) return Icon::melody;
+    return Icon::pitched;
+}
 void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     strips_.clear();
     buses_.clear();
@@ -352,6 +387,8 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
 
     for (std::size_t i = 0; i < tracks.size(); ++i) {
         auto strip = std::make_unique<Strip>(juce::String::fromUTF8(tracks[i].label), project.trackKinds[i] == ostfstudio::TrackKind::audio ? "Audio" : groupName(project.mixerGroups[i]), true);
+        strip->icon = trackIcon(project,i);
+        strip->colour = juce::Colour(project.trackColour(i));
         strip->contextMenu = [this, i] { if (rowMenu) rowMenu(false, i); };
         using namespace ostfstudio;
         strip->name.setTooltip(strip->name.getText());
@@ -371,6 +408,7 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
             strip->addAndMakeVisible(strip->input);
             strip->input.onClick = [this, i, controls] { if (chooseInput) chooseInput(i, &controls->input); };
             if (project.trackKinds[i] != ostfstudio::TrackKind::audio) {
+                strip->addAndMakeVisible(strip->lamp);
                 strip->capture.setTitle(strip->name.getText() + " capture MIDI");
                 strip->capture.setEnabled(false);
                 strip->capture.setTooltip(TRANS("Create a clip from the recent notes played while armed"));
@@ -380,7 +418,10 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
                 auto& gain = strip->inputGain;
                 gain.setTitle(strip->name.getText() + " mixer input gain");
                 gain.setTooltip(TRANS("Recording input gain (dB)"));
-                gain.setSliderStyle(juce::Slider::LinearHorizontal);
+                strip->addAndMakeVisible(strip->inputMeter);
+                strip->inputMeter.setTitle(TRANS("Recording input level"));
+                gain.getProperties().set("consoleHardware",true);
+                gain.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
                 gain.setTextBoxStyle(juce::Slider::TextBoxRight,false,50,17);
                 gain.setRange(-60.0,24.0,0.1);
                 gain.setDoubleClickReturnValue(true,0.0);

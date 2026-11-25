@@ -48,12 +48,14 @@ static bool testRecordedVoice() {
         notes.addEvent(phoneMessage(1,69,{0,m}),0);
         notes.addEvent(juce::MidiMessage::noteOn(1,69,(juce::uint8)110),0);
         juce::AudioBuffer<float> audio(2,1024); singer->processBlock(audio,notes);
-        const auto* vowel=bank->find({0,vowelOnly});
-        double position=0.;
-        for(int i=0;i<1024;++i) {
-            const auto recorded=vowel->read(position,440.*vowel->period/48000.);
-            const auto expected=recorded*(110./127.)*i/1200.;
-            if(i>=520 && std::abs(audio.getSample(0,i)-expected)>.002f) return false;
+        juce::AudioBuffer<float> reference(2,1024);
+        singer->reset(); notes.clear();
+        notes.addEvent(phoneMessage(1,69,{0,vowelOnly}),0);
+        notes.addEvent(juce::MidiMessage::noteOn(1,69,(juce::uint8)110),0);
+        singer->processBlock(reference,notes);
+        for(int i=520;i<1024;++i) {
+            const auto expected=reference.getSample(0,i)*i/1200.f;
+            if(std::abs(audio.getSample(0,i)-expected)>.002f) return false;
         }
     }
     // Shift-JIS 'ka' (82 A9). The alias, offset, consonant and negative cutoff all matter.
@@ -250,14 +252,17 @@ int main(int argc, char** argv) {
     const auto vowel = render(word[1]), stop = render(word[2]);
     if (vowel.getMagnitude(0, 0, 2048) <= .01f || stop.getMagnitude(0, 0, 2048) <= .001f) return 20;
     const auto a = render({0,0}), i = render({1,0}), scooped = render({0,0,0,scoop,100});
-    // Verify that a default MIDI note really uses the factory vowel waveform.
+    // The voiced onset is pitch-synchronous immediately, including a sustained
+    // note played live without an encoded phone duration.
     const auto* vowelA = factory.find({0,vowelOnly});
-    double position = 0;
-    const double step = juce::MidiMessage::getMidiNoteInHertz(60) * vowelA->period / 48000;
-    for (int n=0; n<a.getNumSamples(); ++n) {
-        const auto expected = vowelA->read(position,step) * (105.f/127);
-        if (n >= 512 && std::abs(a.getSample(0,n)-expected) > .002f) return 17;
+    if (!vowelA || vowelA->pitchMarks.size()<3) return 17;
+    const int cycle = juce::roundToInt(48000. / juce::MidiMessage::getMidiNoteInHertz(60));
+    double periodicError=0, energy=0;
+    for (int n=600+cycle; n<a.getNumSamples(); ++n) {
+        const double x=a.getSample(0,n), d=x-a.getSample(0,n-cycle);
+        periodicError+=d*d; energy+=x*x;
     }
+    if (energy<.001 || periodicError>energy*.55) {std::cerr << "Onset energy " << energy << ", period residual " << periodicError << ", pitch marks " << vowelA->pitchMarks.size() << '\n'; return 17;}
     double difference = 0;
     for (int n = 0; n < audio.getNumSamples(); ++n) difference += std::abs(a.getSample(0,n) - i.getSample(0,n));
     if (!std::isfinite(difference) || difference < 1) return 4;

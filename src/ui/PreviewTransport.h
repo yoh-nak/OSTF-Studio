@@ -34,13 +34,27 @@ public:
         juce::AudioProcessor* instrument = nullptr; // Owned and rendered by this track.
         int midiChannel = 1;
         std::shared_ptr<MidiDestination> external;
+        int monitorInput = -1, monitorWidth = 1;
+        float monitorGain = 1.f;
     };
     static bool supportsInstrument(const juce::AudioPluginInstance& instrument);
     static bool supportsInsert(const juce::AudioPluginInstance& effect);
     PreviewTransport();
     bool readMasterSpectrum(std::array<float,31>& bands);
     ~PreviewTransport() override;
+    struct LiveSection {
+        juce::String id, name;
+        juce::Range<juce::int64> ticks;
+        int repeats = 0; // Additional passes, excluding the first visit.
+    };
+    juce::Result setLiveSections(const std::vector<LiveSection>&);
+    void setLiveRepeats(size_t section,int repeats);
+    // Message-thread look-ahead, in source-score ticks. A repeated visit keeps its section ID.
+    std::vector<LiveSection> upcomingLiveVisits(size_t maximum) const;
+    void setMonitorGain(size_t track, double db);
+    int liveRepeats(size_t section) const;
     struct TakeOptions {
+        std::vector<LiveSection> sections;
         juce::Range<juce::int64> cycle;
         int inputChannels = 0;
         int firstInputBuffer = 0;
@@ -164,6 +178,17 @@ private:
     std::vector<ostfstudio::MeterPoint> meters_;
     juce::int64 lastSample_ = 0;
     juce::int64 scoreTicks_ = 0;
+    struct LiveBoundary {
+        LiveSection source;
+        juce::Range<int> samples;
+        int remaining = 0;
+    };
+    std::vector<LiveBoundary> liveBoundaries_;
+    std::vector<Timelines> liveStarts_, stagedStarts_, liveEnds_, stagedEnds_;
+    bool liveLinearReplay_ = false;
+    size_t liveIndex_ = 0;
+    const float* const* liveInputs_ = nullptr;
+    int liveInputCount_ = 0, liveOffset_ = 0;
     juce::Range<int> loopSamples_;
     bool loopRestart_ = false;
     bool recording_ = false, monitorOnly_ = false;

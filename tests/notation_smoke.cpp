@@ -469,6 +469,15 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
     if (s.lyrics.empty() || s.sections.empty() || s.chords.empty() || s.parts.empty() ||
         sheetPages(s, true, StaffStyle::treble) < 2)
         return 2;
+    {
+        auto credited=s;
+        credited.bars=160; credited.printCredits.clear();
+        for(int i=0;i<15;++i) credited.printCredits.add("Performer " + juce::String(i+1));
+        const auto starts=sheetPageStarts(credited,true,StaffStyle::treble,{});
+        if(starts.size()<3 || starts[1]>=starts[2]-starts[1]) return 103;
+        credited.bars=s.bars;
+        if (!save(dir.getChildFile("lead-credits.pdf"), [&](auto& out){return writeSheetPdf(out,credited,0,StaffStyle::treble,{},true);})) return 104;
+    }
     SheetOptions split;
     split.pageBreakBars = {9, 5, 5, -3, s.bars + 1};
     const auto pages = sheetPageStarts(s, true, StaffStyle::treble, split);

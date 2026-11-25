@@ -127,6 +127,10 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
             }
         }
     }
+    if (options && !options->sections.empty()) {
+        auto plan=setLiveSections(options->sections);
+        if (plan.failed()) { stop(); return plan; }
+    }
     if (options && !options->cycle.isEmpty()) setLoop(options->cycle);
     if (!inputs && (record || inputTrack)) prepareRecording(project, tracks, inputTrack, record);
     if ((record || inputTrack) && options) {
@@ -219,6 +223,8 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     if (!std::isfinite(total) || total < 1.0 || total > sampleRate_ * 3600.0
         || total > std::numeric_limits<int>::max() - 1)
         return juce::Result::fail("Preview transport supports songs up to one hour.");
+    liveBoundaries_.clear(); liveStarts_.clear(); liveEnds_.clear(); stagedStarts_.clear(); stagedEnds_.clear();
+    liveIndex_=0; liveLinearReplay_=false;
     loopSamples_ = {}; loopRestart_ = false;
     captured_.setSize(0, 0);
     mapInput_ = false;
@@ -235,7 +241,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     }
     lastSample_ = static_cast<juce::int64>(std::ceil(total));
     pendingNotes_ = false;
-    int outputChannels = 0;
+    int outputChannels = std::any_of(tracks.begin(),tracks.end(),[](const auto& t){return t.monitorInput>=0;}) ? 2 : 0;
     for (auto& slot : instruments_) {
         slot.timeline.clear();
         slot.seekEvents.clear();
@@ -405,16 +411,26 @@ void PreviewTransport::adoptPendingNotes() {
         instruments_[i].timeline.swapWith(pendingTimelines_[i]);
         instruments_[i].loopEvents.swapWith(pendingLoopEvents_[i]);
     }
+    if (!stagedStarts_.empty()) { liveStarts_.swap(stagedStarts_); liveEnds_.swap(stagedEnds_); }
     pendingNotes_ = false;
 }
 
 juce::Result PreviewTransport::updateLoopNotes(const ostfstudio::OstfpPreview& project) {
-    if (loopSamples_.isEmpty() || !running_) return juce::Result::fail("Loop playback ended.");
+    if ((loopSamples_.isEmpty() && liveBoundaries_.empty()) || !running_) return juce::Result::fail("Loop playback ended.");
     Timelines next, chase;
     if (auto result = makeMidiTimelines(project, playbackRoutes_, playbackShift_, next); result.failed()) return result;
     for (std::size_t i = 0; i < instruments_.size(); ++i)
         if (!next[i].isEmpty() || instruments_[i].instance) chase[i] = midiAtSeek(next[i],loopSamples_.getStart());
+    std::vector<Timelines> starts(liveBoundaries_.size()), ends(liveBoundaries_.size());
+    for (size_t s=0;s<liveBoundaries_.size();++s) {
+        for (size_t t=0;t<std::min(playbackRoutes_.size(),instruments_.size());++t) {
+            if (!playbackRoutes_[t].instrument && !playbackRoutes_[t].external) continue;
+            starts[s][t]=midiAtSeek(next[t],liveBoundaries_[s].samples.getStart());
+            ends[s][t]=midiAtSeek(next[t],liveBoundaries_[s].samples.getEnd());
+        }
+    }
     const auto publish = [&] {
+        stagedStarts_.swap(starts); stagedEnds_.swap(ends);
         for (std::size_t i = 0; i < instruments_.size(); ++i) {
             next[i].swapWith(pendingTimelines_[i]);
             chase[i].swapWith(pendingLoopEvents_[i]);
@@ -424,6 +440,71 @@ juce::Result PreviewTransport::updateLoopNotes(const ostfstudio::OstfpPreview& p
     if (devices_) { const juce::ScopedLock lock(devices_->getAudioCallbackLock()); publish(); }
     else publish();
     return juce::Result::ok();
+}
+
+juce::Result PreviewTransport::setLiveSections(const std::vector<LiveSection>& sections) {
+    std::vector<LiveBoundary> prepared;
+    std::vector<Timelines> starts;
+    if (devices_) { const juce::ScopedLock lock(devices_->getAudioCallbackLock()); adoptPendingNotes(); } else adoptPendingNotes();
+    juce::int64 endTick=0;
+    for (const auto& section:sections) {
+        if (section.ticks.isEmpty() || section.ticks.getStart()<endTick || section.ticks.getEnd()>scoreTicks_
+            || section.repeats<0 || section.repeats>99) return juce::Result::fail("Invalid live section range or repeat count.");
+        endTick=section.ticks.getEnd();
+        auto& boundary=prepared.emplace_back();
+        boundary.source=section;
+        boundary.samples={juce::roundToInt(clock_.secondsAt(section.ticks.getStart())*sampleRate_),
+                          juce::roundToInt(clock_.secondsAt(endTick)*sampleRate_)};
+        if (boundary.samples.isEmpty()) return juce::Result::fail("Live section is shorter than one audio sample.");
+        boundary.remaining=section.repeats;
+        auto& chase=starts.emplace_back();
+        for (size_t i=0;i<instruments_.size();++i) if (!instruments_[i].timeline.isEmpty())
+            chase[i]=midiAtSeek(instruments_[i].timeline,boundary.samples.getStart());
+    }
+    const auto install=[&] {
+        liveBoundaries_.swap(prepared); liveStarts_.swap(starts);
+        liveLinearReplay_=false; loopRestart_=false;
+        liveIndex_=0;
+        while(liveIndex_<liveBoundaries_.size() && liveBoundaries_[liveIndex_].samples.getEnd()<=sample_.load()) ++liveIndex_;
+    };
+    if (devices_) { const juce::ScopedLock lock(devices_->getAudioCallbackLock()); install(); } else install();
+    return juce::Result::ok();
+}
+void PreviewTransport::setLiveRepeats(size_t i,int count) {
+    const auto apply=[&] { if(i<liveBoundaries_.size()) liveBoundaries_[i].remaining=std::clamp(count,0,99); };
+    if(devices_) {const juce::ScopedLock lock(devices_->getAudioCallbackLock());apply();} else apply();
+}
+int PreviewTransport::liveRepeats(size_t i) const {
+    const auto read=[&] {return i<liveBoundaries_.size()?liveBoundaries_[i].remaining:0;};
+    if(devices_) {const juce::ScopedLock lock(devices_->getAudioCallbackLock());return read();}
+    return read();
+}
+
+std::vector<PreviewTransport::LiveSection> PreviewTransport::upcomingLiveVisits(size_t maximum) const {
+    maximum = std::min(maximum, size_t(32));
+    std::vector<LiveSection> visits;
+    visits.reserve(maximum);
+    const auto read = [&] {
+        for (size_t i = liveIndex_; i < liveBoundaries_.size() && visits.size() < maximum; ++i) {
+            const auto& section = liveBoundaries_[i];
+            for (int left = section.remaining; left >= 0 && visits.size() < maximum; --left) {
+                visits.push_back(section.source);
+                visits.back().repeats = left;
+            }
+        }
+    };
+    if (devices_) { const juce::ScopedLock lock(devices_->getAudioCallbackLock()); read(); }
+    else read();
+    return visits;
+}
+
+void PreviewTransport::setMonitorGain(size_t track, double db) {
+    const auto apply = [&] {
+        if (track < playbackRoutes_.size())
+            playbackRoutes_[track].monitorGain = juce::Decibels::decibelsToGain(float(db));
+    };
+    if (devices_) { const juce::ScopedLock lock(devices_->getAudioCallbackLock()); apply(); }
+    else apply();
 }
 
 void PreviewTransport::setLoop(juce::Range<juce::int64> ticks) {
@@ -468,6 +549,8 @@ void PreviewTransport::seekToTick(juce::int64 tick) {
         }
         for (const auto& chain : inserts_)
             for (auto* effect : chain) if (effect) effect->reset();
+        liveIndex_=0;
+        while(liveIndex_<liveBoundaries_.size() && liveBoundaries_[liveIndex_].samples.getEnd()<=sample) ++liveIndex_;
         sample_ = sample;
         running_ = sample < lastSample_;
     };
@@ -641,13 +724,16 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
     for (std::size_t track = 0; track < instruments_.size(); ++track) {
         auto& slot = instruments_[track];
         const auto& chain = inserts_[outputCount + track];
-        if (!slot.external && !slot.instance && slot.regions.empty() && std::none_of(chain.begin(), chain.end(), [](auto* fx) { return fx != nullptr; })) continue;
+        const auto* route=track<playbackRoutes_.size()?&playbackRoutes_[track]:nullptr;
+        const bool hardware=route && route->monitorInput>=0 && (route->monitorWidth==1 || route->monitorWidth==2);
+        if (!hardware && !slot.external && !slot.instance && slot.regions.empty() && std::none_of(chain.begin(), chain.end(), [](auto* fx) { return fx != nullptr; })) continue;
         const auto channelCount = slot.instance ? std::max({2, slot.instance->getTotalNumInputChannels(),
                                                             slot.instance->getTotalNumOutputChannels()}) : 2;
         if (channelCount < 1 || channelCount > pluginAudio_.getNumChannels()) continue;
         juce::AudioBuffer<float> block(pluginAudio_.getArrayOfWritePointers(), channelCount, count);
         pluginMidi_.clear();
-        if (loopRestart_) pluginMidi_.addEvents(slot.loopEvents, 0, -1, 0);
+        if (loopRestart_) pluginMidi_.addEvents(liveIndex_<liveBoundaries_.size() ? liveStarts_[liveIndex_][track] : slot.loopEvents, 0, -1, 0);
+        if(liveLinearReplay_ && liveIndex_>0) pluginMidi_.addEvents(liveEnds_[liveIndex_-1][track],0,-1,0);
         pluginMidi_.addEvents(slot.seekEvents, 0, -1, 0);
         slot.seekEvents.clear();
         if (!monitorOnly_) {
@@ -703,6 +789,11 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
             slot.instance->processBlock(pluginBlock, pluginMidi_);
             if (slot.instance->getMainBusNumOutputChannels() == 1) block.copyFrom(1, 0, block, 0, 0, count);
         }
+        if (hardware && liveInputs_ && route->monitorInput+route->monitorWidth<=liveInputCount_)
+            for(int ch=0;ch<2;++ch) {
+                auto* src=liveInputs_[route->monitorInput+ch%route->monitorWidth];
+                if(src) block.addFrom(ch,0,src+liveOffset_,count,route->monitorGain);
+            }
         for (const auto& region : slot.regions) region.mixInto(block, count, first, timelineStep, sampleRate_, clock_);
         if(!hasDetector) { mixRenderedTrack(track,block,count,first,timelineStep); continue; }
         for(int ch=0;ch<2;++ch) dryTracks_[track].copyFrom(ch,0,block,ch,0,count);
@@ -799,6 +890,7 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
     if (pluginAudio_.getNumChannels() && count > pluginAudio_.getNumSamples()) { running_ = false; return; }
     const auto blockStart = juce::Time::getMillisecondCounterHiRes() + 1.0;
     blockTimeMs_ = blockStart;
+    liveInputs_=input; liveInputCount_=inputs; liveOffset_=0;
     if (monitorOnly_) {
         if (pluginAudio_.getNumChannels()) renderInstruments(output, channels, count, int(sample_.load()), int(sample_.load()) + count, listenToCue);
         return;
@@ -836,6 +928,18 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
             first = loopSamples_.getStart(); sample_ = first; loopRestart_ = true;
         }
         auto limit = loopSamples_.isEmpty() ? lastSample_ : juce::int64(loopSamples_.getEnd());
+        if (liveIndex_<liveBoundaries_.size()) {
+            auto& boundary=liveBoundaries_[liveIndex_];
+            if (first>=boundary.samples.getEnd()) {
+                liveLinearReplay_=pendingNotes_ && boundary.remaining==0;
+                adoptPendingNotes();
+                if (boundary.remaining>0) {
+                    --boundary.remaining;
+                    first=boundary.samples.getStart(); sample_=first; loopRestart_=true;
+                } else ++liveIndex_;
+            }
+            if(liveIndex_<liveBoundaries_.size()) limit=std::min(limit,juce::int64(liveBoundaries_[liveIndex_].samples.getEnd()));
+        }
         if (captured_.getNumChannels()) limit = std::min(limit, juce::int64(captureOrigin_ + captured_.getNumSamples()));
         const auto available = limit - first;
         if (available <= 0) { running_ = false; break; }
@@ -848,6 +952,7 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
         const int outs = std::min(channels, int(dest.size()));
         for (int c=0; c<outs; ++c) dest[c] = output[c] ? output[c] + done : nullptr;
         blockTimeMs_ = blockStart + done * 1000.0 / sampleRate_;
+        liveOffset_=done;
         if (pluginAudio_.getNumChannels()) renderInstruments(dest.data(), outs, part, int(first), int(first) + timelineFrames, listenToCue);
         if (captured_.getNumChannels()) {
             const int pos = int(first) - captureOrigin_;
@@ -870,9 +975,9 @@ void PreviewTransport::renderBlock(float* const* output, int channels, int count
             }
         }
         elapsed_ += timelineFrames;
-        done += part; sample_ = first + timelineFrames; loopRestart_ = false;
+        done += part; sample_ = first + timelineFrames; loopRestart_ = false; liveLinearReplay_=false;
         performanceTick_.store(std::llround(clock_.tickAt(double(first + timelineFrames)/sampleRate_)));
-        if (loopSamples_.isEmpty() && sample_ >= lastSample_) running_ = false;
+        if (loopSamples_.isEmpty() && sample_ >= lastSample_ && (liveIndex_>=liveBoundaries_.size() || liveBoundaries_[liveIndex_].remaining==0)) running_ = false;
     }
     for (int c = 0; c < channels; ++c)
         if (output[c])

@@ -87,6 +87,16 @@ int main(int argc,char** argv) {
     }
     undo->onClick();
     if (undo->isEnabled() || scoreText() != before) return 11;
+    juce::TextButton *redo=nullptr,*automatic=nullptr;
+    for(auto* c:editor->getChildren()) if(auto* b=dynamic_cast<juce::TextButton*>(c)) {
+        if(b->getButtonText()=="Redo") redo=b;
+        if(b->getButtonText()=="Auto-set song") automatic=b;
+    }
+    if(!redo || !redo->isEnabled() || !automatic) return 22;
+    redo->onClick(); if(!undo->isEnabled() || scales(scoreText())<scales(before)+2)return 23;
+    undo->onClick();automatic->onClick();
+    if(scales(scoreText())<chordTrack->getNumItems()) return 24;
+    undo->onClick(); if(scoreText()!=before) return 25;
     editor.reset(); processor->releaseResources();
     return 0;
 }

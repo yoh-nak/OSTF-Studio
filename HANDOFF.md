@@ -1,5 +1,17 @@
 # OSTF Studio development handoff
 
+## Live sections, track colours and print layout
+
+Branch `feat/live-sections-track-console`. Windows x64 portable build: `dist/windows-live-sections/Portable/OSTF Studio.exe`. The folder includes 36 VST3 bundles and their licences.
+
+- View → Live session opens an editable section piano roll and a launch list. A repeat count of zero advances at the end of the current pass. Counts can be changed during playback. The local transport exposes bounded upcoming visits by section ID and source ticks. A live note edit takes effect at a section boundary. Guitar input monitoring is opt-in via the track arm, with input gain and track FX. Network performance negotiation and physical-AI players remain future work.
+- An arrangement or mixer track menu edits the OSTF presentation colour for that track. Input gain, meters and MIDI activity share the track routing. The instrument and FX strip controls display the current instrument and insert count.
+- The Scale Editor projects the Max adviser into three native panes, with chord selection, ranked candidates, inspector, map selection, Pin A, audition and whole-song auto-assignment with undo/redo. `build-visuals/scale-editor-live.png` is a captured editor.
+- File → Print and two printer toolbar buttons open separate lead-sheet and part-score previews. The first page reserves room for subtitle, credits and description. Subsequent pages use a compact title. Windows uses PrintDlg/GDI and macOS uses PDFKit/NSPrintOperation. A 15-credit fixture rendered three pages, with the first 20 measures on page one.
+- Singer retains consonant attacks and uses the analysed voiced region for pitch-synchronous vowel playback. A 12.33 s isolated Mei render is available in `build-visuals/mei-live-section-prechorus.wav` (mono, 48 kHz, peak −6.21 dBFS).
+
+Windows Release regression coverage includes section navigation, instrument monitoring, repeat changes across subdivided buffers, colour round-trip, print pagination and sung pitch. The independent MSVC core ran 2/2 tests. Physical inputs, printer drivers, macOS compilation and listening quality on the user’s equipment need validation.
+
 ## Mixer recording, output routing and MIDI capture
 
 Branch `feat/plugin-names-keys-player`. The playable Windows x64 package is `dist/windows-mixer-capture/Portable`.

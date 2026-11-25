@@ -38,6 +38,7 @@ struct SheetOptions {
 };
 struct NotationScore {
     juce::String title, key;
+    juce::StringArray printCredits;
     int bars = 0, beats = 4, beatType = 4;
     juce::int64 ppq = 0, barTicks = 0;
     std::vector<SheetMark> sections, chords, scales, lyrics, tempos, keys;

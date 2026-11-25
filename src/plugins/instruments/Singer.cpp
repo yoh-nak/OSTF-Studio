@@ -28,6 +28,7 @@ class SyllableVoice {
         constexpr float bandwidth[3] = {90, 120, 175};
         englishSound = p.english ? &VoiceBank::english()[size_t(p.english & 63)] : nullptr;
         grainReady = false;
+        joinedRecording = false;
         phone = p;
         age = 0;
         recorded = !englishSound && bank ? bank->find(p) : nullptr;
@@ -126,13 +127,16 @@ class SyllableVoice {
                                             .55 * attackStep, 1.75 * attackStep);
                 step = std::lerp(attackStep, tunedStep, mix);
             }
-            recording = recorded->read(position, step);
-            const double onset = phone.durationMs && phone.onset == vowelOnly ? .028 :
-                std::max(.067, recorded->consonantFrames / recorded->rate);
-            if (recorded->pitchMarks.size() >= 2 && time > onset) {
-                const double amount = std::min(1., (time - onset) * pitch);
-                const double low = std::max(double(recorded->consonantFrames), std::min(onset * recorded->rate, double(recorded->loopStart)));
-                const double high = std::max(low, .82 * recorded->frames.size() - recorded->period);
+            const double onset = phone.onset == vowelOnly || vowelSample ? 0. :
+                recorded->consonantFrames / recorded->rate;
+            if (recorded->pitchMarks.size() < 3 || time < onset) {
+                recording = recorded->read(position,step);
+                lastAttack = recording;
+            } else {
+                // Pitch analysis found a contiguous voiced region here. Marks in the
+                // breath or release can jump between harmonics on consecutive cycles.
+                const double low = recorded->loopStart;
+                const double high = std::max(low, recorded->loopEnd - recorded->period);
                 // Advance once through the voiced recording over the scored duration.
                 // A live MIDI note has no known end, so approach its sustain gradually.
                 const double elapsed = time - onset;
@@ -140,7 +144,11 @@ class SyllableVoice {
                     ? std::min(1., elapsed / std::max(.020, phone.durationMs * .001 - onset))
                     : elapsed / (elapsed + .23);
                 const auto sustained = grain(*recorded, std::lerp(low, high, fraction), pitch, sr);
-                recording = std::lerp(recording, sustained, float(amount));
+                // Join the unvoiced attack once. Mixing the raw pitched vowel and
+                // its retuned copy produces beating whenever their phases diverge.
+                if (!joinedRecording) { joinDelta = onset > 0 ? lastAttack-sustained : 0.f; joinedRecording = true; }
+                const auto smooth = std::clamp(1.-elapsed/.003,0.,1.);
+                recording = sustained + joinDelta*float(smooth*smooth);
             }
         }
         if (recorded && !vowelSample) return float(level * recording);
@@ -198,7 +206,8 @@ class SyllableVoice {
     const RecordedMora* recorded = nullptr;
     const RecordedMora* englishSound = nullptr;
     double glideCents{};
-    bool grainReady = false;
+    bool grainReady = false, joinedRecording = false;
+    float lastAttack = 0.f, joinDelta = 0.f;
     int oldMark = 0, newMark = 0;
     float grain(const RecordedMora& source, double at, double pitch, double sr) {
         // Resample one glottal cycle to one output period. Reading an output-sized
@@ -222,7 +231,20 @@ class SyllableVoice {
             // of the resampled period to avoid a pulse at every glottal closure.
             return float(value - std::lerp(double(source.sampleAt(first)), double(source.sampleAt(last)), phase));
         };
-        const auto out = std::lerp(sampleCycle(oldMark), sampleCycle(newMark), mix);
+        // For upward transposition retain the recorded formant frequencies.
+        // Two complementary windows are locked to the same output epoch. At
+        // lower pitches use one native cycle so no second pulse fits in a period.
+        const auto centre = source.pitchMarks[size_t(newMark)];
+        const auto preceding = source.pitchMarks[size_t(oldMark)];
+        const double span = source.rate / pitch;
+        const double nativePeriod = source.pitchMarks[size_t(newMark+1)] - centre;
+        const float periodic = std::lerp(sampleCycle(oldMark), sampleCycle(newMark), mix);
+        float out = periodic;
+        if (span < nativePeriod && preceding>=span && centre>=span) {
+            const auto native = std::lerp(source.sampleAt(preceding + phase*span),
+                                          source.sampleAt(centre - (1.-phase)*span),mix);
+            out = std::lerp(periodic,native,float(std::clamp(4.*(1.-span/nativePeriod),0.,1.)));
+        }
         phase += std::min(.45, pitch / sr);
         if (phase >= 1) {
             phase -= 1;

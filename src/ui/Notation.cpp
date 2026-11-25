@@ -78,6 +78,10 @@ const char* staffName(StaffStyle s) {
 NotationScore notationScore(const OstfpPreview& project) {
     NotationScore s;
     s.title = project.title;
+    const auto info = project.songInformation();
+    if (info.subtitle.isNotEmpty()) s.printCredits.add(info.subtitle);
+    for (const auto& credit : info.credits) s.printCredits.add(juce::translate(credit.role) + "   " + credit.name);
+    if (info.description.isNotEmpty()) s.printCredits.addLines(info.description);
     s.ppq = project.ppq;
     s.meters = project.meters;
     s.barTicks = project.ticksPerBar;
@@ -840,20 +844,35 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
     }
 }
 
-int barsPerPage(bool lead, StaffStyle style, const SheetOptions& options) {
-    const float usableHeight = options.paperPoints().y - 2.f * std::clamp(options.marginMm, 5, 35) * 72.f / 25.4f - 134.f;
+static int pageCapacity(bool lead, StaffStyle style,const SheetOptions& options, float header) {
+    const float usableHeight = options.paperPoints().y - 2.f * std::clamp(options.marginMm, 5, 35) * 72.f / 25.4f - header;
     const float rowHeight = lead ? 80.f : (style == StaffStyle::grand ? 153.f : 122.f);
     const int rows = std::max(1, int(std::floor((usableHeight + 1.f) / rowHeight)));
     return rows * (lead ? juce::jlimit(1, 16, options.barsPerLine) : 2);
+}
+int barsPerPage(bool lead, StaffStyle style,const SheetOptions& options) { return pageCapacity(lead,style,options,134.f); }
+// Reserve at least one system on each music page. Large credit lists continue on
+// opening pages in order before the music begins.
+static int creditLinesPerPage(const SheetOptions& o) {
+    return std::max(1,int((o.paperPoints().y - 2.f*std::clamp(o.marginMm,5,35)*72.f/25.4f - 300.f)/15.f));
+}
+static int creditPages(const NotationScore& s,const SheetOptions& o) {
+    return s.printCredits.isEmpty() ? 0 : (s.printCredits.size()-1)/creditLinesPerPage(o);
+}
+static float musicTop(const NotationScore& s,const SheetOptions& o,int page) {
+    const int offset=page*creditLinesPerPage(o);
+    if (offset>=s.printCredits.size() && page>0) return 68.f;
+    return 134.f + 15.f*std::clamp(s.printCredits.size()-offset,0,creditLinesPerPage(o));
 }
 std::vector<int> sheetPageStarts(const NotationScore& score, bool lead, StaffStyle style, const SheetOptions& options) {
     std::vector<int> forced;
     for (int bar : options.pageBreakBars)
         if (bar > 1 && bar <= score.bars) forced.push_back(bar - 1);
     std::sort(forced.begin(), forced.end());
-    std::vector<int> starts{0};
-    const int capacity = barsPerPage(lead, style, options);
-    while (starts.back() + capacity < score.bars || (!forced.empty() && starts.back() < forced.back())) {
+    std::vector<int> starts(size_t(creditPages(score,options))+1,0);
+    while (true) {
+        const auto capacity = pageCapacity(lead,style,options,musicTop(score,options,int(starts.size())-1));
+        if (starts.back()+capacity >= score.bars && (forced.empty() || starts.back()>=forced.back())) break;
         const auto next = std::upper_bound(forced.begin(), forced.end(), starts.back());
         starts.push_back(std::min(starts.back() + capacity, next == forced.end() ? score.bars : *next));
     }
@@ -875,7 +894,9 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
     const auto heading = lead ? TRANS("Lead sheet") : (part >= 0 ? s.parts[part].name : TRANS("Score"));
     text(g, heading, 33, 27, width-1, 17, 13, true);
     g.setColour(ink);
-    text(g, s.title, 32, 50, width, 37, 29, true);
+    const float musicY = musicTop(s,options,page);
+    const bool front = page <= creditPages(s,options);
+    text(g, s.title, front ? 32.f : 155.f, front ? 50.f : 26.f, front ? width : width-124.f, front ? 37.f : 22.f, front ? 29.f : 15.f, true);
     juce::StringArray meta;
     meta.add(juce::String(s.beats) + "/" + juce::String(s.beatType));
     if (s.key.isNotEmpty())
@@ -885,16 +906,21 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
     if (!lead)
         meta.add(juce::translate(staffName(style)));
     g.setColour(soft);
-    text(g, meta.joinIntoString("    /    "), 34, 89, width-2, 19, 12);
-    g.drawLine(33, 117, rightEdge, 117, 1);
-    const int cols = lead ? juce::jlimit(1, 16, options.barsPerLine) : 2, per = barsPerPage(lead, style, options);
+    if (front) {
+        text(g, meta.joinIntoString("    /    "), 34, 89, width-2, 19, 12);
+        const int base=page*creditLinesPerPage(options);
+        for (int i=0;i<creditLinesPerPage(options) && base+i<s.printCredits.size();++i)
+            text(g,s.printCredits[base+i],34,111.f+15.f*i,width-3,15.f,11.f);
+    }
+    g.drawLine(33,musicY-9,rightEdge,musicY-9,1);
+    const int cols = lead ? juce::jlimit(1, 16, options.barsPerLine) : 2, per = pageCapacity(lead,style,options,musicY);
     const auto starts = sheetPageStarts(s, lead, style, options);
     const int pageCount = int(starts.size());
     if (page < 0 || page >= pageCount) return;
     const int first = starts[page], endBar = page + 1 < pageCount ? starts[page+1] : s.bars;
-    const float rowH = (footer - 150.f) / (per / cols);
+    const float rowH = (footer - musicY - 16.f) / (per / cols);
     for (int r = 0; r < per / cols && first + r * cols < endBar; ++r) {
-        const float y = 134 + r * rowH, startX = lead ? 33.f : 58.f, width = (rightEdge - startX) / cols;
+        const float y = musicY + r * rowH, startX = lead ? 33.f : 58.f, width = (rightEdge - startX) / cols;
         const float top = y + (style == StaffStyle::grand ? 40 : 51);
         const int lines = tuning(style).empty() ? 5 : static_cast<int>(tuning(style).size());
         if (!lead) {

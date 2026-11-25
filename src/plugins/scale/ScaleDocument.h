@@ -11,6 +11,8 @@ public:
     juce::Result assign(int chord, int tonic, int mode);
     std::vector<int> scope(int first, int last, bool repeats) const;
     juce::Result assign(const std::vector<int>& indices, int tonic, int mode);
+    struct Assignment {int chord, tonic, mode;};
+    juce::Result assignPlan(const std::vector<Assignment>&);
     juce::String text, baseHash;
     juce::var score;
 };

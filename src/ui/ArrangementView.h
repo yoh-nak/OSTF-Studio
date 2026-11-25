@@ -16,6 +16,7 @@ struct ArrangementRegion {
     const char* clipId = nullptr;
     std::int64_t loopTicks = 0;
     const char* fitId = nullptr; // Harmony event ID for a derived voicing region.
+    std::uint32_t colour = 0;
 };
 
 struct ArrangementLane {

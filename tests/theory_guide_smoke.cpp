@@ -343,10 +343,9 @@ int checkTheoryGuide(const juce::File& demo) {
     // Only global badges use these tinted fills. Both independent View switches must reach the rendered lanes.
     const auto badgePixels = [&] {
         const auto picture = main.createComponentSnapshot(main.getLocalBounds());
-        const juce::Colour base(0xff24343d);
         int pixels = 0;
         for (auto accent : {0xffed98a2, 0xffeab68b, 0xffe4ce8c, 0xff99d5c4, 0xff9daeb6}) {
-            const auto fill = base.interpolatedWith(juce::Colour(accent), accent == 0xff9daeb6 ? .015f : .13f);
+            const auto fill = juce::Colour(accent==0xff9daeb6 ? 0xff29353e : 0xff15222a).interpolatedWith(juce::Colour(accent), accent == 0xff9daeb6 ? .01f : .09f);
             for (int y = 0; y < grid->getY(); y += 2)
                 for (int x = grid->getX(); x < grid->getRight(); x += 2)
                     pixels += picture.getPixelAt(x, y) == fill;

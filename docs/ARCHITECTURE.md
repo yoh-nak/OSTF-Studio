@@ -1,5 +1,12 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## Section performance and presentation
+
+Live playback projects OSTF section IDs and source tick ranges into a finite local performance order. Repeat counts belong to the current performance. They can change until a boundary is consumed. The transport splits hardware blocks at those boundaries and uses precomputed MIDI chase buffers. Note edits are validated on the message thread and published at a boundary. A bounded look-ahead returns ordered section visits in score ticks, including repeats. A network or physical performer still needs an adapter for clock deadlines, performer identity and proposal arbitration.
+
+Arming an audio track in Live routes its selected mono or stereo input through the track inserts, mix, sends and outputs. Recording input gain is shared with the mixer. Portable track colour overrides use OSTF presentation object colours. Printer configuration stays local. Native printing and the PDF preview use the same page layout and opening credit allocation.
+
+
 Mixer and arrangement strips share the input-route and plug-in assignment handlers. Master and Cue resolve physical output pairs against the active device mask before passing packed buffer indices to the renderer. The selections are local to the device. Retrospective note input uses a bounded 4,096-event buffer and the most recent 120 seconds of performance. MIDI callback work stores fixed-size events. Clip creation, score validation and undo run on the message thread.
 
 The Studio sidechain source is tapped before track FX. Instruments and regions are rendered before inserts so even a later track can feed an earlier detector in the same block. The stock Unmask uses a stereo-linked five-band detector. A supported production-session sidechain connection names the source channel and Unmask auxiliary port, with a pre-fader tap and independent mute. Print preview and PDF export share A4 page boundaries and page painting.

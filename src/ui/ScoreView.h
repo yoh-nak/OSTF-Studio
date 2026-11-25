@@ -8,6 +8,7 @@ class ScoreView final : public juce::Component {
     ScoreView();
     ~ScoreView() override;
     void resized() override;
+    void openPrintPreview();
     void showScore(const ostfstudio::OstfpPreview&, bool lead, std::optional<std::size_t> track);
     void refresh(const ostfstudio::OstfpPreview&);
     bool showsLeadSheet() const;

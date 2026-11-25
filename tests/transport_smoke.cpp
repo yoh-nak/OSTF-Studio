@@ -72,6 +72,40 @@ bool checkPerformanceAudio() {
         audio.getSample(1, 95) < .45f)
         return false;
     {
+        PerformanceProbe sectionInstrument;
+        PreviewTransport live;
+        const std::array<PreviewTransport::TrackSetup,1> sectionRoutes{{{{},&sectionInstrument,1}}};
+        if(live.preparePlayback(song,sectionRoutes,{},960,96).failed())return false;
+        if(live.setLiveSections({{"a","A",{0,61},1},{"b","B",{61,121},2}}).failed())return false;
+        const auto visits=live.upcomingLiveVisits(3);
+        if(visits.size()!=3 || visits[0].id!="a" || visits[1].id!="a" || visits[2].id!="b" || visits[1].ticks!=visits[0].ticks) return false;
+        live.renderBlock(audio.getArrayOfWritePointers(),2,96);
+        if(live.positionTick()!=35 || live.liveRepeats(0)!=0) { std::cerr << "First section ended at " << live.positionTick() << '\n'; return false; }
+        live.setLiveRepeats(1,1);
+        live.renderBlock(audio.getArrayOfWritePointers(),2,96);
+        if(live.positionTick()!=71 || live.liveRepeats(1)!=0) { std::cerr << "Second section ended at " << live.positionTick() << '\n'; return false; }
+        if(live.setLiveSections({{"a","A",{0,300},1},{"b","B",{200,301},1}}).wasOk())return false;
+        live.stop();
+    }
+    {
+        PreviewTransport inputMonitor;
+        PreviewTransport::TrackSetup guitar;
+        guitar.monitorInput=1; guitar.monitorWidth=1;
+        const std::array inputs{guitar};
+        if (inputMonitor.preparePlayback(song,inputs,{},960,96).failed()) return false;
+        inputMonitor.setChannelMix(0,{},true,0);
+        inputMonitor.setOutputMix({});
+        inputMonitor.setMonitorGain(0,-6.0206);
+        juce::AudioBuffer<float> input(2,96);
+        input.clear();
+        juce::FloatVectorOperations::fill(input.getWritePointer(1),.4f,96);
+        inputMonitor.renderBlock(audio.getArrayOfWritePointers(),2,96,input.getArrayOfReadPointers(),2);
+        if (std::abs(audio.getSample(0,0)-.2f)>.005f || std::abs(audio.getSample(1,95)-.2f)>.005f) {
+            std::cerr << "Monitor levels " << audio.getSample(0,0) << ", " << audio.getSample(1,95) << '\n'; return false;
+        }
+        inputMonitor.stop();
+    }
+    {
         OstfpPreview shared;
         shared.ppq = song.ppq;
         shared.clock = song.clock;

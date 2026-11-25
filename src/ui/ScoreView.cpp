@@ -1,4 +1,5 @@
 #include "ui/ScoreView.h"
+#include "ui/NativePrint.h"
 #include "ui/MediaImport.h"
 
 using namespace ostfstudio;
@@ -116,6 +117,14 @@ class ScoreView::Panel final : public juce::Component {
             options.showBarNumbers = barNumbers.getToggleState();
             updatePage();
         };
+        addChildComponent(printer);
+        printer.onClick = [this] {
+#if JUCE_WINDOWS || JUCE_MAC
+            const auto result=printSheet(*this,score,index(),style(),notes,lead,options);
+            if (result.failed()) status.setText(result.getErrorMessage(),juce::dontSendNotification);
+            resized();
+#endif
+        };
         leavePreview.onClick = [this]{ preview = false; update(); };
         pdf.onClick = [this] {
             if (preview) save(true);
@@ -144,6 +153,7 @@ class ScoreView::Panel final : public juce::Component {
         };
         counter.setJustificationType(juce::Justification::centred);
     }
+    void openPrintPreview() { preview=true; page=0; update(); }
     bool showsLeadSheet() const { return lead; }
     void setSong(const OstfpPreview& project, std::optional<std::size_t> preferred, std::optional<bool> switchMode) {
         auto selected =
@@ -232,6 +242,9 @@ class ScoreView::Panel final : public juce::Component {
         place(staff, 170);
         auto bottom = area.removeFromBottom(33);
         pdf.setBounds(bottom.removeFromRight(131).reduced(2));
+        printer.setVisible(preview);
+        printer.setEnabled(validBreaks && !busy && (lead || index()>=0));
+        if (printer.isVisible()) printer.setBounds(bottom.removeFromRight(105).reduced(2));
         if (preview) leavePreview.setBounds(bottom.removeFromRight(130).reduced(2));
         if (!preview && !lead)
             xml.setBounds(bottom.removeFromRight(105).reduced(2));
@@ -404,6 +417,7 @@ class ScoreView::Panel final : public juce::Component {
     juce::Label breakLabel;
     juce::TextEditor breaks;
     juce::ToggleButton sections{TRANS("Sections")}, barNumbers{TRANS("Bar numbers")};
+    juce::TextButton printer{TRANS("Print...")};
     juce::TextButton leavePreview{TRANS("Back to score")};
     juce::ComboBox track, staff, density, voices, wording;
     juce::ToggleButton chords{TRANS("Chords")}, scales{TRANS("Scales")}, lyrics{TRANS("Lyrics")};
@@ -419,6 +433,7 @@ ScoreView::ScoreView() : panel_(std::make_unique<Panel>()) {
     addAndMakeVisible(*panel_);
 }
 ScoreView::~ScoreView() = default;
+void ScoreView::openPrintPreview() { panel_->openPrintPreview(); }
 void ScoreView::resized() { panel_->setBounds(getLocalBounds()); }
 void ScoreView::showScore(const OstfpPreview& p, bool lead, std::optional<std::size_t> track) {
     panel_->setSong(p, track, lead);

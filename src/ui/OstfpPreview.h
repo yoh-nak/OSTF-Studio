@@ -192,6 +192,9 @@ struct OstfpPreview {
     std::vector<MeterPoint> meters;
     juce::String defaultScale;
     juce::StringArray trackIds;
+    std::map<juce::String, juce::uint32> trackColoursById;
+    juce::uint32 trackColour(std::size_t index) const;
+    juce::Result setTrackColour(std::size_t index, juce::uint32 rgb, juce::MemoryBlock& previous);
     PanAutomation panAutomation;
     std::vector<std::vector<DrumSlot>> slotsByTrack;
     std::vector<std::vector<PitchedNote>> slotHits;

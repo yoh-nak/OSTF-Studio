@@ -136,6 +136,25 @@ public:
     }
 };
 
+class ScaleRows final : public juce::ListBox, private juce::ListBoxModel {
+public:
+    ScaleRows() { setModel(this); setRowHeight(40); setColour(backgroundColourId,juce::Colour(0xff192534)); }
+    ~ScaleRows() override { setModel(nullptr); }
+    juce::StringArray labels, subtitles;
+    std::function<void(int)> choose;
+    int getNumRows() override { return labels.size(); }
+    void paintListBoxItem(int i,juce::Graphics& g,int w,int h,bool selected) override {
+        if (i>=labels.size()) return;
+        g.fillAll(juce::Colour(selected ? 0xff294c4b : 0xff192534));
+        g.setColour(juce::Colour(selected ? 0xff7fe0c0 : 0xff34485e)); g.fillRect(0,0,3,h-1);
+        g.setColour(juce::Colours::white); g.setFont(juce::FontOptions(14.f,juce::Font::bold));
+        g.drawText(labels[i],10,3,w-16,18,juce::Justification::centredLeft);
+        g.setColour(juce::Colour(0xffaec0d0)); g.setFont(juce::FontOptions(12.f));
+        g.drawText(subtitles[i],10,21,w-16,16,juce::Justification::centredLeft);
+    }
+    void selectedRowsChanged(int i) override { if (i>=0 && choose) choose(i); }
+};
+
 class Editor final : public juce::AudioProcessorEditor, private juce::ChangeListener {
 public:
     explicit Editor(Processor& p) : AudioProcessorEditor(p), proc(p) {
@@ -143,16 +162,43 @@ public:
             addAndMakeVisible(c);
         for (juce::Component* c : std::initializer_list<juce::Component*>{&mapView,&repeats,&rangeLabel,&undo})
             addAndMakeVisible(c);
+        for (auto* c : std::initializer_list<juce::Component*>{&timeline,&candidates,&timelineTitle,&candidateTitle,&inspectorTitle,&sourceToggle,&autoSet,&redo,&pin})
+            addAndMakeVisible(c);
+        for(auto* heading:{&timelineTitle,&candidateTitle,&inspectorTitle}) {
+            heading->setColour(juce::Label::textColourId,juce::Colour(0xff7fe0c0));
+            heading->setFont(juce::FontOptions(15.f,juce::Font::bold));
+        }
+        source.setMultiLine(true); source.setReadOnly(true); source.setScrollbarsShown(true);
+        addChildComponent(source);
+        sourceToggle.onClick=[this] {
+            const bool show=!source.isVisible();
+            source.setVisible(show);
+            if (show) { source.setText(proc.document.text,false); source.toFront(false); }
+            sourceToggle.setButtonText(show ? "Visual" : "OSTF text"); resized();
+        };
+        timeline.choose=[this](int i){chords.setSelectedItemIndex(i,juce::sendNotificationSync);};
+        candidates.choose=[this](int i){choices.setSelectedItemIndex(i,juce::sendNotificationSync);};
         mapView.setViewedComponent(&map,false); mapView.setScrollBarsShown(false,true);
         repeats.onClick=[this]{updateScope();};
         map.selected=[this](int first,int last) {
             chords.setSelectedItemIndex(first,juce::dontSendNotification);
             selectChord(); map.anchor=first; map.end=last; updateScope();
         };
+        redo.setEnabled(false);
+        redo.onClick=[this] {
+            const juce::ScopedLock lock(proc.stateLock);
+            if (!redoDocument || redoAtText!=proc.document.text) return;
+            previousDocument=proc.document; proc.document=std::move(*redoDocument); redoDocument.reset();
+            undoAtText=proc.document.text; undo.setEnabled(true); redo.setEnabled(false); sync();
+            proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+        };
+        autoSet.onClick=[this]{applySongPlan();};
+        pin.onClick=[this]{call("pinReference",{choices.getSelectedItemIndex()});};
         undo.setEnabled(false);
         undo.onClick=[this] {
             const juce::ScopedLock lock(proc.stateLock);
             if (!previousDocument || undoAtText != proc.document.text) { sync(); return; }
+            redoDocument=proc.document; redoAtText=previousDocument->text; redo.setEnabled(true);
             proc.document=std::move(*previousDocument); previousDocument.reset(); undo.setEnabled(false);
             sync(); proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
         };
@@ -191,6 +237,7 @@ public:
             const auto before = proc.document;
             const auto r = proc.document.assign(map.targets,roots.getSelectedItemIndex(),modes.getSelectedItemIndex());
             if (r.wasOk()) {
+                redoDocument.reset(); redo.setEnabled(false);
                 previousDocument = before; undoAtText = proc.document.text; undo.setEnabled(true);
                 const auto first=map.anchor, last=map.end;
                 proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true)); sync();
@@ -202,37 +249,38 @@ public:
         refresh.onClick = [this]{ requestLoad(proc.offered); };
         proc.addChangeListener(this);
         sync();
-        setResizable(true,false); setResizeLimits(700,565,1600,1000); setSize(900,625);
+        setResizable(true,false); setResizeLimits(795,530,1700,1150); setSize(1120,695);
     }
     ~Editor() override { proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this); }
     void resized() override {
-        auto a=getLocalBounds().reduced(12);
-        song.setBounds(a.removeFromTop(32));
-        auto files=a.removeFromTop(31);
-        open.setBounds(files.removeFromLeft(105).reduced(1)); refresh.setBounds(files.removeFromLeft(150).reduced(1));
-        save.setBounds(files.removeFromLeft(110).reduced(1)); drag.setBounds(files.reduced(1));
-        a.removeFromTop(10);
-        auto scopeRow=a.removeFromTop(28);
-        undo.setBounds(scopeRow.removeFromRight(90)); repeats.setBounds(scopeRow.removeFromRight(210));
-        rangeLabel.setBounds(scopeRow);
-        mapView.setBounds(a.removeFromTop(61)); map.setSize(std::max(1,map.chords.size()*ChordMap::cell),45);
-        auto nav=a.removeFromTop(32);
-        back.setBounds(nav.removeFromLeft(38).reduced(1)); forward.setBounds(nav.removeFromRight(38).reduced(1)); chords.setBounds(nav.reduced(1));
-        auto policy=a.removeFromTop(32);
-        const int column = policy.getWidth()/3;
-        strategy.setBounds(policy.removeFromLeft(column).reduced(1)); lens.setBounds(policy.removeFromLeft(column).reduced(1)); genre.setBounds(policy.reduced(1));
-        choices.setBounds(a.removeFromTop(33).reduced(1));
-        notes.setBounds(a.removeFromTop(29)); details.setBounds(a.removeFromTop(std::max(48,(a.getHeight()-175)/2)));
-        auto play=a.removeFromTop(32);
-        audition.setBounds(play.removeFromLeft(155).reduced(1)); compare.setBounds(play.removeFromLeft(180).reduced(1)); stop.setBounds(play.removeFromLeft(64).reduced(1));
-        a.removeFromTop(6);
-        auto edit=a.removeFromTop(32);
-        roots.setBounds(edit.removeFromLeft(75).reduced(1)); apply.setBounds(edit.removeFromRight(105).reduced(1)); modes.setBounds(edit.reduced(1));
-        auto instrument=a.removeFromBottom(34);
-        loadInstrument.setBounds(instrument.removeFromLeft(180).reduced(1)); showInstrument.setBounds(instrument.reduced(1));
-        status.setBounds(a);
+        auto area=getLocalBounds().reduced(12);
+        auto head=area.removeFromTop(32); sourceToggle.setBounds(head.removeFromRight(100)); song.setBounds(head);
+        auto files=area.removeFromTop(32);
+        open.setBounds(files.removeFromLeft(100).reduced(1)); refresh.setBounds(files.removeFromLeft(145).reduced(1));
+        save.setBounds(files.removeFromLeft(99).reduced(1)); redo.setBounds(files.removeFromRight(59).reduced(1));
+        undo.setBounds(files.removeFromRight(89).reduced(1)); autoSet.setBounds(files.removeFromRight(115).reduced(1)); drag.setBounds(files.reduced(1));
+        area.removeFromTop(8);
+        if (source.isVisible()) source.setBounds(area);
+        auto footer=area.removeFromBottom(32);
+        loadInstrument.setBounds(footer.removeFromLeft(175).reduced(1)); showInstrument.setBounds(footer.removeFromLeft(150).reduced(1)); status.setBounds(footer);
+        auto mapArea=area.removeFromBottom(91);
+        auto scope=mapArea.removeFromTop(28); repeats.setBounds(scope.removeFromRight(208)); rangeLabel.setBounds(scope);
+        mapView.setBounds(mapArea.reduced(1)); map.setSize(std::max(1,map.chords.size()*ChordMap::cell),45);
+        auto left=area.removeFromLeft(area.getWidth()/4); area.removeFromLeft(8);
+        auto mid=area.removeFromLeft(area.getWidth()/2); area.removeFromLeft(8);
+        timelineTitle.setBounds(left.removeFromTop(32)); candidateTitle.setBounds(mid.removeFromTop(32)); inspectorTitle.setBounds(area.removeFromTop(32));
+        auto nav=left.removeFromBottom(30); back.setBounds(nav.removeFromLeft(32)); forward.setBounds(nav.removeFromRight(32)); chords.setBounds(nav);
+        timeline.setBounds(left.reduced(0,2));
+        auto policy=mid.removeFromTop(28); strategy.setBounds(policy.removeFromLeft(policy.getWidth()/2)); lens.setBounds(policy);
+        genre.setBounds(mid.removeFromTop(28)); choices.setBounds(mid.removeFromBottom(28)); candidates.setBounds(mid.reduced(0,2));
+        notes.setBounds(area.removeFromTop(37));
+        auto edit=area.removeFromBottom(31); roots.setBounds(edit.removeFromLeft(51)); modes.setBounds(edit);
+        apply.setBounds(area.removeFromBottom(32).reduced(1));
+        auto ab=area.removeFromBottom(32); pin.setBounds(ab.removeFromRight(std::min(94,ab.getWidth()/3)).reduced(1));compare.setBounds(ab.reduced(1));
+        auto play=area.removeFromBottom(31); stop.setBounds(play.removeFromRight(60).reduced(1)); audition.setBounds(play.reduced(1));
+        details.setBounds(area.reduced(3));
     }
-    void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff202e36));}
+    void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff111923));}
 private:
     struct Drag final : juce::TextButton {
         Drag():TextButton("Drag OSTF to Studio"){}
@@ -302,6 +350,12 @@ private:
                 selected=i+1; break;
             }
         }
+        candidates.labels.clear(); candidates.subtitles.clear();
+        for(int i=0;i<rows.size();++i) {
+            candidates.labels.add(rows[i]["name"].toString()); candidates.subtitles.add(rows[i]["pitches"].toString());
+        }
+        candidates.updateContent();
+        timeline.selectRow(chords.getSelectedItemIndex(),false,true);
         choices.setSelectedId(selected,juce::dontSendNotification);
         if(rows.size()) selectCandidate();
         else { notes.setText({},juce::dontSendNotification); details.setText("No ranked candidates for this chord.",juce::dontSendNotification); }
@@ -315,17 +369,40 @@ private:
         lastError=result.getErrorMessage();
         return value;
     }
+    static int modeFor(const juce::var& item) {
+        const auto values=item["intervals"];
+        for(size_t i=0;i<catalog().size();++i) {
+            const auto& intervals=catalog()[i].intervals;
+            if(values.size()==int(intervals.size()) && std::equal(intervals.begin(),intervals.end(),values.getArray()->begin(),
+                [](int a,const juce::var& b){return a==int(b);})) return int(i);
+        }
+        return -1;
+    }
+    void applySongPlan() {
+        const juce::ScopedLock lock(proc.stateLock);
+        const juce::StringArray strategies{"balanced","smooth","tension"},lenses{"chord","key","performance"};
+        std::vector<Document::Assignment> plan;
+        for(int i=0;i<chords.getNumItems();++i) {
+            const auto ranked=juce::JSON::parse(call("rankChord",{i,strategies[strategy.getSelectedItemIndex()],
+                lenses[lens.getSelectedItemIndex()],genreIds[genre.getSelectedItemIndex()]}).toString());
+            if(auto* list=ranked.getArray()) for(const auto& choice:*list) {
+                const int mode=modeFor(choice);
+                if(mode>=0){ plan.push_back({i,int(choice["root"]),mode}); break; }
+            }
+        }
+        if(int(plan.size())!=chords.getNumItems()) {selectChord();status.setText("Could not assign a scale to every chord.",juce::dontSendNotification);return;}
+        const auto before=proc.document;
+        const auto result=proc.document.assignPlan(plan);
+        if(result.failed()){status.setText(result.getErrorMessage(),juce::dontSendNotification);return;}
+        previousDocument=before; undoAtText=proc.document.text; undo.setEnabled(true); redoDocument.reset(); redo.setEnabled(false);
+        sync(); proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+    }
     void selectCandidate() {
         const auto item=rows[choices.getSelectedItemIndex()];
         if(!item.isObject()) return;
+        candidates.selectRow(choices.getSelectedItemIndex(),false,true);
         roots.setSelectedId(int(item["root"])+1,juce::dontSendNotification);
-        for(size_t i=0;i<catalog().size();++i) {
-            const auto values=item["intervals"];
-            const auto& intervals=catalog()[i].intervals;
-            if(values.size()==int(intervals.size()) && std::equal(intervals.begin(),intervals.end(),values.getArray()->begin(),[](int a,const juce::var& b){return a==int(b);})) {
-                modes.setSelectedId(int(i+1),juce::dontSendNotification);break;
-            }
-        }
+        modes.setSelectedId(modeFor(item)+1,juce::dontSendNotification);
         notes.setText(item["pitches"].toString(),juce::dontSendNotification);
         const auto caution=item["warnings"].toString();
         details.setText(item["description"].toString()+"\n"+(caution.isNotEmpty()?caution:item["reason"].toString()),juce::dontSendNotification);
@@ -379,7 +456,14 @@ private:
         map.setSize(std::max(1,map.chords.size()*ChordMap::cell),45);
         chords.setSelectedId(juce::jlimit(0,chords.getNumItems(),std::max(1,selected+1)),juce::dontSendNotification);
         const bool ready=chords.getNumItems()>0;
+        autoSet.setEnabled(ready); pin.setEnabled(ready);
+        if(redoDocument && redoAtText!=proc.document.text){redoDocument.reset();redo.setEnabled(false);}
         for(juce::Component* c:std::initializer_list<juce::Component*>{&apply,&roots,&modes,&chords}) c->setEnabled(ready);
+        timeline.labels=map.chords; timeline.subtitles=map.scales;
+        for(int i=0;i<timeline.labels.size();++i) timeline.labels.set(i,juce::String(i+1)+"   "+timeline.labels[i]);
+        timeline.updateContent();
+        if (source.isVisible()) source.setText(proc.document.text,false);
+        if (!ready) { candidates.labels.clear(); candidates.subtitles.clear(); candidates.updateContent(); }
         refresh.setEnabled(proc.offered.isNotEmpty()); save.setEnabled(!proc.document.text.isEmpty()); drag.setEnabled(save.isEnabled());
         back.setEnabled(false);forward.setEnabled(false);audition.setEnabled(ready);compare.setEnabled(ready);
         updateInstrument();
@@ -411,7 +495,7 @@ private:
         const juce::ScopedLock lock(proc.stateLock);
         const auto r=proc.document.load(source);
         if(r.failed()) {status.setText(r.getErrorMessage(),juce::dontSendNotification); return;}
-        previousDocument.reset(); undo.setEnabled(false);
+        previousDocument.reset(); undo.setEnabled(false); redoDocument.reset(); redo.setEnabled(false);
         sync(); proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
     void choose(bool writing) {
@@ -436,12 +520,18 @@ private:
     juce::Result engineStatus=juce::Result::ok();
     juce::String loadedText,lastError;
     juce::var rows;
+    ScaleRows timeline,candidates;
+    juce::Label timelineTitle{"","Chord timeline"},candidateTitle{"","Compare scales"},inspectorTitle{"","Scale inspector"};
+    juce::TextButton sourceToggle{"OSTF text"};
+    juce::TextEditor source;
     ChordMap map;
     juce::Viewport mapView;
     juce::ToggleButton repeats{"Include matching progressions"};
     juce::TextButton undo{"Undo apply"};
     juce::Label rangeLabel;
-    std::optional<Document> previousDocument;
+    juce::TextButton autoSet{"Auto-set song"},redo{"Redo"},pin{"Pin A"};
+    std::optional<Document> previousDocument,redoDocument;
+    juce::String redoAtText;
     juce::String undoAtText;
     juce::Label song,status,notes,details;
     juce::TextButton back{"<"},forward{">"},audition{"Hear candidate"},compare{"A/B with reference"},stop{"Stop"},

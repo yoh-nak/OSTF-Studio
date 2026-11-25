@@ -161,7 +161,17 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         out->regions.push_back(std::move(regions));
         lanes.push_back({out->keepLabel(std::move(title)), out->regions.back(), kind});
     };
-    auto intervals = [&](const juce::var& value, const char* labelField, bool countNotes = false) {
+    std::map<std::pair<juce::String,juce::String>,juce::uint32> colours;
+    if (auto* values=score["presentation"]["appearance"]["objectColors"].getArray())
+        for (const auto& item:*values) {
+            const auto hex=item["color"].toString();
+            if(hex.length()==7 && hex.startsWithChar('#')) colours[{item["target"]["type"].toString(),item["target"]["id"].toString()}]=
+                0xff000000u | juce::uint32(hex.substring(1).getHexValue32());
+        }
+    auto eventColour=[&](const juce::String& type,const juce::var& id) -> juce::uint32 {
+        const auto found=colours.find({type,id.toString()}); return found==colours.end()?0:found->second;
+    };
+    auto intervals = [&](const juce::var& value, const char* labelField, bool countNotes = false, const char* colourType=nullptr) {
         std::vector<ArrangementRegion> result;
         if (value.isVoid()) return result;
         for (const auto& event : array(value)) {
@@ -177,6 +187,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             const auto notes = countNotes ? event["notes"] : juce::var{};
             result.push_back({{firstBar, endBar}, out->keepLabel(label.isNotEmpty() ? label : event["id"].toString()),
                               notes.isArray() ? array(notes).size() : 0, position});
+            if(colourType) result.back().colour=eventColour(colourType,event["id"]);
             if (countNotes) {
                 const auto id = event["id"].toString();
                 result.back().clipId = out->keepLabel(id);
@@ -190,9 +201,9 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         return result;
     };
 
-    addLane(out->globalLanes, "SECTION", intervals(timeline["sections"], "name"), TimelineLane::section);
+    addLane(out->globalLanes, "SECTION", intervals(timeline["sections"], "name",false,"section"), TimelineLane::section);
     const auto chords = score["harmony"]["chords"];
-    const auto chordRegions = intervals(chords, "label");
+    const auto chordRegions = intervals(chords, "label",false,"chord");
     addLane(out->globalLanes, "CHORD", chordRegions, TimelineLane::chord);
     std::vector<ArrangementRegion> voicings;
     std::vector<PitchedNote> voicingNotes;
@@ -268,6 +279,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             auto label = entry["label"].toString();
             if (label.isEmpty()) label = entry["id"].toString();
             auto item = region(start, start + length, label);
+            item.colour=eventColour("scale",entry["id"]);
             item.isScoped = entry.hasProperty("targets");
             scales.push_back(item);
         }
@@ -578,6 +590,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         out->trackKinds.push_back(TrackKind::pitched);
         out->mixerGroups.push_back(MixerTrackGroup::voicing);
     }
+    for(const auto& [target,rgb]:colours) if(target.first=="track") out->trackColoursById[target.second]=rgb;
     return out;
 }
 
@@ -1405,6 +1418,46 @@ juce::Result OstfpPreview::applySongInformation(const SongInformation& info, juc
     return juce::Result::fail(juce::String::fromUTF8(error.what()));
 }
 
+juce::uint32 OstfpPreview::trackColour(std::size_t index) const {
+    constexpr juce::uint32 palette[]{0xff65b8ce,0xffbb86c1,0xff70ba9a,0xff9299d5,0xffd79a74,0xff78a9d5,
+                                     0xffbdac69,0xffcd8799,0xff79bfb7,0xffa8a1cf,0xff82ad78,0xffca9774};
+    if (index == chordVoicingTrack) return 0xffa6b3c3;
+    if (auto it = trackColoursById.find(trackIds[int(index)]); it != trackColoursById.end()) return it->second;
+    return palette[index % std::size(palette)];
+}
+
+juce::Result OstfpPreview::setTrackColour(std::size_t index, juce::uint32 rgb, juce::MemoryBlock& previous) try {
+    require(index < sourceTrackCount(), "Select a score track.");
+    const auto before = savedScore(*this);
+    auto score = parseObject(before);
+    auto presentation = score["presentation"];
+    if (!presentation.isObject())
+        presentation = object({{"status","current"},{"dependencies",object({{"scope","none"}})},
+                               {"roleDefinitions",juce::Array<juce::var>{}},{"sectionRoleAssignments",object({})}});
+    auto appearance = presentation["appearance"];
+    if (!appearance.isObject()) appearance = object({{"roleColors",object({})},{"customRoleColors",object({})}});
+    auto colours = appearance["objectColors"];
+    if (!colours.isArray()) colours = juce::Array<juce::var>{};
+    auto target = object({{"type","track"},{"id",trackIds[int(index)]}});
+    const auto hex = "#" + juce::String::toHexString(int(rgb & 0xffffff)).paddedLeft('0',6).toUpperCase();
+    juce::var item;
+    for (auto& entry : *colours.getArray())
+        if (entry["target"]["type"] == "track" && entry["target"]["id"] == target["id"]) { item = entry; break; }
+    if (!item.isObject()) { item = object({{"target",target}}); colours.getArray()->add(item); }
+    item.getDynamicObject()->setProperty("color",hex);
+    appearance.getDynamicObject()->setProperty("objectColors",colours);
+    presentation.getDynamicObject()->setProperty("appearance",appearance);
+    score.getDynamicObject()->setProperty("presentation",presentation);
+    reviseDocument(score,before,"colour-" + juce::Uuid().toString());
+    auto bytes = editedScoreBytes(before,score,{"presentation","document"});
+    require(bytes.getSize() <= maxBytes,"OSTF score is too large.");
+    previous = before;
+    sourceScore = std::move(bytes);
+    addedClips.clear();
+    trackColoursById[trackIds[int(index)]] = rgb | 0xff000000u;
+    return juce::Result::ok();
+} catch (const std::exception& e) { return juce::Result::fail(e.what()); }
+
 juce::Result OstfpPreview::renameTrack(std::size_t index, const juce::String& input) try {
     const auto name = input.trim();
     require(index < sourceTrackCount(), "Select an editable track.");
@@ -1521,6 +1574,13 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
         if (duplicate) {
             require(!remove && *duplicate < sourceTrackCount() && sourceTrackCount() < maxTracks, "Cannot duplicate this track");
             auto copy = copyScoreTrack(entries[static_cast<int>(*duplicate)], score["lyrics"]);
+            if (auto* colours=score["presentation"]["appearance"]["objectColors"].getArray()) {
+                juce::var clone;
+                for(const auto& c:*colours) if(c["target"]["type"]=="track" && c["target"]["id"]==entries[int(*duplicate)]["id"]) {
+                    clone=c.clone(); clone["target"].getDynamicObject()->setProperty("id",copy["id"]); break;
+                }
+                if(clone.isObject()) colours->add(clone);
+            }
             entries.add(std::move(copy));
             score.getDynamicObject()->setProperty("tracks", tracks);
             kind = trackKinds[*duplicate];
@@ -1547,6 +1607,9 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
                 return notes.isArray() && !notes.getArray()->isEmpty() && std::all_of(notes.getArray()->begin(),
                     notes.getArray()->end(), [&](const auto& note) { return ids.contains(note.toString()); });
             });
+            if (auto* colours=score["presentation"]["appearance"]["objectColors"].getArray())
+                for(int i=colours->size();--i>=0;)
+                    if((*colours)[i]["target"]["type"]=="track" && (*colours)[i]["target"]["id"]==removed["id"]) colours->remove(i);
             entries.remove(static_cast<int>(*remove));
             score.getDynamicObject()->setProperty("tracks", tracks);
             const auto referencesRemoved = [&ids](const auto& self, const juce::var& value) -> bool {
@@ -1584,7 +1647,7 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
         reviseDocument(score, before, revision);
         auto next = projectScore(score);
         next->sourceScore =
-            editedScoreBytes(before, score, {"tracks", "document", "extensions", "lyrics", "soundSlots", "drumKits"});
+            editedScoreBytes(before, score, {"tracks", "document", "extensions", "lyrics", "soundSlots", "drumKits", "presentation"});
         require(next->sourceScore.getSize() <= maxBytes, "OSTF score is too large.");
         next->sourceManifest = sourceManifest;
         next->panAutomation = panAutomation;

@@ -26,6 +26,7 @@
 #include "ui/DrumPads.h"
 #include "ui/ControllerSurface.h"
 #include "ui/MidiActivityLamp.h"
+#include "ui/LiveSections.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
@@ -268,7 +269,7 @@ private:
     void showTrackMix(std::size_t index);
     void updatePresetLabel(std::size_t index);
     void refreshEditor();
-    enum class WorkspaceMode { arrangement, leadSheet, score };
+    enum class WorkspaceMode { arrangement, leadSheet, score, live };
     void setWorkspaceMode(WorkspaceMode);
     WorkspaceMode workspaceMode_ = WorkspaceMode::arrangement;
     bool canExportTrack(std::size_t track) const;
@@ -378,6 +379,7 @@ private:
     ViewButton pianoButton_ {ViewButton::Icon::piano}, mixerButton_ {ViewButton::Icon::mixer},
                pluginBrowserButton_ {ViewButton::Icon::plugins}, sampleBrowserButton_ {ViewButton::Icon::samples}, outputButton_ {ViewButton::Icon::outputs},
                songInfoButton_ {ViewButton::Icon::information}, lanesButton_ {ViewButton::Icon::lanes}, arrangementButton_ {ViewButton::Icon::arrangement},
+               liveButton_{ViewButton::Icon::liveSession}, printLeadButton_{ViewButton::Icon::printLead}, printScoreButton_{ViewButton::Icon::printScore},
                leadButton_ {ViewButton::Icon::leadSheet}, scoreButton_ {ViewButton::Icon::score};
     ViewButton melodyAdd_ {ViewButton::Icon::melody}, chorusAdd_ {ViewButton::Icon::chorus},
                pitchedAdd_ {ViewButton::Icon::pitched}, drumsAdd_ {ViewButton::Icon::drums},
@@ -390,6 +392,8 @@ private:
     juce::TooltipWindow tooltips_ {nullptr, 350};
     bool trackEditorOpen_ = true, mixerSelected_ = false;
     bool lowerPaneOpen() const { return trackEditorOpen_ || mixerSelected_; }
+    LiveSections live_;
+    std::optional<std::size_t> liveGeneration_;
     TransportPanel deck_;
     SongBasicsPanel basics_;
     int topBasicsHeight() const;
