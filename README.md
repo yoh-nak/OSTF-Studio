@@ -1,5 +1,9 @@
 # OSTF Studio
 
+## OSTF 5.1 studio preview
+
+New songs and the seven arranged demos use Core 5.1.0. The eight gallery projects include a shared-GM alternative. Open an OSTFP from File → Demo songs for its instrument patches, routing and insert settings. In the arrangement or live cell take menu, choose an authored comp to change the materialized performance. In Live Session, **Audition take** previews another comp independently. Queue the section to keep that combination, then choose **Adopt combination** to apply it to the arrangement. The Scale Editor instrument opens the supplied Max device’s full workspace in the default browser. Export the edited OSTF there and choose **Import edited scales** in the instrument to return it to Studio. [Demo guide](examples/demo-songs/README.md)
+
 Arm a MIDI track with R, play, and use Capture MIDI on its mixer strip or input menu. Stopped performances start at the edit cursor. During playback notes use the arrangement position. The IN selector is shared by the mixer and track header. Drop an instrument or effect from the browser onto the channel strip. The output selectors on Master and Cue offer physical channels and device settings.
 
 The transport, prompt guide and current vocal lyrics use black inset displays. Source track headers group the fader, pan and input controls above eight send slots. On narrow expanded headers the sends wrap when there is room for two rows. Each assigned return enables its corresponding send in the header and mixer.
@@ -150,7 +154,7 @@ On Windows, run the Setup executable or extract the portable ZIP. On an Apple si
 - Portable C++20 timeline model with unit tests (internal only; not OSTF spec definitions)
 - JUCE 9.0.5 desktop window with a **32-bar demo** ruler, global musical lanes, and named arrangement regions aligned to the same bar positions
 - Standalone `.ostf` scores open in the workspace. The `.json` inspector accepts generic JSON objects and arrays.
-- **OSTF 5.0.0 and OSTFP 1.0** support a bounded score and mixer subset. **File → Demo songs** opens the Studio gallery, including Copper Mile (Rock) and First Light Vector (Trance). **Open OSTF / OSTFP** opens supported files from disk.
+- **OSTF 5.1.0 and OSTFP 1.1.0** support the score and mixer features described above. Studio also opens supported 5.0 projects. **File → Demo songs** opens the Studio gallery, including Copper Mile (Rock) and First Light Vector (Trance). **Open OSTF / OSTFP** opens supported files from disk.
 - Select a MIDI track to edit its notes in the piano roll. Click its bar ruler to move playback there, or drag it to scroll horizontally. Both rulers follow the same horizontal zoom and scroll position. Scrolling over the grid moves the visible pitch range.
 - Audio tracks show the stereo WAV waveform. Open **Relay Circuit** and click bar 45 to hear the toms and dub chords together. In **First Light Vector**, click bar 49 to hear the gated chords and bell echoes. Solo each layer to hear its part.
 - Studio starts with an untitled, empty 32-bar project in 4/4 at 120 BPM. Add the first part from the Track menu. **File → New project** opens another blank session. The transport sends pitched notes to assigned VST3 instruments. Choose an input with **IN**, arm the track with **R** and press the transport record button to capture notes from the current position. The navigation keys become available again when you stop recording. Stop turns the captured notes into a clip that can be saved. For audio takes, choose mono or stereo in the waveform editor.
@@ -295,10 +299,9 @@ The [build workflow](.github/workflows/build.yml) runs standalone core tests and
 
 See the [development roadmap](docs/ARCHITECTURE.md#user-visible-milestones) for the official OSTF 5.0 intake requirements and the sequence for implementing DAW features.
 
-## Important: OSTF 5.0 spec
+## Official formats and gallery
 
-The [original demo song gallery](examples/demo-songs/README.md) provides five OSTF/OSTFP songs and a per-song checklist for assessing current Studio support.
-The preview checks package inventory and hashes before displaying the supported source lanes. It currently requires a single meter and bar-aligned sections, and supports a score with an optional Studio mixer document. Full Schema validation in the application, mixed meters, and sub-bar timing for other global lanes remain pending. Packaged WAVs linked by OSTF Studio are supported. [Official OSTF 5.0.0 release](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.0/tree/d8ce48ca6c873a5a24a94bcc80d847bf33135b46) · [Fixture provenance](tests/fixtures/README.md)
+The gallery contains seven songs in eight projects. Package loading verifies declared scores, hashes and supported production documents. The current bar-based editing grid supports meter changes that preserve bar length. Packaged WAVs are supported. [Demo arrangements](examples/demo-songs/README.md) · [Official 5.1 release](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.1/tree/957bd071cecc58a12f417ad212c40723ba9812ca) · [Fixture provenance](tests/fixtures/README.md)
 
 ## Licensing
 OSTF Studio's original application and bundled plug-in code is available under **GPL-3.0-only**. Distribution uses the GPLv3 option for the ASIO SDK and AGPLv3 for JUCE. Each release includes the matching source and build scripts. [GPLv3](LICENSE) · [Dependency licenses and source](licenses/NOTICE.md)

@@ -219,18 +219,18 @@ class SyllableVoice {
             grainReady = true;
         }
         const float mix = float(.5 - .5 * std::cos(juce::MathConstants<double>::pi * phase));
-        auto sampleCycle = [&](int index) {
-            const auto first = source.pitchMarks[size_t(index)];
-            const auto last = source.pitchMarks[size_t(index + 1)];
-            const double step=(last-first)*pitch/sr;
-            const auto value = source.cycleSample(first + phase * (last - first),step);
-            // A pitch mark need not fall at an exact zero crossing. Match both ends
-            // of the resampled period to avoid a pulse at every glottal closure.
-            return float(value - std::lerp(double(source.cycleSample(first,step)), double(source.cycleSample(last,step)), phase));
+        // Overlap two pitch-synchronous windows around glottal closures. Near the
+        // recorded register the sample clock stays at its native rate, keeping the
+        // vowel resonances in place when the fundamental moves. Bound the window
+        // on low notes so it cannot replay several unshifted pulses per output cycle.
+        const double outputPeriod = source.rate / pitch;
+        auto window = [&](int index, double relativePhase) {
+            const auto centre = source.pitchMarks[size_t(index)];
+            const double sourcePeriod = source.pitchMarks[size_t(index + 1)] - centre;
+            const double span = std::clamp(outputPeriod, .65 * sourcePeriod, 1.18 * sourcePeriod);
+            return source.cycleSample(centre + relativePhase * span, span * pitch / sr);
         };
-        // Both periods travel through the same phase. Shortening a second
-        // unretuned window here introduces extra harmonics on higher notes.
-        const float out = std::lerp(sampleCycle(oldMark), sampleCycle(newMark), mix);
+        const float out = std::lerp(window(oldMark, phase), window(newMark, phase - 1.), mix);
         phase += std::min(.45, pitch / sr);
         if (phase >= 1) {
             phase -= 1;

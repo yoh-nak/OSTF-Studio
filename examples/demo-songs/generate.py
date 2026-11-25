@@ -278,15 +278,15 @@ def progressive():
                    ("Dm", 50, [0, 3, 7]), ("Bb", 58, [0, 4, 7]), ("C", 60, [0, 4, 7]), ("D5", 50, [0, 7])]
     change = 14 * PPQ
     song, bars = score("Offset Bridges", "Progressive Rock", [("Seven Steps", 0, 4), ("Wide Bridge", 4, 8)],
-                      [7 * PPQ // 2] * 4 + [4 * PPQ] * 4, progression, 50, "minor",
+                      [7 * PPQ // 2] * 8, progression, 50, "minor",
                       [{"at": 0, "bpm": 116}, {"at": change, "bpm": 138}],
                       [{"at": 0, "numerator": 7, "denominator": 8, "beatGroups": [2, 2, 3]},
-                       {"at": change, "numerator": 4, "denominator": 4}])
+                       {"at": change, "numerator": 7, "denominator": 8, "beatGroups": [3, 2, 2]}])
     notes = []
     for i, (_, root, steps) in enumerate(progression):
         figure = [(0, 0, .4), (.5, 0, .32), (1, 7, .67), (2, 0, .37), (2.5, 12, .36), (3, 7, .44)]
         if i >= 4:
-            figure = [(0, 0, 1.4), (1.5, steps[1], .4), (2, 7, .72), (3, 12, .9)]
+            figure = [(0, 0, 1.4), (1.5, steps[1], .4), (2, 7, .72), (3, 12, .42)]
         for j, (beat, interval, held) in enumerate(figure):
             notes.append(note(f"g{i + 1}-{j + 1}", bars[i] + round(beat * PPQ),
                               round(held * PPQ), root + interval, 99 if beat in (0, 1, 2) else 79))
@@ -462,9 +462,9 @@ def full_progressive():
     drums = []
     for bar, chord in enumerate(song["harmony"]["chords"]):
         odd_meter = bar < 4
-        accents = (0, 2, 4) if odd_meter else (0, 4)
+        accents = (0, 2, 4) if odd_meter else (0, 3, 5)
         backbeats = (2, 6)
-        for step in range(7 if odd_meter else 8):
+        for step in range(7):
             for slot, velocity in ([("hat", 75 if step in accents else 55)]
                                    + ([("kick", 104)] if step in accents else [])
                                    + ([("snare", 102)] if step in backbeats else [])
@@ -939,6 +939,109 @@ def audio_parts(stem, song):
         yield identifier, name, identifier, bar * 4 * PPQ, bpm, bus, club_stem(song, voice, bar, bars, bpm)
 
 
+def arrange_session_parts(song):
+    """Voice the instrumental replies and vary articulation at phrase boundaries."""
+    sections = song["timeline"]["sections"]
+    ppq = song["ppq"]
+    for lane in song["tracks"]:
+        part = lane["id"]
+        if part not in ("comp", "keys", "pad", "answer", "guitar", "organ", "pulse", "perc", "vibes", "chord", "nylon", "strings"):
+            continue
+        for clip in lane["clips"]:
+            section = next((s for s in sections if s["start"] <= clip["start"] < s["start"] + s["duration"]), None)
+            if section is None:
+                continue
+            open_voicing = part in ("keys", "pad", "strings", "organ")
+            grouped = {}
+            for note in clip.get("notes", []):
+                grouped.setdefault(note["start"], []).append(note)
+            for beat, notes in grouped.items():
+                pitched = sorted((n for n in notes if "pitch" in n), key=lambda n: n["pitch"])
+                if not pitched:
+                    continue
+                if open_voicing and len(pitched) >= 3 and pitched[-2]["pitch"] < 77:
+                    pitched[-2]["pitch"] += 12
+                for i, note in enumerate(pitched):
+                    if part in ("guitar", "nylon", "comp", "keys") and len(pitched) > 1:
+                        stagger = min(i * ppq // 72, note["duration"] - 1)
+                        note["start"] += stagger
+                        note["duration"] -= stagger
+                    if part in ("chord", "pulse", "comp"):
+                        note["duration"] = max(1, round(note["duration"] * (.73 if beat % ppq else .91)))
+                    accent = 4 if beat % (2 * ppq) == 0 else -3
+                    note["velocity"] = max(1, min(127, note.get("velocity", 80) + accent + (2 if i == len(pitched)-1 else -1)))
+            clip["notes"].sort(key=lambda n: n["start"])
+
+
+def alternate_reply(song, track_id):
+    # Give a complete instrumental phrase two interchangeable performances.
+    lane = next(t for t in song["tracks"] if t["id"] == track_id)
+    chosen = next(c for c in lane["clips"] if c["start"] > 0 and c.get("notes") and not c.get("midiEvents")
+                  and all("pitch" in n and 0 <= n["start"] < n["start"]+n["duration"] <= c["duration"] for n in c["notes"]))
+    section = next(s for s in song["timeline"]["sections"] if s["start"] == chosen["start"])
+    assert chosen["duration"] == section["duration"]
+    chosen["enabled"] = True
+    group = {"id": f"{track_id}-reply", "trackId": track_id, "sectionId": section["id"],
+             "startTick": chosen["start"], "durationTicks": chosen["duration"], "takes": [], "comps": [], "activeCompId": "comp-1"}
+    for number in (1, 2):
+        take = f"take-{number}"
+        source = deepcopy(chosen)
+        source.update(id=f"{track_id}-candidate-{number}", enabled=False)
+        for i, n in enumerate(source["notes"]):
+            n["id"] = f"{source['id']}-n{i}"
+            if number == 2:
+                if i % 3 == 0 and n["pitch"] <= 87:
+                    n["pitch"] += 12
+                n["duration"] = max(1, round(n["duration"] * (.68 if i % 2 else .86)))
+        output = chosen if number == 1 else deepcopy(source)
+        if number == 2:
+            output.update(id=f"{track_id}-output-2", enabled=False)
+            for i, n in enumerate(output["notes"]):
+                n["id"] = f"{output['id']}-n{i}"
+            lane["clips"].append(output)
+        lane["clips"].append(source)
+        group["takes"].append({"id": take, "kind": "take" if number == 1 else "variation", "clipIds": [source["id"]], "laneOrder": number-1})
+        group["comps"].append({"id": f"comp-{number}", "noteBoundary": "authored", "compRegions": [{
+            "id": f"region-{number}", "kind": "source", "takeId": take, "clipId": source["id"],
+            "startTick": chosen["start"], "durationTicks": chosen["duration"]}], "outputClipIds": [output["id"]],
+            "noteLinks": [{"sourceNoteId": a["id"], "outputNoteId": b["id"]} for a, b in zip(source["notes"], output["notes"])]})
+    song["takeGroups"] = [group]
+
+
+def vst_parameter_id(name):
+    # JUCE VST3ClientExtensions::convertJuceParameterId (Studio One compatible).
+    value = 0
+    for char in name:
+        value = (31 * value + ord(char)) & 0x7fffffff
+    return str(value)
+
+
+def insert_settings(kind, strip, song):
+    # Normalized plug-in controls. Return reverbs stay fully wet on a send.
+    jazz = song["song"]["title"] == "Blue Hour Waltz"
+    beat_ms = 60000 / song["timeline"]["tempoChanges"][0]["bpm"]
+    settings = {
+        "Reverb": {"control1": .37 if jazz else .54, "control2": .67, "control3": 1},
+        "Limiter": {"control1": .92, "control3": .22},
+        "BusCompressor": {"threshold1": .70, "ratio1": .065, "attack": .55},
+        "ParametricEQ": {"gain2": .45, "gain3": .535},
+        "DeEsser": {"range": .22, "threshold": .61},
+        "BassRig": {"drive": .10, "blend": .28, "output": .62},
+        "ElectricRig": {"drive": .39 if strip.get("trackId") == "lead" else .16, "blend": .57, "output": .56},
+        "AcousticRig": {"body": .81, "air": .58, "room": .10},
+        "Delay": {"feedback": .18, "mix": .13,
+                  "time": ((min(1490, beat_ms * .75) - 1) / 1499) ** (math.log(.5) / math.log((math.sqrt(1500)-1)/1499))},
+        "Chorus": {"control1": .08, "control2": .31, "control3": .16},
+        "Phaser": {"control2": .42, "control3": .18},
+        "Flanger": {"control2": .29, "control3": .13},
+        "Compressor": {"control1": .60, "control2": .11, "control3": .15},
+        "EQ": {"control1": .43, "control2": .52, "control3": .55},
+        "HighPass": {"cutoff": .16, "q": .05},
+        "Distortion": {"control1": .17, "control3": .13},
+    }
+    return settings.get(kind, {})
+
+
 def production_session(song, cues, shared_gm=False):
     programs = {
         "hook": 27, "horn": 65, "arp": 81, "voice-track": 53, "backing": 52, "keys": 4, "bass": 33,
@@ -961,6 +1064,18 @@ def production_session(song, cues, shared_gm=False):
         for part in ("voice-track", "backing"):
             instruments[part] = singer
             programs[part] = 0
+    bank = {i["type"]: i for i in json.loads((DESTINATION.parents[1] / "src/plugins/instruments/catalog.json").read_text())}
+    palettes = {
+        "Paper Lantern Replies": {"keys": ("FM", 3), "answer": ("FM", 1), "strings": ("Wavetable", 1)},
+        "Blue Hour Waltz": {"vibes": ("FM", 2)},
+        "Neon Platforms": {"keys": ("FM", 3), "pad": ("Wavetable", 1), "drums": ("Drums", 1)},
+        "Relay Circuit": {"arp": ("FM", 1), "sub": ("Analog", 1), "drums": ("Drums", 3), "chord": ("Wavetable", 3), "atmos": ("Wavetable", 2)},
+        "Offset Bridges": {"strings": ("Wavetable", 1), "pulse": ("FM", 1)},
+        "Copper Mile": { "organ": ("FM", 3)},
+    }
+    if not shared_gm:
+        for part, (engine, patch) in palettes.get(song["song"]["title"], {}).items():
+            instruments[part], programs[part] = bank[engine], patch
     def channel(identifier, kind, **fields):
         return {"id": identifier, "kind": kind, "audioChannels": 2, "gainDb": 0, "pan": 0,
                 "mute": False, "solo": False, "soloSafe": False, "deviceIds": [], **fields}
@@ -968,10 +1083,14 @@ def production_session(song, cues, shared_gm=False):
     catalog = json.loads((DESTINATION.parents[1] / "src/plugins/effects/catalog.json").read_text(encoding="utf-8"))
     effects = {item["type"]: item for item in catalog}
     devices = []
+    initial_controls = []
     def insert(strip, *types):
         for kind in types:
             item = effects[kind]
             identifier = f"{strip['id']}-{kind.lower()}"
+            for parameter, value in insert_settings(kind, strip, song).items():
+                initial_controls.append({"id": f"{identifier}-p-{parameter}", "target": {"kind": "device", "deviceId": identifier, "parameterId": vst_parameter_id(parameter)},
+                    "valueType": "number", "interpolation": "step", "points": [{"atTick": 0, "value": round(value, 6)}]})
             strip["deviceIds"].append(identifier)
             devices.append({"id": identifier, "role": "effect", "enabled": True, "bypass": False,
                             "onUnavailable": "reportAndPreserve", "plugin": {
@@ -981,26 +1100,26 @@ def production_session(song, cues, shared_gm=False):
     # Post-fader sends in dB. Keep bass and kick near centre; give harmony and replies their own space.
     # Values are (fader dB, stereo pan, output channel, room send dB or None, inserts in signal order).
     parts = {
-        "hook": (-5, -.08, "master", -16, ["Amp", "EQ"]),
+        "hook": (-5, -.08, "master", -16, ["ElectricRig", "ParametricEQ"]),
         "horn": (-6, -.12, "master", -14, ["EQ", "Compressor"]),
         "arp": (-8, -.30, "bus-2", -19, ["Phaser"]),
-        "voice-track": (-4, 0, "master", -13, ["EQ", "Compressor"]),
+        "voice-track": (-4, 0, "master", -22, ["DeEsser", "Compressor"]),
         "backing": (-12, .24, "bus-2", -16, []),
         "keys": (-9, -.26, "bus-2", -16, ["Chorus"]),
-        "bass": (-6, 0, "bus-1", None, ["Compressor"]),
+        "bass": (-6, 0, "bus-1", None, ["BassRig", "Compressor"]),
         "answer": (-11, .32, "bus-2", -15, ["Phaser"]),
-        "nylon": (-12, -.38, "bus-2", -16, ["EQ"]),
+        "nylon": (-12, -.38, "bus-2", -16, ["AcousticRig"]),
         "strings": (-13, .24, "bus-2", -12, []),
         "comp": (-11, -.38, "bus-2", -17, ["Chorus"]),
         "brass": (-10, .22, "bus-2", -15, ["EQ"]),
         "pad": (-14, .32, "bus-2", -12, ["Chorus"]),
         "vibes": (-9, .34, "bus-2", -12, []),
         "organ": (-12, -.32, "bus-2", -17, ["Phaser"]),
-        "guitar": (-11, .29, "bus-2", -17, ["Amp"]),
-        "rhythm": (-10, -.38, "bus-2", -20, ["Amp"]),
-        "lead": (-6, .08, "master", -16, ["Distortion", "Amp"]),
+        "guitar": (-11, .29, "bus-2", -17, ["ElectricRig"]),
+        "rhythm": (-10, -.38, "bus-2", -20, ["ElectricRig"]),
+        "lead": (-6, .08, "master", -16, ["ElectricRig", "Delay"]),
         "pulse": (-9, -.22, "bus-2", -19, ["Flanger"]),
-        "sub": (-7, 0, "bus-1", None, ["Distortion", "EQ"]),
+        "sub": (-7, 0, "bus-1", None, ["BassRig", "ParametricEQ"]),
         "chord": (-11, .25, "bus-2", -18, ["Chorus"]),
         "atmos": (-14, .36, "bus-2", -11, ["Phaser"]),
         "perc": (-12, .30, "bus-1", -19, ["EQ"]),
@@ -1014,14 +1133,14 @@ def production_session(song, cues, shared_gm=False):
     channels = [channel("master", "master", gainDb=-1), channel("bus-1", "bus", name="Rhythm", gainDb=-2, outputChannelId="master"),
                 channel("bus-2", "bus", name="Harmony", gainDb=-1.5, outputChannelId="master"),
                 channel("return-1", "bus", name="Room", gainDb=-3, outputChannelId="master")]
-    for strip, kind in zip(channels, ("Limiter", "Compressor", "EQ", "Reverb")):
+    for strip, kind in zip(channels, ("Limiter", "BusCompressor", "ParametricEQ", "Reverb")):
         insert(strip, kind)
     shared_destinations = {}
     if shared_gm:
         shared_destinations = {lane["id"]: "keys" for lane in song["tracks"]}
     elif song["song"]["title"] == "Neon Platforms":
-        shared_destinations = {"hook": "hook", "keys": "hook", "pad": "hook", "brass": "hook", "strings": "hook",
-                               "bass": "bass", "drums": "bass", "comp": "bass"}
+        shared_destinations = {"hook": "hook", "brass": "hook", "strings": "hook",
+                               "bass": "bass", "comp": "bass"}
     shared_routes = []
     for index, lane in enumerate(song["tracks"], start=1):
         midi_channel = 10 if lane["trackType"] == "drum" else index
@@ -1117,6 +1236,8 @@ def production_session(song, cues, shared_gm=False):
                                      "valueType": "number", "interpolation": "linear",
                                      "points": [{"atTick": solo + (bridge - solo) * i // 4, "value": v}
                                                 for i, v in enumerate([strip["pan"], -.65, .65, -.35, strip["pan"]])]}]
+    if initial_controls:
+        production.setdefault("automation", []).extend(initial_controls)
     return production
 
 
@@ -1125,6 +1246,8 @@ def json_bytes(document):
 
 
 def write_song(stem, document, shared_gm=False):
+    document["version"] = "5.1.0"
+    arrange_session_parts(document)
     vary_harmonic_rhythm(document)
     media = []
     cues = []
@@ -1137,6 +1260,9 @@ def write_song(stem, document, shared_gm=False):
         (DESTINATION / path).parent.mkdir(exist_ok=True)
         (DESTINATION / path).write_bytes(wav)
         media.append((path, wav))
+    variations = {"relay-circuit": "perc", "blue-hour-waltz": "vibes", "neon-platforms": "pad"}
+    if stem in variations:
+        alternate_reply(document, variations[stem])
     production = production_session(document, cues, shared_gm)
     if shared_gm:
         document["song"]["title"] += " (Shared GM)"
@@ -1145,16 +1271,16 @@ def write_song(stem, document, shared_gm=False):
     }
     data = json_bytes(document)
     digest = hashlib.sha256(data).hexdigest()
-    session = json_bytes({**production, "profile": "OSTF-Production-Session", "profileVersion": "0.3.0",
-                          "score": {"formatVersion": "5.0.0", "sha256": digest}})
+    session = json_bytes({**production, "profile": "OSTF-Production-Session", "profileVersion": "0.4.0",
+                          "score": {"formatVersion": document["version"], "sha256": digest}})
     session_path = "session/studio.production.json"
     (DESTINATION / f"{stem}.ostf").write_bytes(data)
-    manifest = {"packageFormat": "OSTFP", "packageVersion": "1.0.0", "projectId": stem,
+    manifest = {"packageFormat": "OSTFP", "packageVersion": "1.1.0", "projectId": stem,
                 "title": document["song"]["title"],
-                "score": {"path": "score/song.ostf", "format": "OSTF", "version": "5.0.0",
+                "score": {"path": "score/song.ostf", "format": "OSTF", "version": document["version"],
                           "sha256": digest}, "assets": [], "bindings": [],
                 "documents": [{"id": "studio-production", "role": "productionSession", "path": session_path,
-                               "family": "OSTF-Production-Session", "version": "0.3.0",
+                               "family": "OSTF-Production-Session", "version": "0.4.0",
                                "sha256": hashlib.sha256(session).hexdigest()}]}
     for identifier, _, asset, _, _, _ in cues:
         packed = "packed-" + identifier

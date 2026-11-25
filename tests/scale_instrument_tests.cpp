@@ -53,6 +53,9 @@ int main(int argc,char** argv) {
     for (auto* c:editor->getChildren()) if (auto* tab=dynamic_cast<juce::TextButton*>(c); tab && tab->getButtonText()=="Connections")
         tab->onClick();
     if (flow->getTitle()!="Connections" || flow->getDescription().endsWith(" / 0 chords")) return 31;
+    for(auto* child:editor->getChildren()) if(auto* tab=dynamic_cast<juce::TextButton*>(child);tab && tab->getButtonText()=="Review") tab->onClick();
+    auto* review=editor->findChildWithID("scale-review-list");
+    if(!review || !review->isVisible() || flow->isVisible()) return 42;
     genre->setSelectedId(3,juce::sendNotificationSync);
     if(genre->getSelectedId()!=3 || choices->getNumItems()<2) return 19;
     choices->setSelectedItemIndex(1,juce::sendNotificationSync);

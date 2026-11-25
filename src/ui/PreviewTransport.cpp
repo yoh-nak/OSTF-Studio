@@ -594,7 +594,17 @@ bool PreviewTransport::queueLiveSection(size_t index) {
 }
 juce::Result PreviewTransport::prepareCueEvents(PreparedCue& prepared,const ostfstudio::OstfpPreview& score) const {
     Timelines all;
-    if(auto result=makeMidiTimelines(score,playbackRoutes_,playbackShift_,all,false,prepared.cue.takes);result.failed()) return result;
+    std::unique_ptr<ostfstudio::OstfpPreview> alternate;
+    const auto& choices = prepared.cue.comps;
+    const bool changed = std::any_of(choices.begin(), choices.end(), [&](const auto& pick) {
+        return std::none_of(score.compChoices.begin(), score.compChoices.end(), [&](const auto& current) {
+            return current.active && current.group == pick.group && current.comp == pick.comp;
+        });
+    });
+    if (changed) {
+        if (auto result = score.compPlayback(choices, alternate); result.failed()) return result;
+    }
+    if(auto result=makeMidiTimelines(alternate ? *alternate : score,playbackRoutes_,playbackShift_,all,false,prepared.cue.takes);result.failed()) return result;
     const auto range=liveBoundaries_[prepared.cue.section].samples;
     prepared.events=std::make_unique<Timelines>(); prepared.chase=std::make_unique<Timelines>();
     for(size_t t=0;t<all.size();++t) if(!all[t].isEmpty()) {

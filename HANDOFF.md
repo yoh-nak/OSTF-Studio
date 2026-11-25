@@ -1,5 +1,9 @@
 # OSTF Studio development handoff
 
+## 5.1 score integration and demo arrangements
+
+Branch `feat/ostf51-studio`. Schemas and the MIDI comp fixture are from upstream revision `957bd071cecc58a12f417ad212c40723ba9812ca`. To refresh the arrangements run `python examples/demo-songs/generate.py`, then run `examples/demo-songs/verify.py` with the checked-out reference repository path. Build the app, stock VST3s and GUI tests in Release. Run `ostf_native_comps`, `ostf_studio_demo_gallery`, `ostf_studio_stock_effects`, the two scale tests and `ostf_singing_tests`. ScaleWorkspace.html adapts the offline HTML bundled in the supplied OSTF Scale Editor v1.0 Max device. Scale-only return validates against the original working snapshot. On Windows the eight generated projects passed upstream package validation and Score, Production and Manifest schemas. The gallery load/save checks also passed. A real browser applied a scale to Paper Lantern Replies and the native ScaleDocument imported the export successfully. Both a standalone bridge and a hosted lead vocal rendered to 48 kHz WAV. Hardware monitoring, macOS and subjective vocal listening require separate checks.
+
 ## Live performance queue, singer onset and Scale Flow
 
 The live-session matrix has independent cell audition, per-cell looping and a section queue with take snapshots. The performer display follows the queue across section jumps. The count-in can run silently. Audio inputs can be armed together and recorded as separate regions. External MIDI destinations have no isolated cell preview.

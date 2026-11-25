@@ -121,6 +121,73 @@ juce::int64 scoreExtent(const juce::var& score) {
     return end;
 }
 
+void readCompChoices(const juce::var& score, OstfpPreview& project) {
+    const auto groups = score["takeGroups"];
+    if (!groups.isArray()) return;
+    std::set<juce::String> groupIds, claimed;
+    std::map<juce::String,std::vector<juce::Range<juce::int64>>> trackRanges;
+    for (const auto& group : array(groups)) {
+        const auto id=group["id"].toString(), track=group["trackId"].toString();
+        require(groupIds.insert(id).second, "Duplicate MIDI take group ID.");
+        const auto start=integer(group["startTick"]), length=integer(group["durationTicks"]);
+        const juce::Range<juce::int64> range(start,start+length);
+        auto& ownedRanges=trackRanges[track];
+        for(const auto& other:ownedRanges) require(!other.intersects(range),"Overlapping take groups on one track.");
+        ownedRanges.push_back(range);
+        std::map<juce::String,juce::var> clips;
+        for (const auto& lane : array(score["tracks"])) if (lane["id"] == track)
+            for (const auto& clip : array(lane["clips"])) clips.emplace(clip["id"].toString(),clip);
+        std::map<juce::String,juce::String> sources;
+        std::set<juce::String> ownedClips;
+        auto claim=[&](const juce::var& ref, bool enabled) {
+            const auto key=ref.toString(); const auto it=clips.find(key);
+            require(it!=clips.end() && claimed.insert(key).second, "Unknown or multiply owned take clip.");
+            ownedClips.insert(key);
+            const auto clip=it->second;
+            const auto tick=integer(clip["start"]), dur=integer(clip["duration"]);
+            require(tick>=start && dur<=range.getEnd()-tick && bool(clip.getProperty("enabled",true))==enabled,
+                    "Take clip range or playback flag contradicts its comp.");
+            return clip;
+        };
+        for (const auto& take : array(group["takes"]))
+            for (const auto& ref : array(take["clipIds"])) {
+                claim(ref,false);
+                sources.emplace(ref.toString(),take["id"].toString());
+            }
+        std::set<juce::String> comps;
+        const auto active=group["activeCompId"].toString();
+        for (const auto& comp : array(group["comps"])) {
+            const auto compId=comp["id"].toString();
+            require(comps.insert(compId).second, "Duplicate comp ID.");
+            auto next=start;
+            for (const auto& region : array(comp["compRegions"])) {
+                require(integer(region["startTick"])==next, "Comp regions must cover the group without gaps or overlaps.");
+                next+=integer(region["durationTicks"]);
+                if (region["kind"]=="source") {
+                    const auto ref=region["clipId"].toString();
+                    require(sources.contains(ref) && sources.at(ref)==region["takeId"].toString(), "Comp region refers to another take.");
+                    const auto c=clips.at(ref);
+                    require(integer(c["start"])<=integer(region["startTick"]) && integer(c["start"])+integer(c["duration"])>=next, "Region exceeds selected take clip.");
+                }
+            }
+            require(next==range.getEnd(),"Incomplete comp map.");
+            for (const auto& ref : array(comp["outputClipIds"])) claim(ref,active==compId);
+            project.compChoices.push_back({id,compId,track,range,active==compId,comp.getProperty("name",compId).toString()});
+        }
+        require(active.isEmpty() || comps.contains(active),"Unknown active comp.");
+        const auto policy = group["liveSelection"]["mode"].toString();
+        if (policy == "cycle" || policy == "random" || policy == "weighted") project.usesUnsupportedCompSelection = true;
+        if (group["visitSelections"].isArray())
+            for (const auto& visit : array(group["visitSelections"]))
+                if (visit["compId"].toString() != active) project.usesUnsupportedCompSelection = true;
+        for(const auto& [key,c]:clips) {
+            const auto a=integer(c["start"]);
+            if(range.intersects({a,a+integer(c["duration"])})) require(ownedClips.contains(key),"Unmanaged clip overlaps a take group.");
+        }
+        project.compChoices.push_back({id,{},track,range,active.isEmpty(), "Silence"});
+    }
+}
+
 std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVoicingRow = false) {
     require(score["format"] == "OSTF", "Expected an OSTF score");
     const auto timeline = score["timeline"];
@@ -145,6 +212,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
 
     auto out = std::make_unique<OstfpPreview>();
     out->sourceVersion = score["version"].toString();
+    readCompChoices(score,*out);
     out->documentId = score["document"]["id"].toString();
     out->durationTicks = duration;
     out->ticksPerBar = ticksPerBar;
@@ -175,6 +243,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         std::vector<ArrangementRegion> result;
         if (value.isVoid()) return result;
         for (const auto& event : array(value)) {
+            if (countNotes && !bool(event.getProperty("enabled",true))) continue;
             const auto start = integer(event["start"]);
             const auto length = integer(event["duration"]);
             require(start >= 0 && start < duration && length > 0 && length <= duration - start, "Invalid OSTF region duration");
@@ -405,6 +474,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         if (clips.isVoid()) continue;
         size_t ordinal = 0;
         for (const auto& clip : array(clips)) {
+            if (!bool(clip.getProperty("enabled", true))) continue;
             const auto clipStart = integer(clip["start"]);
             const auto events = clip["notes"];
             if (events.isArray()) for (const auto& event : array(events)) {
@@ -611,17 +681,82 @@ juce::MemoryBlock jsonBytes(const juce::var& value) {
     return {text.toRawUTF8(), text.getNumBytesAsUTF8()};
 }
 
+// Mirror edits to a whole-take output into its independent source. More complex
+// maps can switch between their saved outputs without rewriting their source data.
+bool syncCompNotes(const juce::var& previous, juce::var edited) {
+    if (!previous["takeGroups"].isArray()) return false;
+    bool changed=false;
+    for (const auto& group : array(edited["takeGroups"])) {
+        auto clipsFor=[&](const juce::var& song) {
+            std::map<juce::String,juce::var> result;
+            for (const auto& track : array(song["tracks"])) if(track["id"]==group["trackId"])
+                for (const auto& clip : array(track["clips"])) result.emplace(clip["id"].toString(),clip);
+            return result;
+        };
+        auto old=clipsFor(previous), clips=clipsFor(edited);
+        std::map<juce::String,int> uses;
+        for(const auto& comp:array(group["comps"])) for(const auto& r:array(comp["compRegions"]))
+            if(r["kind"]=="source") ++uses[r["clipId"].toString()];
+        for(const auto& [id,count]:uses)
+            require(old.contains(id) && clips.contains(id) && juce::JSON::toString(old.at(id))==juce::JSON::toString(clips.at(id)),
+                    "Edit the selected comp output to keep the original take intact.");
+        for(auto comp:array(group["comps"])) for(const auto& id:array(comp["outputClipIds"])) {
+            const auto key=id.toString();
+            require(old.contains(key) && clips.contains(key),"Removing a comp output requires editing its take group.");
+            const auto out=clips.at(key);
+            if(juce::JSON::toString(out)==juce::JSON::toString(old.at(key))) continue;
+            juce::var region;
+            for(const auto& r:array(comp["compRegions"])) if (r["kind"]=="source") {
+                require(!region.isObject(),"This edited output combines multiple source intervals."); region=r;
+            }
+            const auto src=region["clipId"].toString();
+            require(group["activeCompId"]==comp["id"] && comp["outputClipIds"].size()==1 && uses[src]==1
+                && integer(region["startTick"])==integer(out["start"]) && integer(region["durationTicks"])==integer(out["duration"]),
+                "This operation would invalidate an authored comp map.");
+            auto source=clips.at(src);
+            require(source["start"]==out["start"] && source["duration"]==out["duration"] && !source.hasProperty("vocalPerformances"),
+                    "This comp requires coordinated source performance edits.");
+            auto unedited=out.clone();
+            unedited.getDynamicObject()->setProperty("notes",old.at(key)["notes"]);
+            require(juce::JSON::toString(unedited)==juce::JSON::toString(old.at(key)),"Edit only the notes of this whole take.");
+            std::map<juce::String,juce::String> links;
+            for(int i=0;i<comp["noteLinks"].size();++i) {
+                const auto link=comp["noteLinks"][i];
+                links.emplace(link["outputNoteId"].toString(),link["sourceNoteId"].toString());
+            }
+            require(size_t(old.at(key)["notes"].size())==links.size(),"This comp lacks a one-to-one note map.");
+            juce::Array<juce::var> notes,newLinks;
+            for(const auto& note:array(out["notes"])) {
+                const auto outputId=note["id"].toString();
+                const auto sourceId=links.contains(outputId)?links.at(outputId):"event-"+juce::Uuid().toString();
+                const auto onset=integer(note["start"]);
+                require(onset>=0 && onset+integer(note["duration"])<=integer(out["duration"]), "A whole-take note crosses the group boundary.");
+                auto n=note.clone(); n.getDynamicObject()->setProperty("id",sourceId); notes.add(n);
+                newLinks.add(object({{"sourceNoteId",sourceId},{"outputNoteId",outputId}}));
+            }
+            source.getDynamicObject()->setProperty("notes",notes);
+            if(newLinks.isEmpty()) comp.getDynamicObject()->removeProperty("noteLinks");
+            else comp.getDynamicObject()->setProperty("noteLinks",newLinks);
+            changed=true;
+        }
+    }
+    return changed;
+}
 juce::MemoryBlock editedScoreBytes(const juce::MemoryBlock& original, const juce::var& edited,
                                    std::initializer_list<std::string_view> fields) {
+    bool updateMap=false;
+    if (edited["takeGroups"].size() && std::find(fields.begin(),fields.end(),"tracks")!=fields.end() && std::find(fields.begin(),fields.end(),"takeGroups")==fields.end())
+        updateMap=syncCompNotes(parseObject(original),edited);
     const auto changes = jsonBytes(edited);
-    const auto bytes = applyScoreFields({static_cast<const char*>(original.getData()), original.getSize()},
+    auto bytes = applyScoreFields({static_cast<const char*>(original.getData()), original.getSize()},
                                         {static_cast<const char*>(changes.getData()), changes.getSize()}, fields);
+    if(updateMap) bytes=applyScoreFields(bytes,{static_cast<const char*>(changes.getData()),changes.getSize()},{"takeGroups"});
     return {bytes.data(), bytes.size()};
 }
 
 juce::MemoryBlock savedScore(const OstfpPreview& project, bool writing = false) {
     require(!project.sourceScore.isEmpty(), "No OSTF score to save");
-    const bool upgrade = writing && project.sourceVersion != "5.0.0";
+    const bool upgrade = writing && project.sourceVersion != "5.0.0" && project.sourceVersion != "5.1.0";
     if (project.addedClips.empty() && !upgrade) return project.sourceScore;
     auto score = parseObject(project.sourceScore);
     if (upgrade) score.getDynamicObject()->setProperty("version", "5.0.0");
@@ -652,7 +787,7 @@ juce::MemoryBlock savedScore(const OstfpPreview& project, bool writing = false) 
     }
     auto bytes = project.addedClips.empty() ? editedScoreBytes(project.sourceScore, score, {"version", "document"})
                                             : editedScoreBytes(project.sourceScore, score, {"version", "document", "tracks"});
-    if (upgrade) validateVersion("5.0.0", bytes);
+    if (upgrade) validateVersion(parseObject(bytes)["version"].toString(), bytes);
     return bytes;
 }
 
@@ -682,6 +817,7 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
     juce::var voicingMix;
     juce::var voicingRoute;
     juce::Array<juce::var> channels, routes, devices, sidechains;
+    juce::Array<juce::var> automation;
     auto states = object({});
     auto externalKeys = object({});
     auto attachEffects = [&](juce::var& channel, bool output, std::size_t index, const juce::StringArray& chain) {
@@ -696,6 +832,10 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
                 if (fx.chainId() != chain[slot]) continue;
                 const auto id = SessionMix::effectSlot(output, index, slot);
                 ids.add(id);
+                if (const auto values = mix.insertParameters.find(id); values != mix.insertParameters.end())
+                    for (const auto& [parameter, value] : values->second)
+                        automation.add(object({{"id", id + "-p-" + parameter}, {"target", object({{"kind","device"},{"deviceId",id},{"parameterId",parameter}})},
+                            {"valueType","number"},{"interpolation","step"},{"points",juce::Array<juce::var>{object({{"atTick",0},{"value",value}})}}}));
                 if (const auto it=mix.sidechainTracks.find(id); it!=mix.sidechainTracks.end()) {
                     const auto source=std::find_if(tracks.begin(),tracks.end(),[&](const auto& t){return t["id"].toString()==it->second;});
                     if (source!=tracks.end())
@@ -809,7 +949,6 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
             {"start", mix.recordCycle.getStart()}, {"end", mix.recordCycle.getEnd()}, {"enabled", mix.cycleEnabled}}));
     auto document = object({{"channels", channels}, {"devices", devices}, {"hostExtensions", hostData}});
     if (!sidechains.isEmpty()) document.getDynamicObject()->setProperty("sidechainConnections",sidechains);
-    juce::Array<juce::var> automation;
     for (const auto& c : channels) {
         const auto it = envelopes.find(c["trackId"].toString());
         if (it == envelopes.end() || it->second.points.empty()) continue;
@@ -1008,6 +1147,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
             mix.midiRoutes[index].destination = static_cast<std::size_t>(target);
         }
     }
+    std::map<juce::String,juce::String> slotByDevice;
     auto restoreStates = [&](bool output, std::size_t channel, const juce::StringArray& chain) {
         const auto it = effectDeviceIds.find(SessionMix::effectSlot(output, channel, 0));
         const bool voicing = !output && channel == voicingIndex;
@@ -1017,6 +1157,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
             for (const auto& fx : stockEffects) if (chain[slot] == fx.chainId()) {
                 const auto key = SessionMix::effectSlot(output, channel, slot);
                 const juce::Identifier deviceId(voicing ? key : it->second[device++]);
+                slotByDevice[deviceId.toString()] = key;
                 if(auto source=deviceKeys.find(deviceId.toString()); source!=deviceKeys.end()) mix.sidechainTracks[key]=source->second;
                 const auto state = local["stockEffectStates"][deviceId];
                 if (state.isString()) mix.stockEffectStates[key] = state.toString();
@@ -1038,6 +1179,16 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
     }
     if (production["automation"].isArray()) for (const auto& a : array(production["automation"])) {
         const auto t = a["target"];
+        if (t["kind"] == "device") {
+            const auto slot = slotByDevice.find(t["deviceId"].toString());
+            const auto points = a["points"];
+            const auto parameter = t["parameterId"].toString();
+            require(slot != slotByDevice.end() && parameter.isNotEmpty() && a["valueType"] == "number" &&
+                    points.size() == 1 && integer(points[0]["atTick"]) == 0, "Only initial stock insert parameters are supported.");
+            const auto value = double(points[0]["value"]);
+            require(value >= 0 && value <= 1 && mix.insertParameters[slot->second].emplace(parameter,value).second, "Invalid or duplicate plug-in parameter.");
+            continue;
+        }
         require(t["kind"] == "channel" && t["parameter"] == "pan" && a["valueType"] == "number"
             && (a["interpolation"] == "linear" || a["interpolation"] == "step"), "Only track pan automation is supported.");
         juce::String trackId;
@@ -1096,7 +1247,7 @@ juce::MemoryBlock scoreWithMix(const OstfpPreview& project, const SessionMix& mi
         {"data", settings}}));
     score.getDynamicObject()->setProperty("extensions", extensions);
     auto bytes = editedScoreBytes(core, score, {"extensions"});
-    if (project.sourceVersion != "5.0.0") validateVersion("5.0.0", bytes);
+    if (project.sourceVersion != "5.0.0") validateVersion(parseObject(bytes)["version"].toString(), bytes);
     return bytes;
 }
 
@@ -1910,8 +2061,8 @@ juce::Result OstfpPreview::applySongMusic(const SongMusicEdit& edit, juce::Memor
     reviseDocument(score, before, "studio-" + juce::Uuid().toString());
     const auto bytes = edit.mode == SongMusicEdit::defaults ? editedScoreBytes(base, score, {"song", "timeline", "document"})
         : edit.semitones == 0 ? editedScoreBytes(base, score, {"timeline", "document"})
-        : editedScoreBytes(base, score, {"song", "timeline", "tracks", "harmony", "relativePhrases", "phraseLibrary", "document"});
-    validateVersion("5.0.0", bytes);
+        : editedScoreBytes(base, score, {"song", "timeline", "tracks", "harmony", "relativePhrases", "phraseLibrary", "takeGroups", "document"});
+    validateVersion(parseObject(bytes)["version"].toString(), bytes);
     return restoreNoteScore(bytes);
 } catch (const std::exception& e) { return juce::Result::fail(e.what()); }
 
@@ -1945,7 +2096,7 @@ juce::Result OstfpPreview::drawTempo(juce::int64 start, double from, juce::int64
     timeline.getDynamicObject()->setProperty("tempoChanges", events);
     reviseDocument(score, original, "tempo-" + juce::Uuid().toString());
     const auto bytes = editedScoreBytes(base, score, {"timeline", "document"});
-    validateVersion("5.0.0", bytes);
+    validateVersion(parseObject(bytes)["version"].toString(), bytes);
     const auto result = restoreNoteScore(bytes);
     if (result.wasOk()) previous = original;
     return result;
@@ -2105,7 +2256,7 @@ juce::Result OstfpPreview::appendSection(juce::Range<juce::int64> range, const j
     }
     reviseDocument(score,original,"section-"+juce::Uuid().toString());
     auto bytes = editedScoreBytes(base,score,{"timeline","harmony","tracks","lyrics",loopNamespace,StudioMidiTakes::extension,"document"});
-    validateVersion("5.0.0",bytes);
+    validateVersion(parseObject(bytes)["version"].toString(),bytes);
     auto result=restoreNoteScore(bytes);
     if(result.wasOk()) previous=original;
     return result;
@@ -2186,7 +2337,7 @@ juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Arr
     }
     reviseDocument(score, old, "timeline-" + juce::Uuid().toString());
     auto bytes = editedScoreBytes(base, score, {"timeline", "harmony", "performancePlans", "document"});
-    validateVersion("5.0.0", bytes);
+    validateVersion(parseObject(bytes)["version"].toString(), bytes);
     auto result = restoreNoteScore(bytes);
     if (result.wasOk())
         before = old;
@@ -2303,7 +2454,7 @@ juce::Result OstfpPreview::placeMidiClip(const MidiClipCopy& payload, size_t des
     reviseDocument(score, original, "clip-" + juce::Uuid().toString());
     auto bytes = editedScoreBytes(base, score, {"tracks", "timeline", "soundSlots", "drumKits", loopNamespace, "document"});
     require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
-    validateVersion("5.0.0", bytes);
+    validateVersion(parseObject(bytes)["version"].toString(), bytes);
     auto result = restoreNoteScore(bytes);
     if (result.wasOk()) before = original;
     return result;
@@ -2437,7 +2588,7 @@ juce::Result OstfpPreview::editMidiClip(size_t track, const juce::String& id, Mi
     reviseDocument(score, original, fresh("studio-"));
     auto bytes = editedScoreBytes(base, score, {"tracks", "timeline", "soundSlots", "drumKits", loopNamespace, "document"});
     require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
-    validateVersion("5.0.0", bytes);
+    validateVersion(parseObject(bytes)["version"].toString(), bytes);
     auto result = restoreNoteScore(bytes);
     if (result.wasOk()) before = original;
     return result;
@@ -2679,6 +2830,140 @@ void writeTrackTakes(juce::var score, juce::var track, StudioMidiTakes& takes) {
     score.getDynamicObject()->setProperty("extensions",extensions);
 }
 }
+namespace {
+void appendWholeTake(juce::var group, juce::var clips, juce::Range<juce::int64> ticks, juce::var output, bool active) {
+    auto source=output.clone();
+    const auto uuid=juce::Uuid().toString();
+    const auto takeId="take-"+uuid, compId="comp-"+uuid;
+    source.getDynamicObject()->setProperty("id","source-"+uuid);
+    source.getDynamicObject()->setProperty("enabled",false);
+    output.getDynamicObject()->setProperty("enabled",active);
+    juce::Array<juce::var> links;
+    for (const auto key : {"notes","midiEvents"}) if (source[key].isArray())
+        for (auto e : array(source[key])) {
+            const auto old=e["id"].toString(), fresh="event-"+juce::Uuid().toString();
+            e.getDynamicObject()->setProperty("id",fresh);
+            if (juce::String(key)=="notes") links.add(object({{"sourceNoteId",fresh},{"outputNoteId",old}}));
+        }
+    clips.getArray()->add(source);
+    const auto first=integer(output["start"]), dur=integer(output["duration"]);
+    juce::Array<juce::var> regions;
+    auto silence=[&](juce::int64 a,juce::int64 b) {if (a<b) regions.add(object({{"id","r-"+juce::Uuid().toString()},
+                    {"kind","silence"},{"startTick",a},{"durationTicks",b-a}}));};
+    silence(ticks.getStart(),first);
+    regions.add(object({{"id","r-"+uuid},{"kind","source"},{"startTick",first},{"durationTicks",dur},
+                        {"takeId",takeId},{"clipId",source["id"]}}));
+    silence(first+dur,ticks.getEnd());
+    const int ordinal=group["takes"].size();
+    arrayProperty(group,"takes").getArray()->add(object({{"id",takeId},{"kind","take"},{"laneOrder",ordinal},{"clipIds",juce::Array<juce::var>{source["id"]}}}));
+    auto comp=object({{"id",compId},{"name","Take "+juce::String(ordinal+1)},{"noteBoundary","authored"},{"compRegions",regions},
+                      {"outputClipIds",juce::Array<juce::var>{output["id"]}}});
+    if(!links.isEmpty()) comp.getDynamicObject()->setProperty("noteLinks",links);
+    arrayProperty(group,"comps").getArray()->add(comp);
+    if(active) group.getDynamicObject()->setProperty("activeCompId",compId);
+
+}
+}
+
+juce::Result OstfpPreview::addScoreTake(size_t trackIndex, juce::Range<juce::int64> ticks, juce::MemoryBlock& before) try {
+    require(trackIndex<sourceTrackCount() && !ticks.isEmpty(),"Select a MIDI track and section.");
+    const auto base=savedScore(*this,true);
+    auto score=parseObject(base);
+    require(score["version"]=="5.1.0","Native comp authoring requires OSTF 5.1.");
+    auto track=score["tracks"][int(trackIndex)];
+    auto clips=arrayProperty(track,"clips");
+    auto groups=arrayProperty(score,"takeGroups");
+    juce::var group;
+    for (auto item : array(groups)) if (item["trackId"]==track["id"]) {
+        const auto start=integer(item["startTick"]);
+        const juce::Range<juce::int64> existing(start,start+integer(item["durationTicks"]));
+        if (!existing.intersects(ticks)) continue;
+        require(existing==ticks,"Select the exact bounds of this take group.");
+        group=item;
+    }
+    auto blank=[&] {return object({{"id","clip-"+juce::Uuid().toString()},{"start",ticks.getStart()},
+                        {"duration",ticks.getLength()},{"notes",juce::Array<juce::var>{}}});};
+    if (!group.isObject()) {
+        juce::var first;
+        for (const auto& clip : array(clips)) {
+            const auto at=integer(clip["start"]), end=at+integer(clip["duration"]);
+            if(!ticks.intersects({at,end})) continue;
+            require(!first.isObject() && at>=ticks.getStart() && end<=ticks.getEnd() && bool(clip.getProperty("enabled",true)),
+                    "Creating a group here requires one contained clip or an empty section.");
+            require(!clip.hasProperty("vocalPerformances") && !clip.hasProperty("clipChoices"),
+                    "This clip has linked performances that require a dedicated comp map.");
+            for (const auto& prop : clip.getDynamicObject()->getProperties())
+                require(juce::StringArray{"id","name","start","duration","notes","midiEvents","enabled"}.contains(prop.name.toString()),
+                        "This clip has extra data that requires an authored take map.");
+            for (int i=0;i<clip["notes"].size();++i) {
+                const auto n=clip["notes"][i]; const auto onset=integer(n["start"]);
+                require(onset>=0 && onset+integer(n["duration"])<=end-at && !vocalNotes.contains(n["id"].toString()),"Linked or crossing notes require an authored take map.");
+            }
+            first=clip;
+        }
+        if(!first.isObject()) {first=blank(); clips.getArray()->add(first);}
+        group=object({{"id","group-"+juce::Uuid().toString()},{"trackId",track["id"]},{"startTick",ticks.getStart()},{"durationTicks",ticks.getLength()}});
+        for (const auto& s : array(score["timeline"]["sections"])) if(integer(s["start"])==ticks.getStart() && integer(s["duration"])==ticks.getLength())
+            group.getDynamicObject()->setProperty("sectionId",s["id"]);
+        appendWholeTake(group,clips,ticks,first,true); groups.getArray()->add(group);
+    }
+    auto second=blank(); clips.getArray()->add(second); appendWholeTake(group,clips,ticks,second,false);
+    reviseDocument(score,base,"take-"+juce::Uuid().toString());
+    const auto bytes=editedScoreBytes(base,score,{"takeGroups","tracks","document"});
+    validateVersion("5.1.0",bytes);
+    const auto r=restoreNoteScore(bytes); if(r.wasOk()) before=base;
+    return r;
+} catch(const std::exception& e){return juce::Result::fail(e.what());}
+
+namespace {
+void applyCompChoice(juce::var& score, const ScoreCompChoice& choice) {
+    bool found=false;
+    for (auto group : array(score["takeGroups"])) if (group["id"]==choice.group && group["trackId"]==choice.track) {
+        std::map<juce::String,bool> enabled;
+        found=choice.comp.isEmpty();
+        for (const auto& comp : array(group["comps"])) {
+            const bool select=comp["id"]==choice.comp;
+            found=found || select;
+            for (const auto& id : array(comp["outputClipIds"])) enabled[id.toString()]=select;
+        }
+        require(found,"Unknown comp selection.");
+        group.getDynamicObject()->setProperty("activeCompId",choice.comp.isEmpty() ? juce::var{} : juce::var(choice.comp));
+        for (const auto& lane : array(score["tracks"])) if (lane["id"]==choice.track)
+            for (auto clip : array(lane["clips"]))
+                if (auto it=enabled.find(clip["id"].toString()); it!=enabled.end()) clip.getDynamicObject()->setProperty("enabled",it->second);
+        break;
+    }
+    require(found,"Unknown take group.");
+}
+}
+
+juce::Result OstfpPreview::compPlayback(const std::vector<ScoreCompChoice>& choices, std::unique_ptr<OstfpPreview>& playback) const try {
+    auto score = parseObject(savedScore(*this));
+    for (const auto& choice : choices) applyCompChoice(score, choice);
+    auto projected = projectScore(score, chordVoicingTrack.has_value());
+    projected->sourceScore = jsonBytes(score);
+    projected->trackKinds = trackKinds;
+    projected->panAutomation = panAutomation;
+    playback = std::move(projected);
+    return juce::Result::ok();
+} catch (const std::exception& e) { return juce::Result::fail(e.what()); }
+
+juce::Result OstfpPreview::selectScoreComp(const ScoreCompChoice& choice, juce::MemoryBlock& before) {
+    return selectScoreComps({choice}, before);
+}
+
+juce::Result OstfpPreview::selectScoreComps(const std::vector<ScoreCompChoice>& choices, juce::MemoryBlock& before) try {
+    const auto base = savedScore(*this, true);
+    auto score = parseObject(base);
+    for (const auto& choice : choices) applyCompChoice(score, choice);
+    reviseDocument(score,base,"comp-"+juce::Uuid().toString());
+    const auto bytes=editedScoreBytes(base,score,{"tracks","takeGroups","document"});
+    validateVersion("5.1.0",bytes);
+    const auto result=restoreNoteScore(bytes);
+    if(result.wasOk()) before=base;
+    return result;
+} catch(const std::exception& e){return juce::Result::fail(e.what());}
+
 juce::Result OstfpPreview::addMidiTake(size_t index, juce::MemoryBlock& before) try {
     require(index<sourceTrackCount() && trackKinds[index]!=TrackKind::audio,"Select a MIDI track.");
     const auto original=savedScore(*this), base=savedScore(*this,true);
@@ -2689,7 +2974,7 @@ juce::Result OstfpPreview::addMidiTake(size_t index, juce::MemoryBlock& before) 
     writeTrackTakes(score,score["tracks"][int(index)],state);
     reviseDocument(score,original,"take-"+juce::Uuid().toString());
     auto bytes=editedScoreBytes(base,score,{StudioMidiTakes::extension,"tracks","document"});
-    validateVersion("5.0.0",bytes);
+    validateVersion(parseObject(bytes)["version"].toString(),bytes);
     const auto result=restoreNoteScore(bytes);
     if(result.wasOk()) before=original;
     return result;
@@ -2707,7 +2992,7 @@ juce::Result OstfpPreview::adoptMidiTakes(const std::vector<TakeSelection>& choi
     for (auto& [index,state]:changed) writeTrackTakes(score,score["tracks"][int(index)],state);
     reviseDocument(score,original,"take-"+juce::Uuid().toString());
     const auto bytes=editedScoreBytes(base,score,{"tracks",StudioMidiTakes::extension,"document"});
-    validateVersion("5.0.0",bytes);
+    validateVersion(parseObject(bytes)["version"].toString(),bytes);
     const auto result=restoreNoteScore(bytes);
     if(result.wasOk()) before=original;
     return result;
@@ -2765,7 +3050,7 @@ juce::Result OstfpPreview::editNotes(std::size_t index, const std::vector<NoteEd
                 if (number>1) takeState.owners[event["id"].toString()]=number;
                 if (!fresh && takeState.suppressed.contains(n.id)) event.getDynamicObject()->setProperty("enabled",true);
             }
-            if (fresh || crossing) clip = editableClip(clips, n.startTick, ticksPerBar, playbackEndTick(), false, newClipRange);
+            if (fresh || crossing) clip = editableClip(clips, n.startTick, ticksPerBar, playbackEndTick(), !compChoices.empty(), newClipRange);
             if (fresh && track["midi"]["mode"].isString() && track["midi"]["mode"] != "singleChannel")
                 event.getDynamicObject()->setProperty("channel", sourceMidiChannels[index]);
             arrayProperty(clip, "notes").getArray()->add(event);
@@ -2900,7 +3185,20 @@ juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64
         controls.add(copy);
     }
     if (!controls.isEmpty()) clip.getDynamicObject()->setProperty("midiEvents", controls);
-    arrayProperty(track, "clips").getArray()->add(clip);
+    auto trackClips=arrayProperty(track, "clips");
+    trackClips.getArray()->add(clip);
+    if(score["takeGroups"].isArray()) for(auto group:array(score["takeGroups"])) {
+        if(group["trackId"]!=track["id"]) continue;
+        const auto start=integer(group["startTick"]);
+        const juce::Range<juce::int64> owned(start,start+integer(group["durationTicks"]));
+        if(!owned.intersects(range)) continue;
+        require(owned.contains(range),"Split the recording at the take-group boundary.");
+        appendWholeTake(group,trackClips,owned,clip,false);
+        reviseDocument(score,before,"record-"+juce::Uuid().toString());
+        const auto bytes=editedScoreBytes(before,score,{"tracks","drumKits","soundSlots","takeGroups","document"});
+        validateVersion("5.1.0",bytes);
+        return restoreNoteScore(bytes);
+    }
     if(takeState.count>1) writeTrackTakes(score,track,takeState);
     reviseDocument(score, before, "studio-" + juce::Uuid().toString());
     return restoreNoteScore(editedScoreBytes(before, score, {"tracks", "drumKits", "soundSlots", "document",StudioMidiTakes::extension}));
@@ -2979,8 +3277,11 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
         const auto mime = readMember(zip, 0);
         require(mime.getSize() == sizeof mediaType - 1 && std::memcmp(mime.getData(), mediaType, mime.getSize()) == 0,
                 "Incorrect OSTFP media type");
-        const auto manifest = parseObject(readMember(zip, 1));
-        require(manifest["packageFormat"] == "OSTFP" && manifest["packageVersion"] == "1.0.0", "Unsupported OSTFP manifest version");
+        const auto manifestBytes = readMember(zip, 1);
+        const auto manifest = parseObject(manifestBytes);
+        const bool manifest11 = manifest["packageVersion"] == "1.1.0";
+        if (manifest11) validateVersion("package-manifest-1.1", manifestBytes);
+        require(manifest["packageFormat"] == "OSTFP" && (manifest11 || manifest["packageVersion"] == "1.0.0"), "Unsupported OSTFP manifest version");
         const auto documentData = manifest["documents"];
         const auto& documents = array(documentData);
         const auto assetData = manifest["assets"];
@@ -2991,13 +3292,15 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
         const auto descriptor = manifest["score"];
         const auto path = descriptor["path"].toString();
         const auto scoreIndex = zip.getIndexOfFileName(path);
-        require(descriptor["format"] == "OSTF" && (descriptor["version"] == "5.0.0" || descriptor["version"] == "4.3.0") && safeScorePath(path)
+        require(descriptor["format"] == "OSTF" && ((manifest11 && descriptor["version"] == "5.1.0") || descriptor["version"] == "5.0.0" || descriptor["version"] == "4.3.0") && safeScorePath(path)
                 && scoreIndex >= 2, "Invalid or unsupported OSTFP score entry");
         auto scoreBytes = readMember(zip, scoreIndex);
         const auto hash = juce::SHA256(scoreBytes).toHexString();
         require(hash == descriptor["sha256"].toString(), "OSTFP score SHA-256 mismatch");
         const auto score = parseObject(scoreBytes);
         require(score["version"] == descriptor["version"], "OSTFP manifest and score versions differ");
+        const bool is51 = score["version"] == "5.1.0";
+        if (is51) validateVersion("5.1.0", scoreBytes);
         if (score["version"] == "4.3.0") {
             require(documents.isEmpty(), "Import the standalone 4.3 score; historical session documents require separate migration");
             validateVersion("4.3.0", scoreBytes);
@@ -3008,13 +3311,17 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
             const auto documentPath = document["path"].toString();
             const auto index = zip.getIndexOfFileName(documentPath);
             require(document["role"] == "productionSession" && document["family"] == "OSTF-Production-Session"
-                    && document["version"] == "0.3.0" && safeScorePath(documentPath) && index >= 2 && index != scoreIndex,
+                    && document["version"] == (is51 ? "0.4.0" : "0.3.0") && safeScorePath(documentPath) && index >= 2 && index != scoreIndex,
                     "Unsupported OSTFP companion document");
             const auto bytes = readMember(zip, index);
             require(juce::SHA256(bytes).toHexString() == document["sha256"].toString(), "OSTFP production document SHA-256 mismatch");
+            if (is51) validateVersion("production-session-0.4", bytes);
             const auto production = parseObject(bytes);
-            require(production["profile"] == "OSTF-Production-Session" && production["profileVersion"] == "0.3.0"
-                    && production["score"]["formatVersion"] == "5.0.0" && production["score"]["sha256"] == hash,
+            for (const auto key : {"documentId","revisionId"})
+                require(!production["score"].hasProperty(key) || production["score"][key] == score["document"][juce::String(key) == "documentId" ? "id" : "revisionId"], "Production score identity mismatch");
+            require(production["audioTakeGroups"].size() == 0, "This editor cannot yet preserve audio take groups.");
+            require(production["profile"] == "OSTF-Production-Session" && production["profileVersion"] == document["version"]
+                    && production["score"]["formatVersion"] == score["version"] && production["score"]["sha256"] == hash,
                     "OSTFP production profile or score hash mismatch");
             next->savedMix = readMix(score, production, next->panAutomation);
             const auto source = production.hasProperty("assets") || production.hasProperty("audioRegions")
@@ -3106,22 +3413,24 @@ juce::Result writeOstfpPreview(const OstfpPreview& project, const SessionMix& mi
             profile->setProperty("audioRegions", regions);
         }
         profile->setProperty("profile", "OSTF-Production-Session");
-        profile->setProperty("profileVersion", "0.3.0");
-        profile->setProperty("score", object({{"formatVersion", "5.0.0"}, {"sha256", hash}}));
+        const bool is51 = core["version"] == "5.1.0";
+        const auto productionVersion = is51 ? "0.4.0" : "0.3.0";
+        profile->setProperty("profileVersion", productionVersion);
+        profile->setProperty("score", object({{"formatVersion", core["version"]}, {"sha256", hash}}));
         const auto production = jsonBytes(document);
         require(score.getSize() <= maxBytes && production.getSize() <= maxBytes, "OSTFP score or mixer document is too large");
         auto manifest = project.sourceManifest.isObject() ? project.sourceManifest.clone() : object({});
         auto* fields = manifest.getDynamicObject();
         fields->setProperty("packageFormat", "OSTFP");
-        fields->setProperty("packageVersion", "1.0.0");
+        fields->setProperty("packageVersion", is51 || manifest["packageVersion"] == "1.1.0" ? "1.1.0" : "1.0.0");
         if (manifest["projectId"].toString().isEmpty())
             fields->setProperty("projectId", "studio-" + juce::Uuid().toString());
         fields->setProperty("title", project.title);
         constexpr char scorePath[] = "score/song.ostf";
-        fields->setProperty("score", object({{"path", scorePath}, {"format", "OSTF"}, {"version", "5.0.0"}, {"sha256", hash}}));
+        fields->setProperty("score", object({{"path", scorePath}, {"format", "OSTF"}, {"version", core["version"]}, {"sha256", hash}}));
         juce::Array<juce::var> documents;
         documents.add(object({{"id", "studio-mixer"}, {"role", "productionSession"}, {"path", mixDocument},
-                              {"family", "OSTF-Production-Session"}, {"version", "0.3.0"},
+                              {"family", "OSTF-Production-Session"}, {"version", productionVersion},
                               {"sha256", juce::SHA256(production).toHexString()}}));
         fields->setProperty("documents", documents);
         fields->setProperty("assets", assets);

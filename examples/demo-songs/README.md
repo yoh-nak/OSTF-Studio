@@ -1,6 +1,6 @@
 # OSTF Studio デモ曲ギャラリー
 
-OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、対応する `.ostfp` は同じデータとマニフェストを含むプロジェクトです。OSTFPのProduction Sessionに、各演奏トラックのVST3音源を記録しています。MIDIチャンネルはOSTF Coreの track.midi、音色番号は各トラックのProgram Changeイベントに入っています。GM音源と試聴バンクはアプリの配布パッケージに含まれます。 [OSTF 5.0.0の仕様とSchema](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.0/tree/d8ce48ca6c873a5a24a94bcc80d847bf33135b46)
+OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、対応する `.ostfp` は同じデータとマニフェストを含むプロジェクトです。OSTFPのProduction Sessionに、各演奏トラックのVST3音源を記録しています。MIDIチャンネルはOSTF Coreの track.midi、音色番号は各トラックのProgram Changeイベントに入っています。GM音源と試聴バンクはアプリの配布パッケージに含まれます。 [OSTF 5.1.0 公式仕様](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.1/tree/957bd071cecc58a12f417ad212c40723ba9812ca)
 
 「Blue Hour Waltz」には共有音源版もあります。[Blue Hour Waltz (Shared GM)](blue-hour-waltz-shared-gm.ostfp) はピアノに置いた1台のGM音源を7パートで共有します。ピアノはCh 2、ベースはCh 3、ドラムはCh 10です。各パートの音量とパンはMIDIで指定し、ピアノのトラックにステレオ音声を返します。
 
@@ -12,7 +12,7 @@ OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、�
 | [Paper Lantern Replies](paper-lantern-replies.ostfp) · R&B | 2:52 · 56小節 · 9 | 5小節目から日本語のリードが入ります。1番と2番のヴァースは日本語、プレコーラスとサビは英語です。主唱194音とコーラス10音を、それぞれのOSTF Formant Singerで歌います。 |
 | [Copper Mile](copper-mile.ostfp) · ロック | 2:12 · 64小節 · 6 | パワーコードの刻み、クリーンギターとオルガン、リードギターのソロを聴き比べられます。 |
 | [First Light Vector](first-light-vector.ostfp) · トランス | 2:47 · 96小節 · 7 | 四つ打ちキックと裏拍のサブベースに16分アルペジオを重ね、ブレイクからドロップへ展開します。8小節目の3拍目から「Transition Sweep」をソロにすると、1小節のワープを3回聴き比べられます。 |
-| [Offset Bridges](offset-bridges.ostfp) · プログレッシブ・ロック | 2:22 · 80小節 · 8 | 7/8のテーマと4/4の展開、混合拍子の間奏、再現部、コーダ。ギター、オルガン、メロトロン、ロックドラムを収録。混合拍子の検証曲です。 |
+| [Offset Bridges](offset-bridges.ostfp) · プログレッシブ・ロック | 80小節 · 8 | 7/8のテーマを2+2+3と3+2+2のアクセントで展開します。ギターの掛け合いにオルガン、ウェーブテーブルの弦、ロックドラムを重ねます。 |
 
 **Paper Lantern Replies** の1番は「あめのおとがする／まどにひかるしずく／そっとてをかさね／きょうもともるあかり」です。促音「っ」の間と「きょ」の発音を、リードのソロで聴き比べられます。サビの歌詞は次のように始まります。
 
@@ -25,7 +25,7 @@ OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、�
 ## Studioで確認する
 
 - **Chord Voicing** はコードに保存された構成音の表示です。**Electric Piano Comp**、**Acoustic Piano Comp**、**Warm Electric Piano** などは実際に弾くパートで、アレンジ側に表示されます。
-- **File → Demo songs** から6曲を開けます。フォルダー内の `.ostf`／`.ostfp` も **File → Open OSTF / OSTFP** で開けます。現行プレビューは混合拍子の **Offset Bridges** を読み込み時に明示的に拒否します。
+- **File → Demo songs** から7曲・8プロジェクトを開けます。
 - **View → Global Timeline Lanes** でセクション、コード、ボイシング、スケールなどの表示を切り替えます。アレンジの区切りは名前付きクリップで確認できます。
 - **Paper Lantern Replies** の **Lead Vocal** を選び、ピアノロールのパラメーター選択で、ベロシティ、CC11、チャンネル／ポリ・アフタータッチ、歌唱ピッチ、dynamics・breathiness・tension・brightness・voicingを切り替えます。
 - 試聴するには、**Settings → Audio / MIDI Devices** で出力を確認して **Play** を押します。デモを開くと保存した音源の割り当てが復元されます。Paper Lantern Repliesの主唱は「歌い出しへ」で5小節目に移動し、歌詞の読みと音符を受け取って歌います。Singerの **Load voice folder...** から自分の録音やUTAUの日本語単独音を選ぶと、同じフレーズを別の声で確認できます。
@@ -36,21 +36,23 @@ OSTF Studio向けに作曲した7曲です。各 `.ostf` は楽譜データ、�
 
 ### ミックスを聴き比べる
 
-各演奏トラックに音源を1台割り当てています。First Light Vector では、Prism Arpeggio は FM、Offbeat Sub はアナログ、Drums はドラムマシン、Wide Halo Pad はウェーブテーブル音源を使います。49小節目で各音源が PC 2 に切り替わります。ほかの演奏パートは OSTF GM Sound Module を使います。FX は音源の後に並び、一覧の上から順に音声を処理します。各曲で音量とパンを設定し、ドラムやベースを **Bus A**、伴奏を **Bus B** にまとめています。両バスと **Return 1** は Master に戻ります。
+音源の音色はProgram Change、インサートの初期パラメーターはProduction Session 0.4のデバイス・オートメーションで指定しています。FXの設定はプロジェクトを開くと復元されます。
 
-| 曲 | 開いて確認する箇所 |
+| 曲 | 聴き比べる箇所 |
 |---|---|
-| Paper Lantern Replies | リードボーカルの FX は **EQ → Compressor**。リードから Return 1 へ −13 dB、バックコーラスから −11 dB で送ります。ボーカルガイドの音色で違いを確認できます。 |
-| Blue Hour Waltz | 冒頭のピアノの出力は Bus B、ルームへのセンドは −14 dB。ピアノをソロにして再生し、Bus B をミュートすると残響だけ、Return 1 をミュートすると直接音だけを確認できます。 |
-| Neon Platforms | 17小節目からのサビで2台の共有GMを比較できます。GM #1 はギター Ch 1、エレピ Ch 2、パッド Ch 5、ブラス Ch 7、弦 Ch 8 を受け、EQ → Bus Compressor → Harmony バスに出力します。GM #3 はベース Ch 3、ドラム Ch 10、リズムギター Ch 6 を受け、Rhythm バスに出力します。 |
-| Relay Circuit | サブベースの **Distortion → EQ** とシンセのモジュレーションを確認できます。サブベースには残響を送りません。 |
-| Offset Bridges | リードの **Distortion → Guitar Amp** を含む変拍子のファイル検証用デモです。 |
+| Paper Lantern Replies | FMのエレピ、ナイロンギターのAcoustic Guitar Rig、ウェーブテーブルの弦。主唱にDe-EsserとCompressorを挿し、Roomへの送りを−22 dBに設定。 |
+| Blue Hour Waltz | 通常版のビブラフォンはFM音源。共有GM版では同じ編成を1台の音源で演奏。 |
+| Neon Platforms | FMの鍵盤、ドラムマシン、ウェーブテーブルのパッド。サビではGMのブラスと弦がギターに応答。 |
+| Relay Circuit | AnalogのサブベースにBass RigとParametric EQ。スタブと空間系パートを別々のウェーブテーブル音色で演奏。 |
+| Copper Mile | リードのElectric Guitar Rigとテンポに合わせたDelay、オルガンのFM音色。 |
+| First Light Vector | アルペジオ、サブ、パッド、ドラムを別音源で鳴らし、49小節目で音色が変化。 |
+| Offset Bridges | 前半と展開部で7/8のアクセントを切り替え、FMパルスとウェーブテーブルの弦を重ねる。 |
 
-**Return 1** の OSTF Reverb は初期値がウェット100%です。各トラックの送り量を上げると残響が増えます。センドはポストフェーダーなので、トラックフェーダーを下げると送りも下がります。FX ウィンドウでは挿入順の変更、パラメーター編集ができます。個々のVST3は **Plug-ins → Effects → OSTF Studio** から追加できます。
+Neon Platforms、Blue Hour Waltz、Relay Circuitでは、構成のテイクメニューから別の演奏を採用できます。
 
 固定した公式仕様のチェックアウトを用意し、検証用Python環境に `jsonschema==4.25.1` をインストールして `python examples/demo-songs/verify.py <仕様リポジトリのパス>` を実行します。7曲と空の初期スコアについて Score・Manifest・Production Session の各Schema、SHA-256、デバイスの参照と順序、バス・センドの接続、単体版と同梱版の一致を確認します。9種類のVST3の音声処理とバス／センドの実際の出力はGUIビルドのCTestで検証します。
 
-リポジトリのルートで `python examples/demo-songs/generate.py` を実行します。生成はPython標準ライブラリのみを使います。ZIPの先頭は非圧縮の `mimetype` で、パッケージ中のスコアは対応する `.ostf` と同一バイトです。検証には固定リビジョンの公式Score／Manifest Schemaと `tools/ostfp.py validate` を使います。GUI有効ビルドの `ostf_studio_demo_gallery` は6曲の読み込み、歌唱レーンの値、混合拍子の拒否を確認します。
+リポジトリのルートで `python examples/demo-songs/generate.py` を実行します。生成はPython標準ライブラリのみを使います。ZIPの先頭は非圧縮の `mimetype` で、パッケージ中のスコアは対応する `.ostf` と同一バイトです。検証には固定リビジョンの公式Score／Manifest Schemaと `tools/ostfp.py validate` を使います。GUI有効ビルドの `ostf_studio_demo_gallery` は各曲の読み込み、歌唱レーンの値、ミックス設定の往復を確認します。
 
 ## オーディオトラックの試聴
 

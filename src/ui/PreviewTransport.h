@@ -59,6 +59,7 @@ public:
         juce::String sectionId;
         juce::StringArray trackIds;
         juce::Range<juce::int64> sourceRange;
+        std::vector<ostfstudio::ScoreCompChoice> comps;
     };
     bool queueLiveSection(size_t index);
     bool enqueueCue(Cue, const ostfstudio::OstfpPreview* score=nullptr);

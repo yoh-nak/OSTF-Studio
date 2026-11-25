@@ -66,6 +66,10 @@ def verify(path, spec, schemas, catalog):
     assert len(set(assigned)) == len(assigned) and set(assigned) == devices.keys()
     tracks = [c for c in channels.values() if c["kind"] == "track"]
     assert sorted(c["trackId"] for c in tracks) == sorted(t["id"] for t in score["tracks"])
+    lanes = [a for a in session["automation"] if a["target"]["kind"] == "device"]
+    effect_ids = {d["id"] for d in devices.values() if d["role"]=="effect" and d["plugin"]["name"]!="OSTF Wave Analyzer"}
+    assert {a["target"]["deviceId"] for a in lanes} == effect_ids
+    assert all(len(a["points"]) == 1 and a["points"][0]["atTick"] == 0 and 0<=a["points"][0]["value"]<=1 for a in lanes)
     if path.stem == "blue-hour-waltz-shared-gm":
         instrument, = [d for d in devices.values() if d["role"] == "instrument"]
         owner, = [c for c in tracks if instrument["id"] in c["deviceIds"]]
@@ -80,27 +84,32 @@ def verify(path, spec, schemas, catalog):
         return {d["plugin"]["name"] for d in devices.values() if d["role"] == "effect"}
     neon = path.stem == "neon-platforms"
     if neon:
-        parts = {"hook": ("hook", 1), "keys": ("hook", 2), "pad": ("hook", 5), "brass": ("hook", 7),
-                 "strings": ("hook", 8), "bass": ("bass", 3), "drums": ("bass", 10), "comp": ("bass", 6)}
+        parts = {"hook": ("hook", 1), "brass": ("hook", 7),
+                 "strings": ("hook", 8), "bass": ("bass", 3), "comp": ("bass", 6)}
         routes = session["hostExtensions"][0]["data"]["tracks"]
         assert len(routes) == len(parts)
         assert {r["trackId"]: (r.get("destinationTrackId", r["trackId"]), r["midiChannel"]) for r in routes} == parts
-        gm_ids = [d["plugin"]["pluginId"] for d in devices.values() if d["role"] == "instrument"]
+        gm_ids = [d["plugin"]["pluginId"] for d in devices.values() if d["plugin"]["name"] == "OSTF GM Sound Module"]
         assert len(gm_ids) == 2 and len(set(gm_ids)) == 1
         for t in score["tracks"]:
-            assert t["midi"]["channel"] == parts[t["id"]][1]
+            if t["id"] in parts: assert t["midi"]["channel"] == parts[t["id"]][1]
     used = set()
     for c in channels.values():
         chain = [devices[k] for k in c["deviceIds"]]
         if c["kind"] == "track" and c["id"] not in audio_strips:
-            if neon and parts[c["trackId"]][0] != c["trackId"]:
+            if neon and c["trackId"] in parts and parts[c["trackId"]][0] != c["trackId"]:
                 assert not chain
                 continue
             gm, *chain = chain
             assigned_synths = {"arp": "OSTF FM Synth", "sub": "OSTF Analog Synth", "drums": "OSTF Drum Machine", "pad": "OSTF Wavetable Synth"}
-            expected = assigned_synths.get(c["trackId"]) if path.stem == "first-light-vector" else None
+            palette = {"blue-hour-waltz":{"vibes":"FM Synth"}, "relay-circuit":{"arp":"FM Synth","sub":"Analog Synth","drums":"Drum Machine","chord":"Wavetable Synth","atmos":"Wavetable Synth"},
+                       "paper-lantern-replies":{"keys":"FM Synth","answer":"FM Synth","strings":"Wavetable Synth"},
+                       "copper-mile":{"organ":"FM Synth"}, "offset-bridges":{"strings":"Wavetable Synth","pulse":"FM Synth"},
+                       "neon-platforms":{"keys":"FM Synth","pad":"Wavetable Synth","drums":"Drum Machine"}}
+            name = palette.get(path.stem,{}).get(c["trackId"])
+            expected = assigned_synths.get(c["trackId"]) if path.stem == "first-light-vector" else ("OSTF "+name if name else None)
             assert gm["role"] == "instrument" and gm["plugin"]["name"] == (expected or ("OSTF Formant Singer" if path.stem == "paper-lantern-replies" and c["trackId"] in ("voice-track", "backing") else "OSTF GM Sound Module"))
-            if expected:
+            if expected and path.stem == "first-light-vector":
                 lane = next(t for t in score["tracks"] if t["id"] == c["trackId"])
                 changes = [(clip["start"] + e["start"], e["program"]) for clip in lane["clips"]
                            for e in clip.get("midiEvents", []) if e["type"] == "programChange"]
@@ -118,13 +127,13 @@ def verify(path, spec, schemas, catalog):
             current = channels[current["outputChannelId"]]
     assert any(len(c["deviceIds"]) >= 3 for c in tracks), "expected a serial insert chain"
     example_track, ordered_fx = {
-        "paper-lantern-replies": ("voice-track", ["OSTF EQ", "OSTF Compressor"]),
+        "paper-lantern-replies": ("voice-track", ["OSTF De-Esser", "OSTF Compressor"]),
         "blue-hour-waltz": ("horn", ["OSTF EQ", "OSTF Compressor"]),
         "neon-platforms": ("hook", ["OSTF EQ", "OSTF Bus Compressor"]),
-        "relay-circuit": ("sub", ["OSTF Distortion", "OSTF EQ"]),
-        "offset-bridges": ("lead", ["OSTF Distortion", "OSTF Guitar Amp"]),
-        "copper-mile": ("lead", ["OSTF Distortion", "OSTF Guitar Amp"]),
-        "first-light-vector": ("sub", ["OSTF Distortion", "OSTF EQ"]),
+        "relay-circuit": ("sub", ["OSTF Bass Rig", "OSTF Parametric EQ"]),
+        "offset-bridges": ("lead", ["OSTF Electric Guitar Rig", "OSTF Delay"]),
+        "copper-mile": ("lead", ["OSTF Electric Guitar Rig", "OSTF Delay"]),
+        "first-light-vector": ("sub", ["OSTF Bass Rig", "OSTF Parametric EQ"]),
     }[path.stem]
     example = next(c for c in tracks if c["trackId"] == example_track)
     assert [devices[k]["plugin"]["name"] for k in example["deviceIds"][1:]] == ordered_fx
@@ -132,7 +141,7 @@ def verify(path, spec, schemas, catalog):
         bus_tracks = [c["trackId"] for c in tracks if c["outputChannelId"] == bus]
         assert channels[bus]["outputChannelId"] == "master"
         if neon:
-            assert bus_tracks == ["bass" if bus == "bus-1" else "hook"]
+            assert ("bass" if bus == "bus-1" else "hook") in bus_tracks
         else:
             assert len(bus_tracks) >= 2
     room = channels["return-1"]
@@ -152,14 +161,12 @@ if __name__ == "__main__":
     catalog = {x["name"]: "ABCDEF019182FAEB4F737466" + x["code"].encode("ascii").hex().upper()
                for x in json.loads((directory.parents[1] / "src/plugins/effects/catalog.json").read_text())}
     schemas = {key: Draft202012Validator(json.loads((args.spec / "schema" / file).read_text(encoding="utf-8")))
-               for key, file in {"score": "ostf-5.0.0.schema.json", "manifest": "ostf-package-manifest-1.0.schema.json",
-                                 "production": "ostf-production-session-0.3.schema.json"}.items()}
+               for key, file in {"score": "ostf-5.1.0.schema.json", "manifest": "ostf-package-manifest-1.1.schema.json",
+                                 "production": "ostf-production-session-0.4.schema.json"}.items()}
     blank = json.loads((directory.parents[1] / "assets/NewProject.ostf").read_text(encoding="utf-8"))
     schemas["score"].validate(blank)
     assert not (blank["tracks"] or blank["soundSlots"] or blank["harmony"]["chords"] or blank["timeline"]["sections"])
     covered = set()
     for path in sorted(directory.glob("*.ostfp")):
         covered.update(verify(path, args.spec, schemas, catalog))
-    # These song fixtures exercise the original production chains. All catalog effects also run in the VST3 render test.
-    original_inserts = {name for name, uid in catalog.items() if bytes.fromhex(uid[-8:]).decode("ascii") in {f"Of{i:02}" for i in range(1, 11)}}
-    assert original_inserts <= covered <= catalog.keys(), "missing demo insert coverage"
+    assert {"OSTF De-Esser","OSTF Electric Guitar Rig","OSTF Bass Rig","OSTF Acoustic Guitar Rig","OSTF Delay"} <= covered <= catalog.keys()

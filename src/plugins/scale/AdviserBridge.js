@@ -1,14 +1,14 @@
 // Native adapter for the supplied Max device's read-only analysis and audition modules.
-// All writes to OSTF go through the Studio 5.0 schema-validated ScaleDocument.
+// All writes to OSTF go through the Studio schema-validated ScaleDocument.
 let score, flow, currentChord, candidates, reference, pinned;
 function openScore(bytes) {
     score = JSON.parse(bytes);
     flow = null;
     pinned = null;
     // Store source tick intervals once per document, outside candidate selection.
-    noteTracks = (score.tracks || []).filter(t => t.kind !== 'drum').map(t => ({
+    noteTracks = (score.tracks || []).filter(t => t.trackType !== 'drum').map(t => ({
         name: t.name || t.id,
-        notes: (t.clips || []).flatMap(c => (c.notes || []).filter(n =>
+        notes: (t.clips || []).filter(c => c.enabled !== false).flatMap(c => (c.notes || []).filter(n =>
             Number.isInteger(n.pitch) && n.enabled !== false).map(n => ({
                 start: c.start + n.start, end: c.start + n.start + n.duration, pitch: n.pitch
             }))).sort((a,b) => a.start-b.start)
@@ -61,6 +61,16 @@ function rankChord(index, strategy, lens, genre = 'auto') {
     })));
 }
 function pinReference(index) { pinned = candidates[index] || null; }
+function reviewChords() {
+    if (!flow) return '[]';
+    if (!flow.reviewRows) {
+        const indices = new Map(flow.plan.chords.map((ch, i) => [ch.id, i]));
+        flow.reviewRows = SA.flow.review(score, 'harmony', flow.plan).map(row => ({
+            index: indices.get(row.id), chord: row.chord, level: row.level, reason: row.reason
+        }));
+    }
+    return JSON.stringify(flow.reviewRows);
+}
 function flowView(index) {
     const choice = candidates?.[index];
     if (!flow || !choice) return '{}';

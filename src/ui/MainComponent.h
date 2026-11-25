@@ -252,6 +252,7 @@ private:
     struct EffectSlot {
         juce::String id;
         juce::String savedState;
+        ostfstudio::SessionMix::ParameterValues initialParameters;
         juce::String keyTrackId;
         std::unique_ptr<juce::AudioPluginInstance> effect;
         std::unique_ptr<juce::DocumentWindow> editor;
@@ -414,13 +415,16 @@ private:
     void showLiveQueue();
     void updateLiveGuide();
     using CellKey=std::pair<juce::String,juce::String>;
+    std::map<juce::String,juce::String> auditionComps_;
+    std::vector<ostfstudio::ScoreCompChoice> cueCompChoices(juce::Range<juce::int64>, int track = -1) const;
     struct CellPlayer {
+        std::unique_ptr<ostfstudio::OstfpPreview> score;
         std::vector<std::unique_ptr<juce::AudioPluginInstance>> plugins;
         PreviewTransport transport;
     };
     std::map<CellKey,std::unique_ptr<CellPlayer>> cellPlayers_;
     std::set<CellKey> loopingCells_;
-    void toggleCellPlayer(size_t track,int row);
+    void toggleCellPlayer(size_t track,int row,bool restart=false);
     juce::TextButton takeButton_{TRANS("Takes")};
     juce::Range<juce::int64> takeRange() const;
     int editingTake(size_t,juce::Range<juce::int64>) const;

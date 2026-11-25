@@ -1261,3 +1261,7 @@ countries: jp
 "Clear selection" = "選択を解除"
 "Colour" = "色"
 "Invalid section range." = "構成の範囲を確認してください。"
+
+"Add section take" = "構成にテイクを追加"
+"Silence" = "無音"
+" / Playing the saved comp. Visit overrides and automatic live selection are unavailable." = " ／ 保存済みコンプを再生します。Visitごとの指定とライブ自動選択は未対応です。"

@@ -56,8 +56,8 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/checkout@v4
         with:
-          repository: yoh-nak/Open-Song-Timeline-Format-5.0
-          ref: d8ce48ca6c873a5a24a94bcc80d847bf33135b46
+          repository: yoh-nak/Open-Song-Timeline-Format-5.1
+          ref: 957bd071cecc58a12f417ad212c40723ba9812ca
           path: build-tools/ostf-reference
           persist-credentials: false
       - name: Verify demo scores, production sessions and routing

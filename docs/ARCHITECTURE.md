@@ -1,8 +1,14 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## OSTF 5.1 score and production session
+
+Studio validates Core 5.1.0, Production Session 0.4.0 and Manifest 1.1.0 with the pinned upstream schemas. Existing 5.0 projects retain their format. Playback reads enabled materialized MIDI clips. Whole-section take creation keeps alternate sources disabled and writes a complete region map and note links. Choosing a comp for adoption updates the output flags and activeCompId together. Audition creates an isolated MIDI projection. Each live cue stores the selected comp ID per intersecting group when queued. Queued selections can be adopted together in one undoable score edit. Whole-take note edits update their source. Studio retains complex source/region maps when it cannot safely author them. Visit-based comp scheduling, audio comp editing and distributed playback are open work.
+
+Production device automation restores authored normalized parameters at tick zero on stock inserts. Instrument patches in the demos use score program changes. Scale Editor browser imports compare the score snapshot and accept only harmony scale changes. The native instrument can then return the change to the host. Recorded vowels in Formant Singer use pitch-synchronous overlapping windows, retaining the source waveform rate within each voiced grain.
+
 ## Section performance and presentation
 
-A performance cue captures a section, pass count and source-track take ranges. Pending cues have distinct identities even if the section repeats. Queued MIDI and chase events are prepared on the message thread. The renderer switches them at the section boundary. The shared chord guide reads the same visit order as the transport. Studio keeps the queue in memory and writes adopted takes through the existing Studio extension to OSTF 5.0.
+A performance cue captures a section, pass count and source-track take ranges. Pending cues have distinct identities even if the section repeats. Queued MIDI and chase events are prepared on the message thread. The renderer switches them at the section boundary. The shared chord guide reads the same visit order as the transport. Studio keeps the queue in memory and uses the existing Studio take extension for 5.0 projects and native MIDI take groups for 5.1 projects.
 
 Cell audition uses a separate transport and isolated local plug-in instances. Each audition reads one source track over its section, with its own loop and position. Armed audio inputs share a recording clock and capture buffer. Each selected physical channel range is written to a separate region with its track's gain.
 

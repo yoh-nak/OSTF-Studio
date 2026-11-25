@@ -117,7 +117,7 @@ static int checkGallery(const juce::File& directory) {
         {"blue-hour-waltz.ostfp", 128, 7, 132.0},
         {"relay-circuit.ostfp", 96, 12, 128.0},
         {"paper-lantern-replies.ostfp", 56, 9, 78.0},
-        {"offset-bridges.ostfp", 0, 0, 0.0},
+        {"offset-bridges.ostfp", 80, 8, 0.0},
         {"copper-mile.ostfp", 64, 6, 0.0},
         {"first-light-vector.ostfp", 96, 11, 138.0},
     };
@@ -236,7 +236,7 @@ static int checkGallery(const juce::File& directory) {
                 || fromScore->savedMix->trackEffects != authored.trackEffects
                 || fromScore->savedMix->outputEffects != authored.outputEffects) return 1;
             if (authored.outputEffects[0] != juce::StringArray{ostfstudio::stockEffects[4].chainId()}
-                || authored.outputEffects[1] != juce::StringArray{ostfstudio::stockEffects[3].chainId()}
+                || authored.outputEffects[1] != juce::StringArray{ostfstudio::stockEffects[14].chainId()}
                 || authored.outputEffects[3] != juce::StringArray{ostfstudio::stockEffects[0].chainId()}) return 1;
             std::array<int, 2> members{};
             int roomSends = 0;
@@ -245,7 +245,7 @@ static int checkGallery(const juce::File& directory) {
                 if (strip.returnSends[0] > 0 && strip.returnSends[0] < 1) ++roomSends;
             }
             const bool twoGmDemo = std::string_view(expected.file) == "neon-platforms.ostfp";
-            if ((twoGmDemo ? members != std::array{1, 1} : (members[0] < 2 || members[1] < 2)) || roomSends < 2
+            if (members[0] < 2 || members[1] < 2 || roomSends < 2
                 || std::none_of(authored.trackEffects.begin(), authored.trackEffects.end(),
                                 [](const auto& chain) { return chain.size() >= 2; })) return 1;
             for (std::size_t track = 0; track < project->sourceTrackCount(); ++track) {
@@ -274,9 +274,19 @@ static int checkGallery(const juce::File& directory) {
                     if (id == "pad") expectedInstrument = "OSTF Wavetable Synth";
                     if (expectedInstrument != "OSTF GM Sound Module" && (events.size() != 2 || events.back().program != 2)) return 1;
                 }
+                const auto& part = project->trackIds[int(track)];
+                const std::string_view file(expected.file);
+                if ((twoGmDemo && part == "keys") || (file == "blue-hour-waltz.ostfp" && part == "vibes")
+                    || (file == "paper-lantern-replies.ostfp" && (part == "keys" || part == "answer"))
+                    || (file == "copper-mile.ostfp" && part == "organ") || (file == "offset-bridges.ostfp" && part == "pulse")
+                    || (file == "relay-circuit.ostfp" && part == "arp")) expectedInstrument = "OSTF FM Synth";
+                if ((twoGmDemo && part == "pad") || (file == "relay-circuit.ostfp" && (part == "atmos" || part == "chord"))
+                    || ((file == "paper-lantern-replies.ostfp" || file == "offset-bridges.ostfp") && part == "strings")) expectedInstrument = "OSTF Wavetable Synth";
+                if (file == "relay-circuit.ostfp" && part == "sub") expectedInstrument = "OSTF Analog Synth";
+                if ((twoGmDemo || file == "relay-circuit.ostfp") && part == "drums") expectedInstrument = "OSTF Drum Machine";
                 if (twoGmDemo) {
-                    const auto id = project->trackIds[int(track)];
-                    const auto owner = size_t(project->trackIds.indexOf(id == "bass" || id == "drums" || id == "comp" ? "bass" : "hook"));
+                    const auto owner = part == "comp" ? size_t(project->trackIds.indexOf("bass"))
+                        : (part == "brass" || part == "strings") ? size_t(project->trackIds.indexOf("hook")) : track;
                     const auto& route = authored.midiRoutes[track];
                     const auto& plain = fromScore->savedMix->midiRoutes[track];
                     if (route.destination.value_or(track) != owner || route.channel != project->sourceMidiChannels[track]
@@ -331,6 +341,7 @@ static int checkGallery(const juce::File& directory) {
                 || reopened->savedMix->tracks[index].pan != 0.35f
                 || reopened->savedMix->trackOrder != mix.trackOrder
                 || reopened->savedMix->outputNames != mix.outputNames
+                || reopened->savedMix->insertParameters != mix.insertParameters
                 || reopened->savedMix->outputEffects != mix.outputEffects
                 || reopened->savedMix->stockEffectStates != mix.stockEffectStates) return 1;
             if (std::string_view(expected.file) == "first-light-vector.ostfp") {
@@ -525,7 +536,7 @@ static int legacyRoundTrip(const juce::File& file) {
         juce::MemoryOutputStream midi;
         if (writeSongMidi(*project, SmfFormat::multitrack, {}, midi).failed()) return 11;
         // 3.5 cannot declare the 4.0 MIDI stream even though Studio understands it in 4.0.
-        for (const auto* unsupported : {"3.5.0", "3.4.0", "4.0.1", "5.1.0"}) {
+        for (const auto* unsupported : {"3.5.0", "3.4.0", "4.0.1", "5.1.1"}) {
             expected.getDynamicObject()->setProperty("version", unsupported);
             const auto text = juce::JSON::toString(expected);
             juce::MemoryInputStream wrong(text.toRawUTF8(), text.getNumBytesAsUTF8(), false);

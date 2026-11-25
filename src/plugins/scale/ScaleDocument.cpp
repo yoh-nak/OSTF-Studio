@@ -38,13 +38,45 @@ const std::vector<Scale>& catalog() {
 juce::String digest(const juce::String& text) {
     return juce::SHA256(text.toRawUTF8(),text.getNumBytesAsUTF8()).toHexString();
 }
+juce::Result Document::importWorkspaceScales(const juce::String& edited, const juce::String& openedHash) {
+    if (openedHash.isEmpty() || digest(text) != openedHash)
+        return juce::Result::fail("The Studio score changed. Open a fresh full editor before importing.");
+    if (edited.getNumBytesAsUTF8() > maxBytes) return juce::Result::fail("Scale export exceeds 24 MiB.");
+    try {
+        using Json = jsoncons::ojson;
+        const auto options = jsoncons::json_options{}.lossless_number(true).bignum_format(jsoncons::bignum_format_kind::raw);
+        auto original=Json::parse(text.toStdString(),options);
+        const auto proposal=Json::parse(edited.toStdString(),options);
+        const auto version=score["version"].toString().toStdString();
+        validateScoreSchema(version,edited.toStdString());
+        auto compare=proposal;
+        compare.at("harmony")["scales"]=original.at("harmony").at("scales");
+        // The browser may reserialize harmless decimal numbers. Only import the scale list.
+        std::string normalized; compare.dump(normalized,options);
+        if (juce::JSON::toString(juce::JSON::parse(juce::String::fromUTF8(normalized.data(),int(normalized.size()))),true,17)
+            != juce::JSON::toString(score,true,17))
+            return juce::Result::fail("This export contains changes outside the open song's harmony scales.");
+        original.at("harmony")["scales"]=proposal.at("harmony").at("scales");
+        if (original.contains("document")) {
+            auto& meta=original.at("document");
+            Json parent; parent["documentId"]=meta.at("id"); parent["revisionId"]=meta.at("revisionId"); parent["sha256"]=openedHash.toStdString();
+            meta["parents"]=Json::array(); meta["parents"].push_back(parent);
+            meta["revisionId"]=("scale-"+juce::Uuid().toString()).toStdString();
+            meta["modifiedBy"]=Json::parse(R"({"name":"OSTF Scale Editor"})");
+        }
+        std::string bytes; original.dump(bytes,options);
+        validateScoreSchema(version,bytes);
+        text=juce::String::fromUTF8(bytes.data(),int(bytes.size())); score=juce::JSON::parse(text);
+        return juce::Result::ok();
+    } catch(const std::exception& e) {return juce::Result::fail(e.what());}
+}
 juce::Result Document::load(const juce::String& utf8) {
     if (utf8.isEmpty() || utf8.getNumBytesAsUTF8() > maxBytes) return juce::Result::fail("Expected an OSTF file up to 24 MiB.");
     try {
         auto parsed = juce::JSON::parse(utf8);
-        if (parsed["version"].toString() != "5.0.0" || parsed["format"].toString() != "OSTF")
-            return juce::Result::fail("Open an OSTF 5.0.0 score.");
-        validateScoreSchema("5.0.0",utf8.toStdString());
+        if ((parsed["version"] != "5.0.0" && parsed["version"] != "5.1.0") || parsed["format"].toString() != "OSTF")
+            return juce::Result::fail("Open an OSTF 5.0 or 5.1 score.");
+        validateScoreSchema(parsed["version"].toString().toStdString(),utf8.toStdString());
         score = parsed;
         text = utf8;
         baseHash = digest(text);
@@ -130,7 +162,7 @@ juce::Result Document::assignPlan(const std::vector<Assignment>& plan) {
         std::string bytes;
         doc.dump(bytes,options);
         bytes.push_back('\n');
-        validateScoreSchema("5.0.0",bytes);
+        validateScoreSchema(score["version"].toString().toStdString(),bytes);
         auto result = juce::String::fromUTF8(bytes.data(),int(bytes.size()));
         score = juce::JSON::parse(result);
         text = std::move(result);

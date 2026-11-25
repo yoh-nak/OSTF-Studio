@@ -1,5 +1,5 @@
 # This instrument hosts another VST3 and therefore needs its own JUCE host modules.
-juce_add_binary_data(OSTFScaleAdviser NAMESPACE ScaleAssets HEADER_NAME ScaleAssets.h SOURCES Adviser.js AdviserBridge.js)
+juce_add_binary_data(OSTFScaleAdviser NAMESPACE ScaleAssets HEADER_NAME ScaleAssets.h SOURCES Adviser.js AdviserBridge.js ScaleWorkspace.html)
 juce_add_plugin(OSTFSynthScaleEditor COMPANY_NAME "OSTF Studio" BUNDLE_ID "org.ostf.instrument.Ose1"
     PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE Ose1 PRODUCT_NAME "OSTF Scale Editor"
     IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE FORMATS VST3 VST3_CATEGORIES Instrument Synth

@@ -99,6 +99,8 @@ struct SessionMix {
     std::array<juce::StringArray, mixerOutputCapacity> outputEffects;
     std::vector<juce::StringArray> trackEffects;
     // Normalized to the displayed channel and slot when reading a production document.
+    using ParameterValues = std::map<juce::String, double>;
+    std::map<juce::String, ParameterValues> insertParameters;
     std::map<juce::String, juce::String> stockEffectStates, sidechainTracks;
     static juce::String effectSlot(bool output, std::size_t channel, int slot) {
         const auto n = static_cast<int>(channel);
@@ -178,11 +180,23 @@ struct SongInformation {
     std::optional<juce::StringArray> genres, moods;
 };
 
+struct ScoreCompChoice {
+    juce::String group, comp, track;
+    juce::Range<juce::int64> ticks;
+    bool active;
+    juce::String label;
+};
 struct OstfpPreview {
+    std::vector<ScoreCompChoice> compChoices;
+    juce::Result addScoreTake(size_t track,juce::Range<juce::int64>,juce::MemoryBlock& before);
+    juce::Result compPlayback(const std::vector<ScoreCompChoice>&, std::unique_ptr<OstfpPreview>&) const;
+    juce::Result selectScoreComps(const std::vector<ScoreCompChoice>&, juce::MemoryBlock& before);
+    juce::Result selectScoreComp(const ScoreCompChoice& choice, juce::MemoryBlock& before);
     juce::int64 playbackEndTick() const { return (bars.endBar - 1) * ticksPerBar; }
     static constexpr std::size_t maxTracks = 15; // One transport channel is reserved for global chord voicing.
     juce::String title;
     juce::String sourceVersion, documentId;
+    bool usesUnsupportedCompSelection = false;
     juce::int64 durationTicks = 0;
     BarSpan bars {1, 1};
     juce::int64 ticksPerBar = 0;

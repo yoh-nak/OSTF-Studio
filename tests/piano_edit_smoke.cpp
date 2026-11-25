@@ -75,7 +75,7 @@ int modelChecks(const juce::File& fixture) {
     juce::MemoryOutputStream plain, packed, midi;
     if (writeOstfPreview(*song, mix, plain).failed() || writeOstfpPreview(*song, mix, packed).failed()
         || writeSongMidi(*song, SmfFormat::multitrack, song->sourceMidiChannels, midi).failed()) return 10;
-    validateScoreSchema("5.0.0", {static_cast<const char*>(plain.getData()), plain.getDataSize()});
+    validateScoreSchema(song->sourceVersion.toStdString(), {static_cast<const char*>(plain.getData()), plain.getDataSize()});
     juce::MidiFile events;
     juce::MemoryInputStream smf(midi.getData(), midi.getDataSize(), false);
     if (!events.readFrom(smf)) return 11;
@@ -106,6 +106,38 @@ int modelChecks(const juce::File& fixture) {
     }
     return 0;
 }
+}
+
+int checkNativeComps(const juce::File& fixture) {
+    std::unique_ptr<OstfpPreview> song;
+    juce::FileInputStream input(fixture);
+    if(readOstfPreview(input,song).failed() || song->compChoices.size()!=3) return 1;
+    const auto original=song->sourceScore;
+    if(song->pitchedNotes[0].size()!=2 || song->pitchedNotes[0][1].pitch!=67) return 2;
+    juce::MemoryBlock before;
+    auto choice=song->compChoices[1];
+    std::unique_ptr<OstfpPreview> audition;
+    if(song->compPlayback({choice},audition).failed() || audition->pitchedNotes[0][1].pitch!=64
+        || song->sourceScore!=original || song->pitchedNotes[0][1].pitch!=67) return 10;
+    if(song->selectScoreComp(choice,before).failed() || before!=original ||
+       song->pitchedNotes[0].size()!=2 || song->pitchedNotes[0][1].pitch!=64) return 3;
+    choice=song->compChoices.back();
+    if(song->selectScoreComp(choice,before).failed() || !song->pitchedNotes[0].empty()) return 4;
+    if(song->addScoreTake(0,choice.ticks,before).failed() || song->compChoices.size()!=4) return 5;
+    choice=song->compChoices[2];
+    if(song->selectScoreComp(choice,before).failed()) return 6;
+    juce::StringArray ids;
+    PitchedNote n{60,300,70,85,true,{}};
+    if(song->editNotes(0,{{NoteEdit::insert,n}},before,ids,choice.ticks).failed() || ids.size()!=1) return 7;
+    const auto data=juce::JSON::parse(song->sourceScore.toString());
+    const auto comp=data["takeGroups"][0]["comps"][2];
+    if(comp["noteLinks"].size()!=1 || comp["noteLinks"][0]["outputNoteId"]!=ids[0]) return 8;
+    for(int i=0;i<data["tracks"][0]["clips"].size();++i) {
+        const auto c=data["tracks"][0]["clips"][i];
+        if(c["id"]==comp["compRegions"][0]["clipId"] && c["notes"][0]["id"]==comp["noteLinks"][0]["sourceNoteId"]
+            && int(c["notes"][0]["pitch"])==70 && !bool(c["enabled"])) return 0;
+    }
+    return 9;
 }
 
 int checkPianoEdits(const juce::File& fixture) {

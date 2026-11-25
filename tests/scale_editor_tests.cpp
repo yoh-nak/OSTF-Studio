@@ -3,6 +3,16 @@
 
 int main(int argc, char** argv) {
     using namespace ostfstudio::scale;
+    if (argc == 4 && juce::String(argv[1]) == "--workspace-import") {
+        Document song;
+        const auto source = juce::File(juce::String::fromUTF8(argv[2])).loadFileAsString();
+        const auto edited = juce::File(juce::String::fromUTF8(argv[3])).loadFileAsString();
+        if (song.load(source).failed()) return 17;
+        const auto result = song.importWorkspaceScales(edited, digest(source));
+        if (result.failed()) std::cerr << result.getErrorMessage() << '\n';
+        return result.wasOk() && song.baseHash == digest(source)
+            && song.score["harmony"]["scales"].size() == juce::JSON::parse(edited)["harmony"]["scales"].size() ? 0 : 18;
+    }
     if (argc != 2) return 1;
     Document doc;
     const auto input = juce::File(juce::String::fromUTF8(argv[1])).loadFileAsString();
@@ -37,5 +47,9 @@ int main(int argc, char** argv) {
     if (!check(doc.assign(repeats,9,5))) return 13;
     const auto committed = doc.text;
     if (doc.assign(std::vector<int>{0,30000},9,5).wasOk() || doc.text != committed) return 14;
+    Document workspace;
+    if(workspace.load(input).failed() || workspace.importWorkspaceScales(committed,"stale").wasOk()) return 15;
+    auto scalesOnly=original.clone(); scalesOnly["harmony"].getDynamicObject()->setProperty("scales",doc.score["harmony"]["scales"]);
+    if(!check(workspace.importWorkspaceScales(juce::JSON::toString(scalesOnly),digest(input))) || workspace.baseHash!=digest(input)) return 16;
     return 0;
 }

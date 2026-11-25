@@ -143,7 +143,7 @@ juce::Result buildImportScore(const juce::File& source, ImportSong& song, const 
             tempos.add(obj({{"at", at}, {"bpm", bpm}}));
     auto score =
         obj({{"format", "OSTF"},
-             {"version", "5.0.0"},
+             {"version", "5.1.0"},
              {"ppq", song.ppq},
              {"song", obj({{"title", song.title.isNotEmpty() ? song.title : source.getFileNameWithoutExtension()}})},
              {"timeline", obj({{"duration", duration},

@@ -172,9 +172,17 @@ public:
         for (juce::Component* c : std::initializer_list<juce::Component*>{&inspectMode,&fitRows,&compareText,&scopeMode,&nextUnassigned,&resetA}) addAndMakeVisible(c);
         addAndMakeVisible(flowView);
         addAndMakeVisible(flowKey);
-        for (auto* tab : {&flowTab,&connectionsTab}) {
+        addAndMakeVisible(fullWorkspace); addAndMakeVisible(returnWorkspace);
+        fullWorkspace.onClick=[this]{openFullWorkspace();}; returnWorkspace.onClick=[this]{importFullWorkspace();};
+        returnWorkspace.setEnabled(false);
+        addChildComponent(reviewList);
+        reviewList.setTitle("Chord review"); reviewList.setComponentID("scale-review-list");
+        reviewList.choose=[this](int row){
+            if (row >= 0 && row < reviewIndices.size()) chords.setSelectedItemIndex(reviewIndices[row],juce::sendNotificationSync);
+        };
+        for (auto* tab : {&flowTab,&connectionsTab,&reviewTab}) {
             addAndMakeVisible(*tab);
-            tab->onClick=[this,tab]{showConnections=tab==&connectionsTab; updateInspector();};
+            tab->onClick=[this,tab]{showConnections=tab==&connectionsTab; showingReview=tab==&reviewTab; updateInspector();};
         }
         flowView.setComponentID("scale-flow-view");
         inspectMode.addItemList({"Scale inspector","Compare A / B","Note Fit"},1);
@@ -198,7 +206,7 @@ public:
             const bool show=!source.isVisible();
             source.setVisible(show);
             if (show) { source.setText(proc.document.text,false); source.toFront(false); }
-            sourceToggle.setButtonText(show ? "Visual" : "OSTF text"); resized();
+            sourceToggle.setButtonText(show ? "Visual" : "OSTF text"); updateInspector(); resized();
         };
         timeline.choose=[this](int i){chords.setSelectedItemIndex(i,juce::sendNotificationSync);};
         candidates.choose=[this](int i){choices.setSelectedItemIndex(i,juce::sendNotificationSync);};
@@ -279,7 +287,7 @@ public:
     ~Editor() override { proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this); }
     void resized() override {
         auto area=getLocalBounds().reduced(12);
-        auto head=area.removeFromTop(32); sourceToggle.setBounds(head.removeFromRight(100)); song.setBounds(head);
+        auto head=area.removeFromTop(32); sourceToggle.setBounds(head.removeFromRight(95)); returnWorkspace.setBounds(head.removeFromRight(140).reduced(1)); fullWorkspace.setBounds(head.removeFromRight(145).reduced(1)); song.setBounds(head);
         auto files=area.removeFromTop(32);
         open.setBounds(files.removeFromLeft(100).reduced(1)); refresh.setBounds(files.removeFromLeft(145).reduced(1));
         save.setBounds(files.removeFromLeft(99).reduced(1)); redo.setBounds(files.removeFromRight(59).reduced(1));
@@ -289,8 +297,10 @@ public:
         auto tabs=area.removeFromTop(27);
         flowTab.setBounds(tabs.removeFromLeft(105).reduced(1));
         connectionsTab.setBounds(tabs.removeFromLeft(115).reduced(1));
+        reviewTab.setBounds(tabs.removeFromLeft(100).reduced(1));
         flowKey.setBounds(tabs.reduced(5,0));
         flowView.setBounds(area.removeFromTop(110));
+        reviewList.setBounds(flowView.getBounds());
         auto footer=area.removeFromBottom(32);
         loadInstrument.setBounds(footer.removeFromLeft(175).reduced(1)); showInstrument.setBounds(footer.removeFromLeft(150).reduced(1)); status.setBounds(footer);
         auto mapArea=area.removeFromBottom(91);
@@ -465,10 +475,25 @@ private:
     }
     void updateInspector() {
         const auto tab=inspectMode.getSelectedId(), index=choices.getSelectedItemIndex();
-        flowTab.setToggleState(!showConnections,juce::dontSendNotification);
+        flowTab.setToggleState(!showConnections && !showingReview,juce::dontSendNotification);
         connectionsTab.setToggleState(showConnections,juce::dontSendNotification);
         flowKey.setText(showConnections ? "Guide tones and approach notes  /  motion in semitones"
                                         : "Previous, selected and next chords  /  fill: scale tones   outline: chord tones",juce::dontSendNotification);
+        reviewTab.setToggleState(showingReview,juce::dontSendNotification);
+        flowView.setVisible(!showingReview && !source.isVisible());
+        reviewList.setVisible(showingReview && !source.isVisible());
+        if (showingReview) {
+            const auto rows=juce::JSON::parse(call("reviewChords",{}).toString());
+            reviewIndices.clear(); reviewList.labels.clear(); reviewList.subtitles.clear();
+            for (int i=0;i<rows.size();++i) {
+                const auto row=rows[i]; const int chord=row["index"];
+                reviewIndices.add(chord);
+                reviewList.labels.add(juce::String(chord+1)+"   "+row["chord"].toString()+"   /   "+row["level"].toString());
+                reviewList.subtitles.add(row["reason"].toString());
+            }
+            reviewList.updateContent(); reviewList.repaint();
+            flowKey.setText(rows.size() ? "Select a chord to compare its scale choices" : "No chords need review",juce::dontSendNotification);
+        }
         flowView.update(index>=0 ? juce::JSON::parse(call("flowView",{index}).toString()) : juce::var{},showConnections);
         details.setVisible(tab==1); compareText.setVisible(tab==2); fitRows.setVisible(tab==3);
         if(tab==2) compareText.setText(index>=0 ? call("compareNotes",{index}).toString() : juce::String{},juce::dontSendNotification);
@@ -576,6 +601,35 @@ private:
         previousDocument.reset(); undo.setEnabled(false); redoDocument.reset(); redo.setEnabled(false);
         sync(); proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
+    void openFullWorkspace() {
+        const auto snapshot=proc.document.text;
+        if(snapshot.isEmpty()) return;
+        const auto html=juce::String::fromUTF8(ScaleAssets::ScaleWorkspace_html,ScaleAssets::ScaleWorkspace_htmlSize)
+            .replace("<!--STUDIO_SCORE-->",juce::Base64::toBase64(snapshot));
+        auto file=std::make_unique<juce::TemporaryFile>(".html");
+        if(!file->getFile().replaceWithText(html) || !file->getFile().startAsProcess()) {
+            status.setText("Could not open the local Scale Editor in your browser.",juce::dontSendNotification); return;
+        }
+        workspaceFile=std::move(file); workspaceHash=digest(snapshot);
+        returnWorkspace.setEnabled(true);
+    }
+    void importFullWorkspace() {
+        chooser=std::make_unique<juce::FileChooser>("Import the full editor's exported scales",juce::File{},"*.ostf");
+        chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,
+            [self=juce::Component::SafePointer<Editor>(this)](const juce::FileChooser& fc) {
+                if(!self) return;
+                const auto f=fc.getResult(); if(!f.existsAsFile()) return;
+                if(f.getSize()>maxBytes) {self->status.setText("Scale export exceeds 24 MiB.",juce::dontSendNotification);return;}
+                const juce::ScopedLock lock(self->proc.stateLock);
+                const auto before=self->proc.document;
+                const auto r=self->proc.document.importWorkspaceScales(f.loadFileAsString(),self->workspaceHash);
+                if(r.failed()){self->status.setText(r.getErrorMessage(),juce::dontSendNotification);return;}
+                self->previousDocument=before; self->undoAtText=self->proc.document.text;
+                self->undo.setEnabled(true); self->redoDocument.reset(); self->redo.setEnabled(false);
+                self->sync(); self->returnWorkspace.setEnabled(false);
+                self->proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+            });
+    }
     void choose(bool writing) {
         chooser=std::make_unique<juce::FileChooser>(writing?"Save OSTF":"Open OSTF",juce::File{},"*.ostf");
         using F=juce::FileBrowserComponent;
@@ -600,7 +654,13 @@ private:
     juce::var rows;
     ScaleRows timeline,candidates;
     FlowView flowView;
-    juce::TextButton flowTab{"Scale Flow"}, connectionsTab{"Connections"};
+    juce::TextButton flowTab{"Scale Flow"}, connectionsTab{"Connections"}, reviewTab{"Review"};
+    ScaleRows reviewList;
+    juce::Array<int> reviewIndices;
+    bool showingReview=false;
+    juce::TextButton fullWorkspace{"Full editor (browser)"}, returnWorkspace{"Import edited scales"};
+    juce::String workspaceHash;
+    std::unique_ptr<juce::TemporaryFile> workspaceFile;
     juce::Label flowKey;
     bool showConnections=false;
     ScaleRows fitRows;

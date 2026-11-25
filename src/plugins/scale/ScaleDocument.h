@@ -7,6 +7,7 @@ const std::vector<Scale>& catalog();
 inline constexpr int maxBytes = 24 * 1024 * 1024;
 class Document {
 public:
+    juce::Result importWorkspaceScales(const juce::String& edited, const juce::String& openedHash);
     juce::Result load(const juce::String& utf8);
     juce::Result assign(int chord, int tonic, int mode);
     std::vector<int> scope(int first, int last, bool repeats) const;

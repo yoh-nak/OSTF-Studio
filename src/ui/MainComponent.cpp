@@ -145,6 +145,7 @@ constexpr struct { const char* title; const char* resource; } gallery[] {
     {"Blue Hour Waltz (Shared GM)", "bluehourwaltzsharedgm_ostfp"},
     {"Relay Circuit (Techno)", "relaycircuit_ostfp"},
     {"Paper Lantern Replies (R&B / Japanese vocals)", "paperlanternreplies_ostfp"},
+    {"Offset Bridges (Progressive)", "offsetbridges_ostfp"},
     {"Copper Mile (Rock)", "coppermile_ostfp"},
     {"First Light Vector (Trance)", "firstlightvector_ostfp"},
 };
@@ -567,6 +568,12 @@ MainComponent::MainComponent() {
         if(!project_ || row<0 || row>=int(live_.sections.size())) return juce::String{};
         const auto range=live_.sections[size_t(row)].ticks;
         const auto& state=project_->takes(track);
+        for (const auto& comp : project_->compChoices) {
+            if (comp.track != project_->trackIds[int(track)] || !comp.ticks.contains(range.getStart())) continue;
+            const auto choice = auditionComps_.find(comp.group);
+            if (choice == auditionComps_.end() ? comp.active : choice->second == comp.comp)
+                return comp.comp.isEmpty() ? TRANS("Silence") : comp.label;
+        }
         if (const auto chosen=editingTake(track,range)) return "T"+juce::String(chosen);
         auto label="T"+juce::String(state.adoptedAt(range.getStart()));
         int last = state.adoptedAt(range.getStart());
@@ -3271,7 +3278,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     attachPadInput(false);
     { const juce::SpinLock::ScopedLockType lock(surfaceLock_); captureMonitor_.reset(); midiPerformance_.clear(); }
     armedId_.clear();
-    stagedCues_.clear(); performerOnly_=false;
+    stagedCues_.clear(); auditionComps_.clear(); performerOnly_=false;
     cellPlayers_.clear();loopingCells_.clear();
     audioArms_.clear();
     midiRoutes_.clear();
@@ -3310,7 +3317,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     sessionEdited_ = false;
     currentFilename_ = filename;
     liveTracks_.openDocument(project_->documentId.isEmpty() ? project_->title : project_->documentId, *viewPreferences_.getUserSettings());
-    legacySourceFile_ = project_->sourceVersion != "5.0.0" && sourceFolder != juce::File{}
+    legacySourceFile_ = project_->sourceVersion != "5.0.0" && project_->sourceVersion != "5.1.0" && sourceFolder != juce::File{}
                             ? sourceFolder.getChildFile(filename)
                             : juce::File{};
     updateDocumentLabel();
@@ -3402,6 +3409,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     refreshWindowTitle();
     loadingOverlay_.dismiss();
     statusLabel_.setText(project_->title + " / " + juce::String(project_->bars.endBar - 1) + TRANS(" bars") +
+                             (project_->usesUnsupportedCompSelection ? TRANS(" / Playing the saved comp. Visit overrides and automatic live selection are unavailable.") : juce::String{}) +
                              (legacySourceFile_ == juce::File{}
                                   ? juce::String{}
                                   : " / OSTF " + project_->sourceVersion + TRANS(" (saves as 5.0.0)")),
@@ -3461,6 +3469,13 @@ void MainComponent::saveDocument(SaveFormat format) {
                         for (const auto& slot : chain.slots) {
                             const auto key = ostfstudio::SessionMix::effectSlot(output, index, ids.size());
                             ids.add(slot.id);
+                            if (!slot.initialParameters.empty()) {
+                                auto& values = mix.insertParameters[key];
+                                values = slot.initialParameters;
+                                if (slot.effect) for (auto* p : slot.effect->getParameters())
+                                    if (auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*>(p))
+                                        if (auto it=values.find(hosted->getParameterID()); it!=values.end()) it->second=p->getValue();
+                            }
                             if (safe->project_->trackIds.contains(slot.keyTrackId)) mix.sidechainTracks[key]=slot.keyTrackId;
                             for (const auto& fx : ostfstudio::stockEffects) if (slot.id == fx.chainId()) {
                                 juce::MemoryBlock state;
@@ -3807,6 +3822,7 @@ void MainComponent::copyEffectChain(bool output, std::size_t from, std::size_t t
         const auto& old = source.slots[i];
         slot.id = old.id;
         slot.savedState = old.savedState;
+        slot.initialParameters = old.initialParameters;
         if (old.effect) {
             juce::MemoryBlock state;
             old.effect->getStateInformation(state);
@@ -5868,6 +5884,8 @@ void MainComponent::restoreEffects(bool output, std::size_t index, const juce::S
     for (int i = 0; i < ids.size(); ++i) {
         auto& slot = chain.slots[static_cast<std::size_t>(i)];
         slot.id = ids[i];
+        const auto& values = project_->savedMix->insertParameters;
+        if (auto it=values.find(ostfstudio::SessionMix::effectSlot(output,index,i)); it!=values.end()) slot.initialParameters=it->second;
         const auto& keys=project_->savedMix->sidechainTracks;
         if(auto it=keys.find(ostfstudio::SessionMix::effectSlot(output,index,i));it!=keys.end()) slot.keyTrackId=it->second;
         const auto& states = project_->savedMix->stockEffectStates;
@@ -5902,6 +5920,11 @@ void MainComponent::loadEffect(bool output, std::size_t index, std::size_t posit
                 juce::MemoryBlock state;
                 if (slot.savedState.isNotEmpty() && state.fromBase64Encoding(slot.savedState))
                     effect->setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+                if (slot.id != effectId(description)) slot.initialParameters.clear();
+                for (auto* parameter : effect->getParameters())
+                    if (auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*>(parameter))
+                        if (auto it = slot.initialParameters.find(hosted->getParameterID()); it != slot.initialParameters.end())
+                            parameter->setValueNotifyingHost(float(it->second));
                 slot.effect = std::move(effect);
                 if (slot.id != effectId(description) || openEditor) safe->markSessionEdited();
                 slot.id = effectId(description);
@@ -5979,10 +6002,20 @@ juce::Range<juce::int64> MainComponent::takeRange() const {
     return {0,project_->playbackEndTick()};
 }
 
-void MainComponent::toggleCellPlayer(size_t track,int row) {
+std::vector<ostfstudio::ScoreCompChoice> MainComponent::cueCompChoices(juce::Range<juce::int64> range, int track) const {
+    std::vector<ostfstudio::ScoreCompChoice> picks;
+    for (const auto& choice : project_->compChoices) {
+        if (!choice.ticks.intersects(range) || (track >= 0 && choice.track != project_->trackIds[track])) continue;
+        const auto audition = auditionComps_.find(choice.group);
+        if (audition == auditionComps_.end() ? choice.active : choice.comp == audition->second) picks.push_back(choice);
+    }
+    return picks;
+}
+
+void MainComponent::toggleCellPlayer(size_t track,int row,bool restart) {
     const auto& section=live_.sections[size_t(row)];
     const CellKey key{project_->trackIds[int(track)],section.id};
-    if (cellPlayers_.erase(key)) {liveMatrix_.refreshVisibleRows();return;}
+    if (cellPlayers_.erase(key) && !restart) {liveMatrix_.refreshVisibleRows();return;}
     auto& devices=ensureDeviceSettings().devices();
     auto* device=devices.getCurrentAudioDevice();
     if (!device) {statusLabel_.setText(TRANS("Select an audio output"),juce::dontSendNotification);return;}
@@ -6027,7 +6060,13 @@ void MainComponent::toggleCellPlayer(size_t track,int row) {
     if(loopingCells_.contains(key)) options.cycle=section.ticks;
     if(int n=editingTake(track,section.ticks)) options.auditions.push_back({track,section.ticks,n});
     player->transport.setChannelMix(destination,mixer_.channel(track),true,mixer_.routing().cueDb);
-    auto result=player->transport.start(devices,*project_,false,routes,inserts,section.ticks.getStart(),auditionShift_,auditionRate_,{},&options);
+    const auto comps = cueCompChoices(section.ticks, int(track));
+    if (std::any_of(comps.begin(), comps.end(), [](const auto& pick) { return !pick.active; })) {
+        if (auto r = project_->compPlayback(comps, player->score); r.failed()) {
+            statusLabel_.setText(r.getErrorMessage(),juce::dontSendNotification); return;
+        }
+    }
+    auto result=player->transport.start(devices,player->score ? *player->score : *project_,false,routes,inserts,section.ticks.getStart(),auditionShift_,auditionRate_,{},&options);
     if(result.failed()) {statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification);return;}
     cellPlayers_[key]=std::move(player);
     liveMatrix_.refreshVisibleRows();
@@ -6038,6 +6077,11 @@ void MainComponent::refreshStagedCues() {
         const auto section=std::find_if(live_.sections.begin(),live_.sections.end(),[&](const auto& s){return s.id==cue.sectionId;});
         if(section==live_.sections.end()) return true;
         cue.section=size_t(section-live_.sections.begin());
+        std::erase_if(cue.comps,[&](const auto& pick) {
+            return std::none_of(project_->compChoices.begin(),project_->compChoices.end(),[&](const auto& current) {
+                return current.group==pick.group && current.comp==pick.comp && current.ticks.intersects(section->ticks);
+            });
+        });
         const auto delta=section->ticks.getStart()-cue.sourceRange.getStart();
         if(section->ticks!=cue.sourceRange || cue.trackIds!=project_->trackIds) {
             std::erase_if(cue.takes,[&](auto& pick) {
@@ -6062,6 +6106,7 @@ void MainComponent::addLiveCue(int row) {
     if (section.repeats<=0) return;
     PreviewTransport::Cue cue{size_t(row),section.repeats,{},++nextCueId_};
     cue.sectionId=section.id;
+    cue.comps=cueCompChoices(section.ticks);
     cue.sourceRange=section.ticks;
     cue.trackIds=project_->trackIds;
     for (size_t t=0;t<project_->sourceTrackCount();++t) {
@@ -6116,7 +6161,20 @@ void MainComponent::showLiveQueue() {
             if (found==pending.end()) return;
             const auto index=size_t(found-pending.begin());
             const int action=(id-1)%6;
-            if (action==3) {safe->adoptTakes(found->takes);return;}
+            if (action==3) {
+                if (found->comps.empty()) {safe->adoptTakes(found->takes);return;}
+                juce::MemoryBlock before;
+                auto r=safe->project_->selectScoreComps(found->comps,before);
+                if (r.wasOk()) {
+                    for (const auto& pick : found->comps) safe->auditionComps_.erase(pick.group);
+                    safe->rememberScoreEdit(std::move(before),"Adopt combination");
+                    safe->refreshTheory();
+                    if(safe->transportActive_ && safe->livePerformanceActive_) r=safe->publishLiveNotes();
+                    safe->finishNoteEdit(false);
+                }
+                if (r.failed()) safe->statusLabel_.setText(r.getErrorMessage(),juce::dontSendNotification);
+                return;
+            }
             const int count=action==2?0:std::clamp(found->repeats+(action==0?1:-1),1,99);
             if (action>=4) {
                 const auto step=action==4?-1:1;
@@ -6208,6 +6266,23 @@ void MainComponent::showTakes(size_t track,juce::Range<juce::int64> range,juce::
     juce::PopupMenu menu,edit,adopt,listen;
     menu.addSectionHeader(juce::String::fromUTF8(project_->trackLanes[track].label)+"   /   "+
         TRANS("BARS")+" "+juce::String(1+range.getStart()/project_->ticksPerBar)+"-"+juce::String(1+(range.getEnd()-1)/project_->ticksPerBar));
+    std::vector<ostfstudio::ScoreCompChoice> comps;
+    for (const auto& choice : project_->compChoices)
+        if (choice.track==project_->trackIds[int(track)] && choice.ticks.intersects(range)) {
+            comps.push_back(choice);
+            const auto label = choice.comp.isEmpty() ? TRANS("Silence") : choice.label;
+            adopt.addItem(4000+int(comps.size()),label,true,choice.active);
+            if (live) {
+                const auto pick=auditionComps_.find(choice.group);
+                listen.addItem(500000+int(comps.size()),label,true,pick==auditionComps_.end() ? choice.active : pick->second==choice.comp);
+            }
+        }
+    if (!comps.empty()) {
+        if (live) menu.addSubMenu(TRANS("Audition take"),listen);
+        menu.addSubMenu(TRANS("Adopt take"),adopt);
+    }
+    if (project_->sourceVersion=="5.1.0") menu.addItem(4,TRANS("Add section take"));
+    if (comps.empty() && (project_->sourceVersion!="5.1.0" || state.count>1)) {
     menu.addItem(1,TRANS("Add empty take"));
     for(int i=1;i<=state.count;++i) {
         const auto label="T"+juce::String(i);
@@ -6222,11 +6297,32 @@ void MainComponent::showTakes(size_t track,juce::Range<juce::int64> range,juce::
         menu.addItem(2,TRANS("Return to adopted take"));
         menu.addItem(3,TRANS("Adopt sounding combination"),transportActive_ && range.contains(transport_.positionTick()) && !transport_.playingCueTakes().empty());
     }
+    }
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(anchor),
-        [safe=juce::Component::SafePointer<MainComponent>(this),gen=projectGeneration_,track,range,live](int id){
+        [safe=juce::Component::SafePointer<MainComponent>(this),gen=projectGeneration_,track,range,live,comps](int id){
         if(!safe || !id || safe->projectGeneration_!=gen || safe->recordTrack_) return;
         auto& m=*safe.getComponent();
         auto& p=*m.project_;
+        if (id>500000 && id<=500000+int(comps.size())) {
+            const auto& choice=comps[size_t(id-500001)];
+            m.auditionComps_[choice.group]=choice.comp;
+            const auto row=std::find_if(m.live_.sections.begin(),m.live_.sections.end(),[&](const auto& section){return section.ticks==range;});
+            if(row!=m.live_.sections.end()) m.toggleCellPlayer(track,int(row-m.live_.sections.begin()),true);
+            m.liveMatrix_.refreshVisibleRows();
+            return;
+        }
+        if (id==4 || (id>4000 && id<=4000+int(comps.size()))) {
+            juce::MemoryBlock before;
+            auto result=id==4 ? p.addScoreTake(track,range,before) : p.selectScoreComp(comps[size_t(id-4001)],before);
+            if (result.wasOk()) {
+                if (id != 4) m.auditionComps_.erase(comps[size_t(id-4001)].group);
+                m.rememberScoreEdit(std::move(before),id==4 ? "Add section take" : "Select comp"); m.refreshTrackTheory(track);
+                if(m.transportActive_ && m.livePerformanceActive_) result=m.publishLiveNotes();
+                m.finishNoteEdit(false);
+            }
+            if(result.failed()) m.statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification);
+            return;
+        }
         auto key=std::make_pair(p.trackIds[int(track)],range.getStart());
         if(id==3) {
             if (m.transportActive_ && range.contains(m.transport_.positionTick()))

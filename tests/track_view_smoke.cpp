@@ -1478,7 +1478,7 @@ int checkTrackView(const juce::File& fixture) {
             for (juce::PopupMenu::MenuItemIterator demo(*item.subMenu); demo.next();)
                 songs.add(demo.getItem().text);
     }
-    if (!newEnabled || !saveScoreEnabled || !savePackageEnabled || songs.size() != 7 || !songs.contains("Blue Hour Waltz (Shared GM)")
+    if (!newEnabled || !saveScoreEnabled || !savePackageEnabled || songs.size() != 8 || !songs.contains("Blue Hour Waltz (Shared GM)")
         || !songs.contains("Copper Mile (Rock)") || !songs.contains("First Light Vector (Trance)")) return 14;
     auto* group = findControl<juce::ComboBox>(main, TRANS("Track height group"));
     auto* height = findControl<juce::Slider>(main, TRANS("Group track height"));

@@ -17,3 +17,5 @@ The `tinysoundfont-saw.sf2` fixture is the 484-byte `MinimalSoundFont` from
 [TinySoundFont's example](https://github.com/schellingb/TinySoundFont/blob/a3621a19c6504885cd9583e6e26c35bc954fc8ec/examples/example1.c).
 It is a single synthetic waveform used for channel tests. See the
 [TinySoundFont license](../../third_party/tinysoundfont/LICENSE.txt).
+
+The MIDI take/comp fixture 26-midi-comp.ostf is the original CC0 example from [OSTF 5.1](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.1/blob/957bd071cecc58a12f417ad212c40723ba9812ca/examples/score/26-midi-comp.ostf).

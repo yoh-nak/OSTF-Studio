@@ -500,19 +500,34 @@ int checkStockEffects(const juce::StringArray& args) {
     std::vector<PreviewTransport::TrackSetup> tracks(song->trackLanes.size());
     tracks[piano] = {{}, plugins.back().get(), mix.midiRoutes[piano].channel};
     PreviewTransport::Inserts inserts{};
-    auto restore = [&](const juce::StringArray& chain, std::size_t channel) {
+    auto restore = [&](const ostfstudio::SessionMix& session, const juce::StringArray& chain, std::size_t channel) {
         for (int slot = 0; slot < chain.size(); ++slot) {
             const auto fx = std::find_if(std::begin(ostfstudio::stockEffects), std::end(ostfstudio::stockEffects),
                                          [&](const auto& item) { return item.chainId() == chain[slot]; });
             if (fx == std::end(ostfstudio::stockEffects)) return false;
             plugins.push_back(load(formats, directory.getChildFile(juce::String(fx->name) + ".vst3")));
             if (!plugins.back()) return false;
+            const bool output = channel < PreviewTransport::outputCount;
+            const auto key = ostfstudio::SessionMix::effectSlot(output, output ? channel : channel - PreviewTransport::outputCount, slot);
+            auto values = session.insertParameters.find(key);
+            if (values == session.insertParameters.end() || values->second.empty()) return false;
+            for (const auto& [id, value] : values->second) {
+                const auto& params = plugins.back()->getParameters();
+                const auto it = std::find_if(params.begin(), params.end(), [&](auto* p) {
+                    auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*>(p);
+                    return hosted && hosted->getParameterID() == id;
+                });
+                if (it == params.end()) return false;
+                (*it)->setValueNotifyingHost(value);
+                const double tolerance = .001 + .5 / std::max(1, (*it)->getNumSteps() - 1);
+                if (std::abs((*it)->getValue() - value) > tolerance) return false;
+            }
             inserts[channel][slot] = plugins.back().get();
         }
         return true;
     };
-    if (!restore(mix.trackEffects[piano], PreviewTransport::outputCount + piano)) return 24;
-    for (std::size_t i = 0; i < mix.outputEffects.size(); ++i) if (!restore(mix.outputEffects[i], i)) return 25;
+    if (!restore(mix, mix.trackEffects[piano], PreviewTransport::outputCount + piano)) return 24;
+    for (std::size_t i = 0; i < mix.outputEffects.size(); ++i) if (!restore(mix, mix.outputEffects[i], i)) return 25;
     bool metersMatchAudio = true;
     auto render = [&](bool bus, bool room, bool send, bool master, bool cueOnly = false) {
         PreviewTransport transport;
@@ -620,8 +635,8 @@ int checkStockEffects(const juce::StringArray& args) {
     const auto& region = cue->audio.front();
     const auto& mixAudio = *cue->savedMix;
     inserts = {};
-    if (!restore(mixAudio.trackEffects[region.track], PreviewTransport::outputCount + region.track)
-        || !restore(mixAudio.outputEffects[3], 3)) return 30;
+    if (!restore(mixAudio, mixAudio.trackEffects[region.track], PreviewTransport::outputCount + region.track)
+        || !restore(mixAudio, mixAudio.outputEffects[3], 3)) return 30;
     auto cuePeak = [&](juce::int64 tick, bool soloOther, bool mute, bool bus, bool send, double db, bool wet) {
         PreviewTransport playback;
         auto channels = mixAudio.tracks;

@@ -60,7 +60,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         URL_HASH SHA256=6de746d3fd381937c9fc58ed47df7404792881b9ba924d43124dc6fb7c22f741)
     FetchContent_MakeAvailable(jsoncons)
     set(score_schemas)
-    foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0 5.0.0)
+    foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0 5.0.0 5.1.0 package-manifest-1.1 production-session-0.4)
         list(APPEND score_schemas "third_party/ostf-schemas/ostf-${version}.schema.json")
     endforeach()
     juce_add_binary_data(OSTFScoreSchemas HEADER_NAME ScoreSchemas.h NAMESPACE ScoreSchemas SOURCES ${score_schemas})
@@ -138,7 +138,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         examples/demo-songs/neon-platforms.ostfp examples/demo-songs/blue-hour-waltz.ostfp
         examples/demo-songs/blue-hour-waltz-shared-gm.ostfp
         examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp
-        examples/demo-songs/copper-mile.ostfp examples/demo-songs/first-light-vector.ostfp)
+        examples/demo-songs/offset-bridges.ostfp examples/demo-songs/copper-mile.ostfp examples/demo-songs/first-light-vector.ostfp)
     juce_generate_juce_header(OSTFStudio)
     target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/SystemUsageMeter.cpp src/ui/ArrangementClipEdits.cpp src/ui/ChordReview.cpp src/ui/OstfpPreview.cpp
         src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
@@ -227,6 +227,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         add_test(NAME ostf_studio_notation COMMAND OSTFStudio --notation-smoke
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostfp" "${CMAKE_CURRENT_BINARY_DIR}/notation-check")
         set_tests_properties(ostf_studio_notation PROPERTIES TIMEOUT 120)
+        add_test(NAME ostf_native_comps COMMAND OSTFStudio --native-comp-smoke "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/26-midi-comp.ostf")
         add_test(NAME ostf_studio_live_session COMMAND OSTFStudio --live-session-smoke
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostf")
         add_test(NAME ostf_studio_track_view COMMAND OSTFStudio --track-view-smoke

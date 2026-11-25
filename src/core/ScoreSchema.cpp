@@ -68,6 +68,6 @@ void validateScoreSchema(std::string_view version, std::string_view utf8) {
         }
         return;
     }
-    throw std::runtime_error("Unsupported OSTF score version (supported: 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.0, 5.0.0)");
+    throw std::runtime_error("Unsupported OSTF score version (supported: 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.0, 5.0.0, 5.1.0)");
 }
 }
