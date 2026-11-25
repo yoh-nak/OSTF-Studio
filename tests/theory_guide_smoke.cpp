@@ -285,7 +285,7 @@ int checkTheoryGuide(const juce::File& demo) {
         mixer.setLookAndFeel(&main.getLookAndFeel());
         mixer.setTracks(*project);
         if (project->savedMix) mixer.restore(*project->savedMix);
-        for (int i = 0; i < 4; ++i) mixer.addReturn();
+        while (mixer.returnCount() < ostfstudio::maxMixerReturns) mixer.addReturn();
         mixer.setSize(2260, 680);
         ostfstudio::MeterFrame signal;
         signal.master.vu = {.78f,1.10f};

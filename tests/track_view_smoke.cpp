@@ -315,9 +315,20 @@ class VocalTrackProbe final : public juce::Timer {
 public:
     VocalTrackProbe(const juce::File& song, const juce::File& wav, std::function<void(int)> done)
         : output(wav), finish(std::move(done)) {
+        studio.preferredHeaderWidth_ = 487;
         studio.setSize(1500,1000);
-        opened = studio.openDocument(song);
-        startTimer(50);
+        studio.openSongFile(song, [this](bool ok) {
+            opened = ok && !studio.loadingOverlay_.isVisible();
+            startTimer(50);
+        });
+        sawLoading = studio.loadingOverlay_.isVisible() && studio.loadingOverlay_.getName() == song.getFileName();
+        const auto preview = juce::SystemStats::getEnvironmentVariable("OSTF_LOADING_PNG", {});
+        if (preview.isNotEmpty()) {
+            juce::FileOutputStream out{juce::File(preview)};
+            if (out.openedOk() && out.setPosition(0) && out.truncate().wasOk())
+                juce::PNGImageFormat().writeImageToStream(studio.createComponentSnapshot(
+                    studio.getLocalBounds().withSizeKeepingCentre(600, 210)), out);
+        }
     }
 private:
     int verify() {
@@ -372,6 +383,19 @@ private:
             return 14;
         studio.vocalLane_.entrance.onClick();
         if (studio.cursorTick_ != project.pitchedNotes[lead].front().startTick || studio.cursorTick_/project.ticksPerBar != 4) return 5;
+        while (studio.mixer_.returnCount() < ostfstudio::maxMixerReturns) studio.mixer_.addReturn();
+        studio.refreshTrackSends();
+        studio.resized();
+        const auto& sends = studio.trackControls_[lead]->sends;
+        if (sends.getViewedComponent()->getWidth() > sends.getWidth() || sends.getViewedComponent()->getHeight() > sends.getHeight()
+            || sends.getViewedComponent()->getNumChildComponents() != int(ostfstudio::maxMixerReturns)) return 28;
+        const auto guideImage = juce::SystemStats::getEnvironmentVariable("OSTF_PROMPT_LCD_PNG", {});
+        if (guideImage.isNotEmpty()) {
+            juce::FileOutputStream out{juce::File(guideImage)};
+            if (!out.openedOk() || !out.setPosition(0) || out.truncate().failed()
+                || !juce::PNGImageFormat().writeImageToStream(studio.promptGuide_.createComponentSnapshot(
+                    studio.promptGuide_.getLocalBounds()), out)) return 30;
+        }
         const auto headerImage = juce::SystemStats::getEnvironmentVariable("OSTF_LYRIC_HEADER_PNG",{});
         if (headerImage.isNotEmpty()) {
             const auto previousScroll = studio.verticalScroll_.getCurrentRangeStart();
@@ -440,14 +464,22 @@ private:
     void timerCallback() override {
         if (opened && !studio.canEditTracks() && ++polls < 600) return;
         stopTimer();
-        const int result = !opened ? 1 : !studio.canEditTracks() ? 2 : verify();
-        if (result) std::cerr << "Vocal track check " << result << '\n';
-        finish(result);
+        const int result = !sawLoading || !opened ? 1 : !studio.canEditTracks() ? 2 : verify();
+        if (result) {
+            std::cerr << "Vocal track check " << result << '\n';
+            finish(result);
+            return;
+        }
+        const auto* original = studio.project_.get();
+        const auto missing = juce::File::createTempFile(".ostfp");
+        studio.openSongFile(missing, [this, original](bool ok) {
+            finish(!ok && studio.project_.get() == original && !studio.loadingOverlay_.isVisible() ? 0 : 29);
+        });
     }
     MainComponent studio;
     juce::File output;
     std::function<void(int)> finish;
-    bool opened = false;
+    bool opened = false, sawLoading = false;
     int polls = 0;
 };
 std::unique_ptr<juce::Timer> startVocalTrackCheck(const juce::File& song,const juce::File& wav,std::function<void(int)> done) {

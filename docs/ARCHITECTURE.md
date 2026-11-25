@@ -1,5 +1,7 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+File-picker, desktop-open and bundled demo requests share a background reader. The message thread owns the progress overlay, adopts the parsed song and restores its session. Each request has a sequence number. A late result cannot replace a newer song. Parsing failure retains the open session.
+
 The singer stores the selected voice bank in the plug-in state. Its offline phoneme mapping adapts Japanese morae or English dictionary phonemes to that bank before synthesis. Individual meter channels hold their latest peak for 1.5 seconds and then release at 18 dB per second.
 
 Lyric headers look up the written chord cell of each displayed part at the transport tick. Playback invalidates the lyric header when that cell changes, including when seeking backwards. Pronunciation stays note-aligned.

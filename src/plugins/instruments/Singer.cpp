@@ -17,12 +17,12 @@ class SyllableVoice {
         channel = ch; key = pitch; gain = velocity;
         if (!connected) { phase = 0; phraseFrames = 0; }
         released = false; noteAge = 0;
-        articulate(p, sr, bank);
+        articulate(p, sr, bank, connected);
         hz = juce::MidiMessage::getMidiNoteInHertz(pitch);
         glideCents = connected ? std::clamp(520 * std::log2(previousHz / hz), -165., 165.) : 0.;
         if (!connected) for (auto& res : resonators) res.y1 = res.y2 = 0;
     }
-    void articulate(Phone p, double sr, const VoiceBank* bank) {
+    void articulate(Phone p, double sr, const VoiceBank* bank, bool legato) {
         constexpr float freq[5][3] = {
             {760, 1200, 2600}, {290, 2250, 3100}, {330, 1250, 2350}, {490, 1880, 2650}, {490, 900, 2450}};
         constexpr float bandwidth[3] = {90, 120, 175};
@@ -36,7 +36,10 @@ class SyllableVoice {
             recorded = bank->find({p.vowel, vowelOnly});
             vowelSample = recorded != nullptr;
         }
-        position = 0;
+        // A connected vowel enters after the initial breath of the recording.
+        // Consonant-led syllables still play the complete attack.
+        position = legato && recorded && p.onset == vowelOnly && p.durationMs > 0
+            ? std::min(.014 * recorded->rate, .5 * recorded->consonantFrames) : 0.;
         const int onset = p.onset;
         nasal = onset == m || onset == n || onset == moraN;
         stop = onset == velar || onset == g || onset == t || onset == d || onset == pStop || onset == b;
@@ -118,7 +121,13 @@ class SyllableVoice {
             double step = tunedStep;
             if (!vowelSample && phone.onset != vowelOnly && recorded->consonantFrames > 0) {
                 const double mix = std::clamp((position - recorded->consonantFrames) / (.014 * recorded->rate), 0., 1.);
-                step = std::lerp(recorded->rate / sr, tunedStep, mix);
+                // Fit the recorded attack to the scored English consonant. Keep a
+                // long sibilant in its consonant region until the vowel arrives.
+                double attackStep = recorded->rate / sr;
+                if ((accentPhone & 63) > 15 && phone.durationMs > 0)
+                    attackStep = std::clamp(recorded->consonantFrames / (sr * phone.durationMs * .001),
+                                            .55 * attackStep, 1.75 * attackStep);
+                step = std::lerp(attackStep, tunedStep, mix);
             }
             recording = recorded->read(position, step);
             const double onset = phone.durationMs && phone.onset == vowelOnly ? .028 :
@@ -218,7 +227,7 @@ class Voice : public SyllableVoice {
     void articulate(Phone p, double sr, const VoiceBank* bank) {
         preparePhones(p, bank);
         beginTransition(channel, segments[0], sr);
-        SyllableVoice::articulate(segments[0], sr, bank);
+        SyllableVoice::articulate(segments[0], sr, bank, true);
         accentPhone = p.english;
     }
     void stopNote() { count = 0; SyllableVoice::stopNote(); }
@@ -226,7 +235,7 @@ class Voice : public SyllableVoice {
         if (stage+1 < count && ++stageFrames >= segments[stage].durationMs * .001 * sr) {
             const auto next = segments[++stage];
             beginTransition(channel,next,sr);
-            SyllableVoice::articulate(next,sr,sourceBank);
+            SyllableVoice::articulate(next,sr,sourceBank,true);
             stageFrames = 0;
         }
         const float current = SyllableVoice::sample(sr, bend, expression);
@@ -251,11 +260,10 @@ class Voice : public SyllableVoice {
         const int ms = p.durationMs > 0 ? p.durationMs : 195;
         if (bank && en) {
             // ARPAbet order in the bundled pronunciation dictionary.
-            constexpr int vowels[] = {0,0,0,0,4,0,0,3,0,3,1,1,4,4,2,2};
             constexpr int onsets[] = {b,ch,d,z,f,g,h,j,velar,r,m,n,moraN,pStop,r,sibilant,sh,t,sibilant,v,w,y,z,j};
             auto& first = segments[0];
             first.english = 0;
-            first.vowel = en <= 15 ? vowels[en] : (en == 33 || en == 18 ? 4 : 2);
+            first.vowel = en <= 15 ? japaneseVowelForEnglish(en) : p.vowel;
             first.onset = en <= 15 ? vowelOnly : onsets[en-16];
             const int offglide = en == 5 || en == 12 ? 2 : (en == 6 || en == 9 || en == 13 ? 1 : -1);
             if (offglide >= 0 && ms >= 24) {

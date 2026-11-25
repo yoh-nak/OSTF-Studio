@@ -154,10 +154,11 @@ void MixerPanel::Strip::resized() {
         solo.setBounds(switches.removeFromLeft(switches.getWidth() / (arm.isVisible() ? 3 : 2)));
         if (arm.isVisible()) arm.setBounds(switches.removeFromLeft(switches.getWidth() / 2));
         cue.setBounds(switches);
-        auto knobs = area.removeFromLeft(std::min(105,area.getWidth()/2)).reduced(1);
+        auto knobs = area.removeFromLeft(std::min(126, area.getWidth()/2)).reduced(1);
         pan.setBounds(knobs.removeFromTop(88).withTrimmedTop(13));
         const int count = int(sends.size());
-        constexpr int sendHeight = 61, stagger = (sendHeight + 5) / 2;
+        const int sendHeight = std::clamp((knobs.getHeight() * 2 - 8 * count) / std::max(2, count + 1), 72, 88);
+        const int stagger = (sendHeight + 8) / 2;
         const int total = count ? sendHeight + (count-1)*stagger : 0;
         sendViewport.setBounds(knobs);
         const int width = std::max(1,knobs.getWidth() - (total > knobs.getHeight() ? sendViewport.getScrollBarThickness() : 0));
@@ -263,13 +264,18 @@ void MixerPanel::Strip::paint(juce::Graphics& g) {
     if (!diagnostics.isEmpty()) {
         auto box = diagnostics.reduced(1, 2).toFloat();
         if (isMaster) {
-            const bool wide = box.getWidth() >= 390.f;
-            auto top = box.removeFromTop(wide ? 118.f : 208.f);
-            auto pair = wide ? top.removeFromLeft(top.getWidth()*.46f) : top.removeFromTop(90.f);
-            ostfstudio::console::drawChannelVu(g,pair.reduced(2),analysis.vu,2,"VU");
-            const auto graphs = box.removeFromBottom(std::min(250.f,box.getHeight()*.46f));
-            ostfstudio::console::drawPhaseScope(g,box.reduced(2),analysis);
-            ostfstudio::console::drawMasterDetails(g,top.reduced(2),graphs.reduced(2),analysis,bands);
+            auto graphs = box.removeFromBottom(std::min(230.f, box.getHeight() * .40f));
+            auto measurements = box.removeFromBottom(std::min(118.f, box.getHeight() * .52f));
+            auto needles = box.removeFromLeft(box.getWidth() * .50f);
+            if (needles.getHeight() >= needles.getWidth() * .54f) {
+                auto left = needles.removeFromTop(needles.getHeight() * .5f);
+                ostfstudio::console::drawVu(g, left.reduced(2), analysis.vu[0], "L   VU");
+                ostfstudio::console::drawVu(g, needles.reduced(2), analysis.vu[1], "R   VU");
+            } else {
+                ostfstudio::console::drawChannelVu(g, needles.reduced(2), analysis.vu, 2, "VU");
+            }
+            ostfstudio::console::drawPhaseScope(g, box.reduced(2), analysis);
+            ostfstudio::console::drawMasterDetails(g, measurements.reduced(2), graphs.reduced(2), analysis, bands);
         } else {
             ostfstudio::console::drawChannelVu(g, box, vu, meterChannels, "VU");
         }

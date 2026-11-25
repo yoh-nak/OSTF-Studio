@@ -106,6 +106,12 @@ int main(int argc, char** argv) {
     const auto morae = pronounce(phrase);
     if (morae.size() != 5 || morae[0].glide != 1 || morae[0].onset != velar || morae[1].onset != closure
         || morae[2].onset != sh || morae[3].vowel != 1 || morae[4].onset != moraN) return 8;
+    const auto extended = lyricPhones(juce::String::fromUTF8("\xe3\x83\xaf\xe3\x83\xbc\xe3\x83\x89"));
+    if (extended.size() != 2 || extended[0].morae != 2 || extended[1].onset != d) return 36;
+    const auto kanaEdges = articulationPositions(extended, .45);
+    if (std::abs(kanaEdges[1] - 2./3) > 1.e-8) return 37;
+    const auto sing = lyricPhones("sing");
+    if (sing.size() < 3 || sing.front().vowel != 1) return 38;
     if (!testRecordedVoice()) return 9;
     const auto& factory = VoiceBank::factory();
     if (factory.sounds.size() < 90 || !factory.find({0,vowelOnly}) || !factory.find({1,sh})
@@ -230,7 +236,8 @@ int main(int argc, char** argv) {
     if (audio.getMagnitude(0,0,2048) != 0) return 7;
     if (argc >= 3) {
         const bool bilingual = argc == 4 && juce::String(argv[3]).startsWith("bilingual-");
-        if (bilingual) {
+        const bool bridge = argc == 4 && juce::String(argv[3]) == "bridge-mei";
+        if (bilingual || bridge) {
             state.setAttribute("builtinVoice",juce::String(argv[3]).fromFirstOccurrenceOf("-",false,false));
             juce::AudioProcessor::copyXmlToBinary(state,blob);
             restored->setStateInformation(blob.getData(),int(blob.getSize()));
@@ -252,7 +259,13 @@ int main(int argc, char** argv) {
         if (!(bpm > 0)) return 12;
         head.position.setBpm(bpm);
         double start = parts.front().syllables.front().start;
-        if (bilingual) {
+        if (bridge) {
+            const auto score = juce::JSON::parse(source);
+            const auto sections = items(score["timeline"]["sections"]);
+            const auto it = std::find_if(sections.begin(), sections.end(), [](const auto& s){ return s["name"].toString() == "Bridge"; });
+            if (it == sections.end()) return 39;
+            start = double((*it)["start"]) / double(score["ppq"]);
+        } else if (bilingual) {
             const auto& line = parts.front().syllables;
             const auto english = std::find_if(line.begin(),line.end(),[](const auto& unit){return unit.phone.english != 0;});
             if (english == line.end() || english->start < 8.) return 35;

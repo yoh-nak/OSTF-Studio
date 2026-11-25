@@ -1,5 +1,5 @@
 #pragma once
-#include <juce_gui_basics/juce_gui_basics.h>
+#include "ui/ConsoleDisplay.h"
 
 class PromptGuide final : public juce::Component, private juce::Timer {
 public:
@@ -8,13 +8,14 @@ public:
         addAndMakeVisible(heading_);
         heading_.setText(TRANS("Prompt guide"), juce::dontSendNotification);
         heading_.setFont(juce::FontOptions(14.f, juce::Font::bold));
-        heading_.setColour(juce::Label::textColourId, juce::Colour(0xff8fe1db));
+        heading_.setColour(juce::Label::textColourId, ostfstudio::console::lcdInk);
         addAndMakeVisible(examples_);
         examples_.setTitle(TRANS("Example prompts"));
         examples_.setMultiLine(true);
         examples_.setReadOnly(true);
         examples_.setCaretVisible(false);
         examples_.setFont(juce::FontOptions(14.f));
+        examples_.setColour(juce::TextEditor::textColourId, ostfstudio::console::lcdInk);
         examples_.setIndents(0, 0);
         examples_.setBorder({});
         for (auto colour : {juce::TextEditor::backgroundColourId, juce::TextEditor::outlineColourId,
@@ -46,10 +47,7 @@ public:
     }
 
     void paint(juce::Graphics& g) override {
-        const auto area = getLocalBounds().toFloat();
-        g.fillAll(juce::Colour(0xff202a31));
-        g.setColour(juce::Colour(0xff465760));
-        g.drawRect(area, 1.f);
+        ostfstudio::console::drawLcd(g, getLocalBounds());
     }
 
     void resized() override {

@@ -326,10 +326,11 @@ public:
                 if (!startup_) return;
                 mainWindow_ = createStudioWindow();
                 startup_.reset();
-                const bool opened = openQueuedDocument();
-                if (startupSmoke) juce::Timer::callAfterDelay(500, [this, opened] {
-                    setApplicationReturnValue(mainWindow_ && mainWindow_->isShowing() && opened ? 0 : 1);
-                    quit();
+                openQueuedDocument([this, startupSmoke](bool opened) {
+                    if (startupSmoke) {
+                        setApplicationReturnValue(mainWindow_ && mainWindow_->isShowing() && opened ? 0 : 1);
+                        quit();
+                    }
                 });
             });
         });
@@ -355,10 +356,10 @@ private:
         if (file.hasFileExtension("ostf;ostfp")) queuedDocument_ = file;
     }
 
-    bool openQueuedDocument() {
-        if (queuedDocument_ == juce::File{}) return true;
+    void openQueuedDocument(std::function<void(bool)> finished = {}) {
+        if (queuedDocument_ == juce::File{}) { if (finished) finished(true); return; }
         const auto file = std::exchange(queuedDocument_, juce::File{});
-        return static_cast<MainComponent*>(mainWindow_->getContentComponent())->openDocument(file);
+        static_cast<MainComponent*>(mainWindow_->getContentComponent())->openSongFile(file, std::move(finished));
     }
 
     class MainWindow final : public juce::DocumentWindow {

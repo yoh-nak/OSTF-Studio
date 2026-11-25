@@ -19,6 +19,7 @@
 #include "ui/PianoInspector.h"
 #include "ui/VocalLane.h"
 #include "ui/PromptGuide.h"
+#include "ui/SongLoadingOverlay.h"
 #include "ui/PerformanceEditor.h"
 #include "ui/DrumSteps.h"
 #include "ui/DrumPads.h"
@@ -37,6 +38,7 @@ public:
     MainComponent();
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
+    void openSongFile(const juce::File& file, std::function<void(bool)> finished = {});
     void openImportedSong(std::unique_ptr<ostfstudio::OstfpPreview>);
     void displayTransportPosition(juce::int64 tick, double seconds = -1, const juce::ScrollBar* anchoredView = nullptr);
     void paint(juce::Graphics& g) override;
@@ -555,6 +557,11 @@ private:
     std::optional<std::size_t> outputDropHighlight_;
     std::array<OutputControl, PreviewTransport::outputCount> outputControls_;
     bool showOutputTracks_ = true;
+    void loadSong(std::function<std::unique_ptr<juce::InputStream>()> openStream, juce::String filename,
+                  bool plainScore, juce::File sourceFolder, std::function<void(bool)> finished = {});
+    SongLoadingOverlay loadingOverlay_;
+    juce::ThreadPool songReader_{1};
+    unsigned songRequest_ = 0;
     std::size_t projectGeneration_ = 0;
     std::optional<std::size_t> selectedTrack_;
     juce::Label importTrackDrop_;

@@ -22718,168 +22718,192 @@
         "phraseId": "vocal-part-6-line-1",
         "text": "One",
         "start": 123360,
-        "duration": 660
+        "duration": 660,
+        "pronunciation": "ワン"
       },
       {
         "id": "vocal-part-6-line-1-unit-2",
         "phraseId": "vocal-part-6-line-1",
         "text": "breath",
         "start": 124080,
-        "duration": 660
+        "duration": 660,
+        "pronunciation": "ブレス"
       },
       {
         "id": "vocal-part-6-line-1-unit-3",
         "phraseId": "vocal-part-6-line-1",
         "text": "can",
         "start": 124800,
-        "duration": 420
+        "duration": 420,
+        "pronunciation": "キャン"
       },
       {
         "id": "vocal-part-6-line-1-unit-4",
         "phraseId": "vocal-part-6-line-1",
         "text": "bend",
         "start": 125280,
-        "duration": 420
+        "duration": 420,
+        "pronunciation": "ベンド"
       },
       {
         "id": "vocal-part-6-line-1-unit-5",
         "phraseId": "vocal-part-6-line-1",
         "text": "the",
         "start": 125760,
-        "duration": 420
+        "duration": 420,
+        "pronunciation": "ザ"
       },
       {
         "id": "vocal-part-6-line-1-unit-6",
         "phraseId": "vocal-part-6-line-1",
         "text": "light",
         "start": 126240,
-        "duration": 3948
+        "duration": 3948,
+        "pronunciation": "ライト"
       },
       {
         "id": "vocal-part-6-line-2-unit-1",
         "phraseId": "vocal-part-6-line-2",
         "text": "One",
         "start": 131280,
-        "duration": 420
+        "duration": 420,
+        "pronunciation": "ワン"
       },
       {
         "id": "vocal-part-6-line-2-unit-2",
         "phraseId": "vocal-part-6-line-2",
         "text": "word",
         "start": 131760,
-        "duration": 660
+        "duration": 660,
+        "pronunciation": "ワード"
       },
       {
         "id": "vocal-part-6-line-2-unit-3",
         "phraseId": "vocal-part-6-line-2",
         "text": "can",
         "start": 132480,
-        "duration": 660
+        "duration": 660,
+        "pronunciation": "キャン"
       },
       {
         "id": "vocal-part-6-line-2-unit-4",
         "phraseId": "vocal-part-6-line-2",
         "text": "lift",
         "start": 133200,
-        "duration": 180
+        "duration": 180,
+        "pronunciation": "リフト"
       },
       {
         "id": "vocal-part-6-line-2-unit-5",
         "phraseId": "vocal-part-6-line-2",
         "text": "the",
         "start": 133440,
-        "duration": 420
+        "duration": 420,
+        "pronunciation": "ザ"
       },
       {
         "id": "vocal-part-6-line-2-unit-6",
         "phraseId": "vocal-part-6-line-2",
         "text": "shade",
         "start": 133920,
-        "duration": 3948
+        "duration": 3948,
+        "pronunciation": "シェード"
       },
       {
         "id": "vocal-part-6-line-3-unit-1",
         "phraseId": "vocal-part-6-line-3",
         "text": "Let",
         "start": 138720,
-        "duration": 660
+        "duration": 660,
+        "pronunciation": "レット"
       },
       {
         "id": "vocal-part-6-line-3-unit-2",
         "phraseId": "vocal-part-6-line-3",
         "text": "all",
         "start": 139440,
-        "duration": 660
+        "duration": 660,
+        "pronunciation": "オール"
       },
       {
         "id": "vocal-part-6-line-3-unit-3",
         "phraseId": "vocal-part-6-line-3",
         "text": "the",
         "start": 140160,
-        "duration": 420
+        "duration": 420,
+        "pronunciation": "ザ"
       },
       {
         "id": "vocal-part-6-line-3-unit-4",
         "phraseId": "vocal-part-6-line-3",
         "text": "doors",
         "start": 140640,
-        "duration": 420
+        "duration": 420,
+        "pronunciation": "ドアズ"
       },
       {
         "id": "vocal-part-6-line-3-unit-5",
         "phraseId": "vocal-part-6-line-3",
         "text": "swing",
         "start": 141120,
-        "duration": 420
+        "duration": 420,
+        "pronunciation": "スウィング"
       },
       {
         "id": "vocal-part-6-line-3-unit-6",
         "phraseId": "vocal-part-6-line-3",
         "text": "wide",
         "start": 141600,
-        "duration": 3948
+        "duration": 3948,
+        "pronunciation": "ワイド"
       },
       {
         "id": "vocal-part-6-line-4-unit-1",
         "phraseId": "vocal-part-6-line-4",
         "text": "I",
         "start": 146640,
-        "duration": 420
+        "duration": 420,
+        "pronunciation": "アイ"
       },
       {
         "id": "vocal-part-6-line-4-unit-2",
         "phraseId": "vocal-part-6-line-4",
         "text": "will",
         "start": 147120,
-        "duration": 660
+        "duration": 660,
+        "pronunciation": "ウィル"
       },
       {
         "id": "vocal-part-6-line-4-unit-3",
         "phraseId": "vocal-part-6-line-4",
         "text": "not",
         "start": 147840,
-        "duration": 660
+        "duration": 660,
+        "pronunciation": "ノット"
       },
       {
         "id": "vocal-part-6-line-4-unit-4",
         "phraseId": "vocal-part-6-line-4",
         "text": "turn",
         "start": 148560,
-        "duration": 180
+        "duration": 180,
+        "pronunciation": "ターン"
       },
       {
         "id": "vocal-part-6-line-4-unit-5",
         "phraseId": "vocal-part-6-line-4",
         "text": "a",
         "start": 148800,
-        "duration": 420
+        "duration": 420,
+        "pronunciation": "ア"
       },
       {
         "id": "vocal-part-6-line-4-unit-6",
         "phraseId": "vocal-part-6-line-4",
         "text": "way",
         "start": 149280,
-        "duration": 3948
+        "duration": 3948,
+        "pronunciation": "ウェイ"
       },
       {
         "id": "vocal-part-7-line-1-unit-1",

@@ -42,7 +42,8 @@ public:
 
     void resized() override {
         juce::Viewport::resized();
-        const int slotWidth = getHeight() >= 31 ? 61 : 76;
+        const int count = std::max(1, static_cast<int>(controls.size()));
+        const int slotWidth = std::clamp(getWidth() / count, 53, 78);
         const int width = slotWidth * static_cast<int>(controls.size());
         const int height = std::max(0, getHeight() - (width > getWidth() ? getScrollBarThickness() : 0));
         row.setSize(width, height);
@@ -62,6 +63,8 @@ private:
             knob.setDoubleClickReturnValue(true, 0);
             knob.setPopupDisplayEnabled(true, true, nullptr);
             label.setFont(juce::FontOptions(11.f));
+            label.setBorderSize({});
+            value.setBorderSize({});
             label.setInterceptsMouseClicks(false, false);
             addAndMakeVisible(knob);
             addAndMakeVisible(label);
@@ -71,7 +74,7 @@ private:
         }
         void resized() override {
             auto area = getLocalBounds();
-            knob.setBounds(area.removeFromLeft(std::min(25, area.getHeight())));
+            knob.setBounds(area.removeFromLeft(std::min({25, area.getHeight(), area.getWidth() - 31})));
             const bool tall = area.getHeight() >= 24;
             value.setVisible(tall);
             if (tall) value.setBounds(area.removeFromBottom(area.getHeight()/2));

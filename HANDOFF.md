@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Song loading, LCD panels and vocal articulation
+
+Branch `feat/song-loading-and-vocal-display` adds asynchronous song opening and a filename overlay, revises the mixer and track send layouts, and gives the prompt guide and lyric captions a common LCD face. The bridge of Paper Lantern Replies uses explicit kana readings. The singer adapts recorded consonants to the following vowel, carries long vowels and shortens closure and nasal timing. Pass `bridge-mei` as the last argument of `ostf_singing_tests` to render the opening of the bridge.
+
+The Windows portable contains the same Paper Lantern Replies project as the demo gallery source. Its vocal smoke check covers the loading overlay, error recovery with the previous song intact, the LCD lyric panel, eight accessible send knobs at a 487 px header width and independent lead and backing playback. Two 12.33-second Bridge renders compare the same Mei voice with explicit katakana or dictionary input. Listening quality and macOS rendering still need listening and device checks.
+
 ## Cue switches, mixer peak hold and bilingual singers
 
 Branch `feat/consistent-singer-console` aligns the track and mixer Cue switches with the other transport switches. The master has independent channel peak holds beside its fader. The mixer source strips and track headers use staggered send controls around a larger pan. Imported sessions with no voicing mix open muted. The Singer voice selector recalls Mei, KAL16 or a local voice folder for either lyric language. `ostf_singing_tests` can render the Japanese-to-English transition of Paper Lantern Replies with `bilingual-mei` or `bilingual-kal16` as its final argument.

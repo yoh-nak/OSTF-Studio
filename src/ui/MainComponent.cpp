@@ -856,6 +856,7 @@ MainComponent::MainComponent() {
         return details.joinIntoString("\n");
     };
     rowOverlay_.setInterceptsMouseClicks(false, true);
+    addChildComponent(loadingOverlay_);
     addAndMakeVisible(rowOverlay_);
     basics_.setComponentID("song-basics-strip");
     addChildComponent(basics_);
@@ -1430,8 +1431,8 @@ void MainComponent::menuItemSelected(int item, int) {
     if (item >= demoMenuBase && item < demoMenuBase + static_cast<int>(std::size(gallery))) {
         int size = 0;
         if (const auto* data = BinaryData::getNamedResource(gallery[item - demoMenuBase].resource, size)) {
-            juce::MemoryInputStream stream(data, static_cast<std::size_t>(size), false);
-            openPreview(stream, BinaryData::getNamedResourceOriginalFilename(gallery[item - demoMenuBase].resource));
+            loadSong([data, size] { return std::make_unique<juce::MemoryInputStream>(data, size_t(size), false); },
+                     BinaryData::getNamedResourceOriginalFilename(gallery[item - demoMenuBase].resource), false, {});
         } else {
             statusLabel_.setText(TRANS("Bundled demo is unavailable"), juce::dontSendNotification);
         }
@@ -2232,6 +2233,7 @@ void MainComponent::flashPad(int pitch) {
 
 MainComponent::~MainComponent() {
     surfaceDevices_ = {};
+    songReader_.removeAllJobs(true, -1);
     aiConnectionWorker_.removeAllJobs(true, -1);
     if (spliceAuditionActive_ && deviceSettings_) deviceSettings_->devices().removeAudioCallback(&splicePlayer_);
     splicePlayer_.setProcessor(nullptr);
@@ -2820,8 +2822,43 @@ void MainComponent::inspectOSTF() {
         [self = juce::Component::SafePointer<MainComponent>(this)](const juce::FileChooser& chooser) {
             if (self == nullptr) return;
             const auto selected = chooser.getResult();
-            if (selected != juce::File{}) self->openDocument(selected);
+            if (selected != juce::File{}) self->openSongFile(selected);
         });
+}
+
+void MainComponent::openSongFile(const juce::File& file, std::function<void(bool)> finished) {
+    if (file.hasFileExtension("json")) {
+        const bool ok = openDocument(file);
+        if (finished) finished(ok);
+        return;
+    }
+    loadSong([file] { return file.createInputStream(); }, file.getFileName(),
+             file.hasFileExtension("ostf"), file.getParentDirectory(), std::move(finished));
+}
+
+void MainComponent::loadSong(std::function<std::unique_ptr<juce::InputStream>()> openStream,
+                             juce::String filename, bool plainScore, juce::File sourceFolder,
+                             std::function<void(bool)> finished) {
+    const auto request = ++songRequest_;
+    loadingOverlay_.show(filename);
+    songReader_.addJob([safe = juce::Component::SafePointer<MainComponent>(this), request,
+                        openStream = std::move(openStream), filename, plainScore, sourceFolder, finished] {
+        auto input = openStream();
+        std::unique_ptr<ostfstudio::OstfpPreview> next;
+        auto result = input ? (plainScore ? ostfstudio::readOstfPreview(*input, next) : ostfstudio::readOstfpPreview(*input, next))
+                            : juce::Result::fail(TRANS("Could not read: ") + filename);
+        juce::MessageManager::callAsync([safe, request, filename, plainScore, sourceFolder, finished,
+                                         result, next = std::move(next)]() mutable {
+            if (!safe) return;
+            if (safe->songRequest_ != request) { if (finished) finished(false); return; }
+            if (result.wasOk()) safe->adoptProject(std::move(next), filename, plainScore, sourceFolder);
+            else {
+                safe->statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
+                safe->loadingOverlay_.dismiss();
+            }
+            if (finished) finished(result.wasOk());
+        });
+    });
 }
 
 bool MainComponent::openDocument(const juce::File& file) {
@@ -2858,6 +2895,7 @@ void MainComponent::openImportedSong(std::unique_ptr<ostfstudio::OstfpPreview> d
 
 void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next, const juce::String& filename,
                                  bool plainScore, const juce::File& sourceFolder) {
+    ++songRequest_;
     stopTransport();
     attachPadInput(false);
     armedId_.clear();
@@ -2981,6 +3019,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     stockEffectChanges_.reset();
     sessionEdited_ = false;
     refreshWindowTitle();
+    loadingOverlay_.dismiss();
     statusLabel_.setText(project_->title + " / " + juce::String(project_->bars.endBar - 1) + TRANS(" bars") +
                              (legacySourceFile_ == juce::File{}
                                   ? juce::String{}
@@ -6575,6 +6614,7 @@ bool MainComponent::writeTrackMidi(std::size_t track, juce::OutputStream& stream
 }
 
 void MainComponent::resized() {
+    loadingOverlay_.setBounds(getLocalBounds());
     const int barHeight = viewBarHeight(getWidth());
     menuBar_.setBounds(getLocalBounds().removeFromTop(menuHeight));
     auto viewBar = getLocalBounds().withTrimmedTop(menuHeight).removeFromTop(barHeight).reduced(8, 0);
@@ -6792,16 +6832,24 @@ void MainComponent::resized() {
                 inputControls(top);
                 strip.effects.button.setBounds(top.removeFromRight(50).reduced(2, 1));
                 placeInstrument(top.reduced(2, 1));
+                const bool manySends = mixer_.returnCount() > 3 && header.getHeight() >= 60;
+                if (manySends) {
+                    auto sendRow = header.removeFromBottom(std::clamp(header.getHeight() - 38, 27, 46));
+                    strip.sends.setBounds(sendRow.reduced(2, 0));
+                }
                 auto lower = header.removeFromLeft(std::min(trackNameWidth, 170));
-                strip.volume.setBounds(lower.removeFromTop(22).reduced(3, 0));
-                strip.meter.setBounds(lower.removeFromTop(std::min(22, lower.getHeight())).reduced(5, 0));
+                strip.volume.setBounds(lower.removeFromTop(manySends ? 14 : 22).reduced(3, 0));
+                strip.meter.setBounds(lower.removeFromTop(std::min(manySends ? 11 : 22, lower.getHeight())).reduced(5, 0));
                 strip.preset.setBounds(lower);
-                auto inputArea = header.removeFromBottom(std::min(22, header.getHeight())).reduced(1,0);
+                auto knobs = manySends ? header.removeFromLeft(std::min(74, header.getWidth()/3))
+                                       : header.withTrimmedBottom(std::min(22, header.getHeight()));
+                knobs.reduce(2, 1);
+                auto panSlot = knobs.removeFromLeft(std::min(77, knobs.getWidth()));
+                strip.pan.setBounds(panSlot.removeFromRight(std::min(48, panSlot.getHeight())));
+                if (!manySends) strip.sends.setBounds(knobs);
+                auto inputArea = (manySends ? header.withSizeKeepingCentre(header.getWidth(), 22)
+                                            : header.removeFromBottom(std::min(22, header.getHeight()))).reduced(1, 0);
                 strip.mix.setBounds(inputArea.removeFromRight(48).reduced(2,1));
-                auto knobs = header.reduced(2,1);
-                auto panSlot = knobs.removeFromLeft(std::min(77, knobs.getWidth()/3));
-                strip.pan.setBounds(panSlot.removeFromRight(std::min(48,panSlot.getHeight())));
-                strip.sends.setBounds(knobs);
                 if (canArm) {
                     if (audio) {
                         strip.inputGain.setBounds(inputArea.removeFromRight(std::min(117, inputArea.getWidth()/2)).reduced(2,0));
@@ -7161,7 +7209,9 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                     const auto labelWidth = std::max(juce::GlyphArrangement::getStringWidth(heading,TRANS("Display lyrics")),
                                                      juce::GlyphArrangement::getStringWidth(heading,TRANS("Pronunciation")));
                     caption = caption.withTrimmedRight(juce::roundToInt(labelWidth)+16).reduced(9,2);
-                    g.setColour(juce::Colour(0xffe7f6f2));
+                    ostfstudio::console::drawLcd(g, caption);
+                    caption = caption.reduced(8, 3);
+                    g.setColour(ostfstudio::console::lcdInk);
                     g.setFont(juce::FontOptions(std::min(25.f,float(caption.getHeight())*.78f),juce::Font::bold));
                     g.drawFittedText(juce::String::fromUTF8(project_->displayLyricAt(i,cursorTick_)),caption,
                                      juce::Justification::centredLeft,caption.getHeight() > 32 ? 2 : 1,.8f);

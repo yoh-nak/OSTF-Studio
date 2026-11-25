@@ -535,6 +535,12 @@ def sing_lantern(song):
         "Verse 2": [("夜明けの風が", "吹く", 7), ("君の名を", "呼んだ", 5),
                     ("小さな", "提灯", 4), ("二人の道を", "照らす", 7)],
     }
+    bridge_readings = [
+        "ワン ブレス キャン ベンド ザ ライト",
+        "ワン ワード キャン リフト ザ シェード",
+        "レット オール ザ ドアズ スウィング ワイド",
+        "アイ ウィル ノット ターン ア ウェイ",
+    ]
     song["lyrics"] = lyrics
     lead = song["tracks"][0]
     backing = next(lane for lane in song["tracks"] if lane["id"] == "backing")
@@ -600,6 +606,8 @@ def sing_lantern(song):
                 lyrics["units"].append({"id": unit_id, "phraseId": phrase_id, "text": syllable, "start": at, "duration": held})
                 if japanese and syllable == "を":
                     lyrics["units"][-1]["pronunciation"] = "お"
+                elif name == "Bridge":
+                    lyrics["units"][-1]["pronunciation"] = bridge_readings[line].split()[i]
                 lyrics["alignments"].append({"id": f"{unit_id}-alignment", "voiceId": "voice",
                                              "unitIds": [unit_id], "noteIds": [note_id]})
                 if i == 0 or i + 1 == len(syllables):

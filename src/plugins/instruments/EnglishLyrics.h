@@ -6,6 +6,10 @@
 namespace ostfstudio::singing {
 // The bundled dictionary stores a sorted word index followed by word/ARPAbet pairs.
 // Lookup and decompression run while preparing the score, outside the audio callback.
+inline int japaneseVowelForEnglish(int phone) {
+    constexpr int vowels[] = {0,0,0,0,4,0,0,3,0,3,1,1,4,4,2,2};
+    return vowels[phone & 63];
+}
 inline bool englishWord(const juce::String& word, std::vector<Phone>& result) {
     static const juce::MemoryBlock dictionary = [] {
         juce::MemoryInputStream bytes(EnglishLexiconData::englishlexicon_gz, EnglishLexiconData::englishlexicon_gzSize, false);
@@ -27,10 +31,18 @@ inline bool englishWord(const juce::String& word, std::vector<Phone>& result) {
         if (order < 0) last = mid;
         else if (order > 0) first = mid + 1;
         else {
+            const auto begin = result.size();
             for (const auto* code = entry + std::strlen(entry) + 1; *code != 0; ++code) {
                 Phone phone;
                 phone.english = static_cast<unsigned char>(*code);
                 result.push_back(phone);
+            }
+            int nextVowel = 2;
+            for (auto i = result.size(); i-- > begin;) {
+                auto& phone = result[i];
+                const int id = phone.english & 63;
+                if (id <= 15) nextVowel = japaneseVowelForEnglish(id);
+                phone.vowel = id == 33 || id == 18 ? 4 : nextVowel;
             }
             return true;
         }
@@ -42,8 +54,22 @@ inline std::vector<Phone> lyricPhones(const juce::String& reading) {
     std::vector<Phone> result;
     for (const auto& token : juce::StringArray::fromTokens(reading.toLowerCase(), " \t,.;:!?\r\n", {})) {
         if (token.containsOnly("abcdefghijklmnopqrstuvwxyz'-") && englishWord(token, result)) continue;
-        const auto rest = pronounce(token);
-        result.insert(result.end(), rest.begin(), rest.end());
+        // Continue the recorded vowel through a long-vowel mark in the same word.
+        // A unit starting with the mark can still refer to the previous note.
+        int start = 0;
+        const auto first = result.size();
+        for (int i = 0; i <= token.length(); ++i) {
+            if (i < token.length() && token[i] != 0x30fc) continue;
+            if (i > start) {
+                const auto part = pronounce(token.substring(start, i));
+                result.insert(result.end(), part.begin(), part.end());
+            }
+            if (i < token.length()) {
+                if (result.size() > first && result.back().onset != closure) ++result.back().morae;
+                else result.push_back({0,lengthMark});
+            }
+            start = i+1;
+        }
     }
     return result;
 }
@@ -59,15 +85,19 @@ inline double consonantSeconds(int phone) {
 
 inline std::vector<double> articulationPositions(const std::vector<Phone>& phones, double seconds) {
     std::vector<double> edges{0.0};
+    auto vowelWeight = [](const Phone& p) {
+        if (p.english) return (p.english & 64) ? 1.35 : 1.;
+        return p.morae * (p.onset == closure ? .48 : p.onset == moraN ? .72 : 1.);
+    };
     double consonants = 0, nuclei = 0;
     for (const auto& p : phones) {
         if ((p.english & 63) > 15) consonants += consonantSeconds(p.english);
-        else nuclei += p.english & 64 ? 1.35 : 1.;
+        else nuclei += vowelWeight(p);
     }
     const double consonantTime = nuclei > 0 ? std::min(.55, consonants / std::max(.001, seconds)) : 1.;
     for (const auto& p : phones) {
         const double duration = (p.english & 63) > 15 ? consonantTime * consonantSeconds(p.english) / consonants
-            : (1. - consonantTime) * (p.english & 64 ? 1.35 : 1.) / nuclei;
+            : (1. - consonantTime) * vowelWeight(p) / nuclei;
         edges.push_back(edges.back() + duration);
     }
     edges.back() = 1.;
