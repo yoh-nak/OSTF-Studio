@@ -22,8 +22,19 @@ public:
     void resized() override;
     void updateMeters(const ostfstudio::MeterFrame& frame, double now);
     void clearMeters();
+    struct PluginEntry {
+        juce::String name;
+        int slot = -1;
+        bool available = false;
+        bool operator==(const PluginEntry&) const = default;
+    };
+    void setStripPlugins(bool output, size_t track, int channels, std::vector<PluginEntry> entries);
+    std::function<void(bool, size_t, int)> openPlugin;
+    bool showingAnalysis() const;
+    void setSpectrum(const std::array<float,31>& bands);
     void setRecordState(std::size_t track, bool armed, bool enabled);
     std::function<void(std::size_t, bool)> recordArmChanged;
+    size_t trackCount() const { return channels_.size(); }
     const ostfstudio::ChannelMix& channel(std::size_t index) const { return channels_[index]; }
     bool isAudible(std::size_t index) const { return ostfstudio::channelIsAudible(channels_, index); }
     ostfstudio::MixGains gains(std::size_t index) const { return ostfstudio::mixGains(channels_, index, routing_); }
@@ -50,6 +61,15 @@ public:
     std::function<void(bool, std::size_t)> rowMenu;
 
 private:
+    struct Send final : juce::Component {
+        juce::Label name;
+        juce::Slider knob;
+        ostfstudio::StereoPeak vu{};
+        juce::Rectangle<int> dial;
+        Send();
+        void paint(juce::Graphics&) override;
+        void resized() override;
+    };
     struct Strip final : juce::Component {
         Strip(const juce::String& title, const juce::String& group, bool track);
         void resized() override;
@@ -62,11 +82,20 @@ private:
         juce::TextButton solo {"S"}, arm {"R"};
         ViewButton cue {ViewButton::Icon::headphones};
         std::unique_ptr<juce::TextButton> listenOnMain;
-        juce::ComboBox output, returnTarget;
-        juce::Slider sendLevel;
+        juce::ComboBox output;
+        juce::Component sendRack;
+        juce::Viewport sendViewport;
+        std::vector<std::unique_ptr<Send>> sends;
         juce::Label status;
         juce::Rectangle<int> diagnostics;
-        float vu = 0;
+        ostfstudio::StereoPeak vu{};
+        int meterChannels = 2;
+        juce::Component pluginRack;
+        juce::Viewport pluginViewport;
+        std::vector<PluginEntry> entries;
+        std::vector<std::unique_ptr<juce::TextButton>> pluginRows;
+        juce::TextButton analysisButton{TRANS("Meter details")};
+        std::array<float,31> bands{};
         bool isMaster = false;
         ostfstudio::MasterReadout analysis;
         void mouseDown(const juce::MouseEvent& event) override {

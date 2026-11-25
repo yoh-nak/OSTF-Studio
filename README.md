@@ -1,6 +1,6 @@
 # OSTF Studio
 
-The mixer pins the master on the far left. Its two VU needles show the post-fader left and right signals, with a phase scope underneath. Each source strip has a needle VU above the fader. A steady sine at −18 dBFS reads 0 VU.
+The mixer pins the master on the far right. Each source track has a pan knob and an independent named send knob for every return in both the expanded track header and the mixer. Buses and returns each support one to eight strips. Its two VU needles show the post-fader left and right signals, with a phase scope underneath. Source strips show one needle for mono and two for stereo. Send, bus, return and Cue meters follow their own signals. Click an instrument or insert name to open its editor, or open Meter details on the master for additional measurements. A steady sine at −18 dBFS reads 0 VU.
 
 In the drum step sequencer, open the numbered range beside **Loop**, enter the first bar and length, then enable **Loop**. After you set a range you can page through the step grid independently. The built-in singer crossfades neighbouring syllables and times English vowel changes and consonants to the sung note.
 

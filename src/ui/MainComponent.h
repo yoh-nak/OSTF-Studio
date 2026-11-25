@@ -7,7 +7,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <JuceHeader.h>
 #include "ui/DeviceSettingsWindow.h"
-#include "ui/MixerPanel.h"
+#include "ui/TrackSendKnobs.h"
 #include "ui/MidiDragButton.h"
 #include "ui/OstfpPreview.h"
 #include "ui/PluginBrowser.h"
@@ -239,12 +239,16 @@ private:
     };
     EffectChain& effectChain(bool output, std::size_t index);
     void updateEffectButton(EffectChain& chain);
+    void queueMixerPluginRefresh();
+    void refreshMixerPlugins();
+    bool mixerPluginRefreshQueued_ = false;
     void showEffects(bool output, std::size_t index);
     void appendEffect(bool output, std::size_t index, const juce::PluginDescription& description);
     void loadEffect(bool output, std::size_t index, std::size_t slot, const juce::PluginDescription& description, bool openEditor = false);
     void restoreEffects(bool output, std::size_t index, const juce::StringArray& ids);
     PluginBrowser& ensurePluginBrowser();
     DeviceSettingsWindow& ensureDeviceSettings();
+    void refreshTrackSends();
     void showTrackMix(std::size_t index);
     void updatePresetLabel(std::size_t index);
     void refreshEditor();
@@ -337,6 +341,7 @@ private:
         juce::TextButton mute {"M"};
         juce::TextButton solo {"S"};
         juce::Slider volume, pan;
+        TrackSendKnobs sends;
         juce::TextButton plugin {TRANS("Instrument")};
         juce::TextButton routingMenu {juce::String::charToString(0x25be)};
         juce::TextButton mix {TRANS("Mix")};

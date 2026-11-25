@@ -103,5 +103,12 @@ int main() {
     routing.removeOutput(0, mix);
     check(routing.outputCount() == 5 && routing.outputAt(3) == busOutput(2) && routing.outputAt(4) == returnOutput(0),
           "master and output order survive removal");
+    routing.removeOutput(returnOutput(0), mix);
+    check(routing.returnCount == 1 && mix[0].returnSends[0] == .25f, "last return and its send survive deletion");
+    routing.removeOutput(busOutput(2), mix);
+    routing.removeOutput(busOutput(1), mix);
+    mix[0].outputBus = 0;
+    routing.removeOutput(busOutput(0), mix);
+    check(routing.busCount == 1 && mix[0].outputBus == 0, "last bus and its route survive deletion");
     std::cout << "All timeline and mixer model tests passed.\n";
 }

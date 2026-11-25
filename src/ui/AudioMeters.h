@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/MixerState.h"
+#include "plugins/effects/AnalyzerMeters.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -40,11 +41,19 @@ private:
 
 struct MasterReadout {
     StereoPeak vu{};
+    analyzer::Readings levels;
+    std::array<float,120> shortHistory{}; // 60 seconds of short-term LUFS, sampled twice a second
+    unsigned historyWrite = 0, historyCount = 0;
     std::size_t nextPoint = 0;
     std::array<StereoPeak, 96> scope{};
 };
-struct MeterFrame {
-    std::array<float, 16> vu{};
+struct MixerVuLevels {
+    std::array<StereoPeak, 16> vu{};
+    std::array<std::array<StereoPeak,maxMixerReturns>,16> sendVu{};
+    std::array<StereoPeak,mixerOutputCapacity> outputVu{};
+    StereoPeak cueVu{};
+};
+struct MeterFrame : MixerVuLevels {
     MasterReadout master;
     std::array<StereoPeak, 16> tracks{};
     std::array<StereoPeak, mixerOutputCapacity> outputs{};

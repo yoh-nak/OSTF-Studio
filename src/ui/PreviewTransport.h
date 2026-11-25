@@ -13,6 +13,8 @@
 #include <atomic>
 #include <mutex>
 
+class MasterSpectrum;
+
 class PreviewTransport final : private juce::AudioIODeviceCallback, private juce::MidiInputCallback,
                                private juce::AudioPlayHead {
 public:
@@ -33,6 +35,8 @@ public:
     };
     static bool supportsInstrument(const juce::AudioPluginInstance& instrument);
     static bool supportsInsert(const juce::AudioPluginInstance& effect);
+    PreviewTransport();
+    bool readMasterSpectrum(std::array<float,31>& bands);
     ~PreviewTransport() override;
     struct TakeOptions {
         juce::Range<juce::int64> cycle;
@@ -104,7 +108,12 @@ private:
     std::array<ChannelGains, maxTracks> gains_ {};
     std::array<ostfstudio::PeakMailbox, maxTracks> trackMeters_;
     std::array<std::array<ostfstudio::VolumeUnit, 2>, maxTracks> vu_;
-    std::array<std::atomic<float>, maxTracks> vuPublished_{};
+    ostfstudio::MixerVuLevels liveVu_, publishedVu_;
+    std::array<std::array<ostfstudio::VolumeUnit, 2>, outputCount> outputVu_;
+    std::array<ostfstudio::VolumeUnit, 2> cueVu_;
+    ostfstudio::analyzer::Meters masterMeters_;
+    int historyCountdown_ = 0;
+    std::unique_ptr<MasterSpectrum> masterSpectrum_;
     std::array<ostfstudio::VolumeUnit, 2> masterVu_;
     ostfstudio::MasterReadout scopeFrame_, publishedMaster_;
     juce::SpinLock masterPublishLock_;

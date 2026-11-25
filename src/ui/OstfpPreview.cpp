@@ -819,7 +819,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
         mix.recordCycle = {first, last};
         mix.cycleEnabled = bool(cycle["enabled"]);
     }
-    mix.routing.busCount = mix.routing.returnCount = 0;
+    mix.routing.busCount = mix.routing.returnCount = minMixerOutputsPerKind;
     mix.tracks.resize(voicingIndex + static_cast<std::size_t>(voicingMix.isObject()));
     mix.midiRoutes.resize(mix.tracks.size());
     mix.instruments.resize(mix.tracks.size());

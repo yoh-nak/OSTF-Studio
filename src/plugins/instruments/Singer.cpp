@@ -15,11 +15,11 @@ class SyllableVoice {
         const double previousHz = hz;
         if (!connected) { envelope = 0; recorded = nullptr; }
         channel = ch; key = pitch; gain = velocity;
-        if (!connected) phase = 0;
+        if (!connected) { phase = 0; phraseFrames = 0; }
         released = false; noteAge = 0;
         articulate(p, sr, bank);
         hz = juce::MidiMessage::getMidiNoteInHertz(pitch);
-        glideCents = connected ? std::clamp(1200 * std::log2(previousHz / hz), -90., 90.) : 0.;
+        glideCents = connected ? std::clamp(520 * std::log2(previousHz / hz), -165., 165.) : 0.;
         if (!connected) for (auto& res : resonators) res.y1 = res.y2 = 0;
     }
     void articulate(Phone p, double sr, const VoiceBank* bank) {
@@ -63,18 +63,18 @@ class SyllableVoice {
     float sample(double sr, double bendRatio, float expression) {
         envelope = std::clamp(envelope + (released ? -36.0 : 110.0) / sr, 0.0, 1.0);
         if (released && envelope == 0) { key = channel = -1; return 0; }
-        const double time = age++ / sr, held = noteAge++ / sr;
+        const double time = age++ / sr, held = noteAge++ / sr, phrase = phraseFrames++ / sr;
         if (phone.onset == closure) return 0;
         const double strength = phone.intensity / 127.0;
         double cents = 0;
         if (phone.delivery == vibrato) cents = vibratoCents(time,strength);
         if (phone.delivery == scoop) cents = scoopCents(time,strength);
-        const double settling = std::max(0., 1. - held / .045);
+        const double settling = std::max(0., 1. - held / .060);
         cents += glideCents * settling * settling;
         const double sustain = std::clamp((held - .15) / .28, 0., 1.);
         if (phone.delivery == plain && sustain > 0)
-            cents += sustain * (10 * std::sin((28. + .05 * key) * held + .28 * std::sin(4.7 * held))
-                              + 3 * std::sin(10.1 * held + .2 * key));
+            cents += sustain * (10 * std::sin(30. * phrase + .38 * std::sin(4.7 * phrase))
+                              + 3 * std::sin(10.1 * phrase + .2 * key));
         const auto pitch = hz * bendRatio * (cents == 0 ? 1 : std::exp2(cents / 1200));
         const auto level = gain * envelope * expression * (1. - sustain * (.035 + .025 * std::sin(6.3 * held)));
         if (englishSound) {
@@ -85,8 +85,12 @@ class SyllableVoice {
                 // Stretch the middle of the vowel and leave time for the off-glide.
                 const double fraction = phone.durationMs ? std::clamp(time * 1000 / phone.durationMs, 0., 1.)
                                                         : std::min(.85, time / .24);
-                const auto centre = length * (.10 + .76 * fraction);
+                const auto centre = length * (.10 + .76 * fraction * fraction * (3. - 2. * fraction));
                 tone = grain(sound, centre, pitch, sr);
+            } else if ((phone.english & 63) >= 25 && (phone.english & 63) <= 28 && !sound.pitchMarks.empty()) {
+                // Carry the sung pitch through L, M, N and NG into the vowel.
+                const double fraction = std::min(1., time / std::max(.025, phone.durationMs * .001));
+                tone = grain(sound, length * (.13 + .70 * fraction), pitch, sr);
             } else {
                 const double seconds = phone.durationMs ? phone.durationMs / 1000. : .055;
                 const double pos = time * length / seconds;
@@ -103,14 +107,18 @@ class SyllableVoice {
                 step = std::lerp(recorded->rate / sr, tunedStep, mix);
             }
             recording = recorded->read(position, step);
-            if (!vowelSample && recorded->period > 0 && time > .085) {
-                const double amount = std::min(1., (time - .085) / .055);
-                // Scan the recorded vowel independently of the destination pitch.
-                // Reverse only the order of source epochs; each grain still plays forwards.
-                const double low = recorded->loopStart;
-                const double span = std::max(1., double(recorded->loopEnd - recorded->fade) - low);
-                const double travel = std::fmod((time - .085) * recorded->rate * .68, 2. * span);
-                const auto sustained = grain(*recorded, low + span - std::abs(span - travel), pitch, sr);
+            const double onset = std::max(.067, recorded->consonantFrames / recorded->rate);
+            if (!vowelSample && recorded->period > 0 && time > onset) {
+                const double amount = std::min(1., (time - onset) / .040);
+                const double low = std::max(double(recorded->consonantFrames), std::min(onset * recorded->rate, double(recorded->loopStart)));
+                const double high = std::max(low, .82 * recorded->frames.size() - recorded->period);
+                // Advance once through the voiced recording over the scored duration.
+                // A live MIDI note has no known end, so approach its sustain gradually.
+                const double elapsed = time - onset;
+                const double fraction = phone.durationMs > 0
+                    ? std::min(1., elapsed / std::max(.020, phone.durationMs * .001 - onset))
+                    : elapsed / (elapsed + .23);
+                const auto sustained = grain(*recorded, std::lerp(low, high, fraction), pitch, sr);
                 recording = std::lerp(recording, sustained, float(amount));
             }
         }
@@ -179,7 +187,7 @@ class SyllableVoice {
     Phone phone;
     double hz{}, phase{}, gain{}, envelope{}, position{}, transition{}, previousNoise{};
     unsigned noise = 1397;
-    uint64_t age = 0, noteAge = 0;
+    uint64_t age = 0, noteAge = 0, phraseFrames = 0;
     bool released = false, nasal = false, stop = false, voiced = false, fricative = false, vowelSample = false;
 };
 // During a connected syllable change keep rendering the outgoing vowel at its

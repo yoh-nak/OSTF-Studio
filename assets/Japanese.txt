@@ -1160,3 +1160,5 @@ countries: jp
 "Start bar" = "開始小節"
 
 "Length in bars" = "長さ（小節）"
+
+"Meter details" = "メーター詳細"

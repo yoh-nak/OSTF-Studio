@@ -5,6 +5,7 @@
 #include <span>
 
 namespace ostfstudio {
+inline constexpr std::size_t minMixerOutputsPerKind = 1;
 inline constexpr std::size_t maxMixerReturns = 8;
 
 inline constexpr std::size_t maxMixerBuses = 8;
@@ -40,9 +41,13 @@ struct MixerRouting {
         if (!row) return 0;
         return row <= busCount ? busOutput(row - 1) : returnOutput(row - 1 - busCount);
     }
+    bool canRemoveOutput(std::size_t slot) const {
+        return slot != 0 && hasOutput(slot)
+            && (isReturnOutput(slot) ? returnCount : busCount) > minMixerOutputsPerKind;
+    }
     // Remove a strip in mixer order, preserving sends and destinations of the surviving strips.
     void removeOutput(std::size_t slot, std::span<ChannelMix> channels) {
-        if (!slot || !hasOutput(slot)) return;
+        if (!canRemoveOutput(slot)) return;
         const bool send = isReturnOutput(slot);
         const auto index = send ? outputReturnIndex(slot) : outputBusIndex(slot);
         auto& count = send ? returnCount : busCount;

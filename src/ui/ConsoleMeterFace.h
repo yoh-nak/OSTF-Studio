@@ -51,6 +51,83 @@ inline void drawVu(juce::Graphics& g, juce::Rectangle<float> bounds, float ampli
     g.fillRoundedRectangle(59, 68, 34, 9, 4);
 }
 
+inline void drawChannelVu(juce::Graphics& g, juce::Rectangle<float> bounds, StereoPeak levels, int channels,
+                          const juce::String& label) {
+    if (channels == 1) {
+        drawVu(g,bounds,std::max(levels[0],levels[1]),label);
+        return;
+    }
+    auto left = bounds.removeFromLeft(bounds.getWidth() * .5f);
+    drawVu(g,left.reduced(1,0),levels[0],"L   " + label);
+    drawVu(g,bounds.reduced(1,0),levels[1],"R   " + label);
+}
+
+inline void drawMasterDetails(juce::Graphics& g, juce::Rectangle<float> bounds, const MasterReadout& data,
+                              const std::array<float,31>& bands) {
+    g.setColour(juce::Colour(0xff101b20));
+    g.fillRoundedRectangle(bounds,4.f);
+    auto area = bounds.reduced(7,5);
+    const auto mint = juce::Colour(0xff94e5d3), dim = juce::Colour(0xffadbfca), amber = juce::Colour(0xffffc47a);
+    auto number = [](double value) { return std::isfinite(value) ? juce::String(value,1) : juce::String::charToString(0x2014); };
+    auto db = [&](float amplitude) { return number(amplitude > 0 ? 20.0*std::log10(amplitude) : -INFINITY); };
+    auto cell = [&](juce::Rectangle<float> rect, juce::String title, juce::String value) {
+        g.setFont(juce::FontOptions(10.f)); g.setColour(dim);
+        g.drawText(title,rect.removeFromTop(13),juce::Justification::centredLeft);
+        g.setFont(juce::FontOptions(16.f,juce::Font::bold)); g.setColour(mint);
+        g.drawText(value,rect,juce::Justification::centredLeft);
+    };
+    const auto& levels = data.levels;
+    const auto width = area.getWidth()/3;
+    auto row = area.removeFromTop(34);
+    cell(row.removeFromLeft(width),"M  LUFS",number(levels.momentary));
+    cell(row.removeFromLeft(width),"S  LUFS",number(levels.shortTerm));
+    cell(row,"I  LUFS",number(levels.integrated));
+    row = area.removeFromTop(34);
+    cell(row.removeFromLeft(width),"RMS  dBFS",db(std::max(levels.rms[0],levels.rms[1])));
+    cell(row.removeFromLeft(width),"PEAK  dBFS",db(std::max(levels.peak[0],levels.peak[1])));
+    cell(row,"MAX  dBTP",db(std::max(levels.maxTruePeak[0],levels.maxTruePeak[1])));
+    g.setFont(juce::FontOptions(10.f));
+    auto bipolar = [&](juce::String label, double value, bool valid) {
+        auto line = area.removeFromTop(17);
+        g.setColour(dim); g.drawText(label,line.removeFromLeft(83),juce::Justification::centredLeft);
+        g.drawText(valid ? juce::String(value,2) : juce::String::charToString(0x2014),
+                   line.removeFromRight(37),juce::Justification::centredRight);
+        auto bar = line.reduced(2,6);
+        g.setColour(juce::Colour(0xff3f555c)); g.fillRect(bar);
+        g.setColour(dim); g.drawVerticalLine(int(bar.getCentreX()),bar.getY()-2,bar.getBottom()+2);
+        if (valid) { g.setColour(amber); g.fillRect(float(bar.getX()+(.5+.5*value)*bar.getWidth())-1.5f,bar.getY()-1,3.f,bar.getHeight()+2); }
+    };
+    const auto sum = levels.rms[0]+levels.rms[1];
+    bipolar("BALANCE  L/R",sum > 0 ? (levels.rms[1]-levels.rms[0])/sum : 0.,sum > 0);
+    bipolar("PHASE  -1/+1",levels.correlation,levels.hasCorrelation);
+    g.setColour(dim); g.drawText("SHORT-TERM   /   60 s",area.removeFromTop(17),juce::Justification::centredLeft);
+    auto plot = area.removeFromTop(area.getHeight() * .44f);
+    auto y = [&](float level) { return plot.getBottom()-plot.getHeight()*std::clamp((level+60.f)/60.f,0.f,1.f); };
+    for (int tick : {-12,-24,-36,-48}) {
+        g.setColour(juce::Colour(0xff35454a)); g.drawHorizontalLine(int(y(float(tick))),plot.getX(),plot.getRight());
+    }
+    juce::Path history;
+    bool connected = false;
+    const auto size = unsigned(data.shortHistory.size());
+    for (unsigned i=0;i<data.historyCount;++i) {
+        const auto sample = data.shortHistory[(data.historyWrite+size-data.historyCount+i)%size];
+        if (!std::isfinite(sample)) { connected=false; continue; }
+        const float x = plot.getX()+plot.getWidth()*float(size-data.historyCount+i)/(size-1);
+        if (connected) history.lineTo(x,y(sample)); else history.startNewSubPath(x,y(sample));
+        connected=true;
+    }
+    g.setColour(mint); g.strokePath(history,juce::PathStrokeType(1.5f));
+    g.setColour(dim); g.drawText("SPECTRUM   /   31 BANDS",area.removeFromTop(17),juce::Justification::centredLeft);
+    auto scale=area.removeFromBottom(13);
+    g.drawText("20 Hz",scale,juce::Justification::centredLeft);
+    g.drawText("20 kHz",scale,juce::Justification::centredRight);
+    const float step=area.getWidth()/bands.size();
+    for (size_t i=0;i<bands.size();++i) {
+        const auto h=area.getHeight()*std::clamp((juce::Decibels::gainToDecibels(bands[i],-72.f)+72.f)/72.f,0.f,1.f);
+        g.setColour(mint); g.fillRect(area.getX()+i*step,area.getBottom()-h,std::max(1.f,step-1),h);
+    }
+}
+
 inline void drawPhaseScope(juce::Graphics& g, juce::Rectangle<float> bounds, const MasterReadout& data) {
     if (bounds.isEmpty()) return;
     g.setColour(juce::Colour(0xff101b1b));

@@ -29,6 +29,7 @@ public:
             entries_.emplace(clip.regionId, shared);
             auto& entry = *shared;
             entry.rate = reader->sampleRate;
+            entry.channels = static_cast<int>(reader->numChannels);
             entry.frames = reader->lengthInSamples;
             entry.thumbnail = std::make_unique<juce::AudioThumbnail>(64, formats_, cache_);
             entry.thumbnail->addChangeListener(this);
@@ -45,6 +46,10 @@ public:
         const auto it = entries_.find(clip.regionId);
         if (it == entries_.end()) return 0;
         return clock.tickAt(clock.secondsAt(clip.sourceTick()) + double(sourceFrames(clip, *it->second)) / it->second->rate) - clip.sourceTick();
+    }
+    int channelCount(const ostfstudio::ProjectAudio& clip) const {
+        const auto it = entries_.find(clip.regionId);
+        return it == entries_.end() ? clip.channels : it->second->channels;
     }
     double endTick(const ostfstudio::ProjectAudio& clip, const ostfstudio::TempoMap& clock) const {
         if (clip.durationTicks > 0) return double(clip.startTick + clip.durationTicks);
@@ -117,6 +122,7 @@ private:
     struct Entry {
         double rate = 0;
         juce::int64 frames = 0;
+        int channels = 0;
         std::unique_ptr<juce::AudioThumbnail> thumbnail;
     };
     static juce::int64 sourceFrames(const ostfstudio::ProjectAudio& clip, const Entry& e) {

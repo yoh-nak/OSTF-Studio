@@ -5,7 +5,7 @@
 #include <numeric>
 
 namespace {
-constexpr int stripWidth = 166, outputWidth = 108, masterWidth = 284;
+constexpr int stripWidth = 246, outputWidth = 200, masterWidth = 304;
 
 const char* groupName(ostfstudio::MixerTrackGroup group) {
     using enum ostfstudio::MixerTrackGroup;
@@ -20,6 +20,28 @@ const char* groupName(ostfstudio::MixerTrackGroup group) {
 }
 }
 
+MixerPanel::Send::Send() {
+    addAndMakeVisible(name);
+    addAndMakeVisible(knob);
+    knob.getProperties().set("consoleHardware", true);
+    knob.setRange(0,100,1);
+    knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    knob.setTextBoxStyle(juce::Slider::TextBoxBelow,false,46,16);
+    knob.setTextValueSuffix("%");
+    name.setFont(juce::FontOptions(11.f,juce::Font::bold));
+}
+void MixerPanel::Send::resized() {
+    auto row=getLocalBounds();
+    name.setBounds(row.removeFromTop(15));
+    knob.setBounds(row.removeFromLeft(74));
+    dial=row;
+}
+void MixerPanel::Send::paint(juce::Graphics& g) {
+    g.setColour(juce::Colour(0xff546068));
+    g.drawHorizontalLine(0,0.f,float(getWidth()));
+    ostfstudio::console::drawChannelVu(g,dial.reduced(1,2).toFloat(),vu,2,"SEND");
+}
+
 MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, bool track) : isTrack(track) {
     for (auto* label : {&name, &classification, &status}) label->setInterceptsMouseClicks(false, false);
     name.setText(title, juce::dontSendNotification);
@@ -29,6 +51,8 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
     classification.setColour(juce::Label::textColourId, juce::Colour(0xffe7b46c));
     classification.setFont(juce::FontOptions(11.0f));
     status.setJustificationType(juce::Justification::centred);
+    volume.getProperties().set("consoleHardware", true);
+    pan.getProperties().set("consoleHardware", true);
     volume.setName(title + " volume");
     volume.setSliderStyle(juce::Slider::LinearVertical);
     volume.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 58, 18);
@@ -36,6 +60,10 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
     volume.setValue(0.0, juce::dontSendNotification);
     volume.setDoubleClickReturnValue(true, 0.0);
     volume.setTextValueSuffix(" dB");
+    pluginViewport.setViewedComponent(&pluginRack, false);
+    pluginViewport.setScrollBarsShown(true, false);
+    pluginViewport.setScrollBarThickness(6);
+    addAndMakeVisible(pluginViewport);
     addAndMakeVisible(name);
     addAndMakeVisible(classification);
     addAndMakeVisible(volume);
@@ -67,12 +95,10 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
         output.setTitle(title + " output");
         output.addItem(TRANS("Out: Master"), 1);
         output.setSelectedId(1, juce::dontSendNotification);
-        returnTarget.setTitle(title + " return send");
-        sendLevel.setName(title + " send level");
-        sendLevel.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        sendLevel.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 44, 16);
-        sendLevel.setTextValueSuffix("%");
-        sendLevel.setRange(0, 100, 1);
+        sendViewport.setViewedComponent(&sendRack,false);
+        sendViewport.setScrollBarsShown(true,false);
+        sendViewport.setScrollBarThickness(7);
+        addAndMakeVisible(sendViewport);
         pan.setName(title + " pan");
         pan.setRange(-100, 100, 1);
         pan.setDoubleClickReturnValue(true, 0.0);
@@ -82,8 +108,6 @@ MixerPanel::Strip::Strip(const juce::String& title, const juce::String& group, b
         addAndMakeVisible(solo);
         addAndMakeVisible(cue);
         addAndMakeVisible(output);
-        addAndMakeVisible(returnTarget);
-        addAndMakeVisible(sendLevel);
     }
 }
 
@@ -94,20 +118,30 @@ void MixerPanel::Strip::resized() {
     status.setBounds(area.removeFromBottom(17));
     if (listenOnMain) listenOnMain->setBounds(area.removeFromBottom(21));
     if (!isTrack && mute.isVisible()) mute.setBounds(area.removeFromBottom(21).withSizeKeepingCentre(40, 21));
-    diagnostics = {};
-    if (isMaster) diagnostics = area.removeFromTop(std::min(248, area.getHeight() * 2 / 3));
+    diagnostics = isMaster ? juce::Rectangle<int>{} : area.removeFromTop(isTrack ? 71 : 63);
+    auto pluginSpace = area.removeFromTop(22 * std::min<int>(2, static_cast<int>(entries.size())));
+    pluginViewport.setBounds(pluginSpace);
+    const int rowHeight = 22, rows = int(pluginRows.size());
+    pluginRack.setSize(std::max(1,pluginSpace.getWidth() - (rows > 2 ? 6 : 0)), rows * rowHeight);
+    for (int i = 0; i < rows; ++i)
+        pluginRows[size_t(i)]->setBounds(0,i*rowHeight,pluginRack.getWidth(),rowHeight-1);
+    if (isMaster) {
+        analysisButton.setBounds(area.removeFromTop(23).reduced(1));
+        diagnostics = area.removeFromTop(std::min(300, area.getHeight() * 3 / 4));
+    }
     if (isTrack) {
         output.setBounds(area.removeFromTop(21).reduced(0, 1));
-        returnTarget.setBounds(area.removeFromTop(20).reduced(0, 1));
-        auto knobs = area.removeFromTop(62).withTrimmedTop(13);
-        pan.setBounds(knobs.removeFromLeft(knobs.getWidth() / 2));
-        sendLevel.setBounds(knobs);
-        diagnostics = area.removeFromTop(std::min(85, area.getHeight()));
+        const int count = int(sends.size());
+        sendViewport.setBounds(area.removeFromTop(89 * std::min(2,count)));
+        sendRack.setSize(std::max(1, sendViewport.getWidth() - (count > 2 ? 7 : 0)), 89 * count);
+        for (int i=0;i<count;++i) sends[size_t(i)]->setBounds(0,89*i,sendRack.getWidth(),89);
         auto switches = area.removeFromBottom(21);
         mute.setBounds(switches.removeFromLeft(switches.getWidth() / (arm.isVisible() ? 4 : 3)));
         solo.setBounds(switches.removeFromLeft(switches.getWidth() / (arm.isVisible() ? 3 : 2)));
         if (arm.isVisible()) arm.setBounds(switches.removeFromLeft(switches.getWidth() / 2));
         cue.setBounds(switches);
+        auto panArea = area.removeFromLeft(std::min(80,area.getWidth()/3));
+        pan.setBounds(panArea.removeFromTop(96).withTrimmedTop(14));
     }
     if (isMaster) area = area.withSizeKeepingCentre(std::min(100, area.getWidth()), area.getHeight());
     else meter.setBounds(area.removeFromRight(36).withTrimmedBottom(20).reduced(0, 2));
@@ -119,11 +153,60 @@ void MixerPanel::updateMeters(const ostfstudio::MeterFrame& frame, double now) {
         auto& strip = *strips_[i];
         strip.meter.update(frame.tracks[i], now);
         if (strip.vu != frame.vu[i]) { strip.vu = frame.vu[i]; strip.repaint(strip.diagnostics); }
+        for (size_t r=0;r<strip.sends.size();++r) {
+            auto& row = *strip.sends[r];
+            if (row.vu != frame.sendVu[i][r]) { row.vu = frame.sendVu[i][r]; row.repaint(row.dial); }
+        }
     }
-    for (std::size_t i = 0; i < buses_.size(); ++i) buses_[i]->meter.update(frame.outputs[ostfstudio::busOutput(i)], now);
-    for (std::size_t i = 0; i < returns_.size(); ++i) returns_[i]->meter.update(frame.outputs[3 + i], now);
+    auto output = [&](Strip& strip, const auto& vu, const auto& peak) {
+        strip.meter.update(peak, now);
+        if (strip.vu != vu) { strip.vu = vu; strip.repaint(strip.diagnostics); }
+    };
+    for (size_t i = 0; i < buses_.size(); ++i) {
+        const auto slot = ostfstudio::busOutput(i);
+        output(*buses_[i], frame.outputVu[slot], frame.outputs[slot]);
+    }
+    for (size_t i = 0; i < returns_.size(); ++i) {
+        const auto slot = ostfstudio::returnOutput(i);
+        output(*returns_[i], frame.outputVu[slot], frame.outputs[slot]);
+    }
     if (master_) { master_->meter.update(frame.outputs[0], now); master_->analysis = frame.master; master_->repaint(master_->diagnostics); }
-    if (cue_) cue_->meter.update(frame.cue, now);
+    if (cue_) output(*cue_,frame.cueVu,frame.cue);
+}
+
+bool MixerPanel::showingAnalysis() const {
+    return isShowing() && master_ && master_->analysisButton.getToggleState();
+}
+void MixerPanel::setSpectrum(const std::array<float,31>& bands) {
+    if (master_) { master_->bands = bands; master_->repaint(master_->diagnostics); }
+}
+
+void MixerPanel::setStripPlugins(bool output, size_t index, int channels, std::vector<PluginEntry> entries) {
+    Strip* strip = nullptr;
+    if (!output && index < strips_.size()) strip = strips_[index].get();
+    if (output && routing_.hasOutput(index)) {
+        if (index == 0) strip = master_.get();
+        else if (ostfstudio::isReturnOutput(index)) strip = returns_[ostfstudio::outputReturnIndex(index)].get();
+        else strip = buses_[ostfstudio::outputBusIndex(index)].get();
+    }
+    if (!strip) return;
+    if (strip->meterChannels != channels) {
+        strip->meterChannels = channels; strip->repaint(strip->diagnostics);
+    }
+    if (strip->entries == entries) return;
+    strip->entries = std::move(entries);
+    strip->pluginRows.clear();
+    for (const auto& entry : strip->entries) {
+        auto row = std::make_unique<juce::TextButton>(entry.name);
+        row->setTitle(entry.name);
+        row->setTooltip(entry.name);
+        row->setEnabled(entry.available);
+        row->setColour(juce::TextButton::buttonColourId,juce::Colour(entry.slot < 0 ? 0xff23484b : 0xff29343b));
+        row->onClick = [this,output,index,slot=entry.slot] { if (openPlugin) openPlugin(output,index,slot); };
+        strip->pluginRack.addAndMakeVisible(*row);
+        strip->pluginRows.push_back(std::move(row));
+    }
+    strip->resized();
 }
 
 void MixerPanel::setRecordState(std::size_t track, bool armed, bool enabled) {
@@ -135,11 +218,15 @@ void MixerPanel::setRecordState(std::size_t track, bool armed, bool enabled) {
 }
 
 void MixerPanel::clearMeters() {
-    for (auto& strip : strips_) { strip->meter.clear(); strip->vu = 0; strip->repaint(); }
-    for (auto& strip : buses_) strip->meter.clear();
-    for (auto& strip : returns_) strip->meter.clear();
-    if (master_) { master_->meter.clear(); master_->analysis = {}; master_->repaint(); }
-    if (cue_) cue_->meter.clear();
+    auto clear = [](Strip& strip) {
+        strip.meter.clear(); strip.vu = {}; strip.repaint();
+        for (auto& send : strip.sends) { send->vu = {}; send->repaint(); }
+    };
+    for (auto& strip : strips_) clear(*strip);
+    for (auto& strip : buses_) clear(*strip);
+    for (auto& strip : returns_) clear(*strip);
+    if (master_) { master_->analysis = {}; master_->bands = {}; clear(*master_); }
+    if (cue_) clear(*cue_);
 }
 
 void MixerPanel::Strip::paint(juce::Graphics& g) {
@@ -152,22 +239,22 @@ void MixerPanel::Strip::paint(juce::Graphics& g) {
     g.drawRoundedRectangle(bounds.reduced(.5f), 4.f, 1.f);
     if (!diagnostics.isEmpty()) {
         auto box = diagnostics.reduced(1, 2).toFloat();
-        if (isMaster) {
+        if (isMaster && analysisButton.getToggleState()) {
+            ostfstudio::console::drawMasterDetails(g, box, analysis, bands);
+        } else if (isMaster) {
             auto pair = box.removeFromTop(std::min(box.getWidth() * .255f, box.getHeight() * .44f));
             auto left = pair.removeFromLeft(pair.getWidth() * .5f);
             ostfstudio::console::drawVu(g, left.reduced(1, 0), analysis.vu[0], "L   VU");
             ostfstudio::console::drawVu(g, pair.reduced(1, 0), analysis.vu[1], "R   VU");
             ostfstudio::console::drawPhaseScope(g, box.withTrimmedTop(4), analysis);
         } else {
-            ostfstudio::console::drawVu(g, box, vu, "VU");
+            ostfstudio::console::drawChannelVu(g, box, vu, meterChannels, "VU");
         }
     }
     if (isTrack) {
         g.setColour(juce::Colour(0xffe1e4de));
         g.setFont(juce::FontOptions(11.f));
-        for (auto* knob : {&pan, &sendLevel})
-            g.drawText(knob == &pan ? TRANS("Pan") : TRANS("FX send"), knob->getX(), knob->getY()-13,
-                       knob->getWidth(), 13, juce::Justification::centred);
+        g.drawText(TRANS("Pan"),pan.getX(),pan.getY()-14,pan.getWidth(),14,juce::Justification::centred);
     }
 }
 
@@ -244,16 +331,6 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
         strip->output.onChange = [this, i, controls] {
             setOutputBus(i, controls->output.getSelectedId() - 2);
         };
-        strip->returnTarget.onChange = [this, i, controls] {
-            const auto id = controls->returnTarget.getSelectedId();
-            if (id > 0) controls->sendLevel.setValue(channels_[i].returnSends[static_cast<std::size_t>(id - 1)] * 100.0,
-                                                     juce::dontSendNotification);
-        };
-        strip->sendLevel.onValueChange = [this, i, controls] {
-            const auto id = controls->returnTarget.getSelectedId();
-            if (id <= 0) return;
-            setSendLevel(i, static_cast<std::size_t>(id - 1), static_cast<float>(controls->sendLevel.getValue() / 100.0));
-        };
         rack_.addAndMakeVisible(*strip);
         strips_.push_back(std::move(strip));
     }
@@ -262,6 +339,9 @@ void MixerPanel::setTracks(const ostfstudio::OstfpPreview& project) {
     addBus();
     master_ = std::make_unique<Strip>(TRANS("Master"), "OUTPUT", false);
     master_->isMaster = true;
+    master_->addAndMakeVisible(master_->analysisButton);
+    master_->analysisButton.setClickingTogglesState(true);
+    master_->analysisButton.onClick = [this] { master_->repaint(master_->diagnostics); };
     cue_ = std::make_unique<Strip>("Cue", "MONITOR", false);
     cue_->status.setTitle(TRANS("Cue output"));
     master_->contextMenu = [this] { if (rowMenu) rowMenu(true, 0); };
@@ -311,12 +391,12 @@ void MixerPanel::renameOutput(std::size_t slot, const juce::String& name) {
     auto* strip = slot == 0 ? master_.get() : send ? returns_[ostfstudio::outputReturnIndex(slot)].get()
                                                   : buses_[ostfstudio::outputBusIndex(slot)].get();
     strip->name.setText(label, juce::dontSendNotification);
+    if (send) { updateReturnOptions(); return; }
     for (auto& track : strips_) {
-        auto& selector = send ? track->returnTarget : track->output;
-        const auto id = send ? static_cast<int>(ostfstudio::outputReturnIndex(slot) + 1)
-                             : slot == 0 ? 1 : static_cast<int>(ostfstudio::outputBusIndex(slot) + 2);
+        auto& selector = track->output;
+        const auto id = slot == 0 ? 1 : static_cast<int>(ostfstudio::outputBusIndex(slot) + 2);
         const bool selected = selector.getSelectedId() == id;
-        selector.changeItemText(id, (send ? TRANS("Send: ") : TRANS("Out: ")) + label);
+        selector.changeItemText(id, TRANS("Out: ") + label);
         if (selected) selector.setSelectedId(id, juce::dontSendNotification);
     }
 }
@@ -359,13 +439,27 @@ void MixerPanel::addReturn() {
 }
 
 void MixerPanel::updateReturnOptions() {
-    for (auto& strip : strips_) {
-        const auto chosen = std::max(1, strip->returnTarget.getSelectedId());
-        strip->returnTarget.clear(juce::dontSendNotification);
-        for (std::size_t i = 0; i < routing_.returnCount; ++i)
-            strip->returnTarget.addItem(TRANS("Send: ") + outputName(ostfstudio::returnOutput(i)), static_cast<int>(i + 1));
-        strip->returnTarget.setSelectedId(std::min(chosen, static_cast<int>(routing_.returnCount)), juce::dontSendNotification);
-        strip->sendLevel.setEnabled(routing_.returnCount != 0);
+    for (size_t t=0;t<strips_.size();++t) {
+        auto& strip = *strips_[t];
+        strip.sends.resize(routing_.returnCount);
+        for (size_t r=0;r<strip.sends.size();++r) {
+            auto& send = strip.sends[r];
+            if (!send) {
+                send = std::make_unique<Send>();
+                strip.sendRack.addAndMakeVisible(*send);
+                send->knob.onValueChange = [this,t,r,knob=&send->knob] {
+                    setSendLevel(t,r,float(knob->getValue()/100.));
+                };
+            }
+            const auto label = TRANS("Send: ") + outputName(ostfstudio::returnOutput(r));
+            send->name.setText(label,juce::dontSendNotification);
+            send->name.setTooltip(label);
+            send->knob.setName(strip.name.getText() + " / " + label);
+            send->knob.setTitle(send->knob.getName());
+            send->knob.setTooltip(label);
+            send->knob.setValue(channels_[t].returnSends[r]*100.,juce::dontSendNotification);
+        }
+        strip.resized();
     }
 }
 
@@ -395,8 +489,7 @@ void MixerPanel::setOutputBus(std::size_t index, int bus) {
 void MixerPanel::setSendLevel(std::size_t index, std::size_t target, float level) {
     if (target >= routing_.returnCount) return;
     channels_[index].returnSends[target] = std::clamp(level, 0.0f, 1.0f);
-    if (strips_[index]->returnTarget.getSelectedId() == static_cast<int>(target + 1))
-        strips_[index]->sendLevel.setValue(channels_[index].returnSends[target] * 100.0, juce::dontSendNotification);
+    strips_[index]->sends[target]->knob.setValue(channels_[index].returnSends[target] * 100.0, juce::dontSendNotification);
     if (routingChanged) routingChanged();
 }
 
@@ -445,23 +538,25 @@ ostfstudio::SessionMix MixerPanel::snapshot() const {
 
 void MixerPanel::restore(const ostfstudio::SessionMix& mix) {
     if (mix.tracks.size() != channels_.size() && mix.tracks.size() + 1 != channels_.size()) return;
-    if (routing_.busCount > mix.routing.busCount) {
+    const auto buses = std::clamp(mix.routing.busCount, ostfstudio::minMixerOutputsPerKind, ostfstudio::maxMixerBuses);
+    const auto returns = std::clamp(mix.routing.returnCount, ostfstudio::minMixerOutputsPerKind, ostfstudio::maxMixerReturns);
+    if (routing_.busCount > buses) {
         for (auto& strip : strips_) {
             strip->output.clear(juce::dontSendNotification);
             strip->output.addItem(TRANS("Out: Master"), 1);
-            for (std::size_t i = 0; i < mix.routing.busCount; ++i)
+            for (std::size_t i = 0; i < buses; ++i)
                 strip->output.addItem(TRANS("Out: ") + busName(i), static_cast<int>(i + 2));
         }
-        buses_.resize(mix.routing.busCount);
-        routing_.busCount = mix.routing.busCount;
+        buses_.resize(buses);
+        routing_.busCount = buses;
     }
-    while (routing_.busCount < std::min(mix.routing.busCount, ostfstudio::maxMixerBuses)) addBus();
-    if (routing_.returnCount > mix.routing.returnCount) {
-        returns_.resize(mix.routing.returnCount);
-        routing_.returnCount = mix.routing.returnCount;
+    while (routing_.busCount < buses) addBus();
+    if (routing_.returnCount > returns) {
+        returns_.resize(returns);
+        routing_.returnCount = returns;
         updateReturnOptions();
     }
-    while (routing_.returnCount < std::min(mix.routing.returnCount, ostfstudio::maxMixerReturns)) addReturn();
+    while (routing_.returnCount < returns) addReturn();
     outputNames_ = mix.outputNames;
     for (std::size_t slot = 0; slot < outputNames_.size(); ++slot)
         if (routing_.hasOutput(slot)) renameOutput(slot, mix.outputNames[slot]);
@@ -483,8 +578,8 @@ void MixerPanel::restore(const ostfstudio::SessionMix& mix) {
         strip.solo.setToggleState(track.soloed, juce::dontSendNotification);
         strip.cue.setToggleState(track.cue, juce::dontSendNotification);
         strip.output.setSelectedId(track.outputBus + 2, juce::dontSendNotification);
-        const int r = strip.returnTarget.getSelectedId() - 1;
-        strip.sendLevel.setValue(r < 0 ? 0 : track.returnSends[static_cast<std::size_t>(r)] * 100.0, juce::dontSendNotification);
+        for (size_t r=0;r<strip.sends.size();++r)
+            strip.sends[r]->knob.setValue(track.returnSends[r]*100.,juce::dontSendNotification);
         if (channelChanged) channelChanged(i);
     }
     refreshAudibility();
@@ -504,13 +599,13 @@ void MixerPanel::resized() {
     addReturnButton_.setBounds(toolbar.removeFromRight(94).reduced(1));
     addBusButton_.setBounds(toolbar.removeFromRight(94).reduced(1));
     caption_.setBounds(toolbar);
-    const int height = std::max(360, area.getHeight() - viewport_.getScrollBarThickness());
-    masterViewport_.setBounds(area.removeFromLeft(std::min(masterWidth, area.getWidth() / 3)));
+    const int height = std::max(396 + 89 * std::min<int>(2,routing_.returnCount), area.getHeight() - viewport_.getScrollBarThickness());
+    masterViewport_.setBounds(area.removeFromRight(std::min(masterWidth, area.getWidth() / 3)));
     if (master_) {
         const int scroll = height > masterViewport_.getHeight() ? masterViewport_.getScrollBarThickness() : 0;
         master_->setSize(std::max(1, masterViewport_.getWidth() - scroll), height);
     }
-    area.removeFromLeft(6);
+    area.removeFromRight(6);
     const auto outputCount = static_cast<int>(buses_.size() + returns_.size()) + 1;
     const auto groupWidth = std::min(outputWidth * outputCount, area.getWidth() * 2 / 5);
     outputViewport_.setBounds(area.removeFromRight(groupWidth));

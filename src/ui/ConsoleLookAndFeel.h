@@ -74,7 +74,12 @@ public:
             }
         }
         const auto top = circle(.53f*r);
-        verticalGradient(g, top, 0xff646d6d, 0xff32383b);
+        if (slider.getProperties()["consoleHardware"]) {
+            juce::ColourGradient face(juce::Colour(0xff89918f), c.x - .29f*r, c.y - .36f*r,
+                                      juce::Colour(0xff282e32), c.x + .50f*r, c.y + .48f*r, true);
+            face.addColour(.48, juce::Colour(0xff545d60));
+            g.setGradientFill(face);
+        } else verticalGradient(g, top, 0xff646d6d, 0xff32383b);
         g.fillEllipse(top);
         g.setColour(juce::Colour(0xff111718));
         g.drawLine({at(.20f*r, angle), at(.65f*r, angle)}, std::max(3.f, .13f*r));
@@ -101,8 +106,9 @@ public:
             x = y = 0;
         }
         const float centre = x + w*.5f;
-        const float width = std::min(vertical ? 29.f : 16.f, w * .84f);
-        const float halfHeight = std::min(vertical ? 10.f : 5.f, h*.20f);
+        const bool hardware = vertical && static_cast<bool>(slider.getProperties()["consoleHardware"]);
+        const float width = std::min(vertical ? (hardware ? 35.f : 29.f) : 16.f, w * .84f);
+        const float halfHeight = std::min(vertical ? (hardware ? 12.f : 10.f) : 5.f, h*.20f);
         const auto rail = juce::Rectangle<float>(centre - 2.2f, (float)y, 4.4f, (float)h);
         g.setColour(juce::Colour(0xff687070));
         g.fillRoundedRectangle(rail.expanded(1.f), 2.6f);
@@ -140,6 +146,14 @@ public:
         metal.addColour(.76, juce::Colour(0xffe1e0d7));
         g.setGradientFill(metal);
         g.fillRoundedRectangle(cap, 2.f);
+        if (hardware && width >= 26.f && halfHeight >= 9.f) {
+            for (const float offset : {-7.f, -4.f, 4.f, 7.f}) {
+                g.setColour(juce::Colour(0x65707978));
+                g.drawHorizontalLine(juce::roundToInt(pos + offset), cap.getX()+3.f, cap.getRight()-3.f);
+                g.setColour(juce::Colour(0x66ffffff));
+                g.drawHorizontalLine(juce::roundToInt(pos + offset + 1.f), cap.getX()+3.f, cap.getRight()-3.f);
+            }
+        }
         g.setColour(juce::Colour(0xff20282b));
         g.fillRect(cap.getX()+1, pos-1.45f, width-2.f, 2.9f);
         g.setColour(slider.isEnabled() ? findColour(accentColourId) : juce::Colour(0xff939796));

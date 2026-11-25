@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Mixer send racks, right-hand master and singer articulation
+
+Branch `feat/master-meter-plugin-strips`. A return owns a named send knob on every source track in both the arrangement and the mixer. Both views update the same channel send. Long rows scroll horizontally in the header and vertically within a two-row mixer send rack. A rotary pan remains accessible beside them. Each output kind allows one through eight members, including restored legacy mixes. Delete and duplicate commands use the same limits.
+
+The stereo mixer measures track, individual send, bus, return and Cue signals independently. The fixed right master shows twin VUs and a phase scope, with optional loudness/true-peak, balance, correlation, history and spectrum displays. Mixer instrument and insert buttons open their existing host editors. The singer advances through the recorded Japanese vowel over the syllable duration, connects pitch across syllables and gives English consonants different articulation lengths. The A/B passage is in `build-visuals/console-singer-after.wav` and `build-visuals/mixer-singer-phrasing.wav`.
+
+Windows Release passed 31/31 tests, the core-only build passed 2/2 and the packaged host passed the lead/backing singer playback check. The verified portable is in `dist/windows-master-section/Portable` with 34 VST3 bundles. The layout snapshot in `build-visuals/master-section-mixer.png` uses deterministic meters. Hardware listening and macOS validation remain open. To free packaging space the Release host object files were hash-verified and archived under `E:/OSTF-Studio-build-cache/master-section-objects-3ed4d2d62ba54b769fb3638cfa01643f`. CMake regenerates them on rebuild.
+
 ## Console VUs, drum loop range and singer phrasing
 
 Branch `feat/console-meters-drum-loop-singer`. Source channels have needle VUs. The master at the far left has independent left/right VUs and a phase scope, tapped after master gain and before Cue selection. The numbered button beside the step-sequencer Loop switch sets a first bar and length. Paging the step editor preserves an explicit loop. The singer tracks source pitch marks, overlaps neighbouring syllables and fits English vowel transitions and consonants to their allocated duration.

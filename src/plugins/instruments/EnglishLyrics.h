@@ -48,16 +48,25 @@ inline std::vector<Phone> lyricPhones(const juce::String& reading) {
     return result;
 }
 
+// Approximate articulation time at normal singing tempo, in seconds.
+inline double consonantSeconds(int phone) {
+    switch (phone & 63) {
+        case 16: case 18: case 21: case 24: case 29: case 33: return .032; // stops
+        case 17: case 20: case 23: case 31: case 32: case 34: case 38: case 39: return .069; // noisy attacks
+        default: return .049;
+    }
+}
+
 inline std::vector<double> articulationPositions(const std::vector<Phone>& phones, double seconds) {
     std::vector<double> edges{0.0};
     double consonants = 0, nuclei = 0;
     for (const auto& p : phones) {
-        if ((p.english & 63) > 15) consonants += 1;
+        if ((p.english & 63) > 15) consonants += consonantSeconds(p.english);
         else nuclei += p.english & 64 ? 1.35 : 1.;
     }
-    const double consonantTime = nuclei > 0 ? std::min(.55, consonants * .055 / std::max(.001, seconds)) : 1.;
+    const double consonantTime = nuclei > 0 ? std::min(.55, consonants / std::max(.001, seconds)) : 1.;
     for (const auto& p : phones) {
-        const double duration = (p.english & 63) > 15 ? consonantTime / consonants
+        const double duration = (p.english & 63) > 15 ? consonantTime * consonantSeconds(p.english) / consonants
             : (1. - consonantTime) * (p.english & 64 ? 1.35 : 1.) / nuclei;
         edges.push_back(edges.back() + duration);
     }

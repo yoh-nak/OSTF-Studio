@@ -269,7 +269,11 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     studio.routeMidiPart(5, 1, 5);
     if (studio.trackControls_[5]->outputTrack != 1) return 222;
     studio.trackControls_[2]->plugin.onClick();
-    studio.trackControls_[5]->plugin.onClick();
+    studio.refreshMixerPlugins();
+    const auto memberButton = studio.trackControls_[1]->instance->getName() + "  #2 Ch 5";
+    auto* sharedEditorButton = findControl<juce::TextButton>(studio.mixer_, memberButton);
+    if (!sharedEditorButton || !sharedEditorButton->isEnabled()) return 225;
+    sharedEditorButton->onClick();
     if (!studio.trackControls_[0]->editor) return 219;
     if (!studio.trackControls_[1]->editor) return 224;
     if (studio.trackControls_[5]->editor) return 225;
@@ -378,7 +382,7 @@ private:
         for (int i=0; i<20; ++i) playback.renderBlock(audio.getArrayOfWritePointers(),2,block);
         const auto meters = playback.takeMeters();
         return meters.tracks[lead][0] > .001f && meters.tracks[backing][0] > .001f
-            && meters.vu[backing] > .001f && meters.master.vu[0] > .001f && meters.master.vu[1] > .001f
+            && meters.vu[backing][0] > .001f && meters.master.vu[0] > .001f && meters.master.vu[1] > .001f
             && std::any_of(meters.master.scope.begin(), meters.master.scope.end(), [](auto point) {
                 return point[0] != 0 || point[1] != 0;
             }) ? 0 : 13;
@@ -1336,8 +1340,11 @@ int checkTrackView(const juce::File& fixture) {
         if (!masterMute) return 258;
         const auto masterArea = mixer->getLocalArea(masterMute->getParentComponent(),masterMute->getParentComponent()->getLocalBounds());
         const auto trackArea = mixer->getLocalArea(output->getParentComponent(),output->getParentComponent()->getLocalBounds());
-        if (masterArea.getX() >= trackArea.getX() || masterArea.getWidth() <= trackArea.getWidth()
-            || mixer->getLocalPoint(cueStatus,juce::Point<int>{}).x <= masterArea.getRight()) return 258;
+        auto* outputViewport = cueStatus->findParentComponentOfClass<juce::Viewport>();
+        auto* sourceViewport = output->findParentComponentOfClass<juce::Viewport>();
+        if (!sourceViewport || !outputViewport || masterArea.getWidth() <= trackArea.getWidth()
+            || mixer->getLocalArea(sourceViewport, sourceViewport->getLocalBounds()).getRight() > outputViewport->getX()
+            || mixer->getLocalArea(outputViewport, outputViewport->getLocalBounds()).getRight() > masterArea.getX()) return 258;
         const auto returns = mixer->returnCount();
         for (auto bus = mixer->routing().busCount; bus < ostfstudio::maxMixerBuses; ++bus) {
             if (!addBus->isEnabled()) return 252;
@@ -1348,7 +1355,26 @@ int checkTrackView(const juce::File& fixture) {
             if (output->getText() != TRANS("Out: ") + MixerPanel::busName(bus)
                 || mixer->channel(size_t(tracks->getItemId(0) - 1)).outputBus != int(bus)) return 253;
         }
-        if (addBus->isEnabled() || !addReturn->isEnabled() || !click("Piano Roll")) return 254;
+        if (addBus->isEnabled() || !addReturn->isEnabled()) return 254;
+        const auto firstTrack = tracks->getItemText(0);
+        auto* pan = findControl<juce::Slider>(main, firstTrack + " pan");
+        if (!pan || pan->getSliderStyle() != juce::Slider::RotaryHorizontalVerticalDrag) return 259;
+        const size_t selected = size_t(tracks->getItemId(0) - 1);
+        auto sendTitle = [&](size_t r) {
+            return firstTrack + " / " + TRANS("Send: ") + mixer->outputName(ostfstudio::returnOutput(r));
+        };
+        for (auto r = returns; r < ostfstudio::maxMixerReturns; ++r) {
+            if (!addReturn->isEnabled()) return 259;
+            addReturn->onClick();
+            auto* knob = findControl<juce::Slider>(*mixer, sendTitle(r));
+            auto* header = findControl<juce::Slider>(*pan->getParentComponent(), sendTitle(r));
+            if (!knob || !header || header == knob || mixer->returnCount() != r + 1) return 259;
+            header->setValue(21, juce::sendNotificationSync);
+            if (knob->getValue() != 21) return 259;
+            knob->setValue(34, juce::sendNotificationSync);
+            if (header->getValue() != 34 || std::abs(mixer->channel(selected).returnSends[r] - .34f) > .001f) return 259;
+        }
+        if (addReturn->isEnabled() || !click("Piano Roll")) return 254;
     }
     if (!main.openDocument(fixture)) return 1;
     {

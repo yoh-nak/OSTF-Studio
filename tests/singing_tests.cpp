@@ -149,6 +149,9 @@ int main(int argc, char** argv) {
     midi.addEvent(phoneMessage(1,60,{1,0}),0);
     singer->processBlock(audio,midi);
     if (std::abs(audio.getSample(0,0)-uninterrupted) > 1.e-5f) return 23;
+    const auto cluster = lyricPhones("fast");
+    const auto timing = articulationPositions(cluster, .5);
+    if (cluster.size() != 4 || timing[1] <= 1. - timing[3] || std::abs(timing.back() - 1.) > 1.e-10) return 27;
     const auto edges = articulationPositions(word, .8);
     if (edges[2] - edges[1] < .8 || edges.back() != 1.) return 19;
     const auto vowel = render(word[1]), stop = render(word[2]);

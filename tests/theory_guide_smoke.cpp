@@ -285,10 +285,11 @@ int checkTheoryGuide(const juce::File& demo) {
         mixer.setLookAndFeel(&main.getLookAndFeel());
         mixer.setTracks(*project);
         if (project->savedMix) mixer.restore(*project->savedMix);
-        mixer.setSize(1350, 460);
+        mixer.addReturn();
+        mixer.setSize(2260, 680);
         ostfstudio::MeterFrame signal;
         signal.master.vu = {.78f,1.10f};
-        for (size_t i=0; i<signal.vu.size(); ++i) signal.vu[i] = .32f + .13f * (i % 6);
+        for (size_t i=0; i<signal.vu.size(); ++i) signal.vu[i] = {.32f + .13f * (i % 6), .42f + .16f * (i % 5)};
         for (size_t i=0; i<signal.master.scope.size(); ++i) {
             const double t = .10*i;
             signal.master.scope[i] = {float(.38*std::sin(t)), float(.33*std::sin(t+.7))};
