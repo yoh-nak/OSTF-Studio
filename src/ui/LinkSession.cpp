@@ -4,11 +4,20 @@
 #define ASIO_DISABLE_STD_COROUTINE
 #include <ableton/Link.hpp>
 #include <cmath>
+#include <thread>
 
 namespace ostfstudio {
 struct LinkSession::Impl {
     explicit Impl(double bpm) : link(bpm) { link.enableStartStopSync(true); link.enable(true); }
     ableton::Link link;
+    std::chrono::microseconds lastTransportCommit{-1};
+    void commitTransport(ableton::Link::SessionState session) {
+        // Link orders start/stop messages by their commit microsecond and drops
+        // equal timestamps. These commands run on the application thread.
+        while (link.clock().micros() <= lastTransportCommit) std::this_thread::yield();
+        link.commitAppSessionState(session);
+        lastTransportCommit = link.clock().micros();
+    }
 };
 LinkSession::LinkSession(double bpm) : impl_(std::make_unique<Impl>(bpm)) {}
 LinkSession::~LinkSession() = default;
@@ -32,7 +41,7 @@ void LinkSession::stop() {
     auto& link = impl_->link;
     auto session = link.captureAppSessionState();
     session.setIsPlaying(false, link.clock().micros());
-    link.commitAppSessionState(session);
+    impl_->commitTransport(session);
 }
 LinkSession::Launch LinkSession::followStart(double quantum) const {
     const auto& link = impl_->link;
@@ -51,8 +60,10 @@ std::int64_t LinkSession::startAt(double beat, double quantum, bool announce) {
     auto nowBeat = session.beatAtTime(earliest, quantum);
     auto boundary = beat + quantum * std::ceil((nowBeat - beat - 1e-8) / quantum);
     auto when = session.timeAtBeat(boundary, quantum);
-    if (announce) session.setIsPlaying(true, when);
-    link.commitAppSessionState(session);
+    if (announce) {
+        session.setIsPlaying(true, when);
+        impl_->commitTransport(session);
+    } else link.commitAppSessionState(session);
     return when.count();
 }
 }

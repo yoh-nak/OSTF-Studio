@@ -21,10 +21,28 @@ int main(int argc, char** argv) {
     studio.setTempo(108);
     auto before = studio.micros();
     auto start = studio.startAt(2, 4, true);
-    if (start < before || !studio.state(4).playing || std::abs(studio.state(4).tempo - 108) > .01) return 1;
+    // The Link network thread can finish publishing the previous commit
+    // between two application snapshots, even with only one local client.
+    auto reachesPlaying = [&](bool playing) {
+        const auto until = std::chrono::steady_clock::now()+std::chrono::milliseconds(250);
+        while (studio.state(4).playing != playing) {
+            if (std::chrono::steady_clock::now() >= until) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return true;
+    };
+    if (start < before || !reachesPlaying(true) || std::abs(studio.state(4).tempo - 108) > .01) return 1;
     studio.stop();
-    if (studio.state(4).playing) return 2;
-    if (argc == 1) return 0;
+    if (!reachesPlaying(false)) return 2;
+    if (argc == 1) {
+        for (int i=0; i<20; ++i) {
+            studio.startAt(0,4,true);
+            if (!reachesPlaying(true)) return 1;
+            studio.stop();
+            if (!reachesPlaying(false)) return 2;
+        }
+        return 0;
+    }
     ostfstudio::LinkSession peer(130);
     auto wait = [](auto check) {
         for (int i = 0; i < 120; ++i) {
