@@ -1,3 +1,4 @@
+#include "../StudioPluginEditor.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <atomic>
 #include <vector>
@@ -240,9 +241,9 @@ private:
     void changed(){connectLayers();sendChangeMessage();updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));}
 };
 
-class RackEditor final : public juce::AudioProcessorEditor, private juce::ChangeListener {
+class RackEditor final : public ostfstudio::StudioPluginEditor, private juce::ChangeListener {
 public:
-    explicit RackEditor(Rack& p):AudioProcessorEditor(p),rack(p) {
+    explicit RackEditor(Rack& p): StudioPluginEditor(p),rack(p) {
         for(auto* c:std::initializer_list<juce::Component*>{&title,&layers,&devices,&add,&insert,&open,&remove,&level,&levelLabel,&status})
             addAndMakeVisible(c);
         title.setText(p.getName(),juce::dontSendNotification);
@@ -275,7 +276,6 @@ public:
         rack.addChangeListener(this); refresh();setSize(540,196);
     }
     ~RackEditor() override {rack.removeChangeListener(this);}
-    void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff202b31));}
     void resized() override {
         auto r=getLocalBounds().reduced(10);
         auto h=r.removeFromTop(34);add.setBounds(h.removeFromRight(150).reduced(2));title.setBounds(h);

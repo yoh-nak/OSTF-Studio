@@ -475,9 +475,7 @@ MainComponent::MainComponent() {
         juce::Desktop::getInstance().setGlobalScaleFactor(interfaceScale_ / 100.f);
         timelineLaneMask_ = static_cast<unsigned>(config->getIntValue("timelineLanesWithLyrics",
             config->getIntValue("timelineLanes", 0xff) | laneBit(TimelineLane::displayLyrics) | laneBit(TimelineLane::pronunciation)));
-        for (int i = 0; i < themeCount; ++i)
-            if (config->getValue("workspaceTheme") == ostfstudio::console::finishes[i].key)
-                pianoInspector_.theme = static_cast<pianoHarmony::Theme>(i);
+        pianoInspector_.theme = ostfstudio::console::themeForKey(config->getValue("workspaceTheme"));
         parameterFraction_ = config->getDoubleValue("parameterLaneRatio", 0);
         joinKeepsRight_ = config->getBoolValue("globalJoinKeepsRight", false);
         theoryVisible_ = config->getBoolValue("theoryGuide", false);

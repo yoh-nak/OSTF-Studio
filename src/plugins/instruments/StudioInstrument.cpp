@@ -1,6 +1,6 @@
 #include "StudioInstrument.h"
 #include "../EditorProgramParameter.h"
-#include "../../ui/ConsoleLookAndFeel.h"
+#include "../StudioPluginEditor.h"
 #include <array>
 #include <cmath>
 
@@ -285,11 +285,10 @@ private:
     }
 };
 
-class InstrumentEditor final : public juce::AudioProcessorEditor, private juce::Timer {
+class InstrumentEditor final : public ostfstudio::StudioPluginEditor, private juce::Timer {
 public:
     explicit InstrumentEditor(Instrument& instrument)
-        : AudioProcessorEditor(instrument), processor(instrument) {
-        setLookAndFeel(&style);
+        : StudioPluginEditor(instrument), processor(instrument) {
         for (int i=0; i<processor.getNumPrograms(); ++i)
             presets.addItem("PC " + juce::String(i) + "   " + processor.getProgramName(i), i+1);
         presets.setTitle("Factory preset");
@@ -311,8 +310,6 @@ public:
         setSize(320, 208);
         timerCallback(); startTimerHz(8);
     }
-    ~InstrumentEditor() override { setLookAndFeel(nullptr); }
-    void paint(juce::Graphics& g) override { g.fillAll(juce::Colour(0xff232c32)); }
     void resized() override {
         auto area = getLocalBounds().reduced(10);
         presets.setBounds(area.removeFromTop(30)); area.removeFromTop(6);
@@ -326,7 +323,6 @@ private:
     void timerCallback() override { presets.setSelectedId(processor.getCurrentProgram()+1,juce::dontSendNotification); }
     Instrument& processor;
     juce::ComboBox presets;
-    console::LookAndFeel style;
     std::array<juce::Slider,2> controls;
     std::array<juce::Label,2> labels;
     std::array<std::unique_ptr<juce::SliderParameterAttachment>,2> attachments;

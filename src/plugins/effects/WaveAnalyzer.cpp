@@ -1,3 +1,4 @@
+#include "../StudioPluginEditor.h"
 #include "AnalyzerMeters.h"
 #include "AnalyzerSpectrum.h"
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -118,7 +119,7 @@ private:
     std::atomic<bool> requested{true}, resetRequested{false};
 };
 
-const Colour background{0xff101923}, panel{0xff182633}, grid{0xff314350}, quiet{0xffb2c3cc}, ink{0xffeef4f5},
+const Colour quiet{0xffb2c3cc}, ink{0xffeef4f5},
     left{0xff65e4cd}, right{0xfff3b477}, warning{0xffff7975};
 void label(juce::Graphics& g, Rect bounds, const String& s, float size, Colour colour,
            juce::Justification align = juce::Justification::centredLeft, bool bold = false) {
@@ -133,9 +134,9 @@ String loud(double v) {
     return std::isfinite(v) ? String(v, 1) : String::fromUTF8("-\xe2\x88\x9e");
 }
 
-class Editor final : public juce::AudioProcessorEditor, private juce::Timer {
+class Editor final : public ostfstudio::StudioPluginEditor, private juce::Timer {
 public:
-    explicit Editor(Analyzer& p) : AudioProcessorEditor(p), processor(p) {
+    explicit Editor(Analyzer& p) : StudioPluginEditor(p), processor(p) {
         addAndMakeVisible(freeze);
         addAndMakeVisible(reset);
         addAndMakeVisible(span);
@@ -158,7 +159,6 @@ public:
         };
         for (auto* button : {&freeze, &reset}) {
             button->setColour(juce::TextButton::buttonColourId, grid);
-            button->setColour(juce::TextButton::buttonOnColourId, Colour(0xff356458));
         }
         setResizable(true, true);
         setResizeLimits(720, 510, 1600, 1100);
@@ -186,7 +186,7 @@ public:
         span.setBounds(waveArea.toNearestInt().removeFromTop(36).removeFromRight(120).reduced(8, 5));
     }
     void paint(juce::Graphics& g) override {
-        g.fillAll(background);
+        StudioPluginEditor::paint(g);
         label(g, {18, 13, 290, 34}, JucePlugin_Name, 25, ink, juce::Justification::centredLeft, true);
         label(g, {310, 17, 155, 28},
               frame.valid ? String(frame.rate / 1000, 1) + " kHz   /   " + (frame.channels == 2 ? "Stereo" : "Mono")
@@ -222,7 +222,7 @@ private:
         for (int c = 0; c < frame.channels; ++c)
             frequency.measure(c, frame.valid, [&](int i) { return frame.sample(c, i); });
     }
-    static void surface(juce::Graphics& g, Rect r, const char* title) {
+    void surface(juce::Graphics& g, Rect r, const char* title) {
         g.setColour(panel);
         g.fillRoundedRectangle(r, 7);
         label(g, r.reduced(12, 0).withHeight(35), title, 16, ink, juce::Justification::centredLeft, true);
@@ -389,6 +389,7 @@ private:
             area.removeFromTop(9);
         }
     }
+    const Colour panel{juce::Colour(face.background).interpolatedWith(juce::Colour(face.panel),.48f)}, grid{face.panel};
     Analyzer& processor;
     Frame frame;
     Spectrum frequency;

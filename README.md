@@ -2,6 +2,10 @@
 
 ## OSTF 5.2 studio preview
 
+Bundled VST3 editors read Studio’s saved colour theme when their windows open. Their controls use the same console knobs and faders as Studio. Choose **Colour theme** in Studio, then reopen an editor to use the new finish. In Scale Editor’s instrument search, use the arrow keys to select a result, **Enter** to load it, or **Shift+Enter** to load it and hear C4 while keeping the list open.
+
+Formant Singer recognises the small ッ before a matching English final stop in readings such as **Look / ルック** and **Let / レット**. It gives the written vowel the rest of the note after reserving time for a single consonant release. Literal Japanese readings keep their written closure.
+
 When a single lyric spans several pitches, Formant Singer sings the initial consonant once and releases the word on the last note. Its OSTF reader follows tempo changes inside a note when timing the consonants and vowels.
 
 Scale Editor opens with the same header for an empty workspace and a loaded song. Use **Open**, **Save** and **Save As** there. **Studio / Settings** contains the Studio score exchange, display language and simple editor. Beside the audition keyboard, **Instrument** opens the instrument list. You can open the selected instrument’s controls, play a test note, and switch preview MIDI output and MIDI thru independently. If a project loses a VST3 after moving a Portable folder, select the same instrument at its new location to recover its saved sound.

@@ -136,6 +136,13 @@ inline bool matchSungSyllable(const std::vector<Phone>& word, size_t begin, size
     }
     for (size_t i = nucleus + 1; i < end; ++i) {
         if (next == kana.size()) return false;
+        // In ルック and レット the small ッ closes the same final stop as ク or ト.
+        // The English stop already supplies its own closure and release burst.
+        const int en = word[i].english & 63;
+        const bool stop = en == 16 || en == 18 || en == 21 || en == 24 || en == 29 || en == 33;
+        if (stop && kana[next].onset == closure && kana[next].morae == 1) {
+            if (++next == kana.size()) return false;
+        }
         const auto& ending = kana[next++];
         if (ending.onset == ts && ending.vowel == 2 && ending.morae == 1 && (word[i].english & 63) == 33
             && i+1 < end && (word[i+1].english & 63) == 31) {

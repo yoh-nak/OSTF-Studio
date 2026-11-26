@@ -433,7 +433,10 @@ int main(int argc,char** argv) {
         for (auto* c:picker->getChildren()) if (c->getTitle()=="Search instruments") search=dynamic_cast<juce::TextEditor*>(c);
         if (!search || !list) return 57;
         if (list->getModel()->getNumRows()>1) {
-            list->selectRow(1);
+            list->selectRow(0);
+            if (!search->keyPressed(juce::KeyPress(juce::KeyPress::downKey)) || list->getSelectedRow()!=1
+                || !search->keyPressed(juce::KeyPress(juce::KeyPress::upKey)) || list->getSelectedRow()!=0) return 92;
+            search->keyPressed(juce::KeyPress(juce::KeyPress::downKey));
             search->setText("__missing_instrument__",false); search->onTextChange();
             search->clear(); search->onTextChange();
             if (list->getSelectedRow()!=1) return 88;
@@ -449,7 +452,7 @@ int main(int argc,char** argv) {
         route->setToggleState(true,juce::dontSendNotification); route->onClick();
         auto* loadAndTest=dynamic_cast<juce::TextButton*>(picker->findChildWithID("load-instrument-and-audition"));
         if (!loadAndTest || !loadAndTest->isEnabled()) return 85;
-        loadAndTest->onClick();
+        if (!search->keyPressed(juce::KeyPress(juce::KeyPress::returnKey,juce::ModifierKeys::shiftModifier,0))) return 92;
         bool auditionShownInPicker=false;
         for (auto* child : picker->getChildren())
             if (auto* label=dynamic_cast<juce::Label*>(child); label && label->getText().contains(instrument->name)
@@ -560,11 +563,14 @@ int main(int argc,char** argv) {
                 const auto openPicker=juce::String(R"JS((()=>{
                     const b=document.getElementById('studioInstrumentPicker');
                     if(!b || !b.textContent.includes(INSTRUMENT_NAME)) return false;
+                    if(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().toLowerCase()!==STUDIO_BG) return false;
                     if(document.getElementById('demos') || !b.closest('#hostAudition')
                        || !document.querySelector('header #hostSettings #hostRead')
                        || document.querySelectorAll('#open, #save, #saveAs').length!==3) return false;
                     b.click();return true;
-                })())JS").replace("INSTRUMENT_NAME",juce::JSON::toString(juce::var(instrument->name)));
+                })())JS").replace("INSTRUMENT_NAME",juce::JSON::toString(juce::var(instrument->name)))
+                    .replace("STUDIO_BG",juce::JSON::toString(juce::var("#"+editor->getLookAndFeel()
+                        .findColour(juce::ListBox::backgroundColourId).toDisplayString(false).toLowerCase())));
                 browser->evaluateJavascript(openPicker,[&](auto evaluation){
                     pending=false;
                     if (const auto* value=evaluation.getResult()) requestedPicker=bool(*value);

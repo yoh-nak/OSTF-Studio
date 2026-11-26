@@ -289,6 +289,16 @@ int main(int argc, char** argv) {
     std::cout << "Street at 337 ms, written vowel before / after (ms): "
               << (literalEdges[3]-literalEdges[2])*337. << " / " << nucleusMs << '\n';
     if (nucleusMs<200. || streetEdges.front()!=0. || streetEdges.back()!=1.) return 77;
+    for (const auto& [word, stop] : {std::pair{"Look", 24}, std::pair{"Let", 33}}) {
+        const auto reading=readingFor(word);
+        const auto sung=sungReading(word,reading);
+        const auto literal=lyricPhones(reading);
+        if (sung.size()!=2 || literal.size()!=3 || literal[1].onset!=closure
+            || sung[0].sampleKey()!=literal[0].sampleKey() || (sung[1].english & 63)!=stop) return 85;
+        const auto edges=articulationPositions(sung,.12);
+        if (std::abs(edges[1]*.12-.088)>.0001 || edges.back()!=1.) return 85;
+        if (sungReading(reading,reading).size()!=literal.size() || sungReading("stay",reading).size()!=literal.size()) return 85;
+    }
     const auto lights = sungReading("lights",readingFor("lights"));
     if (lights.size()!=4 || lights[0].onset!=r || lights[1].vowelTiming!=VowelTiming::offglide
         || lights[2].english!=33 || lights[3].english!=31) return 78;

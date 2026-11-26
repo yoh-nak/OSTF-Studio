@@ -1,3 +1,4 @@
+#include "../StudioPluginEditor.h"
 #include "StemFiles.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -141,9 +142,9 @@ private:
     bool sent = false;
 };
 
-class Editor final : public juce::AudioProcessorEditor, public juce::FileDragAndDropTarget, private juce::Timer {
+class Editor final : public ostfstudio::StudioPluginEditor, public juce::FileDragAndDropTarget, private juce::Timer {
 public:
-    explicit Editor(Separator& p) : AudioProcessorEditor(p), processor(p) {
+    explicit Editor(Separator& p) : StudioPluginEditor(p), processor(p) {
         title.setText(p.getName(), juce::dontSendNotification);
         title.setFont(juce::FontOptions(21.f, juce::Font::bold));
         for (auto* c : std::array<juce::Component*,6>{&title,&open,&capture,&folder,&status,&chords}) addAndMakeVisible(*c);

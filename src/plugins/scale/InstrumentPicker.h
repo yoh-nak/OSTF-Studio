@@ -1,4 +1,5 @@
 #pragma once
+#include "../StudioPluginEditor.h"
 #include "ui/PluginLibrary.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <optional>
@@ -74,7 +75,10 @@ class InstrumentPicker final : public juce::Component, private juce::ListBoxMode
 public:
     std::function<void(InstrumentChoice,bool)> onChoose;
     std::function<void()> onBrowse,onReference;
-    InstrumentPicker(const std::optional<juce::PluginDescription>& current,bool japanese) : choices(availableInstruments(current)), ja(japanese) {
+    InstrumentPicker(const std::optional<juce::PluginDescription>& current,bool japanese,const console::Finish& face)
+        : choices(availableInstruments(current)), ja(japanese), style(face) {
+        setPluginControlColours(style,face);
+        setLookAndFeel(&style);
         for (juce::Component* c:std::initializer_list<juce::Component*>{&search,&manufacturer,&list,&hint,&load,&loadAndTest,&browse,&reference,&unlisted})
             addAndMakeVisible(*c);
         search.setTextToShowWhenEmpty(juce::String::fromUTF8(ja ? "音源名・メーカーで検索" : "Search instruments by name or manufacturer"),juce::Colours::lightgrey);
@@ -98,6 +102,16 @@ public:
         setSize(495,402);
         search.onTextChange=[this]{filter();};
         search.onReturnKey=[this]{choose();};
+        search.moveSelection=[this](int step){
+            if (visible.empty()) return;
+            const int row=juce::jlimit(0,getNumRows()-1,list.getSelectedRow()+step);
+            list.selectRow(row);
+            list.scrollToEnsureRowIsOnscreen(row);
+        };
+        search.audition=[this]{choose(true);};
+        search.setTooltip(juce::String::fromUTF8(ja ? "↑↓で選択、Enterで読み込み、Shift+Enterで読み込んで試聴"
+            : "Up/Down to select, Enter to load, Shift+Enter to load and audition"));
+        loadAndTest.setTooltip("Shift+Enter");
         load.setComponentID("load-instrument");
         load.onClick=[this]{choose();};
         loadAndTest.setComponentID("load-instrument-and-audition");
@@ -111,7 +125,7 @@ public:
         }
         filter();
     }
-    ~InstrumentPicker() override {list.setModel(nullptr);}
+    ~InstrumentPicker() override {list.setModel(nullptr);setLookAndFeel(nullptr);}
     void showStatus(const juce::String& message) {
         hint.setText(message, juce::dontSendNotification);
         hint.setTooltip(message);
@@ -157,7 +171,7 @@ private:
     void paintListBoxItem(int row,juce::Graphics& g,int w,int h,bool selected) override {
         if (!juce::isPositiveAndBelow(row,getNumRows())) return;
         const auto& c=choices[visible[size_t(row)]];
-        if(selected) g.fillAll(juce::Colour(0xff365a67));
+        if(selected) g.fillAll(style.findColour(juce::TextButton::buttonOnColourId));
         g.setColour(juce::Colours::white);
         g.drawFittedText(c.name,6,0,2*w/3-9,h,juce::Justification::centredLeft,1);
         g.setColour(juce::Colour(0xffb8ced6));
@@ -174,7 +188,22 @@ private:
     std::vector<size_t> visible;
     size_t preferred=std::numeric_limits<size_t>::max();
     bool filtering=false;
-    juce::TextEditor search;
+    console::LookAndFeel style;
+    struct SearchField final : juce::TextEditor {
+        std::function<void(int)> moveSelection;
+        std::function<void()> audition;
+        bool keyPressed(const juce::KeyPress& key) override {
+            if (key==juce::KeyPress::upKey || key==juce::KeyPress::downKey) {
+                moveSelection(key==juce::KeyPress::upKey ? -1 : 1);
+                return true;
+            }
+            if (key.getKeyCode()==juce::KeyPress::returnKey && key.getModifiers()==juce::ModifierKeys::shiftModifier) {
+                audition();
+                return true;
+            }
+            return juce::TextEditor::keyPressed(key);
+        }
+    } search;
     juce::ComboBox manufacturer;
     juce::ListBox list;
     juce::Label hint;

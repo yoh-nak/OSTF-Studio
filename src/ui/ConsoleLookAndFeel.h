@@ -21,6 +21,11 @@ inline constexpr Finish finishes[] {
 
 static_assert(std::size(finishes) == static_cast<std::size_t>(Theme::count));
 inline const Finish& finishFor(Theme theme) { return finishes[static_cast<std::size_t>(theme)]; }
+inline Theme themeForKey(const juce::String& key) {
+    for (size_t i=0; i<std::size(finishes); ++i)
+        if (key==finishes[i].key) return static_cast<Theme>(i);
+    return Theme::studioBlue;
+}
 
 class LookAndFeel final : public juce::LookAndFeel_V4 {
 public:

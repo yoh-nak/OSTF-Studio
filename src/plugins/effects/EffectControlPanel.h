@@ -1,14 +1,13 @@
 #pragma once
-#include "../../ui/ConsoleLookAndFeel.h"
+#include "../StudioPluginEditor.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <vector>
 
 namespace ostfstudio {
-class EffectControlPanel final : public juce::AudioProcessorEditor {
+class EffectControlPanel final : public ostfstudio::StudioPluginEditor {
   public:
     EffectControlPanel(juce::AudioProcessor& processor, const std::vector<juce::AudioParameterFloat*>& params, bool graphic)
-        : AudioProcessorEditor(processor), look(ostfstudio::console::finishFor(ostfstudio::console::Theme::forest)) {
-        setLookAndFeel(&look);
+        : StudioPluginEditor(processor) {
         for (auto* p : params) {
             auto* slider = sliders.add(new juce::Slider);
             slider->setName(p->getName(64));
@@ -24,7 +23,6 @@ class EffectControlPanel final : public juce::AudioProcessorEditor {
         columns = graphic ? 10 : (params.size() >= 12 ? 6 : std::min(5, sliders.size()));
         setSize(30 + columns * 110, 58 + ((sliders.size() + columns - 1) / columns) * (graphic ? 185 : 112));
     }
-    ~EffectControlPanel() override { setLookAndFeel(nullptr); }
     void resized() override {
         auto area = getLocalBounds().reduced(12, 8).withTrimmedTop(40);
         const int rows = (sliders.size() + columns - 1) / columns;
@@ -38,14 +36,13 @@ class EffectControlPanel final : public juce::AudioProcessorEditor {
         }
     }
     void paint(juce::Graphics& g) override {
-        g.fillAll(juce::Colour(0xff26383a));
+        StudioPluginEditor::paint(g);
         g.setColour(juce::Colours::white);
         g.setFont(juce::FontOptions(21.f, juce::Font::bold));
         g.drawText(getAudioProcessor()->getName(), 18, 5, getWidth() - 36, 34, juce::Justification::centredLeft);
     }
 
   private:
-    ostfstudio::console::LookAndFeel look;
     juce::OwnedArray<juce::Slider> sliders;
     juce::OwnedArray<juce::Label> labels;
     std::vector<std::unique_ptr<juce::SliderParameterAttachment>> attachments;

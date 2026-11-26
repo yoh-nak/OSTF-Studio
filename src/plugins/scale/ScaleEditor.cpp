@@ -1,3 +1,4 @@
+#include "../StudioPluginEditor.h"
 #include "ScaleDocument.h"
 #include "FlowView.h"
 #include "ScoreExchange.h"
@@ -188,10 +189,13 @@ public:
     ChordMap() { setViewportIgnoreDragFlag(true); setTitle("Song scale map"); }
     void paint(juce::Graphics& g) override {
         const auto clip = g.getClipBounds();
+        const auto panel = findColour(juce::TextButton::buttonColourId);
+        const auto accent = findColour(ostfstudio::console::LookAndFeel::accentColourId);
         for (int i = std::max(0,clip.getX()/cell); i < chords.size() && i <= clip.getRight()/cell; ++i) {
             juce::Rectangle<int> tile(i*cell,0,cell-2,getHeight()-1);
             const bool active = i>=std::min(anchor,end) && i<=std::max(anchor,end);
-            g.setColour(juce::Colour(active ? 0xff27675e : std::binary_search(targets.begin(),targets.end(),i) ? 0xff404f70 : 0xff26343e));
+            const auto target = std::binary_search(targets.begin(),targets.end(),i);
+            g.setColour(active ? panel.interpolatedWith(accent,.35f) : target ? panel.brighter(.15f) : panel);
             g.fillRoundedRectangle(tile.toFloat(),3);
             g.setColour(juce::Colours::white);
             g.setFont(juce::FontOptions(13.f,juce::Font::bold));
@@ -213,15 +217,16 @@ public:
 
 class ScaleRows final : public juce::ListBox, private juce::ListBoxModel {
 public:
-    ScaleRows() { setModel(this); setRowHeight(40); setColour(backgroundColourId,juce::Colour(0xff192534)); }
+    ScaleRows() { setModel(this); setRowHeight(40); }
     ~ScaleRows() override { setModel(nullptr); }
     juce::StringArray labels, subtitles;
     std::function<void(int)> choose;
     int getNumRows() override { return labels.size(); }
     void paintListBoxItem(int i,juce::Graphics& g,int w,int h,bool selected) override {
         if (i>=labels.size()) return;
-        g.fillAll(juce::Colour(selected ? 0xff294c4b : 0xff192534));
-        g.setColour(juce::Colour(selected ? 0xff7fe0c0 : 0xff34485e)); g.fillRect(0,0,3,h-1);
+        g.fillAll(findColour(selected ? juce::TextButton::buttonOnColourId : int(backgroundColourId)));
+        g.setColour(findColour(selected ? int(ostfstudio::console::LookAndFeel::accentColourId) : int(juce::TextButton::buttonColourId)));
+        g.fillRect(0,0,3,h-1);
         g.setColour(juce::Colours::white); g.setFont(juce::FontOptions(14.f,juce::Font::bold));
         g.drawText(labels[i],10,3,w-16,18,juce::Justification::centredLeft);
         g.setColour(juce::Colour(0xffaec0d0)); g.setFont(juce::FontOptions(12.f));
@@ -230,9 +235,9 @@ public:
     void selectedRowsChanged(int i) override { if (i>=0 && choose) choose(i); }
 };
 
-class Editor final : public juce::AudioProcessorEditor, public juce::FileDragAndDropTarget, private juce::ChangeListener, private juce::Timer {
+class Editor final : public ostfstudio::StudioPluginEditor, public juce::FileDragAndDropTarget, private juce::ChangeListener, private juce::Timer {
 public:
-    explicit Editor(Processor& p) : AudioProcessorEditor(p), proc(p) {
+    explicit Editor(Processor& p) : StudioPluginEditor(p), proc(p) {
         language.setComponentID("scale-language");
         addAndMakeVisible(language);
         languageChoice = proc.languageFile.loadFileAsString().trim();
@@ -467,7 +472,6 @@ public:
             control->setVisible(!full);
         if (full) workspace->setBounds(getLocalBounds());
     }
-    void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff111923));}
 private:
     juce::String words(const char* en,const char* ja) const {
         return juce::String::fromUTF8(japanese ? ja : en);
@@ -728,7 +732,7 @@ private:
     }
     void chooseInstrument(juce::Rectangle<int> anchor={}) {
         if (pickerBox) { pickerBox->toFront(true); return; }
-        auto picker=std::make_unique<InstrumentPicker>(proc.rack.description(),japanese);
+        auto picker=std::make_unique<InstrumentPicker>(proc.rack.description(),japanese,face);
         const auto self=juce::Component::SafePointer<Editor>(this);
         picker->onChoose=[self, panel=juce::Component::SafePointer<InstrumentPicker>(picker.get())](InstrumentChoice c,bool audition) {
             if (!self) return;
@@ -983,6 +987,11 @@ private:
             fullWorkspace.setButtonText(words("Native controls","簡易エディター")); returnWorkspace.setEnabled(snapshot.isNotEmpty()); return;
         }
         auto html=juce::String::fromUTF8(ScaleAssets::ScaleWorkspace_html,ScaleAssets::ScaleWorkspace_htmlSize)
+            .replace("<!--STUDIO_THEME-->", "<style>:root{--bg:#"+juce::Colour(face.background).toDisplayString(false)
+                +";--raised:#"+juce::Colour(face.panel).toDisplayString(false)
+                +";--panel:#"+juce::Colour(face.background).interpolatedWith(juce::Colour(face.panel),.5f).toDisplayString(false)
+                +";--line:#"+juce::Colour(face.panel).brighter(.16f).toDisplayString(false)
+                +";--accent:#"+juce::Colour(face.accent).toDisplayString(false)+"}</style>")
             .replace("<html lang=\"en\">",japanese ? "<html lang=\"ja\">" : "<html lang=\"en\">")
             .replace("<!--STUDIO_SCORE-->",juce::Base64::toBase64(snapshot));
         using Browser = juce::WebBrowserComponent;

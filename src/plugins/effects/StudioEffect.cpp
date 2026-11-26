@@ -1,6 +1,6 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
-#include "../../ui/ConsoleLookAndFeel.h"
+#include "../StudioPluginEditor.h"
 #include "CompressorListen.h"
 #include <array>
 #include <cmath>
@@ -23,12 +23,11 @@ constexpr Design designs[] {
     {Kind::Amp, "Amp", {{{"Preamp dB", 0, 36, 16}, {"Cabinet tone Hz", 1200, 7000, 3500}, {"Wet %", 0, 100, 65}}}},
 };
 
-class RackEditor final : public juce::AudioProcessorEditor, private juce::Timer {
+class RackEditor final : public ostfstudio::StudioPluginEditor, private juce::Timer {
 public:
-    RackEditor(juce::AudioProcessor& processor, Kind kind, const std::array<juce::AudioParameterFloat*, 3>& params,
+    RackEditor(juce::AudioProcessor& processor, const std::array<juce::AudioParameterFloat*, 3>& params,
                ostfstudio::CompressorListen* measurement)
-        : AudioProcessorEditor(processor), face(finishFor(kind)), style(face), title(processor.getName()), listen(measurement), threshold(params[0]), ratio(params[1]) {
-        setLookAndFeel(&style);
+        : StudioPluginEditor(processor), title(processor.getName()), listen(measurement), threshold(params[0]), ratio(params[1]) {
         for (std::size_t i = 0; i < sliders.size(); ++i) {
             auto& slider = sliders[i];
             const auto name = params[i]->getName(64);
@@ -62,7 +61,6 @@ public:
         }
         setSize(456, listen ? 270 : 230);
     }
-    ~RackEditor() override { setLookAndFeel(nullptr); }
 
     void resized() override {
         auto panel = getLocalBounds().reduced(18, 12).withTrimmedTop(43);
@@ -120,17 +118,6 @@ private:
             : state == Meter::ready ? "Choose a ratio above 1:1" : "";
         advice.setText(text, juce::dontSendNotification);
     }
-    static const ostfstudio::console::Finish& finishFor(Kind kind) {
-        using namespace ostfstudio::console;
-        switch (kind) {
-            case Kind::Amp: case Kind::Distortion: return ostfstudio::console::finishFor(Theme::copper);
-            case Kind::Chorus: case Kind::Flanger: case Kind::Phaser: return ostfstudio::console::finishFor(Theme::indigo);
-            case Kind::EQ: case Kind::Compressor: case Kind::Limiter: return ostfstudio::console::finishFor(Theme::forest);
-            default: return ostfstudio::console::finishFor(Theme::studioBlue);
-        }
-    }
-    const ostfstudio::console::Finish& face;
-    ostfstudio::console::LookAndFeel style;
     const juce::String title;
     ostfstudio::CompressorListen* listen;
     juce::AudioParameterFloat *threshold, *ratio;
@@ -162,7 +149,7 @@ public:
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     bool hasEditor() const override { return true; }
-    juce::AudioProcessorEditor* createEditor() override { return new RackEditor(*this, design_.kind, params_, design_.kind == Kind::Compressor ? &listen_ : nullptr); }
+    juce::AudioProcessorEditor* createEditor() override { return new RackEditor(*this, params_, design_.kind == Kind::Compressor ? &listen_ : nullptr); }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}

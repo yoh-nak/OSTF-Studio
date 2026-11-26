@@ -1,5 +1,6 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../src/plugins/effects/CompressorListen.h"
+#include "../src/plugins/StudioPluginEditor.h"
 #include <cmath>
 #include <iostream>
 
@@ -15,11 +16,20 @@ int main(int argc, char** argv) {
             meter.state.load() != meter.ready || std::abs(meter.threshold(4) - (magnitude == .1f ? -24.f : -10.f)) > .01f) return 8;
     }
     juce::ScopedJuceInitialiser_GUI gui;
+    using namespace ostfstudio::console;
+    if (themeForKey("unknown")!=Theme::studioBlue) return 9;
+    for (const auto& finish : finishes)
+        if (&finishFor(themeForKey(finish.key))!=&finish) return 9;
+    const juce::PropertiesFile settings(ostfstudio::viewSettingsOptions());
+    const auto& finish=finishFor(themeForKey(settings.getValue("workspaceTheme")));
     for (const auto* type : {"Reverb", "Chorus", "EQ", "Compressor", "Limiter", "Phaser", "Flanger", "Distortion", "Amp"}) {
         const auto title = juce::String("OSTF ") + type;
         std::unique_ptr<juce::AudioProcessor> processor(makeStudioEffect(type, title.toRawUTF8()));
         std::unique_ptr<juce::AudioProcessorEditor> editor(processor->createEditorIfNeeded());
         if (!editor) return 1;
+        const auto& style=editor->getLookAndFeel();
+        if (style.findColour(LookAndFeel::accentColourId)!=juce::Colour(finish.accent)
+            || style.findColour(juce::TextButton::buttonColourId)!=juce::Colour(finish.panel)) return 9;
         int index = 0;
         for (auto* child : editor->getChildren()) {
             auto* slider = dynamic_cast<juce::Slider*>(child);

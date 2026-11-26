@@ -2,6 +2,10 @@
 
 ## OSTF 5.2 score and audio projection
 
+Studio and the bundled plug-in editors resolve the stored `workspaceTheme` against the same console finishes. Each plug-in window owns its JUCE look-and-feel and reads the view preference when constructed. The Scale Editor embeds colours from that finish in its HTML and gives the detached instrument picker its own look-and-feel. Theme selection stays in local view preferences.
+
+The Singer’s English reading matcher recognises a katakana geminate before a matching syllable-final stop. The dictionary stop represents closure and release together. The existing duration planner reserves consonant time and assigns the rest to the sung vowel. If the complete written reading fails the match, the literal phones are retained.
+
 The Scale Editor VST3 embeds the M4L editing surface across its full client area. Its header owns file operations and assignment history. The Studio menu sends score exchange and language changes to the native host. The audition controls use the same instrument rack as the simple editor. The plug-in publishes the active instrument, MIDI routes and host settings when they change and when a page connects. Unopened scores start with a file/drop prompt. The native editor remains available for hosts without an embedded browser.
 
 For a lyric unit aligned to several pitches, the Singer orders referenced notes by absolute score tick. It carries the last vowel nucleus across pitches and schedules the offglide and final consonants on the last pitch. The Singer's OSTF reader integrates the shared tempo map between note endpoints, allocates articulation in seconds and maps inner edges back to host PPQ.

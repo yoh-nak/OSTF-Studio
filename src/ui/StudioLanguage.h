@@ -7,6 +7,13 @@ inline juce::String resolvedLanguage(const juce::String& preference, const juce:
     const auto tag = (preference == "system" ? osLanguage : preference).trim().toLowerCase().replaceCharacter('_', '-');
     return tag.upToFirstOccurrenceOf("-", false, false) == "ja" ? "ja" : "en";
 }
-juce::PropertiesFile::Options viewSettingsOptions();
+inline juce::PropertiesFile::Options viewSettingsOptions() {
+    juce::PropertiesFile::Options options;
+    options.applicationName = "OSTF Studio View";
+    options.filenameSuffix = ".settings";
+    options.folderName = "OSTF Studio";
+    options.osxLibrarySubFolder = "Application Support";
+    return options;
+}
 void loadStudioLanguage();
 }

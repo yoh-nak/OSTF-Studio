@@ -1,4 +1,4 @@
-#include "../ui/ConsoleLookAndFeel.h"
+#include "StudioPluginEditor.h"
 #include "EditorProgramParameter.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <GMPreviewData.h>
@@ -452,10 +452,9 @@ private:
     int sampleRate_ = 44100;
 };
 
-class SoundModuleEditor final : public juce::AudioProcessorEditor, private juce::Timer {
+class SoundModuleEditor final : public ostfstudio::StudioPluginEditor, private juce::Timer {
 public:
-    explicit SoundModuleEditor(SoundModule& module) : AudioProcessorEditor(module), module_(module) {
-        setLookAndFeel(&consoleStyle_);
+    explicit SoundModuleEditor(SoundModule& module) : StudioPluginEditor(module), module_(module) {
         for (auto* item : std::array<juce::Component*, 7>{&bank_, &load_, &factory_, &program_, &preset_, &part_, &heading_})
             addAndMakeVisible(*item);
         heading_.setText(JucePlugin_Name, juce::dontSendNotification);
@@ -501,10 +500,10 @@ public:
         setSize(780, 493);
     }
 
-    ~SoundModuleEditor() override { stopTimer(); setLookAndFeel(nullptr); }
+    ~SoundModuleEditor() override { stopTimer(); }
 
     void paint(juce::Graphics& g) override {
-        g.fillAll(juce::Colour(0xff14212b));
+        StudioPluginEditor::paint(g);
         g.setColour(juce::Colour(0xff0d3030));
         g.fillRoundedRectangle(display_.toFloat(), 9.0f);
         g.setColour(juce::Colour(0xff407b74));
@@ -626,7 +625,6 @@ private:
     }
 
     struct PartControl { juce::Label label; juce::Slider slider; juce::ToggleButton toggle; };
-    ostfstudio::console::LookAndFeel consoleStyle_ {ostfstudio::console::finishFor(ostfstudio::console::Theme::harmonic)};
     SoundModule& module_;
     bool showingDrums_ = false;
     std::array<juce::TextButton, 16> channels_;

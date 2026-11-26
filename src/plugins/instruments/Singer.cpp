@@ -1,3 +1,4 @@
+#include "../StudioPluginEditor.h"
 #include "SingingScore.h"
 #include "VoiceBank.h"
 #include "../../core/VocalDelivery.h"
@@ -487,7 +488,7 @@ class Voice : public SyllableVoice {
     }
 };
 class Singer;
-class Editor final : public juce::AudioProcessorEditor, private juce::ChangeListener {
+class Editor final : public ostfstudio::StudioPluginEditor, private juce::ChangeListener {
   public:
     explicit Editor(Singer&);
     ~Editor() override;
@@ -829,7 +830,7 @@ juce::Image loadPortrait(const juce::File& file) {
     }
     return img;
 }
-Editor::Editor(Singer& s) : AudioProcessorEditor(s), singer(s) {
+Editor::Editor(Singer& s) : StudioPluginEditor(s), singer(s) {
     depthLabel.setText("Vibrato / scoop depth",juce::dontSendNotification);
     depthSlider.setTitle("Vibrato / scoop depth");
     depthSlider.setTextValueSuffix(" %");

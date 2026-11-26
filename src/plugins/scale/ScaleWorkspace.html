@@ -556,7 +556,16 @@ body.sidebar-resizing,body.sidebar-resizing * {cursor:col-resize!important;user-
 #hostAudition label{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--dim);cursor:pointer}
 #hostAudition button{font-size:11px;padding:4px 7px}
 #studioInput{color:#ffdc93;font-variant-numeric:tabular-nums}
-</style><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script><script id="studio-draft" type="application/octet-stream"><!--STUDIO_DRAFT--></script><script id="studio-file" type="application/octet-stream"><!--STUDIO_FILE--></script></head><body>
+.studio-host header,.studio-host .host-menu{background:var(--panel)}
+.studio-host .songline,.studio-host .left,.studio-host footer{background:var(--bg)}
+.studio-host .head-actions button:not(.primary):not(.quiet),.studio-host #hostAudition button,.studio-host .host-menu select{background:var(--raised);border-color:var(--line)}
+.studio-host .head-actions button:not(:disabled):hover,.studio-host #hostAudition button:hover,.studio-host #hostSettings summary:hover{border-color:var(--accent)}
+.studio-host .brand-icon,.studio-host #hostSettings summary:focus-visible{color:var(--accent);border-color:var(--accent)}
+.studio-host .section,.studio-host .scale-card,.studio-host .listen-lab{background:var(--panel);border-color:var(--line)}
+.studio-host .section-title,.studio-host .scale-card.selected,.studio-host .workspace-tabs button.active{background:var(--raised)}
+.studio-host .scale-card.selected,.studio-host .workspace-tabs button.active{border-color:var(--accent)}
+.studio-host .section.has-current>.section-title{box-shadow:inset 3px 0 var(--accent)}
+</style><!--STUDIO_THEME--><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script><script id="studio-draft" type="application/octet-stream"><!--STUDIO_DRAFT--></script><script id="studio-file" type="application/octet-stream"><!--STUDIO_FILE--></script></head><body>
 <div id="app">
 <header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Edit scales, keys and modes in OSTF.</div></div><span class="version">v1.0 · DIRECT SET</span></div><div class="head-actions"><button id="open" title="Open a local OSTF file · Ctrl+O">Open…</button><button id="save" title="Save to the currently linked file · Ctrl+S">Save</button><button id="saveAs" title="Always choose a destination · Ctrl+Shift+S">Save As…</button><button id="autoSetSong" class="primary" title="Preview the highest-ranked eligible scale for every chord, then apply all at once">AUTO-SET SONG</button><span class="sep"></span><button id="undo" title="Undo the last assignment" disabled>Undo</button><button id="redo" disabled>Redo</button><details id="hostSettings" class="studio-only"><summary>Studio / Settings</summary>
 <div class="host-menu"><button id="hostRead" disabled>Read Studio score</button>

@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — Studio colour themes in plug-ins and short English releases
+
+Branch `feat/ostf-52-studio`. All bundled plug-in editor families share the Studio console theme and control rendering. A window reads the saved theme when it opens. The Scale Editor also applies it to its embedded workspace and independent instrument picker. In the search field, Up/Down selects an instrument, Enter loads it, and Shift+Enter loads and plays C4 with the search and manufacturer filters still in place.
+
+The Singer now recognises the written small ッ in a matching English syllable ending in a stop. On “Look / ルック” and “Let / レット” it keeps the authored vowel and uses the English stop's closure and release. The regression checks 88 ms of vowel and 32 ms of consonant on a 120 ms note, and checks literal Japanese and mismatched English spellings separately. For the listening comparison use Paper Lantern Replies, Pre-Chorus, the phrase “Look for the flame”, built-in Mei, original tempo and note velocities.
+
+Windows x64 Release built successfully. All 44 CTest cases passed. A separate run loaded the installed FM8 from the picker and measured a C4 peak of 0.07170 with Shift+Enter. The new Portable is `E:/OSTF-Studio-build-cache/studio-plugin-theme-short-stops/Portable` with eight demo projects. The executable and all 764 files in its 38 plug-in bundles were hash-checked against Release. Use the GM bundle from `OSTFGMSoundModule_artefacts/Release/VST3`. The common Windows VST3 Scale Editor binary matches this Portable. A separate run of the packaged Studio opened Paper Lantern Replies and wrote a four-bar vocal WAV through its Singer.
+
+Next to the Portable, `look-before-after.wav` contains two 1.60-second mono excerpts at 48 kHz and equal gain. The new one starts at 2.00 seconds. The full before/after renders first differ at 6.734 seconds, during “Look”. `studio-chorus.png` is an actual Chorus editor capture. Subjective listening, macOS, CI, rebuilding installers, and a new interactive check in Ableton Live are outstanding for this build.
+
 ## 2026-11-27 — integrated Scale Editor workspace
 
 Branch `feat/ostf-52-studio`. The embedded Scale Editor opens directly to an empty file/drop prompt or the supplied score. File operations, assignment history, automatic assignment and OSTF text use the original workspace controls. Studio exchange, explicit apply to the plug-in score, language and the simple editor are in **Studio / Settings**. Instrument selection and editor, the test note and both MIDI switches are beside the audition keyboard. The development demo menu and automatic demo loading have been removed from the plug-in.
