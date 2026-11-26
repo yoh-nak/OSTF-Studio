@@ -111,6 +111,10 @@ public:
         filter();
     }
     ~InstrumentPicker() override {list.setModel(nullptr);}
+    void showLoadError(const juce::String& message) {
+        hint.setText(message, juce::dontSendNotification);
+        hint.setTooltip(message);
+    }
     void resized() override {
         auto r=getLocalBounds().reduced(8);
         auto top=r.removeFromTop(30);
@@ -126,6 +130,7 @@ public:
     }
 private:
     void filter(){
+        hint.setTooltip({});
         const auto words=juce::StringArray::fromTokens(search.getText().trim()," \t",{});
         visible.clear();
         for (size_t i=0;i<choices.size();++i) {

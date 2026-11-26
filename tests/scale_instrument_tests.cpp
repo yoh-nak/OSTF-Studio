@@ -339,6 +339,17 @@ int main(int argc,char** argv) {
             if (b->getButtonText()=="Test sound") testSound=b;
         }
         if (!instruments || !testSound) return 55;
+        juce::Component::SafePointer<juce::DocumentWindow> hostedEditor;
+        if (!auditionOnly) {
+            for (auto* c : editor->getChildren())
+                if (auto* button=dynamic_cast<juce::TextButton*>(c); button && button->getButtonText()==instrument->name)
+                    button->onClick();
+            auto& desktop=juce::Desktop::getInstance();
+            for (int i=0;i<desktop.getNumComponents();++i)
+                if (auto* window=dynamic_cast<juce::DocumentWindow*>(desktop.getComponent(i)); window && window->getName()==instrument->name)
+                    hostedEditor=window;
+            if (!hostedEditor) return 89;
+        }
         instruments->onClick();
         juce::Component* picker=nullptr;
         auto& desktop=juce::Desktop::getInstance();
@@ -368,6 +379,8 @@ int main(int argc,char** argv) {
         auto* loadAndTest=dynamic_cast<juce::TextButton*>(picker->findChildWithID("load-instrument-and-audition"));
         if (!loadAndTest || !loadAndTest->isEnabled()) return 85;
         loadAndTest->onClick();
+        if (!auditionOnly && !hostedEditor) return 90;
+        if (hostedEditor) hostedEditor->closeButtonPressed();
         float peak=0;
         for (int i=0;i<80;++i) {
             midi.clear(); processor->processBlock(block,midi);

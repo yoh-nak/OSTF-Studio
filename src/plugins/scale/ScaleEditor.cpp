@@ -721,11 +721,13 @@ private:
         if (pickerBox) { pickerBox->toFront(true); return; }
         auto picker=std::make_unique<InstrumentPicker>(proc.rack.description(),japanese);
         const auto self=juce::Component::SafePointer<Editor>(this);
-        picker->onChoose=[self](InstrumentChoice c,bool audition) {
+        picker->onChoose=[self, panel=juce::Component::SafePointer<InstrumentPicker>(picker.get())](InstrumentChoice c,bool audition) {
             if (!self) return;
-            self->pickerBox->dismiss();
-            self->instrumentChanged(c.scanned ? self->proc.rack.install(*c.scanned,{})
-                : self->proc.rack.choose(juce::File(c.path),c.needsInspection?juce::String{}:c.name),audition);
+            const auto result = c.scanned ? self->proc.rack.select(*c.scanned)
+                : self->proc.rack.choose(juce::File(c.path),c.needsInspection?juce::String{}:c.name);
+            if (result.failed() && panel) panel->showLoadError(result.getErrorMessage());
+            else if (self->pickerBox) self->pickerBox->dismiss();
+            self->instrumentChanged(result,audition);
         };
         picker->onReference=[self] { if(self) { self->pickerBox->dismiss(); self->instrumentChanged(self->proc.rack.restore(nullptr)); } };
         picker->onBrowse=[self] { if(self) { self->pickerBox->dismiss(); self->browseInstrument(); } };

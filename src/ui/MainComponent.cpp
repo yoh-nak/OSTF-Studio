@@ -6529,7 +6529,24 @@ void MainComponent::globalCommand(int command) {
         }
         return;
     }
-    if (event.isVoid()) {
+    const bool insertScale = lane == TimelineLane::scale && (command == 9 ||
+        (command == 1 && event.isVoid() && !score["song"]["scale"].isObject()));
+    if (insertScale) {
+        const auto range = emptyScaleRange(score, selectedGlobalTick_, project_->ticksPerBar, project_->durationTicks);
+        if (range.isEmpty()) return;
+        auto draft = score["song"]["scale"].clone();
+        if (!draft.isObject()) {
+            draft = new juce::DynamicObject();
+            const auto change = globalEventAt(score, TimelineLane::key, selectedGlobalTick_);
+            const auto key = change.isObject() ? change["key"] : score["song"]["key"];
+            if (key["state"] == "tonal") draft.getDynamicObject()->setProperty("tonic", key["tonic"].clone());
+        }
+        auto* fields = draft.getDynamicObject();
+        fields->setProperty("id", "scale-" + juce::Uuid().toString());
+        fields->setProperty("start", range.getStart());
+        fields->setProperty("duration", range.getLength());
+        event = draft;
+    } else if (event.isVoid()) {
         if (command == 1 && (lane == TimelineLane::key || lane == TimelineLane::scale))
             editSongInformation();
         return;
@@ -6540,9 +6557,10 @@ void MainComponent::globalCommand(int command) {
         copiedPpq_ = project_->ppq;
         return;
     }
-    if (command != 1)
+    if (command != 1 && !insertScale)
         return;
-    auto* dialog = new juce::AlertWindow(TRANS("Edit global event"), {}, juce::MessageBoxIconType::NoIcon, this);
+    auto* dialog = new juce::AlertWindow(insertScale ? TRANS("Set scale for this bar") : TRANS("Edit global event"),
+        {}, juce::MessageBoxIconType::NoIcon, this);
     juce::String value;
     if (lane == TimelineLane::section)
         value = event["name"].toString();
@@ -6566,10 +6584,25 @@ void MainComponent::globalCommand(int command) {
         if (lane == TimelineLane::scale)
             dialog->addTextEditor("intervals", intervalsText(event), TRANS("Intervals in semitones"));
     }
+    if (insertScale) {
+        juce::StringArray modes;
+        for (const auto* mode : SongBasicsPanel::scaleNames) modes.add(mode);
+        dialog->addComboBox("scale-mode", modes, TRANS("Preset"));
+        auto* preset = dialog->getComboBoxComponent("scale-mode");
+        preset->setSelectedId(0, juce::dontSendNotification);
+        preset->onChange = [dialog, preset] {
+            const auto index = preset->getSelectedItemIndex();
+            if (!juce::isPositiveAndBelow(index, int(std::size(SongBasicsPanel::scaleNames)))) return;
+            juce::StringArray steps;
+            for (auto step : SongBasicsPanel::scaleSteps[index]) steps.add(juce::String(step));
+            dialog->getTextEditor("intervals")->setText(steps.joinIntoString(" "));
+            dialog->getTextEditor("value")->setText(preset->getText());
+        };
+    }
     dialog->addButton(TRANS("Apply"), 1, juce::KeyPress(juce::KeyPress::returnKey));
     dialog->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
     dialog->enterModalState(
-        true, juce::ModalCallbackFunction::create([safe, generation, lane, event, dialog](int answer) {
+        true, juce::ModalCallbackFunction::create([safe, generation, lane, event, insertScale, dialog](int answer) {
             if (!answer || !safe || safe->projectGeneration_ != generation)
                 return;
             auto copy = event.clone();
@@ -6631,10 +6664,12 @@ void MainComponent::globalCommand(int command) {
                     }
                     o->setProperty("tonic", tonic);
                     o->setProperty("intervals", ints);
+                    if (auto* preset = dialog->getComboBoxComponent("scale-mode"); preset && preset->getSelectedId() && v == preset->getText())
+                        v = pitchText(tonic) + " " + v;
                     o->setProperty("label", v);
                 }
             }
-            safe->applyGlobalChange(lane, {event}, {copy});
+            safe->applyGlobalChange(lane, insertScale ? juce::Array<juce::var>{} : juce::Array<juce::var>{event}, {copy});
         }),
         true);
 }
@@ -6672,6 +6707,9 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
             bool hasEvent = !ostfstudio::globalEventAt(score, *lane, selectedGlobalTick_).isVoid();
             menu.addItem(1, TRANS("Edit value..."),
                          hasEvent || *lane == TimelineLane::key || *lane == TimelineLane::scale);
+            if (*lane == TimelineLane::scale)
+                menu.addItem(9, TRANS("Set scale for this bar"),
+                    !ostfstudio::emptyScaleRange(score, selectedGlobalTick_, project_->ticksPerBar, project_->durationTicks).isEmpty());
             menu.addItem(2, TRANS("Copy"), hasEvent);
             menu.addItem(5, TRANS("Split here"));
             menu.addItem(6, TRANS("Join with next interval"));
@@ -8333,6 +8371,10 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
             g.drawVerticalLine(positionX(bar, row), static_cast<float>(row.getY()), static_cast<float>(row.getBottom()));
         }
 
+        if (lane.kind == TimelineLane::scale && lane.regions.empty()) {
+            g.setColour(juce::Colour(muted));
+            g.drawText(TRANS("No scale assigned"), row.reduced(5, 0), juce::Justification::centredLeft);
+        }
         for (const auto& region : lane.regions) {
             const auto span = region.exactBars.value_or(ostfstudio::TimelineExtent{
                 static_cast<double>(region.bars.firstBar), static_cast<double>(region.bars.endBar)});

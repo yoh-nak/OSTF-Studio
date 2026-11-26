@@ -2,6 +2,10 @@
 
 ## OSTF 5.2 studio preview
 
+The arrangement keeps the **Scale** lane between Key and Meter even when the song has no assigned scale. Double-click an unassigned bar to choose a tonic and mode, or right-click and choose **Set scale for this bar** to override a song-wide scale. The assignment ends at the bar line or the next shared assignment. Undo restores the previous score.
+
+Scale Editor keeps the current instrument and its preset when you audition it again. If an instrument fails to load, the picker stays open with the search and manufacturer filter intact. In Formant Singer, a short recorded vowel or sustained nasal now advances through its recorded timbre at up to the original speed. Long notes still use the full sustain. Incoming MIDI Expression (CC11) changes use a 4 ms ramp while a voice is sounding.
+
 In Arrangement or Live Session, **Add take** can start a take group from several non-overlapping MIDI clips inside the selected section. Take 1 keeps the original notes, clip positions and intervening silence. The new take starts empty. Selecting a take for audition leaves the adopted comp in place until you adopt the alternative.
 
 Select an audio clip to see its waveform and pitch lanes together. Double-click the waveform to add a warp marker, then drag it horizontally. Drag a note vertically to transpose its source interval in semitones. Arrow keys fine-tune the selected marker or note. New warps preserve pitch. Old rate-based warps keep their saved behavior. **Link aligned stems** shares warp edits with matching clips on other tracks and keeps their pitch edits independent. The editor reads pinned 5.2 note observations when present and estimates stable pitches in other WAVs in the background. Gray overlapping observations are available for inspection. Single-interval retuning processes all sound in that interval. Written percussion uses the supplied staff positions, and TAB preserves fingerings in the score, PDF and MusicXML.

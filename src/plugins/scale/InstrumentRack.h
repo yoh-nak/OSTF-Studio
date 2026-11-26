@@ -22,8 +22,13 @@ public:
         juce::OwnedArray<juce::PluginDescription> types;
         formats.getFormat(0)->findAllTypesForFile(types,file.getFullPathName());
         for (auto* type : types)
-            if (type->isInstrument && type->name != owner.getName() && (className.isEmpty() || type->name==className)) return install(*type,{});
+            if (type->isInstrument && type->name != owner.getName() && (className.isEmpty() || type->name==className)) return select(*type);
         return juce::Result::fail("Select a VST3 instrument other than Scale Editor.");
+    }
+    juce::Result select(const juce::PluginDescription& type) {
+        const auto current = description();
+        if (current && current->isDuplicateOf(type)) return juce::Result::ok();
+        return install(type, {});
     }
     juce::Result install(const juce::PluginDescription& type,const juce::MemoryBlock& state) {
         if (!type.isInstrument || type.pluginFormatName != "VST3" || type.name == owner.getName())

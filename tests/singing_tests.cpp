@@ -222,6 +222,10 @@ int main(int argc, char** argv) {
             || std::abs(recordedCV.sungPosition(.040,length,true)-2400.)>.001) return 53;
     if (std::abs(recordedCV.sungPosition(.010,.020,true)-2400.)>.001
         || recordedCV.sungPosition(0.,1.,false)!=2400. || recordedCV.sungPosition(1.,1.,true)!=17000.) return 53;
+    // The last 10 ms of this short syllable traverse 10 ms of recorded vowel.
+    // A held note still traverses the full sustain and reaches its final frame.
+    if (std::abs(recordedCV.sungPosition(.020,.020,true)-2880.)>.001
+        || std::abs(recordedCV.sungPosition(.500,1.,false)-9700.)>.001) return 76;
     RecordedMora fricative;
     fricative.rate=24000; fricative.period=120; fricative.consonantFrames=1080;
     fricative.loopStart=4500; fricative.loopEnd=5940;
@@ -413,6 +417,25 @@ int main(int argc, char** argv) {
     const auto expressiveReversed=vowelChange(true,0,{0,vowelOnly},true,100,true);
     for (int i=0;i<expressive.getNumSamples();++i)
         if (std::abs(expressive.getSample(0,i)-expressiveReversed.getSample(0,i))>1.e-6f) return 74;
+    auto expressionStep = [&](int channel, bool initiallySilent) {
+        singer->reset();
+        midi.clear();
+        if (initiallySilent) midi.addEvent(juce::MidiMessage::controllerEvent(1,11,0),0);
+        midi.addEvent(phoneMessage(1,60,{0,vowelOnly},.16),0);
+        midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(100)),0);
+        juce::AudioBuffer<float> held(2,1024);
+        singer->processBlock(held,midi);
+        midi.clear();
+        midi.addEvent(juce::MidiMessage::controllerEvent(channel,11,0),128);
+        singer->processBlock(held,midi);
+        return held;
+    };
+    const auto reference = expressionStep(2,false);
+    const auto faded = expressionStep(1,false);
+    const auto earlyRatio = faded.getRMSLevel(0,128,48) / reference.getRMSLevel(0,128,48);
+    std::cout << "CC11 to zero, level over first ms: " << earlyRatio << '\n';
+    if (!(earlyRatio>.72f && earlyRatio<1.f) || reference.getRMSLevel(0,320,240)<.001f
+        || faded.getMagnitude(0,320,240)>1.e-6f || expressionStep(2,true).getMagnitude(0,1024)>1.e-6f) return 75;
     const auto quieter=vowelChange(true,0,{0,vowelOnly},false,36);
     const double earlyGain=quieter.getRMSLevel(0,30,66)/joined.getRMSLevel(0,30,66);
     const double settledGain=quieter.getRMSLevel(0,700,250)/joined.getRMSLevel(0,700,250);

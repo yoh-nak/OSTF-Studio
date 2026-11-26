@@ -40,6 +40,27 @@ inline juce::var globalEventAt(const juce::var& score, TimelineLane lane, juce::
         }
     return hit;
 }
+inline juce::Range<juce::int64> sharedScaleGap(const juce::var& score, juce::int64 tick,
+                                               juce::Range<juce::int64> limits) {
+    if (!limits.contains(tick)) return {};
+    auto start = limits.getStart(), end = limits.getEnd();
+    const auto scales = score["harmony"]["scales"];
+    if (const auto* entries = scales.getArray()) for (const auto& scale : *entries) {
+        if (scale.hasProperty("targets")) continue;
+        const juce::int64 a = scale["start"];
+        const auto b = a + juce::int64(scale["duration"]);
+        if (a <= tick && tick < b) return {};
+        if (b <= tick) start = std::max(start, b);
+        if (a > tick) end = std::min(end, a);
+    }
+    return {start, end};
+}
+inline juce::Range<juce::int64> emptyScaleRange(const juce::var& score, juce::int64 tick,
+                                                juce::int64 barLength, juce::int64 songEnd) {
+    if (tick < 0 || tick >= songEnd || barLength <= 0) return {};
+    const auto bar = tick - tick % barLength;
+    return sharedScaleGap(score, tick, {bar, bar + std::min(barLength, songEnd - bar)});
+}
 // Compute a boundary edit without removing time from the lane.
 inline juce::Result globalBoundaryEdit(const juce::var& score, TimelineLane lane, juce::int64 tick,
                                       juce::int64 endTick, bool split, bool keepRight,
@@ -55,13 +76,15 @@ inline juce::Result globalBoundaryEdit(const juce::var& score, TimelineLane lane
         left.getDynamicObject()->setProperty("key", score["song"]["key"].clone());
         left.getDynamicObject()->setProperty("id", "key-" + juce::Uuid().toString());
     }
-    const auto scales = score["harmony"]["scales"];
-    const bool defaultScale = !left.isObject() && lane == TimelineLane::scale && score["song"]["scale"].isObject() && scales.size() == 0;
+    const bool defaultScale = !left.isObject() && lane == TimelineLane::scale && score["song"]["scale"].isObject();
     if (defaultScale) {
+        const auto gap = sharedScaleGap(score, tick, {0, endTick});
+        if (gap.isEmpty()) return juce::Result::fail("Choose a global interval.");
         left = score["song"]["scale"].clone();
+        if (left["label"].toString().isEmpty()) left.getDynamicObject()->setProperty("label",left["id"].toString());
         left.getDynamicObject()->setProperty("id","scale-" + juce::Uuid().toString());
-        left.getDynamicObject()->setProperty("start",0);
-        left.getDynamicObject()->setProperty("duration",endTick);
+        left.getDynamicObject()->setProperty("start",gap.getStart());
+        left.getDynamicObject()->setProperty("duration",gap.getLength());
     }
     if (!left.isObject()) return juce::Result::fail("Choose a global interval.");
     const juce::int64 start = left[key];
@@ -96,9 +119,9 @@ inline juce::Result globalBoundaryEdit(const juce::var& score, TimelineLane lane
     } else {
         if (!next.isObject() || end != juce::int64(next[key])) return juce::Result::fail("Choose an interval with an adjacent successor.");
         if (visited(left) || visited(next)) return juce::Result::fail("This section is used in a performance plan.");
-        if (!inherited) remove.add(left);
+        if (!inherited && !defaultScale) remove.add(left);
         remove.add(next);
-        if (!inherited || keepRight) {
+        if ((!inherited && !defaultScale) || keepRight) {
             auto joined = (keepRight ? next : left).clone();
             joined.getDynamicObject()->setProperty(key, start);
             if (source.span) joined.getDynamicObject()->setProperty("duration", end + juce::int64(next["duration"]) - start);

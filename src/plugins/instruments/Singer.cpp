@@ -129,6 +129,7 @@ class SyllableVoice {
         released = true;
     }
     bool endingOn(int ch) const { return channel == ch && released && envelope > 0; }
+    bool soundingOn(int ch) const { return channel == ch && envelope > 0; }
     float sample(double sr, double bendRatio, float expression, float deliveryDepth, const juce::dsp::FFT& fft) {
         if (released) {
             if (releaseFrames == 0) {
@@ -205,8 +206,7 @@ class SyllableVoice {
                                            nasalAttack->consonantFrames - nasalAttack->period);
                 return float(level * voicedSample(*nasalAttack, at, pitch, sr, fft));
             }
-            const double progress = std::clamp(time / duration, 0., 1.);
-            const double at = std::lerp(double(nasalBody->vowelFirst), double(nasalBody->vowelLast), progress);
+            const double at = nasalBody->sungPosition(time, duration, false);
             return float(level * voicedSample(*nasalBody, at, pitch, sr, fft));
         }
         // Use only the unvoiced portion of a CV for the /s/ in "lights".
@@ -546,7 +546,10 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
         voices = {};
         articulation = {};
         bend.fill(1.0);
-        expression.fill(1.0f);
+        for (auto& gain : expression) {
+            gain.reset(rate, .004);
+            gain.setCurrentAndTargetValue(1.f);
+        }
         depthRamp.setCurrentAndTargetValue(pitchDepth->get()*.01f);
         lastPart = -1;
         lastIndex = -1;
@@ -696,10 +699,13 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
                     handleMidiFrame(first,ev);
                 }
             const float depth=depthRamp.getNextValue();
+            std::array<float,16> channelExpression;
+            for (size_t ch=0; ch<expression.size(); ++ch)
+                channelExpression[ch]=expression[ch].getNextValue();
             float sample = 0;
             for (auto& v : voices)
                 if (v.key >= 0)
-                    sample += v.sample(rate, bend[v.channel - 1], expression[v.channel - 1], depth, synthesisFFT);
+                    sample += v.sample(rate, bend[v.channel - 1], channelExpression[v.channel - 1], depth, synthesisFFT);
             const float magnitude = std::abs(sample);
             if (magnitude > .9f)
                 sample = std::copysign(.9f + .1f * std::tanh((magnitude - .9f) * 10.f), sample);
@@ -772,7 +778,13 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
         } else if (m.isPitchWheel()) {
             bend[m.getChannel() - 1] = std::exp2((m.getPitchWheelValue() - 8192) / (8192.0 * 6));
         } else if (m.isController() && m.getControllerNumber() == 11) {
-            expression[m.getChannel() - 1] = m.getControllerValue() / 127.f;
+            const int channel = m.getChannel();
+            auto& gain = expression[channel - 1];
+            const float target = m.getControllerValue() / 127.f;
+            if (std::any_of(voices.begin(), voices.end(), [channel](const auto& v) { return v.soundingOn(channel); }))
+                gain.setTargetValue(target);
+            else
+                gain.setCurrentAndTargetValue(target);
         } else if (m.isNoteOff() || m.isAllNotesOff() || m.isAllSoundOff()) {
             for (auto& v : voices)
                 if (v.channel == m.getChannel() && (!m.isNoteOff() || v.key == m.getNoteNumber()))
@@ -793,7 +805,7 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
     const VoiceBank* activeBank() const { return bank ? bank.get() : (builtin == 1 ? nullptr : &factoryBank); }
     juce::File requestedVoice;
     std::array<double, 16> bend{};
-    std::array<float, 16> expression{};
+    std::array<juce::SmoothedValue<float>,16> expression{};
     std::array<std::array<Phone, 128>, 16> articulation{};
 };
 juce::Image loadPortrait(const juce::File& file) {

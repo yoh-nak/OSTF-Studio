@@ -249,7 +249,10 @@ double RecordedMora::sungPosition(double elapsed, double voicedDuration, bool co
     const double opening = voicedDuration > 0 ? std::min(recordedOpening, .5 * voicedDuration) : recordedOpening;
     if (elapsed < opening) return std::lerp(first, vowel, elapsed / opening);
     const double held = elapsed - opening;
-    const double progress = voicedDuration > 0 ? std::clamp(held / (voicedDuration - opening), 0., 1.)
+    // A short sung vowel uses the beginning of the stable recording. Scanning
+    // its entire sustain in a few milliseconds exaggerates changes of timbre.
+    const double sustainDuration = std::max(voicedDuration - opening, (end - vowel) / rate);
+    const double progress = voicedDuration > 0 ? std::clamp(held / sustainDuration, 0., 1.)
                                                : held / (held + .23);
     return std::lerp(vowel, end, progress);
 }

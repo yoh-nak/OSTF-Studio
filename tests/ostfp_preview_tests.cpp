@@ -1,5 +1,6 @@
 #include "ui/AudioModelPitches.h"
 #include "ui/AudioPitchAnalysis.h"
+#include "ui/GlobalTimelineEdit.h"
 #include "ui/OstfpPreview.h"
 #include "ui/AudioRegionEdits.h"
 #include "StockEffects.h"
@@ -139,6 +140,60 @@ static int checkGallery(const juce::File& directory) {
         if (!matches) {
             std::cerr << expected.file << ": unexpected preview result: " << result.getErrorMessage() << '\n';
             return 1;
+        }
+        if (juce::String(expected.file) == "blue-hour-waltz.ostfp") {
+            using ostfstudio::TimelineLane;
+            const auto scaleLane = [&] {
+                return std::find_if(project->globalLanes.begin(), project->globalLanes.end(),
+                                    [](const auto& lane){return lane.kind==TimelineLane::scale;});
+            };
+            const auto lane = scaleLane();
+            if (lane==project->globalLanes.end() || lane==project->globalLanes.begin()
+                || std::next(lane)==project->globalLanes.end() || std::prev(lane)->kind!=TimelineLane::key
+                || std::next(lane)->kind!=TimelineLane::meter || !lane->regions.empty()) return 131;
+            const auto bar=project->ticksPerBar;
+            auto source=juce::JSON::parse(project->sourceScore.toString());
+            auto range=ostfstudio::emptyScaleRange(source,bar+1,bar,project->durationTicks);
+            if (range!=juce::Range<juce::int64>(bar,2*bar)) return 132;
+            auto scale=juce::JSON::parse(R"({"id":"dorian-test","tonic":{"step":"D","alter":0},"intervals":[0,2,3,5,7,9,10]})");
+            scale.getDynamicObject()->setProperty("start",bar+120);
+            scale.getDynamicObject()->setProperty("duration",bar-240);
+            juce::MemoryBlock before;
+            if (project->changeGlobalEvents(TimelineLane::scale,{}, {scale},before).failed()
+                || project->contextAt(TimelineLane::scale,bar+120)!="dorian-test") return 133;
+            source=juce::JSON::parse(project->sourceScore.toString());
+            auto songScale=scale.clone();
+            songScale.getDynamicObject()->removeProperty("start");
+            songScale.getDynamicObject()->removeProperty("duration");
+            songScale.getDynamicObject()->setProperty("id","reference-scale");
+            source["song"].getDynamicObject()->setProperty("scale",songScale);
+            const auto withDefault=juce::JSON::toString(source);
+            juce::MemoryInputStream input(withDefault.toRawUTF8(),withDefault.getNumBytesAsUTF8(),false);
+            std::unique_ptr<ostfstudio::OstfpPreview> inherited;
+            if (ostfstudio::readOstfPreview(input,inherited).failed()) return 135;
+            const auto row=std::find_if(inherited->globalLanes.begin(),inherited->globalLanes.end(),
+                [](const auto& item){return item.kind==TimelineLane::scale;});
+            if (row==inherited->globalLanes.end() || row->regions.size()!=3
+                || juce::String(row->regions.front().label)!="reference-scale" || juce::String(row->regions.back().label)!="reference-scale"
+                || inherited->contextAt(TimelineLane::scale,bar+120)!="dorian-test") return 136;
+            const auto verifyBoundary = [&](bool split, bool keepRight) {
+                juce::Array<juce::var> removed,added;
+                juce::MemoryBlock undo;
+                if (ostfstudio::globalBoundaryEdit(source,TimelineLane::scale,bar,inherited->durationTicks,
+                        split,keepRight,removed,added).failed()
+                    || inherited->changeGlobalEvents(TimelineLane::scale,removed,added,undo).failed()) return false;
+                const auto beforeOverride=inherited->contextAt(TimelineLane::scale,bar);
+                const auto duringOverride=inherited->contextAt(TimelineLane::scale,bar+120);
+                return beforeOverride==(keepRight?"dorian-test":"reference-scale")
+                    && duringOverride==((split||keepRight)?"dorian-test":"reference-scale")
+                    && inherited->restoreNoteScore(undo).wasOk();
+            };
+            if (!verifyBoundary(true,false) || !verifyBoundary(false,false) || !verifyBoundary(false,true)) return 137;
+            if (ostfstudio::emptyScaleRange(source,bar+119,bar,project->durationTicks)!=juce::Range<juce::int64>(bar,bar+120)
+                || !ostfstudio::emptyScaleRange(source,bar+120,bar,project->durationTicks).isEmpty()
+                || ostfstudio::emptyScaleRange(source,2*bar-120,bar,project->durationTicks)!=juce::Range<juce::int64>(2*bar-120,2*bar)
+                || project->restoreNoteScore(before).failed() || scaleLane()==project->globalLanes.end()
+                || !scaleLane()->regions.empty()) return 134;
         }
         if (std::string_view(expected.file) == "paper-lantern-replies.ostfp") {
             if (project->lyricTrackIds.size()!=2 || project->vocalNotes.size()!=204 || project->primaryMelodyTrack!=0) return 86;

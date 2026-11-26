@@ -1278,3 +1278,5 @@ countries: jp
 "Add section take" = "構成にテイクを追加"
 "Silence" = "無音"
 " / Playing the saved comp. Visit overrides and automatic live selection are unavailable." = " ／ 保存済みコンプを再生します。Visitごとの指定とライブ自動選択は未対応です。"
+"No scale assigned" = "スケール未指定"
+"Set scale for this bar" = "この小節にスケールを設定"

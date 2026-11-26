@@ -354,7 +354,10 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& core, bool retainVoi
 
     std::vector<ArrangementRegion> scales;
     const auto songScale = score["song"]["scale"];
-    out->defaultScale = songScale.getProperty("label", songScale["id"]).toString();
+    out->defaultScale = songScale["label"].toString();
+    if (out->defaultScale.isEmpty()) out->defaultScale = songScale["id"].toString();
+    juce::SparseSet<juce::int64> inheritedScale;
+    if (out->defaultScale.isNotEmpty()) inheritedScale.addRange({0, duration});
     if (const auto timed = score["harmony"]["scales"]; timed.isArray()) {
         for (const auto& entry : array(timed)) {
             const auto start = integer(entry["start"]);
@@ -366,13 +369,18 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& core, bool retainVoi
             item.colour=eventColour("scale",entry["id"]);
             item.isScoped = entry.hasProperty("targets");
             scales.push_back(item);
+            inheritedScale.removeRange({start, start + length});
         }
     }
-    if (scales.empty()) {
-        const auto scale = score["song"]["scale"]["label"].toString();
-        if (scale.isNotEmpty()) scales.push_back({out->bars, out->keepLabel(scale)});
+    for (int i = 0; i < inheritedScale.getNumRanges(); ++i) {
+        const auto gap = inheritedScale.getRange(i);
+        scales.push_back(region(gap.getStart(), gap.getEnd(), out->defaultScale));
     }
-    if (!scales.empty()) addLane(out->globalLanes, "SCALE", std::move(scales), TimelineLane::scale);
+    if (!inheritedScale.isEmpty())
+        std::stable_sort(scales.begin(), scales.end(), [](const auto& left, const auto& right) {
+            return left.exactBars->start < right.exactBars->start;
+        });
+    addLane(out->globalLanes, "SCALE", std::move(scales), TimelineLane::scale);
     std::vector<ArrangementRegion> meterRegions;
     for (int i = 0; i < meterEntries.size(); ++i) {
         const auto& change = meterEntries[i];

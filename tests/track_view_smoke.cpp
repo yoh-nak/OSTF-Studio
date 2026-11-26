@@ -1279,6 +1279,40 @@ int checkSamplePlacement(const juce::File& file) {
         stems.undoPianoEdit(false);
         if (stems.clipOn(0)->timing.cycleTicks!=0 || stems.clipOn(1)->timing!=pitched) return 373;
     }
+    {
+        MainComponent view;
+        view.setSize(1650, 1000);
+        std::unique_ptr<ostfstudio::OstfpPreview> song;
+        const auto demo=file.getParentDirectory().getParentDirectory().getChildFile("blue-hour-waltz.ostfp");
+        juce::FileInputStream input(demo);
+        if (!input.openedOk() || ostfstudio::readOstfpPreview(input,song).failed()) return 374;
+        song->savedMix.reset();
+        view.openImportedSong(std::move(song));
+        view.setVisible(true);
+        const auto area=view.rowOverlay_.getBounds();
+        const int x=area.getX()+view.trackHeaderWidth+20;
+        int y=area.getY();
+        while (y<area.getBottom() && view.globalLaneAt({x,y})!=ostfstudio::TimelineLane::scale) ++y;
+        if (y==area.getBottom()) return 375;
+        const auto png=juce::SystemStats::getEnvironmentVariable("OSTF_GLOBAL_SCALE_PNG",{});
+        if (png.isNotEmpty()) {
+            const auto crop=area.withWidth(std::min(area.getWidth(),view.trackHeaderWidth+520))
+                .withBottom(std::min(area.getBottom(),y+view.timelineRowHeight()*3));
+            juce::FileOutputStream output{juce::File(png)};
+            if (!output.openedOk() || !output.setPosition(0) || output.truncate().failed()
+                || !juce::PNGImageFormat{}.writeImageToStream(view.createComponentSnapshot(crop),output)) return 376;
+        }
+        view.selectedGlobal_=ostfstudio::TimelineLane::scale;
+        view.selectedGlobalTick_=view.project_->ticksPerBar;
+        view.globalCommand(1);
+        auto* dialog=dynamic_cast<juce::AlertWindow*>(juce::Component::getCurrentlyModalComponent());
+        if (!dialog || !dialog->getComboBoxComponent("scale-mode")) return 377;
+        dialog->getComboBoxComponent("scale-mode")->setSelectedId(2,juce::sendNotificationSync);
+        const bool matches=dialog->getTextEditorContents("intervals")=="0 2 3 5 7 9 10"
+            && dialog->getTextEditorContents("value")=="Dorian";
+        dialog->exitModalState(0);
+        if (!matches) return 378;
+    }
     return 0;
 }
 

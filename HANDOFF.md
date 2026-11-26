@@ -1,5 +1,19 @@
 # OSTF Studio development handoff
 
+## 2026-11-26 — global Scale lane, short vowels and instrument audition
+
+Branch `feat/ostf-52-studio`. Open the Blue Hour Waltz demo: it has a key and no assigned scale. Its global Scale row now sits between Key and Meter. Double-click an unassigned bar to choose the tonic and mode. Use **Set scale for this bar** to override a song default. The row shows the inherited scale on either side of a timed assignment. Splitting an inherited interval respects nearby shared assignments, and a join can retain either side. The display alone does not create events in the score.
+
+The four-note Mei test uses 72 ms notes separated by 8 ms. The Singer now advances a short stable vowel and nasal body through the recorded sustain at up to its natural speed. Note pitch, consonant timing and the length of the score remain separate. A CC11 change on a sounding voice ramps over 4 ms. The test checks that an initially silent channel stays silent, another channel is unaffected, and a 10 ms stable vowel uses 10 ms of its recording. Use `ostf_singing_tests <paper-lantern-replies.ostf> <unused-output.wav> short-mei` to audition the short fixture.
+
+Windows Scale Editor keeps the open native editor and hosted instrument when the same plug-in is auditioned again. A failed load leaves the filtered picker open with the error. The Windows hosted test checks the active native editor survives; a separate audition with the installed third-party FM8 produced a peak of 0.07170. External DAW interaction, subjective vocal quality, complete M4L feature parity, CI and macOS hardware remain unverified for this change.
+
+The development Portable is `E:/OSTF-Studio-build-cache/global-scale-52/Portable` (38 VST3 bundles, eight demos). The executable and the two changed plug-in bundles were checked against the Release build. Use `--track-view-smoke tests/fixtures/10-comprehensive-core.ostfp` with an absolute fixture path to exercise the empty row and the Dorian preset. Set `OSTF_GLOBAL_SCALE_PNG` to a new PNG path to capture the arrangement.
+
+Windows x64 Release passed all 44 CTest cases. The demo gallery checks an imported 5.1 song with an empty row, a timed override, inherited names on both sides, splitting, both join choices and Undo. The updated Windows Portable is local. Installer builds and release publication were not run.
+
+For a matched listening check, copy the standalone Paper Lantern Replies score and its referenced chimes WAV, change the test copy's first tempo from 78 to 312 BPM, and run `--vocal-track-smoke <test-score> <new-output.wav>` with the previous and current Portables. Both four-bar captures lasted 3.077 seconds. Their normalized sample-difference RMS was 0.01426; the updated peak was 0.2573. The same four bars at the original 78 BPM were sample-identical. The test copy and listening WAVs are machine-local.
+
 ## 2026-11-26 — waveform pitch and warp in one editor
 
 Branch `feat/ostf-52-studio`. Select an audio region in the arrangement. Double-click the upper waveform to add a pitch-preserving warp marker, then drag it horizontally. Drag a note in the lower lane vertically to retune its source interval by semitones. Both lanes use the same timeline and Undo history. For aligned stems, enable **Link aligned stems** before moving a marker. It links matching region timing and leaves each stem's pitch edits independent. Saved older rate-based warps retain their playback policy.

@@ -2,6 +2,12 @@
 
 ## OSTF 5.2 score and audio projection
 
+The arrangement always projects a Scale lane. A song-level scale fills gaps between timed regions, and a score with no scale assignments displays an empty lane. Adding a shared scale from the lane intersects the clicked bar with the gap between other shared assignments. Targeted scales retain their own scope. The edit and Undo use the same score transaction as the other global lanes.
+
+The Scale Editor instrument picker compares JUCE plug-in identities before replacing the hosted instance. Re-audition of the active instance preserves its live state and native editor. Formant Singer keeps a four-millisecond MIDI Expression ramp per channel during active voices and applies Expression immediately when a channel is silent.
+
+Recorded CV syllables can shorten the consonant opening to leave room for a pitched vowel. Once the stable vowel begins, the spectral envelope advances at up to the recording's natural speed. This also applies to the sustained body of a recorded nasal. The pitch clock and note duration still come from the score.
+
 The waveform and pitch lanes use the same source-to-timeline mapping. Each note belongs to the trimmed source interval, so moving a warp marker also moves its note. Pinned observations are matched by asset ID and SHA-256. A cancellable worker estimates stable fundamentals for recordings without matching note objects. Overlapping observations are read-only. Retuning acts on the entire selected interval in both channels. Linked warp edits require matching start, region and source duration, and existing timing settings.
 
 Playback preparation uses Signalsmith Stretch to render pitch offsets and pitch-preserving warp against the tempo map before the audio callback. The callback reads the prepared buffer for transport, seeking and consolidation. Production linear fit supports both standard pitch policies. Studio stores non-linear warp and source-relative pitch offsets in its host extension. Saving a timing edit to a supported imported Production updates the companion digest and retains source assets, analyses and comp references.
