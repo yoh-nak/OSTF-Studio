@@ -1193,7 +1193,11 @@ MainComponent::MainComponent() {
     audioEditor_.clock = [this]() -> const ostfstudio::TempoMap& { return auditionClock_ ? *auditionClock_ : project_->clock; };
     audioEditor_.onSplice = [this] { openSplice(); };
     audioEditor_.selectWave = [this] {
-        if (auto* clip = audioEditor_.sourceClip()) selectEditorClip(1. + double(clip->startTick) / project_->ticksPerBar, false);
+        if (auto* clip = audioEditor_.sourceClip()) {
+            selectedAudioId_=clip->regionId;
+            clipLane_.selected=1.+double(clip->startTick)/project_->ticksPerBar;
+            clipLane_.repaint();
+        }
     };
     audioEditor_.onMelodyne = [this] { audioEditor_.selectWave(); editMelodyneCopy(); };
     audioEditor_.onApply = [this] { applyMelodyneCopy(); };
@@ -1202,15 +1206,31 @@ MainComponent::MainComponent() {
     };
     audioEditor_.onEdit = [this](const ostfstudio::ClipTiming& edit) {
         auto* clip = selectedTrack_ ? clipOn(*selectedTrack_) : nullptr;
-        if (!clip || recordTrack_) return;
+        if (!clip || recordTrack_ || edit==clip->timing) return;
+        const auto original=clip->timing;
+        auto before=project_->audio;
         const bool playing = transportActive_;
         if (playing) stopTransport();
-        if (!edit.loop && edit.cycleTicks && edit.cycleTicks != clip->timing.cycleTicks) {
-            clip->durationTicks = std::clamp<juce::int64>(edit.leadingTicks + edit.cycleTicks, 1, project_->playbackEndTick() - clip->startTick);
+        const bool warpChanged=edit.cycleTicks!=original.cycleTicks || edit.markers!=original.markers;
+        const auto duration=clip->durationTicks;
+        for (auto& region:project_->audio) {
+            if (&region!=clip) {
+                if (!audioEditor_.linkWarp() || !warpChanged || region.track==clip->track || region.startTick!=clip->startTick
+                        || region.durationTicks!=duration || !waveforms_.available(region)
+                        || std::abs(waveforms_.nativeSeconds(*clip)-waveforms_.nativeSeconds(region))>.00002) continue;
+                auto compare=region.timing; compare.pitches=original.pitches;
+                if (compare!=original) continue;
+            }
+            auto timing=edit;
+            if (&region!=clip) timing.pitches=region.timing.pitches;
+            if (edit.cycleTicks!=original.cycleTicks) {
+                timing.sourceLimitTicks=0;
+                if (!edit.loop && edit.cycleTicks) region.durationTicks=std::clamp<juce::int64>(
+                    edit.leadingTicks+edit.cycleTicks,1,project_->playbackEndTick()-region.startTick);
+            }
+            region.timing=std::move(timing);
         }
-        const bool newWarpLength = edit.cycleTicks != clip->timing.cycleTicks;
-        clip->timing = edit;
-        if (newWarpLength) clip->timing.sourceLimitTicks = 0;
+        rememberAudioEdit(std::move(before),{},warpChanged ? "Edit audio warp" : "Edit audio clip");
         markSessionEdited();
         finishNoteEdit(playing);
     };

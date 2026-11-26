@@ -728,7 +728,8 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
             if (status == 0x90 && m.numBytes >= 3 && m.data[2] != 0) {
                 starting[m.data[0] & 15].set(m.data[1] & 127);
                 if (firstOn == last) firstOn = it;
-            } else if (status != 0x80 && status != 0x90 && m.data[0] != 0xf0) {
+            } else if (status != 0x80 && status != 0x90 && m.data[0] != 0xf0 && status != 0xe0
+                       && !(status == 0xb0 && m.numBytes >= 3 && m.data[1] == 11)) {
                 for (auto ordered = first; ordered != last; ++ordered) handle((*ordered).getMessage());
                 return;
             }

@@ -1,4 +1,5 @@
 #include "ui/AudioModelPitches.h"
+#include "ui/AudioPitchAnalysis.h"
 #include "ui/OstfpPreview.h"
 #include "ui/AudioRegionEdits.h"
 #include "StockEffects.h"
@@ -696,6 +697,36 @@ static int checkOstf52(const juce::File& fixtures) {
                 if (!pitches.frequenciesAt(trim,11999).empty() || pitches.frequenciesAt(trim,12000).size()!=1
                     || !pitches.frequenciesAt(trim,24000).empty()) return 27;
             }
+            auto& clip=project->audio.front();
+            const auto base=pitches.frequenciesAt(clip,12000).front();
+            const auto guide=analysePitchGuide(clip,std::atomic_bool{false});
+            if (guide.empty() || std::abs(guide.front().hz-base)>4.) return 28;
+            clip.timing.cycleTicks=clip.durationTicks;
+            clip.timing.preservePitch=true;
+            clip.timing.markers={{.65,.5}};
+            clip.timing.pitches={{0.,.5,3}};
+            juce::MemoryOutputStream changed;
+            if (const auto result=writeOstfpPreview(*project,*project->savedMix,changed); result.failed()) {
+                std::cerr<<result.getErrorMessage()<<"\n"; return 29;
+            }
+            juce::MemoryInputStream input(changed.getData(),changed.getDataSize(),false);
+            if (const auto result=readOstfpPreview(input,reopened); result.failed()) {std::cerr<<result.getErrorMessage()<<"\n";return 30;}
+            if (reopened->audio!=project->audio || reopened->importedProduction->members!=project->importedProduction->members) return 31;
+            auto audible=reopened->audio.front(); audible.muted=false; audible.gainDb=0;
+            AudioRegionPlayback play;
+            if (play.load(audible,project->clock,48000,96000).failed()) return 32;
+            const int length=play.wavEnd-play.wavStart;
+            juce::AudioBuffer<float> sound(2,length); sound.clear();
+            play.mixInto(sound,length,play.wavStart,1.,48000,project->clock);
+            auto hzAt=[&](double t) {
+                const int a=int(t*length),n=length/10;
+                int edges=0;
+                for(int i=a+1;i<a+n;++i) if(sound.getSample(0,i-1)<=0 && sound.getSample(0,i)>0) ++edges;
+                return 48000.*edges/n;
+            };
+            const auto firstHz=hzAt(.30),lastHz=hzAt(.80);
+            std::cout<<"Warped region: "<<length<<" frames, pitched / unchanged intervals: "<<firstHz<<" / "<<lastHz<<" Hz\n";
+            if (std::abs(firstHz-base*std::exp2(3./12))>12 || std::abs(lastHz-base)>12) return 33;
             auto info=project->songInformation();
             info.title="Edited score with original audio";
             if (project->applySongInformation(info).failed()) return 19;

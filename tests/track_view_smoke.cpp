@@ -51,7 +51,8 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
         for (size_t i = 0; i < song->sourceTrackCount(); ++i) {
             const auto& r = mix.midiRoutes[i];
             auto* module = int(i) == guitar ? instrument.get() : int(i) == bass ? second.get() : nullptr;
-            if (mix.instruments[i].isObject() != (module != nullptr)) return 213;
+            // The demo also has FM, drum and wavetable instruments on independent tracks.
+            if (matchesVst3Instrument(mix.instruments[i], instrument->getPluginDescription()) != (module != nullptr)) return 213;
             routes[i] = {r.destination, module, r.channel};
             playback.setChannelMix(i, mix.tracks[i], true, 0);
         }
@@ -1249,6 +1250,35 @@ int checkSamplePlacement(const juce::File& file) {
         if(main.mixer_.channel(0).muted==muted) return 343;
         main.liveMatrix_.trackAction(0,4,nullptr);
     }
+    {
+        MainComponent stems;
+        stems.setSize(1650, 1400);
+        stems.newProject();
+        for (int track=0; track<3; ++track) stems.editTracks(ostfstudio::TrackKind::audio);
+        const int origin=stems.rowOverlay_.getX()+stems.trackHeaderWidth+40;
+        for (int track=0; track<3; ++track)
+            stems.filesDropped({file.getFullPathName()},origin+(track==2 ? 120 : 0),stems.trackRows_[track].getCentreY());
+        if (!stems.clipOn(0) || !stems.clipOn(1) || !stems.clipOn(2)
+            || stems.clipOn(0)->startTick==stems.clipOn(2)->startTick) return 370;
+        stems.selectTrack(1);
+        auto pitched=stems.clipOn(1)->timing;
+        pitched.pitches.push_back({.1,.3,2});
+        stems.audioEditor_.onEdit(pitched);
+        stems.selectTrack(0);
+        for (auto* child:stems.audioEditor_.getChildren())
+            if (auto* button=dynamic_cast<juce::Button*>(child); button && button->getButtonText()==TRANS("Link aligned stems"))
+                button->setToggleState(true,juce::dontSendNotification);
+        if (!stems.audioEditor_.linkWarp()) return 371;
+        auto warp=stems.clipOn(0)->timing;
+        warp.cycleTicks=stems.clipOn(0)->durationTicks;
+        warp.preservePitch=true;
+        warp.markers.push_back({.65,.5});
+        stems.audioEditor_.onEdit(warp);
+        if (stems.clipOn(0)->timing!=warp || stems.clipOn(1)->timing.markers!=warp.markers
+            || stems.clipOn(1)->timing.pitches!=pitched.pitches || stems.clipOn(2)->timing.cycleTicks!=0) return 372;
+        stems.undoPianoEdit(false);
+        if (stems.clipOn(0)->timing.cycleTicks!=0 || stems.clipOn(1)->timing!=pitched) return 373;
+    }
     return 0;
 }
 
@@ -1648,13 +1678,15 @@ int checkTrackView(const juce::File& fixture) {
     if (tree->getRootItem()->getNumSubItems()!=makers) return 364;
     const auto* imported = audioEditor->sourceClip();
     if (!imported || imported->localFile != sample || imported->durationTicks <= 0) return 54;
-    for (auto* child : audioEditor->getChildren())
-        if (auto* b = dynamic_cast<juce::TextButton*>(child); b && (b->getButtonText() == TRANS("Warp (re-pitch)") || b->getButtonText() == TRANS("Loop"))) {
-            if (!b->isEnabled()) return 55;
-            b->setToggleState(true, juce::dontSendNotification);
-            b->onClick();
-        }
-    if (!imported->timing.loop || !imported->timing.cycleTicks) return 56;
+    auto* loopButton = dynamic_cast<juce::Button*>(audioEditor->findChildWithID("audio-loop"));
+    auto* warpButton = dynamic_cast<juce::Button*>(audioEditor->findChildWithID("audio-warp"));
+    if (!loopButton || !warpButton || !loopButton->isEnabled() || !warpButton->isEnabled()) return 55;
+    loopButton->setToggleState(true, juce::sendNotificationSync);
+    if (!audioEditor->sourceClip()->timing.loop) return 56;
+    warpButton->setToggleState(true, juce::sendNotificationSync);
+    imported = audioEditor->sourceClip();
+    if (!imported->timing.loop || !imported->timing.cycleTicks) return 368;
+    if (!imported->timing.preservePitch) return 369;
     auto* clipLane = findControl<EditorClipLane>(main, TRANS("Clips"));
     const auto audioGrid = audioEditor->recordRuler.getBounds();
     if (!clipLane || clipLane->clips.empty()
@@ -1670,7 +1702,7 @@ int checkTrackView(const juce::File& fixture) {
     if (shown.isEmpty()) return 133;
     const auto editorPoint = juce::Point<float>(
         float(audioGrid.getX() + ((shown.getStart() + shown.getLength() * .25) - bars.getStart()) * audioGrid.getWidth() / bars.getLength()),
-        float(std::max(audioGrid.getBottom() + 2, audioEditor->getHeight() / 2)));
+        float(audioGrid.getBottom() + (audioEditor->getHeight() - audioGrid.getBottom()) / 4));
     const auto gesture = [](juce::Component* target, juce::Point<float> from, juce::Point<float> to) {
         const auto time = juce::Time::getCurrentTime();
         return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), to,

@@ -8,6 +8,7 @@ namespace ostfstudio {
 // same instant, and a replacement render can have a different set of observations.
 class AudioModelPitches {
 public:
+    struct Observation { juce::int64 start,frames; double hz; };
     explicit AudioModelPitches(const juce::var& production = {}) {
         const auto& model = production["audioModel"];
         for (int i=0;i<production["audioRegions"].size();++i) {
@@ -42,8 +43,20 @@ public:
         found.erase(std::unique(found.begin(),found.end()),found.end());
         return found;
     }
+    std::vector<Observation> within(const ProjectAudio& clip) const {
+        std::vector<Observation> result;
+        const auto region=regionAssets.find(clip.regionId);
+        if (region==regionAssets.end() || clip.sha256.isEmpty() || clip.frameCount<=0) return result;
+        const auto entry=notes.find({region->second,clip.sha256});
+        if (entry==notes.end()) return result;
+        for (auto note:entry->second) {
+            const auto start=std::max(clip.startFrame,note.start);
+            const auto end=std::min(clip.startFrame+clip.frameCount,note.start+note.frames);
+            if (end>start) result.push_back({start-clip.startFrame,end-start,note.hz});
+        }
+        return result;
+    }
 private:
-    struct Observation { juce::int64 start,frames; double hz; };
     std::map<juce::String,juce::String> regionAssets;
     std::map<std::pair<juce::String,juce::String>,std::vector<Observation>> notes;
 };

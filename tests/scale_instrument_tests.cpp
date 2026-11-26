@@ -350,6 +350,12 @@ int main(int argc,char** argv) {
         juce::TextEditor* search=nullptr;
         for (auto* c:picker->getChildren()) if (c->getTitle()=="Search instruments") search=dynamic_cast<juce::TextEditor*>(c);
         if (!search || !list) return 57;
+        if (list->getModel()->getNumRows()>1) {
+            list->selectRow(1);
+            search->setText("__missing_instrument__",false); search->onTextChange();
+            search->clear(); search->onTextChange();
+            if (list->getSelectedRow()!=1) return 88;
+        }
         search->setText("__missing_instrument__",false); search->onTextChange();
         if (list->getModel()->getNumRows()!=0) return 58;
         search->setText(instrument->name+" "+instrument->manufacturerName,false); search->onTextChange();

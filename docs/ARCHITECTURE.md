@@ -2,6 +2,10 @@
 
 ## OSTF 5.2 score and audio projection
 
+The waveform and pitch lanes use the same source-to-timeline mapping. Each note belongs to the trimmed source interval, so moving a warp marker also moves its note. Pinned observations are matched by asset ID and SHA-256. A cancellable worker estimates stable fundamentals for recordings without matching note objects. Overlapping observations are read-only. Retuning acts on the entire selected interval in both channels. Linked warp edits require matching start, region and source duration, and existing timing settings.
+
+Playback preparation uses Signalsmith Stretch to render pitch offsets and pitch-preserving warp against the tempo map before the audio callback. The callback reads the prepared buffer for transport, seeking and consolidation. Production linear fit supports both standard pitch policies. Studio stores non-linear warp and source-relative pitch offsets in its host extension. Saving a timing edit to a supported imported Production updates the companion digest and retains source assets, analyses and comp references.
+
 Scale Editor records the selected audition destination alongside each test sequence. The picker can audition the nested instrument locally with external phrase routing enabled. The audio callback flushes previously sounding notes to the previous destination. Singer uses the existing voice pitch clock to connect a new voiced nasal and enters the recorded nasal sustain during legato. Detached nasal attacks and unvoiced stop closures retain their own timing.
 
 Score 5.2, Manifest 1.2 and Production 0.5 resolve schema references from embedded official resources. Schema validation covers structure. Studio projects supported musical features independently of the lossless source document. The special-track display follows voice references to Core track IDs. Written Notation parts take priority over MIDI-derived engraving. Visual positions use rounded tick endpoints, while the OSTF retains rational notation and source attachments. MIDI take selection uses the same native comp operations for 5.1 and 5.2.

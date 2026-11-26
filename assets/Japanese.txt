@@ -1,4 +1,13 @@
 language: Japanese
+"Warp" = "ワープ"
+"Link aligned stems" = "整列したステムのワープをリンク"
+"Apply warp changes to aligned clips on other tracks with the same length and warp map" = "同じ位置・長さ・ワープ設定の他トラックのクリップにもワープを適用します"
+"Fit audio to beats and preserve pitch. Previously saved rate-based warps keep their playback mode." = "音程を保って拍に合わせます。以前の速度連動ワープは元の方式で再生します。"
+"Double-click the waveform to add a warp marker. Drag markers sideways and notes vertically." = "波形をダブルクリックしてワープマーカーを追加します。マーカーは左右、音符は上下にドラッグできます。"
+"Analysing pitch…" = "音程を解析中…"
+"No stable note detected" = "安定した音程を検出できませんでした"
+"Overlapping pitches" = "同じ区間に複数の音程候補があります"
+"Edit audio warp" = "オーディオのワープを編集"
 countries: jp
 
 "File" = "ファイル"

@@ -362,7 +362,7 @@ int main(int argc, char** argv) {
     }
     // A connected open vowel carries pitch across a note boundary; a fresh attack
     // starts at the written pitch. Measure the actual Mei waveform in both cases.
-    auto vowelChange = [&](bool connected,int gapFrames=0,Phone incoming={0,vowelOnly},bool lateOff=false,int velocity=100) {
+    auto vowelChange = [&](bool connected,int gapFrames=0,Phone incoming={0,vowelOnly},bool lateOff=false,int velocity=100,bool expression=false) {
         singer->reset(); midi.clear();
         if (connected) {
             midi.addEvent(phoneMessage(1,60,{0,vowelOnly},.16),0);
@@ -378,6 +378,10 @@ int main(int argc, char** argv) {
         }
         midi.addEvent(phoneMessage(1,64,incoming,.16),0);
         midi.addEvent(juce::MidiMessage::noteOn(1,64,juce::uint8(velocity)),0);
+        if (expression) {
+            midi.addEvent(juce::MidiMessage::controllerEvent(1,11,98),0);
+            midi.addEvent(juce::MidiMessage::pitchWheel(1,8240),0);
+        }
         if (connected && lateOff)
             midi.addEvent(juce::MidiMessage::noteOff(1,60),0);
         singer->processBlock(audio,midi);
@@ -405,6 +409,10 @@ int main(int argc, char** argv) {
         boundaryDifference=std::max(boundaryDifference,std::abs(joined.getSample(0,i)-reversed.getSample(0,i)));
     std::cout << "Same-frame MIDI ordering, peak waveform difference: " << boundaryDifference << '\n';
     if (boundaryDifference>1.e-6f) return 69;
+    const auto expressive=vowelChange(true,0,{0,vowelOnly},false,100,true);
+    const auto expressiveReversed=vowelChange(true,0,{0,vowelOnly},true,100,true);
+    for (int i=0;i<expressive.getNumSamples();++i)
+        if (std::abs(expressive.getSample(0,i)-expressiveReversed.getSample(0,i))>1.e-6f) return 74;
     const auto quieter=vowelChange(true,0,{0,vowelOnly},false,36);
     const double earlyGain=quieter.getRMSLevel(0,30,66)/joined.getRMSLevel(0,30,66);
     const double settledGain=quieter.getRMSLevel(0,700,250)/joined.getRMSLevel(0,700,250);

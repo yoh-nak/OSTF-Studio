@@ -38,6 +38,10 @@ public:
     }
 
     bool available(const ostfstudio::ProjectAudio& clip) const { return entries_.count(clip.regionId) > 0; }
+    juce::int64 frameCount(const ostfstudio::ProjectAudio& clip) const {
+        const auto it=entries_.find(clip.regionId);
+        return it==entries_.end() ? 0 : sourceFrames(clip,*it->second);
+    }
     double nativeSeconds(const ostfstudio::ProjectAudio& clip) const {
         const auto it = entries_.find(clip.regionId);
         return it == entries_.end() ? 0. : double(sourceFrames(clip, *it->second)) / it->second->rate;

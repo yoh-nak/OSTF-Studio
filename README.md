@@ -4,7 +4,7 @@
 
 In Arrangement or Live Session, **Add take** can start a take group from several non-overlapping MIDI clips inside the selected section. Take 1 keeps the original notes, clip positions and intervening silence. The new take starts empty. Selecting a take for audition leaves the adopted comp in place until you adopt the alternative.
 
-In the waveform editor, hover over a note in a 5.2 Audio Model package to see its stored source pitch in Hz and the nearest note name. The readout follows the selected region, including its source trim and warp. It can show multiple pitch observations at the same frame. Written percussion in the score view, PDF and MusicXML uses the staff positions supplied by the score.
+Select an audio clip to see its waveform and pitch lanes together. Double-click the waveform to add a warp marker, then drag it horizontally. Drag a note vertically to transpose its source interval in semitones. Arrow keys fine-tune the selected marker or note. New warps preserve pitch. Old rate-based warps keep their saved behavior. **Link aligned stems** shares warp edits with matching clips on other tracks and keeps their pitch edits independent. The editor reads pinned 5.2 note observations when present and estimates stable pitches in other WAVs in the background. Gray overlapping observations are available for inspection. Single-interval retuning processes all sound in that interval. Written percussion uses the supplied staff positions, and TAB preserves fingerings in the score, PDF and MusicXML.
 
 Scale Editor includes explicit 5.2 vocal lanes when evaluating scale candidates and note fit, even when several voices share an instrument track. It counts the enabled comp output once. Formant Singer joins adjacent MIDI notes consistently when a host delivers note-on before note-off at the same sample and smooths velocity changes across connected syllables. A held voiced syllable can decay for up to 44 ms at note-off.
 
@@ -14,7 +14,7 @@ New songs use OSTF 5.2. Studio opens 5.2 scores and Manifest 1.2 projects and pr
 
 The score view, print path and MusicXML exporter read written parts from the 5.2 Notation profile. They support written pitches, separate voices and staves, ties and grace notes. MusicXML retains common enharmonic spellings and the initial transposition. Complex engraving and microtonal pitch export are incomplete.
 
-The audio preview plays materialized Production regions, including selected comp regions with fades. Packaged analyses, edit plans and their source assets are retained. A separate offline prototype retunes a selected monophonic WAV passage to a MIDI pitch while preserving its sample length. Automatic note segmentation, independent editing within chords and an in-app pitch editor are still in development planning. [Official specification and examples](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.2)
+The audio preview plays materialized Production regions, including selected comp regions with fades. Studio saves regional warp markers and pitch offsets in its Production host extension in OSTFP. Imported acoustic objects, render plans and source assets retain their identities. Other readers need support for the Studio extension to reproduce those edits. Authoring portable Audio Model edit plans, polyphonic note isolation and ARA hosting remain open. [Official specification and examples](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.2)
 
 ## OSTF 5.1 studio preview
 

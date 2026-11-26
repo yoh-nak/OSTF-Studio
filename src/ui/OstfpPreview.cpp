@@ -1248,20 +1248,23 @@ std::optional<SessionMix> readEmbeddedMix(const juce::var& score, PanAutomation&
     return readMix(score, settings["data"], envelopes);
 }
 
-// Linear re-pitch fit has a standard representation. Loops and non-linear timing are Studio edits.
+juce::var regionTiming(const ClipTiming& timing) {
+    juce::Array<juce::var> points, pitches;
+    for (auto p : timing.markers) points.add(object({{"position", p.position}, {"source", p.source}}));
+    for (auto p : timing.pitches) pitches.add(object({{"start",p.start},{"end",p.end},{"semitones",p.semitones}}));
+    return object({{"loop",timing.loop},{"phaseOffset",timing.phaseOffset},{"cycleTicks",juce::int64(timing.cycleTicks)},
+                   {"markers",points},{"leadingTicks",juce::int64(timing.leadingTicks)},{"sourceLimitTicks",juce::int64(timing.sourceLimitTicks)},
+                   {"preservePitch",timing.preservePitch},{"pitchChanges",pitches}});
+}
 void storeClipTiming(juce::var& production, const OstfpPreview& project) {
     auto host = production["hostExtensions"][0]["data"];
     auto edits = object({});
     for (const auto& clip : project.audio) {
         const auto& timing = clip.timing;
         require(timing.valid(), "Invalid audio clip timing");
-        if (!timing.phaseOffset && !timing.loop && !timing.leadingTicks && !timing.sourceLimitTicks && timing.markers.empty()
+        if (timing.pitches.empty() && !timing.phaseOffset && !timing.loop && !timing.leadingTicks && !timing.sourceLimitTicks && timing.markers.empty()
             && (!timing.cycleTicks || timing.cycleTicks == clip.durationTicks)) continue;
-        juce::Array<juce::var> points;
-        for (auto p : timing.markers) points.add(object({{"position", p.position}, {"source", p.source}}));
-        edits.getDynamicObject()->setProperty(clip.regionId,
-            object({{"loop", timing.loop}, {"phaseOffset", timing.phaseOffset}, {"cycleTicks", juce::int64(timing.cycleTicks)}, {"markers", points},
-                    {"leadingTicks", juce::int64(timing.leadingTicks)}, {"sourceLimitTicks", juce::int64(timing.sourceLimitTicks)}}));
+        edits.getDynamicObject()->setProperty(clip.regionId,regionTiming(timing));
     }
     if (edits.getDynamicObject()->getProperties().size()) host.getDynamicObject()->setProperty("clipTiming", edits);
 }
@@ -1337,7 +1340,8 @@ void readAudioReferences(const juce::var& score, const juce::var& production, Os
             item.startTick = integer(region["startTick"]); item.durationTicks = integer(region["durationTicks"]);
             item.startFrame = integer(region["sourceStartFrame"]); item.frameCount = integer(region["sourceFrameCount"]);
             item.gainDb = static_cast<double>(region["gainDb"]); item.muted = static_cast<bool>(region["mute"]);
-            const bool fit = region["playbackMode"] == "fit" && region["pitchPolicy"] == "followRate";
+            const bool fit = region["playbackMode"] == "fit" && (region["pitchPolicy"] == "followRate" || region["pitchPolicy"] == "preserve");
+            item.timing.preservePitch = fit && region["pitchPolicy"] == "preserve";
             if (fit) item.timing.cycleTicks = item.durationTicks;
             const auto host = production["hostExtensions"];
             const auto timing = host.isArray() && host.size() > 0
@@ -1352,6 +1356,22 @@ void readAudioReferences(const juce::var& score, const juce::var& production, Os
                 item.timing.phaseOffset = double(timing.getProperty("phaseOffset", 0.));
                 item.timing.loop = static_cast<bool>(timing["loop"]);
                 item.timing.cycleTicks = integer(timing["cycleTicks"]);
+                if (timing.hasProperty("durationTicks")) item.durationTicks=integer(timing["durationTicks"]);
+                if (timing.hasProperty("preservePitch")) {
+                    require(timing["preservePitch"].isBool(),"Invalid warp pitch setting");
+                    item.timing.preservePitch=bool(timing["preservePitch"]);
+                }
+                if (timing.hasProperty("pitchChanges")) {
+                    const auto& changes=array(timing["pitchChanges"]);
+                    require(changes.size()<=4096,"Too many audio pitch changes");
+                    for (const auto& p : changes) {
+                        const auto steps=integer(p["semitones"]);
+                        require((p["start"].isDouble() || p["start"].isInt() || p["start"].isInt64())
+                                && (p["end"].isDouble() || p["end"].isInt() || p["end"].isInt64())
+                                && steps>=-24 && steps<=24,"Invalid audio pitch change");
+                        item.timing.pitches.push_back({double(p["start"]),double(p["end"]),int(steps)});
+                    }
+                }
                 require(array(timing["markers"]).size() <= 128, "Too many warp markers");
                 for (const auto& p : array(timing["markers"]))
                     item.timing.markers.push_back({double(p["position"]), double(p["source"])});
@@ -1441,7 +1461,7 @@ void describeWav(const OstfpPreview& project, const ProjectAudio& audio, const j
     if (audio.fadeOutTicks) regions.getLast().getDynamicObject()->setProperty("fadeOutTicks",audio.fadeOutTicks);
     if (!audio.timing.phaseOffset && audio.timing.cycleTicks == length && !audio.timing.loop && !audio.timing.leadingTicks && !audio.timing.sourceLimitTicks) {
         regions.getLast().getDynamicObject()->setProperty("playbackMode", "fit");
-        regions.getLast().getDynamicObject()->setProperty("pitchPolicy", "followRate");
+        regions.getLast().getDynamicObject()->setProperty("pitchPolicy", audio.timing.preservePitch ? "preserve" : "followRate");
     }
 }
 }
@@ -3430,8 +3450,11 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
             auto playback = production.clone();
             for (const auto& ch : array(production["channels"]))
                 if (!imported && ch["kind"] == "audioTrack") imported = std::make_shared<ImportedProduction>();
+            const auto* hosts=production["hostExtensions"].getArray();
+            const auto hostData=hosts && !hosts->isEmpty() ? hosts->getReference(0)["data"] : juce::var{};
             if (!imported && (production.hasProperty("audioModel") || production.hasProperty("audioTakeGroups")
-                              || (is52 && !production.hasProperty("hostExtensions"))))
+                              || (is52 && (!hosts || hosts->isEmpty() ||
+                                  (hostData.hasProperty("clipTiming") && !hostData.hasProperty("tracks"))))))
                 imported = std::make_shared<ImportedProduction>();
             if (imported) {
                 imported->manifestBytes = manifestBytes; imported->productionBytes = bytes;
@@ -3523,7 +3546,8 @@ juce::Result writeOstfPreview(const OstfpPreview& project, juce::OutputStream& o
 
 static void writeImportedProduction(const OstfpPreview& project, const SessionMix& mix, juce::OutputStream& output) {
     const auto& source = *project.importedProduction;
-    require(source.originalAudio == project.audio, "This imported Production contains original audio or take references. Saving edited audio regions in it is not supported.");
+    const bool audioEdited=source.originalAudio!=project.audio;
+    require(source.originalAudio.size()==project.audio.size(),"Cannot rewrite imported audio references");
     const auto score = savedScore(project,true);
     const auto core = parseObject(score);
     const auto view = withProductionRows(core,project.importedProduction);
@@ -3532,17 +3556,39 @@ static void writeImportedProduction(const OstfpPreview& project, const SessionMi
     auto manifest=parseObject(source.manifestBytes);
     auto scoreRef=manifest["score"]; juce::var companion;
     for (const auto& doc : array(manifest["documents"])) if (doc["role"] == "productionSession") companion=doc;
+    require(!audioEdited || companion.isObject(),"Edited audio needs a Production companion");
     auto production=source.productionBytes; auto manifestBytes=source.manifestBytes;
     const auto hash=juce::SHA256(score).toHexString();
-    if (hash!=scoreRef["sha256"].toString()) {
+    if (hash!=scoreRef["sha256"].toString() || audioEdited) {
         require(array(manifest["documents"]).size() == (companion.isObject() ? 1 : 0),
                 "An additional companion refers to the original revision. Save the edited score as OSTF.");
         if (companion.isObject()) {
             auto session=parseObject(production); auto binding=session["score"];
+            if (audioEdited) {
+                auto host=session.getProperty("hostExtensions",juce::Array<juce::var>{});
+                if (!host.size()) host.getArray()->add(object({{"namespace",mixNamespace},{"version","1.0"},{"data",object({})}}));
+                require(host.size()==1 && host[0]["namespace"]==mixNamespace,"Unsupported production extension");
+                auto data=host[0]["data"];
+                auto edits=data.getProperty("clipTiming",object({}));
+                require(data.isObject() && edits.isObject(),"Invalid Studio clip timing settings");
+                for (size_t i=0;i<project.audio.size();++i) {
+                    const auto& clip=project.audio[i];
+                    const auto& orig=source.originalAudio[i];
+                    if (clip==orig) continue;
+                    auto check=clip; check.timing=orig.timing; check.durationTicks=orig.durationTicks;
+                    require(check==orig && clip.timing.valid(),"Only timing and pitch of original audio regions can be saved");
+                    auto entry=regionTiming(clip.timing);
+                    entry.getDynamicObject()->setProperty("durationTicks",clip.durationTicks);
+                    edits.getDynamicObject()->setProperty(clip.regionId,entry);
+                }
+                data.getDynamicObject()->setProperty("clipTiming",edits);
+                session.getDynamicObject()->setProperty("hostExtensions",host);
+            }
             binding.getDynamicObject()->setProperty("sha256",hash);
             for(const auto key:{"documentId","revisionId"}) if(binding.hasProperty(key))
                 binding.getDynamicObject()->setProperty(key,core["document"][juce::String(key)=="documentId"?"id":"revisionId"]);
-            production=editedScoreBytes(source.productionBytes,session,{"score"});
+            production=audioEdited ? editedScoreBytes(source.productionBytes,session,{"score","hostExtensions"})
+                                   : editedScoreBytes(source.productionBytes,session,{"score"});
             companion.getDynamicObject()->setProperty("sha256",juce::SHA256(production).toHexString());
         }
         scoreRef.getDynamicObject()->setProperty("sha256",hash);

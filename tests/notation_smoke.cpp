@@ -476,6 +476,7 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
             || kit[0][0].percussionInstrument!="kick" || kit[0][1].percussionInstrument!="snare") return 119;
         juce::MemoryOutputStream drumXml;
         if (writeSongXml(drumXml,ensemble).failed()) return 120;
+        if (!drumXml.toString().contains("<fingering>1</fingering>")) return 129;
         auto xmlDoc=juce::parseXML(drumXml.toString());
         if (!xmlDoc) return 121;
         auto* kitPart=xmlDoc->getChildByAttribute("id","P2");
@@ -514,6 +515,16 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
             if (!editor.getTooltip().contains(clip.regionId=="r-original" ? "440.0 Hz" : "880.0 Hz")) return 127;
             editor.mouseExit(move);
             if (editor.getTooltip().contains(" Hz")) return 128;
+            editor.createComponentSnapshot(editor.getLocalBounds());
+            const juce::Point<float> note{300,169},up{300,154};
+            const juce::MouseEvent down{move.source,note,juce::ModifierKeys::leftButtonModifier,0,0,0,0,0,&editor,&editor,now,note,now,1,false};
+            const juce::MouseEvent drag{move.source,up,juce::ModifierKeys::leftButtonModifier,0,0,0,0,0,&editor,&editor,now,note,now,1,true};
+            ostfstudio::ClipTiming changed;
+            editor.onEdit=[&](const auto& timing){changed=timing;};
+            editor.mouseDown(down); editor.mouseDrag(drag); editor.mouseUp(drag);
+            if (changed.pitches.size()!=1 || changed.pitches.front().semitones!=1) return 130;
+            editor.mouseDoubleClick(move);
+            if (!changed.preservePitch || changed.markers.size()!=1 || !changed.cycleTicks) return 131;
         }
         return 0;
     }

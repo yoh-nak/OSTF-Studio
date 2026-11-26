@@ -150,6 +150,8 @@ static void readWrittenParts(const juce::var& notation, NotationScore& score) {
         score.parts[part].writtenMeasures[bar].push_back({start, duration, pitch, std::max(1,voices[e["voiceId"].toString()]),
             int(tech["stringNumber"]), int(tech.getProperty("fret",-1)), tiedFrom.contains(id), tiedTo.contains(id), id, step, accidental, octave,
             staffNumber[e["staffId"].toString()], grace.isObject(), bool(grace["slash"]), grace["placement"] == "after", instrument, e["notehead"].toString()});
+        auto& fingerings=score.parts[part].writtenMeasures[bar].back().fingerings;
+        for (const auto& finger:items(tech["fingerings"])) fingerings.add(finger.toString());
     }
     for (auto& part : score.parts) for (auto& bar : part.writtenMeasures)
         std::stable_sort(bar.begin(), bar.end(), [](const auto& a, const auto& b) { if (a.at != b.at) return a.at < b.at;
@@ -548,13 +550,16 @@ void addPart(juce::XmlElement &root, juce::XmlElement &list, const NotationScore
                     field(*n, "notehead", "x");
                 if (style == StaffStyle::grand)
                     field(*n, "staff", juce::String(e.writtenStaff > 0 ? e.writtenStaff : (e.pitch < 60 ? 2 : 1)));
-                if (e.tiedFrom || e.tiedTo || e.string) {
+                if (e.tiedFrom || e.tiedTo || e.string || !e.fingerings.isEmpty()) {
                     auto *notation = n->createNewChildElement("notations");
                     ties(*notation, "tied");
-                    if (e.string) {
+                    if (e.string || !e.fingerings.isEmpty()) {
                         auto *tech = notation->createNewChildElement("technical");
-                        field(*tech, "string", juce::String(e.string));
-                        field(*tech, "fret", juce::String(e.fret));
+                        for (const auto& finger:e.fingerings) field(*tech,"fingering",finger);
+                        if (e.string) {
+                            field(*tech, "string", juce::String(e.string));
+                            field(*tech, "fret", juce::String(e.fret));
+                        }
                     }
                 }
                 if (!e.tiedFrom && !e.grace) {
@@ -730,6 +735,7 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
             g.fillRect(x - 2, y - 4, 12.f, 8.f);
             g.setColour(ink);
             text(g, n.string ? juce::String(n.fret) : "?", x - 1, y - 5, 12, 10, 9, true);
+            if (!n.fingerings.isEmpty()) text(g,n.fingerings.joinIntoString("/"),x-1,top-13,25,10,8);
             continue;
         }
         const bool lowerStaff = n.writtenStaff > 0 ? n.writtenStaff == 2 : n.pitch < 60;

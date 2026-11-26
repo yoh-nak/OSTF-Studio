@@ -34,8 +34,7 @@ int checkDemoMeters(const juce::File& file) {
     for (size_t i = 0; i < score->sourceTrackCount(); ++i) {
         routes[i].outputTrack = mix.midiRoutes[i].destination;
         routes[i].midiChannel = mix.midiRoutes[i].channel;
-        if (mix.instruments[i].isObject()) {
-            if (mix.instruments[i]["name"].toString() != "OSTF GM Sound Module") return 11;
+        if (mix.instruments[i]["name"].toString() == "OSTF GM Sound Module") {
             instruments.emplace_back(createPluginFilter());
             routes[i].instrument = instruments.back().get();
             editors.emplace_back(instruments.back()->createEditorIfNeeded());
@@ -46,11 +45,12 @@ int checkDemoMeters(const juce::File& file) {
     if (editors.size() != 2) return 13;
     transport.setOutputMix(mix.routing);
     if (transport.preparePlayback(*score, routes, {}, 44100, 512).failed()) return 14;
-    // The first chorus (bar 17) includes all eight parts.
+    // At bar 17 the two GM instances play hook/brass/strings and bass/comp.
+    // The remaining parts have their own FM, drum and wavetable instruments.
     transport.seekToTick(16LL * 4 * score->ppq);
     std::array<std::bitset<16>, 2> expected, seen;
-    for (int ch : {1, 2, 5, 7, 8}) expected[0].set(ch - 1);
-    for (int ch : {3, 6, 10}) expected[1].set(ch - 1);
+    for (int ch : {1, 7, 8}) expected[0].set(ch - 1);
+    for (int ch : {3, 6}) expected[1].set(ch - 1);
     juce::AudioBuffer<float> block(2, 512);
     bool simultaneous = false;
     for (int frame = 0; frame < 1600; ++frame) {

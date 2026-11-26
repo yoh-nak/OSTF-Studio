@@ -14,6 +14,7 @@ struct ScoreNote {
     int writtenAlter = 0, writtenOctave = 0, writtenStaff = 0;
     bool grace = false, graceSlash = false, graceAfter = false;
     juce::String percussionInstrument, notehead;
+    juce::StringArray fingerings;
 };
 struct ScorePart {
     juce::String id, name;

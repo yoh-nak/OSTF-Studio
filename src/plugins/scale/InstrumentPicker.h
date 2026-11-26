@@ -104,6 +104,10 @@ public:
         unlisted.onClick=[this]{filter();};
         browse.onClick=[this]{if(onBrowse) onBrowse();};
         reference.onClick=[this]{if(onReference) onReference();};
+        if (current) {
+            for (size_t i=0;i<choices.size();++i)
+                if (choices[i].scanned && choices[i].scanned->isDuplicateOf(*current)) preferred=i;
+        }
         filter();
     }
     ~InstrumentPicker() override {list.setModel(nullptr);}
@@ -131,13 +135,19 @@ private:
                 && (!c.needsInspection || unlisted.getToggleState())
                 && std::all_of(words.begin(),words.end(),[&](const auto& w){return text.containsIgnoreCase(w);})) visible.push_back(i);
         }
+        filtering=true;
         list.deselectAllRows(); list.updateContent();
-        if (!visible.empty()) list.selectRow(0);
+        const auto previous=std::find(visible.begin(),visible.end(),preferred);
+        if (!visible.empty()) list.selectRow(previous==visible.end() ? 0 : int(previous-visible.begin()));
+        filtering=false;
         hint.setText(visible.empty() ? juce::String::fromUTF8(ja ? "該当する音源がありません" : "No matching instruments")
             : juce::String(int(visible.size()))+juce::String::fromUTF8(ja ? " 件" : " matches"),juce::dontSendNotification);
         load.setEnabled(!visible.empty()); loadAndTest.setEnabled(!visible.empty()); list.repaint();
     }
     int getNumRows() override {return int(visible.size());}
+    void selectedRowsChanged(int row) override {
+        if (!filtering && juce::isPositiveAndBelow(row,getNumRows())) preferred=visible[size_t(row)];
+    }
     void paintListBoxItem(int row,juce::Graphics& g,int w,int h,bool selected) override {
         if (!juce::isPositiveAndBelow(row,getNumRows())) return;
         const auto& c=choices[visible[size_t(row)]];
@@ -156,6 +166,8 @@ private:
     std::vector<InstrumentChoice> choices;
     bool ja;
     std::vector<size_t> visible;
+    size_t preferred=std::numeric_limits<size_t>::max();
+    bool filtering=false;
     juce::TextEditor search;
     juce::ComboBox manufacturer;
     juce::ListBox list;

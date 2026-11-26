@@ -13,7 +13,8 @@ option(OSTF_STUDIO_BUILD_GUI "Build JUCE desktop UI prototype" ON)
 option(OSTF_STUDIO_ENABLE_ASIO "Compile the Windows ASIO backend using JUCE's bundled headers" ON)
 
 enable_testing()
-add_library(ostf_studio_core STATIC src/core/TimelineModel.cpp)
+add_library(ostf_studio_core STATIC src/core/TimelineModel.cpp src/core/AudioPitchWarp.cpp)
+target_include_directories(ostf_studio_core PRIVATE third_party/signalsmith)
 target_include_directories(ostf_studio_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_features(ostf_studio_core PUBLIC cxx_std_20)
 
@@ -210,7 +211,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
     target_include_directories(ostf_studio_ostfp_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(ostf_studio_ostfp_tests PRIVATE JUCE_USE_CURL=0)
-    target_link_libraries(ostf_studio_ostfp_tests PRIVATE ostf_score_validation juce::juce_cryptography juce::juce_audio_formats)
+    target_link_libraries(ostf_studio_ostfp_tests PRIVATE ostf_studio_core ostf_score_validation juce::juce_cryptography juce::juce_audio_formats)
     add_test(NAME ostf_studio_ostfp_tests COMMAND ostf_studio_ostfp_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
     add_test(NAME ostf_studio_52 COMMAND ostf_studio_ostfp_tests --ostf52 "${CMAKE_SOURCE_DIR}/tests/fixtures/ostf52")
