@@ -12,12 +12,20 @@ class SyllableVoice {
     int channel = -1, key = -1, accentPhone = 0;
     void start(int ch, int pitch, float velocity, Phone p, double sr, const VoiceBank* bank) {
         const bool connected = key >= 0 && channel == ch && envelope > .01;
+        const auto targetHz = juce::MidiMessage::getMidiNoteInHertz(pitch);
+        const bool openVowel = accentPhone ? (accentPhone & 63) <= 15 : p.onset == vowelOnly;
+        const bool joinPitch = connected && waveReady && openVowel && p.delivery != scoop
+            && key != pitch && (!released || releaseFrames <= sr * .003);
+        const auto glideMs = p.durationMs > 0 ? std::min(22., p.durationMs * .25) : 22.;
+        glideFrames = joinPitch ? std::max(1, juce::roundToInt(sr * glideMs * .001)) : 0;
+        glideOctaves = joinPitch ? std::log2(nominalHz / targetHz) : 0.;
+        hz = targetHz;
+        if (!joinPitch) nominalHz = hz;
         if (!connected) { envelope = 0; recorded = nullptr; }
         channel = ch; key = pitch; gain = velocity;
         if (!connected) phase = 0;
-        released = false; noteAge = 0;
+        released = false; noteAge = 0; releaseFrames = 0;
         articulate(p, sr, bank, connected);
-        hz = juce::MidiMessage::getMidiNoteInHertz(pitch);
         if (!connected) for (auto& res : resonators) res.y1 = res.y2 = 0;
     }
     void articulate(Phone p, double sr, const VoiceBank* bank, bool legato) {
@@ -102,17 +110,23 @@ class SyllableVoice {
     }
     void stopNote() { released = true; }
     bool endingOn(int ch) const { return channel == ch && released && envelope > 0; }
-    float sample(double sr, double bendRatio, float expression, const juce::dsp::FFT& fft) {
+    float sample(double sr, double bendRatio, float expression, float deliveryDepth, const juce::dsp::FFT& fft) {
         envelope = std::clamp(envelope + (released ? -36.0 : 110.0) / sr, 0.0, 1.0);
         if (released && envelope == 0) { key = channel = -1; return 0; }
+        if (released) ++releaseFrames;
         const double time = age++ / sr, held = noteAge++ / sr;
         if (phone.onset == closure) return 0;
-        const double strength = phone.intensity / 127.0;
+        const double strength = deliveryDepth * phone.intensity / 127.0;
         double cents = 0;
         if (phone.delivery == vibrato) cents = vibratoCents(held,strength);
         if (phone.delivery == scoop) cents = scoopCents(held,strength);
         const double sustain = std::clamp((held - .15) / .28, 0., 1.);
-        const auto pitch = hz * bendRatio * (cents == 0 ? 1 : std::exp2(cents / 1200));
+        nominalHz = hz;
+        if (noteAge <= static_cast<uint64_t>(glideFrames)) {
+            const double t = double(noteAge - 1) / glideFrames;
+            nominalHz *= std::exp2(glideOctaves * (1. - t*t*(3. - 2.*t)));
+        }
+        const auto pitch = nominalHz * bendRatio * (cents == 0 ? 1 : std::exp2(cents / 1200));
         // Gently accent the nucleus of a stressed English syllable. Follow
         // the scored vowel length so a short word retains its consonants.
         double accent = 1.;
@@ -328,6 +342,8 @@ class SyllableVoice {
     }
     Phone phone;
     double hz{}, phase{}, gain{}, envelope{}, position{}, transition{}, previousNoise{};
+    double nominalHz{}, glideOctaves{};
+    int glideFrames{}, releaseFrames{};
     unsigned noise = 1397;
     uint64_t age = 0, noteAge = 0;
     bool released = false, nasal = false, stop = false, voiced = false, fricative = false, vowelSample = false;
@@ -348,14 +364,14 @@ class Voice : public SyllableVoice {
         SyllableVoice::articulate(segments[0], sr, bank, true);
     }
     void stopNote() { count = 0; SyllableVoice::stopNote(); }
-    float sample(double sr, double bend, float expression, const juce::dsp::FFT& fft) {
+    float sample(double sr, double bend, float expression, float deliveryDepth, const juce::dsp::FFT& fft) {
         if (stage+1 < count && ++stageFrames >= segments[stage].durationMs * .001 * sr) {
             const auto next = segments[++stage];
             beginTransition(channel,next,sr);
             SyllableVoice::articulate(next,sr,sourceBank,true);
             stageFrames = 0;
         }
-        const float current = SyllableVoice::sample(sr, bend, expression, fft);
+        const float current = SyllableVoice::sample(sr, bend, expression, deliveryDepth, fft);
         if (remaining == length) spliceOffset = lastOutput - current;
         const float t = float(remaining) / length;
         if (remaining > 0) --remaining;
@@ -443,6 +459,9 @@ class Editor final : public juce::AudioProcessorEditor, private juce::ChangeList
     juce::ComboBox voicePicker;
     juce::ComboBox parts;
     juce::Label status, voiceStatus;
+    juce::Label depthLabel;
+    juce::Slider depthSlider;
+    std::unique_ptr<juce::SliderParameterAttachment> depthAttachment;
     juce::ImageComponent portrait;
     std::unique_ptr<juce::FileChooser> chooser;
     void refresh();
@@ -452,7 +471,13 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
   public:
     const bool studioHost = juce::File::getSpecialLocation(juce::File::hostApplicationPath)
         .getFileNameWithoutExtension().equalsIgnoreCase("OSTF Studio");
-    Singer() : AudioProcessor(BusesProperties().withOutput("Voice", juce::AudioChannelSet::stereo(), true)) { (void) VoiceBank::english(); }
+    Singer() : AudioProcessor(BusesProperties().withOutput("Voice", juce::AudioChannelSet::stereo(), true)) {
+        addParameter(pitchDepth=new juce::AudioParameterFloat({"pitchExpressionDepth",1},
+            "Vibrato / scoop depth",juce::NormalisableRange<float>(0.f,100.f,1.f),100.f,
+            juce::AudioParameterFloatAttributes{}.withLabel("%")));
+        (void) VoiceBank::english();
+    }
+    juce::AudioParameterFloat* pitchDepth{};
     const juce::String getName() const override { return "OSTF Formant Singer"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
@@ -471,6 +496,7 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
     juce::AudioProcessorEditor* createEditor() override { return new Editor(*this); }
     void prepareToPlay(double r, int) override {
         rate = r;
+        depthRamp.reset(rate,.015);
         reset();
     }
     void releaseResources() override {}
@@ -479,6 +505,7 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
         articulation = {};
         bend.fill(1.0);
         expression.fill(1.0f);
+        depthRamp.setCurrentAndTargetValue(pitchDepth->get()*.01f);
         lastPart = -1;
         lastIndex = -1;
         expected = -1;
@@ -537,6 +564,7 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
     }
     void getStateInformation(juce::MemoryBlock& b) override {
         juce::XmlElement xml("OSTFSinger");
+        xml.setAttribute("pitchExpressionDepth",double(pitchDepth->get()));
         {
             const juce::SpinLock::ScopedLockType guard(lock);
             xml.setAttribute("part", selected);
@@ -548,6 +576,7 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
     }
     void setStateInformation(const void* b, int n) override {
         if (auto xml = getXmlFromBinary(b, n); xml && xml->hasTagName("OSTFSinger")) {
+            *pitchDepth=juce::jlimit(0.f,100.f,float(xml->getDoubleAttribute("pitchExpressionDepth",100.)));
             const auto path = xml->getStringAttribute("voiceFolder");
             juce::String error;
             setVoice(juce::File::isAbsolutePath(path) ? juce::File(path) : juce::File{}, error, true, xml->getStringAttribute("builtinVoice") == "kal16" ? 1 : 0);
@@ -576,6 +605,7 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
             reset();
             seen = generation;
         }
+        depthRamp.setTargetValue(pitchDepth->get()*.01f);
         const auto* sequence = selected >= 0 ? &parts[size_t(selected)].syllables : nullptr;
         double beat = 0, step = 0;
         if (sequence) {
@@ -621,10 +651,11 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
                     handle((*ev).getMessage());
                     ++ev;
                 }
+            const float depth=depthRamp.getNextValue();
             float sample = 0;
             for (auto& v : voices)
                 if (v.key >= 0)
-                    sample += v.sample(rate, bend[v.channel - 1], expression[v.channel - 1], synthesisFFT);
+                    sample += v.sample(rate, bend[v.channel - 1], expression[v.channel - 1], depth, synthesisFFT);
             const float magnitude = std::abs(sample);
             if (magnitude > .9f)
                 sample = std::copysign(.9f + .1f * std::tanh((magnitude - .9f) * 10.f), sample);
@@ -673,6 +704,7 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
     std::vector<Part> parts;
     int selected = -1, generation = 0, seen = -1, lastPart = -1, cursor = -1, lastIndex = -1;
     double rate = 48000, expected = -1;
+    juce::SmoothedValue<float> depthRamp{1.f};
     juce::dsp::FFT synthesisFFT{RecordedMora::waveOrder};
     std::array<Voice, 16> voices{};
     const VoiceBank& factoryBank = VoiceBank::factory();
@@ -707,6 +739,14 @@ juce::Image loadPortrait(const juce::File& file) {
     return img;
 }
 Editor::Editor(Singer& s) : AudioProcessorEditor(s), singer(s) {
+    depthLabel.setText("Vibrato / scoop depth",juce::dontSendNotification);
+    depthSlider.setTitle("Vibrato / scoop depth");
+    depthSlider.setTextValueSuffix(" %");
+    depthSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    depthSlider.setTextBoxStyle(juce::Slider::TextBoxRight,false,64,24);
+    depthSlider.setTooltip("Adjust the depth of the vibrato and scoops written in the score.");
+    addAndMakeVisible(depthLabel); addAndMakeVisible(depthSlider);
+    depthAttachment=std::make_unique<juce::SliderParameterAttachment>(*s.pitchDepth,depthSlider);
     addChildComponent(open);
     addChildComponent(parts);
     open.setVisible(!singer.studioHost);
@@ -752,7 +792,7 @@ Editor::Editor(Singer& s) : AudioProcessorEditor(s), singer(s) {
         singer.setVoice({},error,false,choice-1);
         refresh();
     };
-    setSize(560, singer.studioHost ? 145 : 180);
+    setSize(560, singer.studioHost ? 180 : 215);
 }
 Editor::~Editor() { singer.removeChangeListener(this); }
 void Editor::refresh() {
@@ -791,6 +831,10 @@ void Editor::resized() {
     importVoice.setBounds(voices.removeFromRight(158));
     voices.removeFromRight(6);
     voicePicker.setBounds(voices);
+    r.removeFromTop(4);
+    auto depth=r.removeFromTop(30);
+    depthLabel.setBounds(depth.removeFromLeft(155));
+    depthSlider.setBounds(depth);
 }
 } // namespace
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new Singer; }

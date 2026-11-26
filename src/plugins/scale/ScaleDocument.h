@@ -19,6 +19,13 @@ public:
     juce::String text, baseHash;
     juce::var score;
 };
+struct LinkedScoreFile {
+    juce::Result read(const juce::File& source, juce::String& text);
+    juce::Result write(const Document& doc, const juce::File& target, bool workspaceScales=false);
+    juce::File file;
+private:
+    juce::String diskHash, openedText;
+};
 juce::String digest(const juce::String& text);
 extern const char* const tonicNames[12];
 }

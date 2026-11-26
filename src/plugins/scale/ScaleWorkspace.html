@@ -545,7 +545,7 @@ body.sidebar-resizing,body.sidebar-resizing * {cursor:col-resize!important;user-
 @media(max-width:740px){.quick-set{order:2;flex:1;margin-left:0}}
 #keyboard g.input-held > rect{stroke:#ffcc65;stroke-width:5px}
 #studioInput{color:#ffdc93;font-variant-numeric:tabular-nums}
-</style><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script><script id="studio-draft" type="application/octet-stream"><!--STUDIO_DRAFT--></script></head><body>
+</style><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script><script id="studio-draft" type="application/octet-stream"><!--STUDIO_DRAFT--></script><script id="studio-file" type="application/octet-stream"><!--STUDIO_FILE--></script></head><body>
 <div id="app">
 <header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Edit scales, keys and modes in OSTF.</div></div><span class="version">v1.0 · DIRECT SET</span></div><div class="head-actions"><button id="open" title="Open a local OSTF file · Ctrl+O">Open…</button><button id="save" title="Save to the currently linked file · Ctrl+S">Save</button><button id="saveAs" title="Always choose a destination · Ctrl+Shift+S">Save As…</button><button id="autoSetSong" class="primary" title="Preview the highest-ranked eligible scale for every chord, then apply all at once">AUTO-SET SONG</button><span class="sep"></span><button id="undo" title="Undo the last assignment" disabled>Undo</button><button id="redo" disabled>Redo</button><button id="demos">Demos</button><button id="help" class="quiet">Help</button></div></header>
 <div class="songline"><span class="songtitle" id="songTitle"></span><span class="chip" id="songKey"></span><span class="chip" id="songVersion"></span><span class="chip" id="fileBinding" title="Save requires a linked file; imported text or drag-and-drop must use Save As">Not linked</span><span id="dirty"></span><div class="viewtabs"><button id="visualTab" class="active">VISUAL</button><button id="textTab">OSTF TEXT</button></div></div>
@@ -2267,6 +2267,8 @@ async function loadStudioWorkspace(score){
  }
  studioSentDoc=state.doc;
  studioSentText=state.textDirty?$('textArea').value:null;
+ const linked=$('studio-file')?.textContent.trim();
+ if(linked&&/^[A-Za-z0-9+/]+=*$/.test(linked)){state.filename=b64decode(linked);state.fileBound=true;renderFileBinding();}
  studioDraftReady=!!window.__JUCE__?.backend;
 }
 function notifyState(){
@@ -2292,7 +2294,7 @@ function getScale(){return getAnalysis()?.items.find(s=>s.id===state.scale)||nul
 function savedLabel(x){if(x.type==='improvisation'){const p=x.parameters?.pitchSource;return x.label||p?.scale?.label||(p?.type==='explicitScale'?'Explicit scale':p?.type||'Track direction');}return x.label||(SA.pitchName(x.tonic)+' scale');}
 function matchSavedScale(a,existing){for(const x of existing){const s=x.type==='improvisation'?x.parameters?.pitchSource?.scale:x;if(!s?.intervals||!s.tonic)continue;const pcs=s.intervals.map(n=>SA.mod(SA.PC(s.tonic)+n)).sort((a,b)=>a-b).join(',');const item=a.items.find(z=>[...z.pcs].sort((a,b)=>a-b).join(',')===pcs);if(item)return item.id;}return null;}
 function selectChord(id){stop();state.reference=null;state.selected=id;state.patternKey=null;const selected=state.doc?.harmony.chords.find(x=>x.id===id);if(selected)state.expandedSections.add(sectionFor(selected));state.jumpToSelected=true;state.flowJump=true;state.scopeSectionId=null;state.filter='All';state.more=false;const a=getAnalysis();const c=getChord();state.scale=a?(matchSavedScale(a,SA.current(state.doc,c,state.target))||a.items[0]?.id):null;render();notifyState();}
-async function importString(text,name='Imported text.ostf',confirmDirty=true,fromNative=false){try{if(state.savePendingText){error(Error('Finish or cancel Save before importing a different song.'));return false;}const parsed=SA.parse(text);if(confirmDirty&&(state.dirty||state.textDirty)&&!await confirmAction('Replace the current song?','The current song has unsaved changes. Use Save or Save As first if you want to keep them.'))return false;stop();state.epoch++;state.doc=parsed.doc;state.sourceCore=SA.audit.snapshot(state.doc);state.savePendingText=null;state.reference=null;state.validation=parsed.validation;state.filename=name;state.fileBound=false;if(native&&!fromNative)hostSend('forgetfile');invalidateAnalysis();state.expandedSections=new Set();state.history=[];state.future=[];state.dirty=false;state.textDirty=false;state.target='harmony';state.scopeMode='chord';state.scopeRange=null;state.scopeSectionId=null;state.scopePolicy='replace';state.patternKey=null;state.noteFitTrack='all';state.genreOverride='auto';state.selected=state.doc.harmony.chords[0]?.id||null;if(state.doc.harmony.chords[0])state.expandedSections.add(sectionFor(state.doc.harmony.chords[0]));state.jumpToSelected=true;state.flowJump=true;state.filter='All';state.more=false;let a=getAnalysis();state.scale=a?.items[0]?.id||null;render();if(state.view==='text')setText();status('Loaded '+name+' · '+state.doc.harmony.chords.length+' chords'+(!parsed.validation.writable?' · protected read-only version':''),'success');notifyState();return true;}catch(e){error(e);$('textFeedback').textContent=e.message;return false;}}
+async function importString(text,name='Imported text.ostf',confirmDirty=true,fromNative=false){try{if(state.savePendingText){error(Error('Finish or cancel Save before importing a different song.'));return false;}const parsed=SA.parse(text);if(confirmDirty&&(state.dirty||state.textDirty)&&!await confirmAction('Replace the current song?','The current song has unsaved changes. Use Save or Save As first if you want to keep them.'))return false;stop();state.epoch++;state.doc=parsed.doc;state.sourceCore=SA.audit.snapshot(state.doc);state.savePendingText=null;state.reference=null;state.validation=parsed.validation;state.filename=name;state.fileBound=false;if(native&&!fromNative)hostSend('forgetfile');if(studioDraftReady)window.__JUCE__?.backend.emitEvent('ostfScaleForgetFile',{});invalidateAnalysis();state.expandedSections=new Set();state.history=[];state.future=[];state.dirty=false;state.textDirty=false;state.target='harmony';state.scopeMode='chord';state.scopeRange=null;state.scopeSectionId=null;state.scopePolicy='replace';state.patternKey=null;state.noteFitTrack='all';state.genreOverride='auto';state.selected=state.doc.harmony.chords[0]?.id||null;if(state.doc.harmony.chords[0])state.expandedSections.add(sectionFor(state.doc.harmony.chords[0]));state.jumpToSelected=true;state.flowJump=true;state.filter='All';state.more=false;let a=getAnalysis();state.scale=a?.items[0]?.id||null;render();if(state.view==='text')setText();status('Loaded '+name+' · '+state.doc.harmony.chords.length+' chords'+(!parsed.validation.writable?' · protected read-only version':''),'success');notifyState();return true;}catch(e){error(e);$('textFeedback').textContent=e.message;return false;}}
 function renderFileBinding(){
  const chip=$('fileBinding');if(!chip)return;
  chip.textContent=state.fileBound?'Linked: '+state.filename:'Not linked · Save As for new location';
@@ -2399,6 +2401,7 @@ function keyboard(s,cur){const info=SA.noteInfo(s,cur),byPC=new Map(info.map(x=>
  function mark(pc,x,y,isBlack){const n=byPC.get(pc),r=pc===s.root;return '<g pointer-events="none">'+(n?'<circle cx="'+x+'" cy="'+y+'" r="'+(r?9:6)+'" fill="'+colors[n.kind]+'"'+(r?' stroke="#ffffff" stroke-width="2"':'')+'/>':'')+'<text x="'+x+'" y="'+(isBlack?y-12:y-12)+'" font-size="11" fill="'+(isBlack?'#e8f0f6':'#263747')+'" text-anchor="middle">'+esc(n?.name||names[pc])+'</text></g>';}
  return '<svg viewBox="0 0 700 94" preserveAspectRatio="none" role="img" aria-label="Clickable piano keys: chord tones green, color tones blue, cautions amber">'+white.map((pc,i)=>'<g data-pitch="'+(60+pc)+'"><rect x="'+(i*w+.5)+'" y="1" width="99" height="92" rx="3" fill="'+(byPC.has(pc)?'#d9e8f0':'#a8bdcb')+'" stroke="#172838"/>'+mark(pc,i*w+50,79,false)+'</g>').join('')+black.map(([pc,i])=>'<g data-pitch="'+(60+pc)+'"><rect x="'+(i*w-30)+'" y="1" width="60" height="56" rx="3" fill="#1b2838" stroke="#6c7f94"/>'+mark(pc,i*w,43,true)+'</g>').join('')+'</svg>';}
 let studioHeldNotes=0;
+let studioPreviewRoute='Scale Editor instrument';
 function showStudioInput(){
  const label=$('studioInput');
  if(!label)return;
@@ -2408,7 +2411,7 @@ function showStudioInput(){
  for(const key of $('keyboard').querySelectorAll('g[data-pitch]')){
   key.classList.toggle('input-held',Boolean(studioHeldNotes&(1<<(Number(key.dataset.pitch)%12))));
  }
- $('audioLabel').textContent='Scale Editor instrument';
+ $('audioLabel').textContent=studioPreviewRoute;
 }
 function resolutionSVG(ch,s,next,nextS){
  if(!ch||!next||!s||!nextS)return '<div class="emptymap">Select a chord with a following harmony event.</div>';
@@ -2503,7 +2506,7 @@ function renderListenLab(){
  $('listenContext').textContent=(pre?'Previous + ':'')+'Selected'+(next?' + Next':'')+' · '+m.plans.a.style+' · Illustrative A/B, not original OSTF MIDI';
  $('autoListen').textContent='▶ Audition on card select: '+(state.autoListen?'ON':'OFF');
  $('autoListen').classList.toggle('active',state.autoListen);$('autoListen').setAttribute('aria-pressed',String(state.autoListen));
- if(!$('listenStatus').dataset.playing)$('listenStatus').textContent=native?'MIDI audition → following Instrument':window.__JUCE__?.backend?'Scale Editor instrument · MIDI channel 1':'Browser audition';
+ if(!$('listenStatus').dataset.playing)$('listenStatus').textContent=native?'MIDI audition → following Instrument':window.__JUCE__?.backend?studioPreviewRoute+' · MIDI channel 1':'Browser audition';
 }
 function renderDecisionEvidence(){
  const a=getAnalysis(),s=getScale(),ch=getChord(),flow=getFlowPlan();if(!s||!a||!ch){$('decisionEvidence').innerHTML='';return;}
@@ -2728,7 +2731,8 @@ function startPreviewVisual(segments,which){
   for(const id of ['playheadA','playheadB'])$(id)?.classList.remove('visible');
   document.querySelectorAll('.note-firing,.playing-note').forEach(el=>el.classList.remove('note-firing','playing-note'));
  },end));
- status('Preview started: '+(which==='AB'?'A → B in identical harmony':which==='A'?'A · Reference':'B · Selected')+(native?' · Patcher MIDI route; cursor starts on MIDI parsed confirmation.':' · browser tone.'));
+ const route=native?'Patcher MIDI':studio?studioPreviewRoute:'browser tone';
+ status('Preview started: '+(which==='AB'?'A → B in identical harmony':which==='A'?'A · Reference':'B · Selected')+' · '+route);
 }
 function onPreviewQueued(count,duration){
  setSignalStage('stageMax',true);
@@ -3106,12 +3110,12 @@ async function refreshText(){if(state.textDirty&&!await confirmAction('Replace e
 async function copyText(){try{const text=$('textArea').value;try{await navigator.clipboard.writeText(text);}catch(_){$('textArea').focus();$('textArea').select();if(!document.execCommand('copy'))throw Error('Clipboard access is unavailable. Text is selected; use Ctrl+C / Cmd+C.');}status('Copied the complete OSTF text.','success');}catch(e){error(e);}}
 function checkText(){try{const p=SA.parse($('textArea').value);$('textFeedback').textContent='Core structure check passed · '+p.doc.harmony.chords.length+' chords.\n'+p.validation.warnings.join('\n');status('Text checked. Current song not changed.','success');}catch(e){$('textFeedback').textContent=e.message;error(e);}}
 let studioSaveTicket=0;
-function finishStudioSave(ticket,saved){
+function finishStudioSave(ticket,saved,filename='',message=''){
  if(ticket!==studioSaveTicket || !state.savePendingText)return;
  const unchanged=state.savePendingText===JSON.stringify(state.doc);
  state.savePendingText=null;
- if(saved && unchanged){state.dirty=false;render();rememberStudioWorkspace();}
- status(saved?'Saved edited OSTF.':'File was not saved.',saved?'success':'');
+ if(saved){state.filename=filename;state.fileBound=true;if(unchanged)state.dirty=false;render();rememberStudioWorkspace();}
+ status(saved?'Saved '+filename+'.':(message||'File was not saved.'),saved?'success':(message?'error':''));
 }
 function openFile(){
  if(window.__JUCE__?.backend)window.__JUCE__.backend.emitEvent('ostfScaleOpen',{});
@@ -3124,7 +3128,7 @@ async function save(mode='save'){
   if(state.savePendingText){status('A file save is still in progress. Complete or cancel the dialog first.');return;}
   if(state.textDirty){await dialog('Import or discard text edits','OSTF TEXT has changes not yet imported. Import them or restore the current song before saving.');return;}
   const report=SA.audit.inspect(state.doc,state.sourceCore);
-  const selectingNew=mode==='saveas'||!native||!state.fileBound;
+  const selectingNew=mode==='saveas'||!(native||window.__JUCE__?.backend)||!state.fileBound;
   const action=selectingNew?'SAVE AS':'SAVE';
   const overlay=document.createElement('div');overlay.className='modalShade';
   overlay.innerHTML='<div class="modal export-modal" role="dialog" aria-modal="true"><h2>EXPORT SAFETY REVIEW · '+action+'</h2>'+
@@ -3154,7 +3158,7 @@ async function save(mode='save'){
      status(selectingNew?'Checks passed. Choose a destination in Save As…':'Checks passed. Saving the linked file…');
     }else if(window.__JUCE__?.backend){
      state.savePendingText=JSON.stringify(state.doc);
-     window.__JUCE__.backend.emitEvent('ostfScaleSave',{text,ticket:++studioSaveTicket});
+     window.__JUCE__.backend.emitEvent('ostfScaleSave',{text,mode:selectingNew?'saveas':'save',ticket:++studioSaveTicket});
     }else{
      const blob=new Blob([text],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
      a.href=url;a.download=state.filename.replace(/\.(ostf|json|txt)$/i,'')+'_scales.ostf';a.click();
@@ -3341,6 +3345,11 @@ if(window.__JUCE__?.backend){
  input.title='Held MIDI input notes, across all octaves and channels';
  $('audioLabel').before(input);
  $('hostLabel').textContent='OSTF Scale Editor · VST3';
+ window.__JUCE__.backend.addEventListener('ostfScaleMidiRoute',route=>{
+  studioPreviewRoute=Number(route)?'Host MIDI output':'Scale Editor instrument';
+  showStudioInput();
+  if(!$('listenStatus').dataset.playing)$('listenStatus').textContent=studioPreviewRoute+' · MIDI channel 1';
+ });
  window.__JUCE__.backend.addEventListener('ostfScaleInput',mask=>{
   studioHeldNotes=Number(mask)&4095;
   showStudioInput();

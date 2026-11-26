@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## Linked scale files, audition MIDI output and singer pitch depth
+
+Windows Release passed all nine targeted CTests. Reproduce with `ctest -C Release -R "scale|singing|^ostf_studio_core_tests$|^ostf_studio_open_score$" --output-on-failure` in the GUI build directory.
+
+Branch `feat/scale-midi-linked-save-and-vocal-legato`. Windows Release builds use `OSTFSynthScaleEditor_VST3` and `OSTFSynthSinger_VST3`. Scale Editor can open a score from its file chooser or a drop on its header. Visual Save updates the linked file after a digest check. Save As creates a new binding. Host state stores the chosen preview route. Connect the plug-in's MIDI output on channel 1 to a downstream instrument when using **Preview MIDI out**. With the option off, **Instruments...** and **Test sound** audition the nested instrument. Windows tested the installed FM8 instrument through that picker (peak 0.0717).
+
+The Windows linked-save regression loads the built VST3 through a JUCE host to check its event buses, then exercises the real embedded editor with a temporary copy of Neon Platforms. It verifies preservation of a high-precision decimal, an external-edit conflict and retention of unsaved work. The processor test checks generated note events at the correct sample offsets and note release when switching destinations. Native file opening supports Core 5.0 and 5.1. Complete Max device parity, Ableton downstream playback and macOS remain unverified.
+
+Formant Singer joins adjacent recorded vowels on a single pitch trajectory. On the Mei C4-to-E4 regression, the early estimate changed from 328.8 to 272.7 Hz and settled at 328.8 Hz. **Vibrato / scoop depth** scales the score's two gestures and defaults to 100%. Run `ostf_singing_tests <paper-lantern-replies.ostf> <new-file.wav> bridge-mei` and repeat with `bridge-mei-40` to hear the same passage at 100% and 40%. The Bridge was sample-identical after the legato fix alone. The two depth settings produced different audio at approximately −19.48 dBFS RMS. Subjective listening and physical outputs are unverified. The Windows portable passed the vocal-track and Scale Editor host-window checks.
+
 ## Track-specific scale returns and recorded voice joins
 
 Branch `feat/track-scale-return-voiced-stops`. The embedded editor saves OSTF 5.0 and 5.1 explicit improvisation scales on pitched tracks. A Studio return applies these directions and shared scales together in one undo step, preserving other directions and checking the source digest. The Mei singer closes English B, D and G within their allotted duration and phase-aligns connected voiced cycles. Windows Release passed eight focused CTests and the portable vocal-track and FX-window smoke checks. REAPER 7.86 rendered four MIDI notes through the Scale Editor to a stereo WAV (peak 0.0945). The manual external-host edit/save/drop workflow was interrupted. macOS and physical monitoring are unverified.

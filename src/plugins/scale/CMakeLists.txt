@@ -10,7 +10,7 @@ endif()
 juce_add_binary_data(OSTFScaleAdviser NAMESPACE ScaleAssets HEADER_NAME ScaleAssets.h SOURCES Adviser.js AdviserBridge.js ScaleWorkspace.html)
 juce_add_plugin(OSTFSynthScaleEditor COMPANY_NAME "OSTF Studio" BUNDLE_ID "org.ostf.instrument.Ose1"
     PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE Ose1 PRODUCT_NAME "OSTF Scale Editor"
-    IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE NEEDS_WEBVIEW2 TRUE NEEDS_WEB_BROWSER TRUE FORMATS VST3 VST3_CATEGORIES Instrument Synth
+    IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE NEEDS_MIDI_OUTPUT TRUE NEEDS_WEBVIEW2 TRUE NEEDS_WEB_BROWSER TRUE FORMATS VST3 VST3_CATEGORIES Instrument Synth
     VST3_COPY_DIR "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" COPY_PLUGIN_AFTER_BUILD FALSE)
 target_sources(OSTFSynthScaleEditor PRIVATE ScaleEditor.cpp)
 target_include_directories(OSTFSynthScaleEditor PRIVATE "${ostf_vst_sdk}" "${CMAKE_SOURCE_DIR}/src")
@@ -36,6 +36,10 @@ add_test(NAME ostf_scale_instrument_tests COMMAND ostf_scale_instrument_tests
     "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF FM Synth.vst3"
     "${CMAKE_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostf")
 if(WIN32 OR APPLE)
+    add_dependencies(ostf_scale_instrument_tests OSTFSynthScaleEditor_VST3)
+    add_test(NAME ostf_scale_linked_save COMMAND ostf_scale_instrument_tests
+        "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF Scale Editor.vst3"
+        "${CMAKE_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostf" --linked-save)
     add_test(NAME ostf_scale_workspace COMMAND ostf_scale_instrument_tests
         "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF FM Synth.vst3"
         "${CMAKE_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostf" --workspace)

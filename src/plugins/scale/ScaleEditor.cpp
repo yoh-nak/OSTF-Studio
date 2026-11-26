@@ -25,7 +25,7 @@ public:
     Processor() : AudioProcessor(BusesProperties().withOutput("Output",juce::AudioChannelSet::stereo(),true)), rack(*this) {}
     const juce::String getName() const override { return "OSTF Scale Editor"; }
     bool acceptsMidi() const override { return true; }
-    bool producesMidi() const override { return false; }
+    bool producesMidi() const override { return true; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.; }
     int getNumPrograms() override { return 1; }
@@ -33,7 +33,7 @@ public:
     void setCurrentProgram(int) override {}
     const juce::String getProgramName(int) override { return {}; }
     void changeProgramName(int,const juce::String&) override {}
-    void reset() override {heldChannels.fill(0); inputPitchClasses.store(0);}
+    void reset() override {heldChannels.fill(0); inputPitchClasses.store(0); rack.stopPreview();}
     void prepareToPlay(double rate,int block) override {reset(); rack.prepare(rate,block);}
     void releaseResources() override {rack.release(); reset();}
     bool isBusesLayoutSupported(const BusesLayout& layout) const override {
@@ -90,10 +90,12 @@ public:
             if (source == owner.offered) return Steinberg::kResultOk;
             owner.offered = source;
             // Reopening an editor must preserve unreturned edits.
-            if (owner.document.text.isEmpty() || (owner.document.baseHash == digest(owner.document.text)
+            if (owner.document.text.isEmpty() || (owner.linkedFile.file==juce::File{} && owner.document.baseHash == digest(owner.document.text)
                     && !owner.hasWorkspaceEdits())) {
                 const auto r = owner.document.load(source);
                 if (r.failed()) return Steinberg::kResultFalse;
+                owner.linkedFile={};
+                ++owner.restoredStateVersion;
             }
             owner.sendChangeMessage();
             return Steinberg::kResultOk;
@@ -108,6 +110,7 @@ public:
         const juce::ScopedLock lock(stateLock);
         juce::XmlElement xml("ScaleEditor");
         xml.setAttribute("baseHash",document.baseHash);
+        xml.setAttribute("previewMidiOut",rack.previewMidiOut());
         xml.setAttribute("editorWidth",lastEditorSize.x);
         xml.setAttribute("editorHeight",lastEditorSize.y);
         xml.createNewChildElement("Score")->addTextElement(document.text);
@@ -126,6 +129,7 @@ public:
             lastEditorSize={juce::jlimit(740,8192,xml->getIntAttribute("editorWidth",1120)),
                             juce::jlimit(550,8192,xml->getIntAttribute("editorHeight",800))};
             const auto* score=xml->getChildByName("Score");
+            rack.setPreviewMidiOut(xml->getBoolAttribute("previewMidiOut",false));
             const auto restored=rack.restore(xml->getChildByName("Instrument"));
             rackError=restored.getErrorMessage();
             unavailableInstrument.reset();
@@ -135,6 +139,7 @@ public:
             }
             sendChangeMessage();
             if (document.load(score ? score->getAllSubText() : xml->getAllSubText()).wasOk()) {
+                linkedFile={};
                 ++restoredStateVersion;
                 workspaceDraft=juce::var();
                 workspaceSource.clear();
@@ -157,6 +162,7 @@ public:
     std::array<unsigned,128> heldChannels{};
     juce::Point<int> lastEditorSize{1120,800};
     Document document;
+    LinkedScoreFile linkedFile;
     juce::String workspaceSource;
     uint64_t restoredStateVersion=0;
     juce::var workspaceDraft;
@@ -220,7 +226,7 @@ public:
     void selectedRowsChanged(int i) override { if (i>=0 && choose) choose(i); }
 };
 
-class Editor final : public juce::AudioProcessorEditor, private juce::ChangeListener, private juce::Timer {
+class Editor final : public juce::AudioProcessorEditor, public juce::FileDragAndDropTarget, private juce::ChangeListener, private juce::Timer {
 public:
     explicit Editor(Processor& p) : AudioProcessorEditor(p), proc(p) {
         for (juce::Component* c : std::initializer_list<juce::Component*>{&song,&chords,&roots,&modes,&apply,&open,&refresh,&save,&drag,&status,&back,&forward,&strategy,&lens,&genre,&choices,&details,&notes,&audition,&compare,&stop,&loadInstrument,&showInstrument})
@@ -322,9 +328,15 @@ public:
         choices.setTitle("Ranked scale candidates");
         choices.onChange=[this]{selectCandidate();};
         addAndMakeVisible(testSound);
+        addAndMakeVisible(previewMidiOut);
+        previewMidiOut.setTooltip("Send audition notes to the host on MIDI channel 1. Route the plug-in MIDI output to an instrument track.");
+        previewMidiOut.onClick=[this] {
+            proc.rack.setPreviewMidiOut(previewMidiOut.getToggleState());
+            proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+        };
         testSound.onClick=[this] {
             proc.rack.audition(juce::JSON::parse(R"([{"at":0,"note":60,"velocity":94,"ms":480}])"));
-            status.setText("Test note C4  /  "+proc.rack.name(),juce::dontSendNotification);
+            status.setText("Test note C4  /  "+(proc.rack.previewMidiOut() ? juce::String("MIDI out, Ch 1") : proc.rack.name()),juce::dontSendNotification);
         };
         loadInstrument.onClick=[this]{chooseInstrument();};
         showInstrument.onClick=[this]{proc.rack.openWindow();};
@@ -375,6 +387,12 @@ public:
         stopTimer();
         proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this);
     }
+    bool isInterestedInFileDrag(const juce::StringArray& files) override {
+        return files.size()==1 && juce::File(files[0]).hasFileExtension("ostf");
+    }
+    void filesDropped(const juce::StringArray& files,int,int) override {
+        if (isInterestedInFileDrag(files)) openScoreFile(juce::File(files[0]));
+    }
     void resized() override {
         if (getWidth()>=740 && getHeight()>=550) {
             const juce::ScopedLock lock(proc.stateLock);
@@ -397,7 +415,8 @@ public:
         reviewList.setBounds(flowView.getBounds());
         auto footer=area.removeFromBottom(32);
         loadInstrument.setBounds(footer.removeFromLeft(136).reduced(1)); showInstrument.setBounds(footer.removeFromLeft(160).reduced(1));
-        testSound.setBounds(footer.removeFromLeft(89).reduced(1)); status.setBounds(footer);
+        testSound.setBounds(footer.removeFromLeft(89).reduced(1));
+        previewMidiOut.setBounds(footer.removeFromLeft(145).reduced(1)); status.setBounds(footer);
         auto mapArea=area.removeFromBottom(91);
         auto scope=mapArea.removeFromTop(28); scopeMode.setBounds(scope.removeFromLeft(148)); nextUnassigned.setBounds(scope.removeFromRight(140));
         repeats.setBounds(scope.removeFromRight(185)); rangeLabel.setBounds(scope);
@@ -670,6 +689,7 @@ private:
     }
     void sync() {
         const juce::ScopedLock lock(proc.stateLock);
+        previewMidiOut.setToggleState(proc.rack.previewMidiOut(),juce::dontSendNotification);
         if (previousDocument && undoAtText != proc.document.text) {
             previousDocument.reset();
             undo.setEnabled(false);
@@ -742,33 +762,34 @@ private:
         if (result.failed()) status.setText(result.getErrorMessage(),juce::dontSendNotification);
         else juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()},false,&drag);
     }
-    void requestLoad(juce::String source) {
+    void requestLoad(juce::String source, LinkedScoreFile link={}) {
         if (workspace && workspace->isVisible()) {
             workspace->evaluateJavascript("Boolean(window.ScaleAdviserApp?.state.dirty || window.ScaleAdviserApp?.state.textDirty)",
-                [self=juce::Component::SafePointer<Editor>(this),source](auto result) {
-                    if (self) self->confirmLoad(source,result.getResult() && bool(*result.getResult()));
+                [self=juce::Component::SafePointer<Editor>(this),source,link](auto result) {
+                    if (self) self->confirmLoad(source,link,result.getResult() && bool(*result.getResult()));
                 });
         } else {
             const juce::ScopedLock lock(proc.stateLock);
-            confirmLoad(source,proc.hasWorkspaceEdits());
+            confirmLoad(source,link,proc.hasWorkspaceEdits());
         }
     }
-    void confirmLoad(const juce::String& source,bool workspaceDirty) {
+    void confirmLoad(const juce::String& source,const LinkedScoreFile& link,bool workspaceDirty) {
         const juce::ScopedLock lock(proc.stateLock);
         if (!workspaceDirty && !proc.hasWorkspaceEdits() && (proc.document.text.isEmpty() || proc.document.baseHash == digest(proc.document.text))) {
-            load(source);
+            load(source,link);
             return;
         }
         juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon,
             "Read another score?", "Replace the scale assignments currently open in the editor?", "Replace", "Cancel", this,
-            juce::ModalCallbackFunction::create([self=juce::Component::SafePointer<Editor>(this),source](int answer) {
-                if (self && answer) self->load(source);
+            juce::ModalCallbackFunction::create([self=juce::Component::SafePointer<Editor>(this),source,link](int answer) {
+                if (self && answer) self->load(source,link);
             }));
     }
-    void load(const juce::String& source) {
+    void load(const juce::String& source,const LinkedScoreFile& link) {
         const juce::ScopedLock lock(proc.stateLock);
         const auto r=proc.document.load(source);
         if(r.failed()) {status.setText(r.getErrorMessage(),juce::dontSendNotification); return;}
+        proc.linkedFile=link;
         proc.workspaceDraft=juce::var();
         proc.workspaceSource.clear();
         previousDocument.reset(); undo.setEnabled(false); redoDocument.reset(); redo.setEnabled(false);
@@ -779,9 +800,14 @@ private:
         sync(); showWorkspaceForFirstScore();
         proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
-    int shownPitchClasses=-1;
+    int shownPitchClasses=-1, shownMidiRoute=-1;
     void timerCallback() override {
-        if (!workspace || !workspace->isShowing()) { shownPitchClasses=-1; return; }
+        if (!workspace || !workspace->isShowing()) { shownPitchClasses=shownMidiRoute=-1; return; }
+        const int route=proc.rack.previewMidiOut() ? 1 : 0;
+        if (route!=shownMidiRoute) {
+            workspace->emitEventIfBrowserIsVisible("ostfScaleMidiRoute",route);
+            shownMidiRoute=route;
+        }
         const int held=proc.inputPitchClasses.load(std::memory_order_relaxed);
         if (held!=shownPitchClasses) {
             workspace->emitEventIfBrowserIsVisible("ostfScaleInput",held);
@@ -818,18 +844,24 @@ private:
             const auto draft=proc.workspaceSource==snapshot && proc.workspaceDraft.isObject()
                 ? juce::Base64::toBase64(juce::JSON::toString(proc.workspaceDraft,true)) : juce::String{};
             html=html.replace("<!--STUDIO_DRAFT-->",draft);
+            html=html.replace("<!--STUDIO_FILE-->",juce::Base64::toBase64(proc.linkedFile.file.getFileName()));
             options = options.withNativeIntegrationEnabled()
                 .withEventListener("ostfScaleDraft",[self=juce::Component::SafePointer<Editor>(this),page](juce::var patch){
                     if (self && self->workspaceGeneration==page) self->rememberWorkspace(patch);
                 })
                 .withEventListener("ostfScaleInputReady", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
-                    if (self) self->shownPitchClasses=-1;
+                    if (self) self->shownPitchClasses=self->shownMidiRoute=-1;
                 })
                 .withEventListener("ostfScaleOpen", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
                     if (self) self->choose(false);
                 })
-                .withEventListener("ostfScaleSave", [self=juce::Component::SafePointer<Editor>(this)](juce::var request) {
-                    if (self) self->saveWorkspaceFile(request);
+                .withEventListener("ostfScaleForgetFile", [self=juce::Component::SafePointer<Editor>(this),page](juce::var) {
+                    if (!self || self->workspaceGeneration!=page) return;
+                    const juce::ScopedLock lock(self->proc.stateLock);
+                    self->proc.linkedFile={};
+                })
+                .withEventListener("ostfScaleSave", [self=juce::Component::SafePointer<Editor>(this),page](juce::var request) {
+                    if (self && self->workspaceGeneration==page) self->saveWorkspaceFile(request);
                 })
                 .withEventListener("ostfScalePreview", [self=juce::Component::SafePointer<Editor>(this)](juce::var notes) {
                     if (!self || !notes.isArray() || notes.size() > 2048) return;
@@ -930,27 +962,42 @@ private:
         if (!workspace) return;
         const auto text = request["text"].toString();
         const int ticket = request["ticket"];
-        const auto reply = [browser=juce::Component::SafePointer<juce::WebBrowserComponent>(workspace.get()),ticket](bool ok) {
+        const juce::ScopedLock lock(proc.stateLock);
+        const auto reply = [browser=juce::Component::SafePointer<juce::WebBrowserComponent>(workspace.get()),ticket]
+                (bool ok,const juce::String& name={},const juce::String& message={}) {
             if (browser) browser->evaluateJavascript("window.ScaleAdviserApp.finishStudioSave(" + juce::String(ticket)
-                + "," + (ok ? "true" : "false") + ")");
+                + "," + (ok ? "true" : "false") + "," + juce::JSON::toString(name,true)
+                + "," + juce::JSON::toString(message,true) + ")");
         };
         if (workspaceSaveChooser) { reply(false); return; }
         auto checked=std::make_shared<Document>();
         if (text.getNumBytesAsUTF8() > maxBytes || checked->load(text).failed()) {
             status.setText("Invalid OSTF export.",juce::dontSendNotification); reply(false); return;
         }
-        workspaceSaveChooser=std::make_unique<juce::FileChooser>("Save edited OSTF as",juce::File{},"*.ostf");
+        auto write=[self=juce::Component::SafePointer<Editor>(this),checked,reply,page=workspaceGeneration,
+                    version=proc.restoredStateVersion](const juce::File& file) {
+            if (!self) return;
+            const juce::ScopedLock stateLock(self->proc.stateLock);
+            if (page!=self->workspaceGeneration || version!=self->proc.restoredStateVersion) {reply(false); return;}
+            const auto result=self->proc.linkedFile.write(*checked,file,true);
+            self->status.setText(result.wasOk() ? "Saved edited OSTF." : result.getErrorMessage(),juce::dontSendNotification);
+            reply(result.wasOk(),file.getFileName(),result.getErrorMessage());
+        };
+        if (request["mode"]=="save") {write(proc.linkedFile.file); return;}
+        workspaceSaveChooser=std::make_unique<juce::FileChooser>("Save edited OSTF as",proc.linkedFile.file,"*.ostf");
         workspaceSaveChooser->launchAsync(juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::warnAboutOverwriting,
-            [self=juce::Component::SafePointer<Editor>(this),checked,reply](const juce::FileChooser& fc) {
+            [self=juce::Component::SafePointer<Editor>(this),write,reply](const juce::FileChooser& fc) {
                 if (!self) return;
                 const auto file = fc.getResult();
-                if (file != juce::File{}) {
-                    const auto result=checked->saveAs(file);
-                    self->status.setText(result.wasOk() ? "Saved edited OSTF." : result.getErrorMessage(),juce::dontSendNotification);
-                    reply(result.wasOk());
-                } else reply(false);
+                if (file != juce::File{}) write(file); else reply(false);
                 self->workspaceSaveChooser.reset();
             });
+    }
+    void openScoreFile(const juce::File& file) {
+        LinkedScoreFile link; juce::String text;
+        const auto result=link.read(file,text);
+        if (result.wasOk()) requestLoad(text,link);
+        else status.setText(result.getErrorMessage(),juce::dontSendNotification);
     }
     void choose(bool writing) {
         chooser=std::make_unique<juce::FileChooser>(writing?"Save OSTF":"Open OSTF",juce::File{},"*.ostf");
@@ -959,9 +1006,12 @@ private:
             [self=juce::Component::SafePointer<Editor>(this),writing](const auto& fc) {
                 if (!self) return;
                 auto file=fc.getResult(); if(file==juce::File{}) return;
-                if (!writing && file.getSize()<=maxBytes) {self->requestLoad(file.loadFileAsString());return;}
+                if (!writing) {self->openScoreFile(file); return;}
                 const juce::ScopedLock lock(self->proc.stateLock);
-                const auto result = writing ? self->proc.document.saveAs(file) : juce::Result::fail("Score exceeds 24 MiB.");
+                auto saved=self->proc.linkedFile;
+                const auto result=saved.write(self->proc.document,file);
+                if (result.wasOk() && (!self->workspace || file==self->proc.linkedFile.file))
+                    self->proc.linkedFile=saved;
                 self->status.setText(result.wasOk()?"Saved OSTF.":result.getErrorMessage(),juce::dontSendNotification);
             });
     }
@@ -1004,6 +1054,7 @@ private:
     juce::String redoAtText;
     juce::String undoAtText;
     juce::Label song,status,notes,details;
+    juce::ToggleButton previewMidiOut{"Preview MIDI out"};
     juce::TextButton back{"<"},forward{">"},audition{"Hear candidate"},compare{"A/B with reference"},stop{"Stop"},
         loadInstrument{"Instruments..."},showInstrument,testSound{"Test sound"};
     juce::Component::SafePointer<juce::CallOutBox> pickerBox;

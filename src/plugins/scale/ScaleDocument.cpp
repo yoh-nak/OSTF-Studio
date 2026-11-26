@@ -38,13 +38,24 @@ const std::vector<Scale>& catalog() {
 juce::String digest(const juce::String& text) {
     return juce::SHA256(text.toRawUTF8(),text.getNumBytesAsUTF8()).toHexString();
 }
+static juce::String revisedScales(const std::string& merged,const juce::String& parentHash) {
+    using Json=jsoncons::ojson;
+    const auto options=jsoncons::json_options{}.lossless_number(true).bignum_format(jsoncons::bignum_format_kind::raw);
+    auto original=Json::parse(merged,options);
+    if (!original.contains("document")) return juce::String::fromUTF8(merged.data(),int(merged.size()));
+    auto& meta=original.at("document");
+    Json parent; parent["documentId"]=meta.at("id"); parent["revisionId"]=meta.at("revisionId"); parent["sha256"]=parentHash.toStdString();
+    meta["parents"]=Json::array(); meta["parents"].push_back(parent);
+    meta["revisionId"]=("scale-"+juce::Uuid().toString()).toStdString();
+    meta["modifiedBy"]=Json::parse(R"({"name":"OSTF Scale Editor"})");
+    std::string bytes; original.dump(bytes,options);
+    return juce::String::fromUTF8(bytes.data(),int(bytes.size()));
+}
 juce::Result Document::importWorkspaceScales(const juce::String& edited, const juce::String& openedHash) {
     if (openedHash.isEmpty() || digest(text) != openedHash)
         return juce::Result::fail("The Studio score changed. Open a fresh full editor before importing.");
     if (edited.getNumBytesAsUTF8() > maxBytes) return juce::Result::fail("Scale export exceeds 24 MiB.");
     try {
-        using Json = jsoncons::ojson;
-        const auto options = jsoncons::json_options{}.lossless_number(true).bignum_format(jsoncons::bignum_format_kind::raw);
         const auto version=score["version"].toString().toStdString();
         validateScoreSchema(version,edited.toStdString());
         const auto merged=mergeScaleAssignments(text.toStdString(),edited.toStdString());
@@ -61,17 +72,9 @@ juce::Result Document::importWorkspaceScales(const juce::String& edited, const j
         if (normalized(mergedText) != normalized(edited))
             return juce::Result::fail("This export contains changes outside the open song's scale assignments.");
         if (mergedText == text) return juce::Result::ok();
-        auto original=Json::parse(merged,options);
-        if (original.contains("document")) {
-            auto& meta=original.at("document");
-            Json parent; parent["documentId"]=meta.at("id"); parent["revisionId"]=meta.at("revisionId"); parent["sha256"]=openedHash.toStdString();
-            meta["parents"]=Json::array(); meta["parents"].push_back(parent);
-            meta["revisionId"]=("scale-"+juce::Uuid().toString()).toStdString();
-            meta["modifiedBy"]=Json::parse(R"({"name":"OSTF Scale Editor"})");
-        }
-        std::string bytes; original.dump(bytes,options);
-        validateScoreSchema(version,bytes);
-        text=juce::String::fromUTF8(bytes.data(),int(bytes.size())); score=juce::JSON::parse(text);
+        const auto revision=revisedScales(merged,openedHash);
+        validateScoreSchema(version,revision.toStdString());
+        text=revision; score=juce::JSON::parse(text);
         return juce::Result::ok();
     } catch(const std::exception& e) {return juce::Result::fail(e.what());}
 }
@@ -88,13 +91,56 @@ juce::Result Document::load(const juce::String& utf8) {
         return juce::Result::ok();
     } catch (const std::exception& e) { return juce::Result::fail(juce::String::fromUTF8(e.what())); }
 }
-juce::Result Document::saveAs(const juce::File& file) const {
+static juce::Result writeScore(const juce::File& file,const juce::String& text,const juce::String& expectedHash={}) {
     if (!file.hasFileExtension("ostf")) return juce::Result::fail("Choose a filename ending in .ostf.");
     if (text.isEmpty()) return juce::Result::fail("Open a score first.");
     juce::TemporaryFile temp(file);
-    if (!temp.getFile().replaceWithText(text,false,false,nullptr) || !temp.overwriteTargetFileWithTemporary())
+    if (!temp.getFile().replaceWithText(text,false,false,nullptr))
+        return juce::Result::fail("Unable to write the edited score.");
+    if (expectedHash.isNotEmpty()) {
+        juce::FileInputStream stream(file);
+        if (!stream.openedOk() || stream.getTotalLength()>maxBytes || juce::SHA256(stream).toHexString()!=expectedHash
+                || stream.getStatus().failed())
+            return juce::Result::fail("The linked file changed or moved. Reopen it or use Save As to keep your edits.");
+    }
+    if (!temp.overwriteTargetFileWithTemporary())
         return juce::Result::fail("Unable to save the edited score.");
     return juce::Result::ok();
+}
+juce::Result Document::saveAs(const juce::File& file) const {return writeScore(file,text);}
+juce::Result LinkedScoreFile::read(const juce::File& source, juce::String& text) {
+    juce::FileInputStream stream(source);
+    if (!stream.openedOk()) return juce::Result::fail("Could not open this OSTF file.");
+    juce::MemoryBlock bytes;
+    if (stream.readIntoMemoryBlock(bytes,maxBytes+1) > maxBytes)
+        return juce::Result::fail("Score exceeds 24 MiB.");
+    if (stream.getStatus().failed() || bytes.getSize()==0)
+        return juce::Result::fail("Could not read this OSTF file.");
+    text=juce::String::createStringFromData(bytes.getData(),int(bytes.getSize()));
+    openedText=text;
+    diskHash=juce::SHA256(bytes).toHexString();
+    file=source;
+    return juce::Result::ok();
+}
+juce::Result LinkedScoreFile::write(const Document& doc, const juce::File& target, bool workspaceScales) {
+    if (target==juce::File{}) return juce::Result::fail("Choose a destination using Save As.");
+    juce::InterProcessLock lock("OSTFScaleSave-"+digest(target.getFullPathName().toLowerCase()));
+    if (!lock.enter(1000)) return juce::Result::fail("Another editor is saving this file. Try again.");
+    juce::ScopeGuard unlock([&]{lock.exit();});
+    Document output=doc;
+    if (workspaceScales && openedText.isNotEmpty()) {
+        // The visual editor changes scale assignments. Preserve unrelated original
+        // JSON numbers which JavaScript cannot round-trip at full precision.
+        try {
+            const auto original=openedText.toStdString();
+            const auto merged=mergeScaleAssignments(original,doc.text.toStdString());
+            const auto valid=output.load(merged==original ? openedText : revisedScales(merged,diskHash));
+            if (valid.failed()) return valid;
+        } catch (const std::exception& e) {return juce::Result::fail(e.what());}
+    }
+    const auto result=writeScore(target,output.text,target==file ? diskHash : juce::String{});
+    if (result.wasOk()) { file=target; openedText=output.text; diskHash=digest(openedText); }
+    return result;
 }
 juce::Result Document::exportForStudio(const juce::File& directory, juce::File& written) const {
     written = juce::File{};

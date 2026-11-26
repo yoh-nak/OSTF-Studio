@@ -4,6 +4,76 @@
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 
+static int testLinkedSave(const juce::File& source) {
+    juce::TemporaryFile copy(".ostf");
+    const auto file=copy.getFile();
+    auto fixture=juce::JSON::parse(source.loadFileAsString());
+    auto* production=fixture["extensions"]["org.ostf.studio"]["data"].getDynamicObject();
+    if (!production) return 70;
+    production->setProperty("testDecimal","EXACT_DECIMAL_FIXTURE");
+    const juce::String exactDecimal="0.123456789012345678901";
+    if (!file.replaceWithText(juce::JSON::toString(fixture).replace("\"EXACT_DECIMAL_FIXTURE\"",exactDecimal))) return 70;
+    std::unique_ptr<juce::AudioProcessor> processor(createPluginFilter());
+    std::unique_ptr<juce::AudioProcessorEditor> editor(processor->createEditorAndMakeActive());
+    auto* drop=dynamic_cast<juce::FileDragAndDropTarget*>(editor.get());
+    if (!drop) return 71;
+    drop->filesDropped({file.getFullPathName()},4,4);
+    editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
+    editor->setVisible(true);
+    auto* browser=dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
+    if (!browser) return 72;
+    struct Poll final : juce::Timer {
+        std::function<void()> step;
+        void timerCallback() override {step();}
+    } timer;
+    const auto deadline=juce::Time::getMillisecondCounterHiRes()+45000.;
+    int stage=0; bool pending=false,externallyEdited=false;
+    const auto check=[&](const juce::String& script) {
+        pending=true;
+        browser->evaluateJavascript(script,[&](auto result){
+            pending=false;
+            if (const auto* value=result.getResult(); value && value->isBool() && bool(*value)) ++stage;
+        });
+    };
+    timer.step=[&] {
+        if (stage==5 || juce::Time::getMillisecondCounterHiRes()>deadline) {
+            juce::MessageManager::getInstance()->stopDispatchLoop(); return;
+        }
+        if (pending) return;
+        if (stage==0) {
+            check(R"JS((()=>{
+                const app=window.ScaleAdviserApp;
+                if(!app?.state.fileBound || !app.state.doc.harmony.scales.length)return false;
+                app.state.doc.harmony.scales=[];app.state.dirty=true;app.save();return true;
+            })())JS");
+        } else if (stage==1 || stage==3) {
+            check(R"JS((()=>{const b=document.querySelector('[data-export="confirm"]');
+                if(!b || b.disabled || b.textContent!=='Save linked file')return false;
+                b.click();return true;})())JS");
+        } else if (stage==2) {
+            if (!externallyEdited) {
+                const auto written=file.loadFileAsString();
+                if (juce::JSON::parse(written)["harmony"]["scales"].size()!=0 || !written.contains(exactDecimal)) return;
+                if (!file.replaceWithText("Externally edited")) return;
+                externallyEdited=true;
+            }
+            check(R"JS((()=>{const app=window.ScaleAdviserApp;
+                if(app.state.savePendingText || app.state.dirty)return false;
+                app.state.dirty=true;app.save();return true;})())JS");
+        } else {
+            check(R"JS((()=>{const s=window.ScaleAdviserApp.state;
+                return !s.savePendingText && s.dirty && document.body.innerText.includes('linked file changed');})())JS");
+        }
+    };
+    timer.startTimer(100);
+    juce::MessageManager::getInstance()->runDispatchLoop();
+    timer.stopTimer();
+    if (stage!=5 || file.loadFileAsString()!="Externally edited") {
+        std::cerr<<"Linked Save failed at stage "<<stage<<'\n'; return 73;
+    }
+    return 0;
+}
+
 static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
     std::unique_ptr<juce::AudioProcessor> processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor;
@@ -120,6 +190,14 @@ int main(int argc,char** argv) {
         std::cerr<<"No instrument in "<<file.getFullPathName()<<" ("<<types.size()<<" classes)\n";
         return 2;
     }
+    if (argc==4 && juce::String(argv[3])=="--linked-save") {
+        juce::String error;
+        auto plugin=format.createInstanceFromDescription(*instrument,48000,256,error);
+        if (!plugin || !plugin->acceptsMidi() || !plugin->producesMidi()) {
+            std::cerr<<"Scale Editor VST3 MIDI buses unavailable: "<<error<<'\n'; return 74;
+        }
+        return testLinkedSave(juce::File(juce::String::fromUTF8(argv[2])));
+    }
     const bool auditionOnly=argc==4 && juce::String(argv[3])=="--audition";
     juce::XmlElement state("ScaleEditor");
     state.createNewChildElement("Score")->addTextElement(juce::File(juce::String::fromUTF8(argv[2])).loadFileAsString());
@@ -180,6 +258,38 @@ int main(int argc,char** argv) {
         std::cout<<"Instrument picker / test note: "<<instrument->name<<" peak "<<peak<<"\n";
         if (peak<.001f) return 60;
         if (auditionOnly) { editor.reset(); processor->releaseResources(); return 0; }
+        juce::ToggleButton* route=nullptr;
+        for (auto* child:editor->getChildren())
+            if (auto* b=dynamic_cast<juce::ToggleButton*>(child); b && b->getButtonText()=="Preview MIDI out") route=b;
+        if (!processor->producesMidi() || !route || route->getToggleState() || !midi.isEmpty()) return 61;
+        processor->releaseResources(); processor->setRateAndBufferSizeDetails(44100,256);
+        processor->prepareToPlay(44100,256);
+        route->setToggleState(true,juce::dontSendNotification); route->onClick();
+        testSound->onClick();
+        unsigned noteOns=0, noteOffs=0;
+        for (int pos=0; pos<=21168; pos+=256) {
+            midi.clear();
+            if (pos==0) midi.addEvent(juce::MidiMessage::noteOn(3,77,juce::uint8(100)),73);
+            processor->processBlock(block,midi);
+            for (const auto event:midi) {
+                const auto msg=event.getMessage();
+                if (msg.getChannel()!=1 || msg.getNoteNumber()!=60) return 62;
+                if (msg.isNoteOn() && pos+event.samplePosition==0) ++noteOns;
+                else if (msg.isNoteOff() && pos+event.samplePosition==21168) ++noteOffs;
+                else return 63;
+            }
+        }
+        if (noteOns!=1 || noteOffs!=1) return 64;
+        processor->getStateInformation(bytes);
+        const auto routed=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
+        if (!routed || !routed->getBoolAttribute("previewMidiOut")) return 65;
+        testSound->onClick(); midi.clear(); processor->processBlock(block,midi);
+        route->setToggleState(false,juce::dontSendNotification); route->onClick();
+        midi.clear(); processor->processBlock(block,midi);
+        if (midi.getNumEvents()!=1 || !(*midi.begin()).getMessage().isNoteOff()
+                || (*midi.begin()).samplePosition!=0) return 66;
+        midi.clear(); processor->processBlock(block,midi);
+        if (!midi.isEmpty()) return 67;
     }
     if (argc == 4) {
         auto* browser = dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));

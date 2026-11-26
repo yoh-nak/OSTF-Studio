@@ -53,6 +53,22 @@ int main(int argc, char** argv) {
     if(!check(workspace.importWorkspaceScales(juce::JSON::toString(scalesOnly),digest(input))) || workspace.baseHash!=digest(input)) return 16;
     juce::TemporaryFile copy(".ostf"), other(".txt");
     if (workspace.saveAs(copy.getFile()).failed() || copy.getFile().loadFileAsString()!=workspace.text) return 17;
+    {
+        LinkedScoreFile link;
+        juce::String opened;
+        if (!check(link.read(copy.getFile(),opened)) || opened!=workspace.text) return 28;
+        auto secondInstance=link;
+        if (!check(link.write(doc,copy.getFile())) || copy.getFile().loadFileAsString()!=doc.text
+                || !check(link.write(doc,copy.getFile()))) return 29;
+        if (secondInstance.write(workspace,copy.getFile()).wasOk()) return 30;
+        if (!copy.getFile().replaceWithText(input,false,false,nullptr) || link.write(doc,copy.getFile()).wasOk()
+                || copy.getFile().loadFileAsString()!=input) return 31;
+        juce::TemporaryFile alternate(".ostf");
+        if (!check(link.write(workspace,alternate.getFile())) || link.file!=alternate.getFile()
+                || alternate.getFile().loadFileAsString()!=workspace.text) return 32;
+        if (!alternate.getFile().deleteFile() || link.write(doc,alternate.getFile()).wasOk()
+                || alternate.getFile().exists()) return 33;
+    }
     if (!other.getFile().replaceWithText("original") || workspace.saveAs(other.getFile()).wasOk()
         || other.getFile().loadFileAsString()!="original") return 18;
     juce::File returned;

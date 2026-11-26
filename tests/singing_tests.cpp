@@ -325,6 +325,66 @@ int main(int argc, char** argv) {
     }
     const auto japaneseCV=renderPhone({0,sibilant},69);
     if (japaneseCV.getRMSLevel(0,5760,1920)<.01f) return 49;
+    // A connected open vowel carries pitch across a note boundary; a fresh attack
+    // starts at the written pitch. Measure the actual Mei waveform in both cases.
+    auto vowelChange = [&](bool connected,int gapFrames=0,Phone incoming={0,vowelOnly}) {
+        singer->reset(); midi.clear();
+        if (connected) {
+            midi.addEvent(phoneMessage(1,60,{0,vowelOnly},.16),0);
+            midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(100)),0);
+            singer->processBlock(audio,midi);
+            midi.clear();
+            midi.addEvent(juce::MidiMessage::noteOff(1,60),0);
+            if (gapFrames) {
+                juce::AudioBuffer<float> gap(2,gapFrames);
+                singer->processBlock(gap,midi);
+                midi.clear();
+            }
+        }
+        midi.addEvent(phoneMessage(1,64,incoming,.16),0);
+        midi.addEvent(juce::MidiMessage::noteOn(1,64,juce::uint8(100)),0);
+        singer->processBlock(audio,midi);
+        return juce::AudioBuffer<float>(audio);
+    };
+    auto measuredHz = [](const juce::AudioBuffer<float>& sound, int start) {
+        double best = -2.;
+        int period = 0;
+        for (int lag=130; lag<=200; ++lag) {
+            double xy=0.,xx=0.,yy=0.;
+            for (int i=start; i<start+250; ++i) {
+                const auto x=sound.getSample(0,i),y=sound.getSample(0,i+lag);
+                xy+=x*y; xx+=x*x; yy+=y*y;
+            }
+            const double corr=xy/std::sqrt(xx*yy+1e-20);
+            if (corr>best) {best=corr; period=lag;}
+        }
+        return 48000./period;
+    };
+    const auto joined=vowelChange(true), detached=vowelChange(false);
+    const auto early=measuredHz(joined,50), settled=measuredHz(joined,1450), fresh=measuredHz(detached,50);
+    std::cout<<"Mei C4 to E4, connected onset / settled / fresh onset Hz: "<<early<<" / "<<settled<<" / "<<fresh<<'\n';
+    if (!(early>255. && early<310. && std::abs(settled-329.63)<5. && std::abs(fresh-329.63)<5.)) return 57;
+    auto* depth=dynamic_cast<juce::AudioParameterFloat*>(singer->getParameters()[0]);
+    if (!depth || depth->paramID!="pitchExpressionDepth" || depth->get()!=100.f) return 58;
+    const Phone slide{0,vowelOnly,0,scoop,127};
+    const auto full=renderPhone(slide,64);
+    *depth=40.f;
+    const auto subtle=renderPhone(slide,64);
+    juce::MemoryBlock depthState; singer->getStateInformation(depthState);
+    *depth=0.f;
+    const auto straight=renderPhone(slide,64);
+    const auto neutral=renderPhone({0,vowelOnly},64);
+    const auto steadyVibrato=renderPhone({0,vowelOnly,0,vibrato,127},64);
+    for (int i=0;i<neutral.getNumSamples();++i)
+        if (straight.getSample(0,i)!=neutral.getSample(0,i) || steadyVibrato.getSample(0,i)!=neutral.getSample(0,i)) return 59;
+    const auto fullHz=measuredHz(full,50), subtleHz=measuredHz(subtle,50), straightHz=measuredHz(straight,50);
+    std::cout<<"Scored scoop, 100 / 40 / 0 percent onset Hz: "<<fullHz<<" / "<<subtleHz<<" / "<<straightHz<<'\n';
+    if (!(fullHz+5.<subtleHz && subtleHz+3.<straightHz)) return 60;
+    singer->setStateInformation(depthState.getData(),int(depthState.getSize()));
+    if (depth->get()!=40.f) return 61;
+    *depth=100.f;
+    if (std::abs(measuredHz(vowelChange(true,768),50)-fresh)>5.
+            || std::abs(measuredHz(vowelChange(true,0,slide),50)-fullHz)>5.) return 62;
     bool cleanStops = true;
     for (int consonant : {16,18,21}) { // English B, D, G
         Phone phone;
@@ -467,9 +527,11 @@ int main(int argc, char** argv) {
     if (audio.getMagnitude(0,0,2048) != 0) return 7;
     if (argc >= 3) {
         const bool bilingual = argc == 4 && juce::String(argv[3]).startsWith("bilingual-");
-        const bool bridge = argc == 4 && juce::String(argv[3]) == "bridge-mei";
+        const bool subtleBridge=argc==4 && juce::String(argv[3])=="bridge-mei-40";
+        const bool bridge = argc == 4 && (juce::String(argv[3]) == "bridge-mei" || subtleBridge);
         if (bilingual || bridge) {
-            state.setAttribute("builtinVoice",juce::String(argv[3]).fromFirstOccurrenceOf("-",false,false));
+            state.setAttribute("builtinVoice",bridge ? "mei" : juce::String(argv[3]).fromFirstOccurrenceOf("-",false,false));
+            state.setAttribute("pitchExpressionDepth",subtleBridge ? 40 : 100);
             juce::AudioProcessor::copyXmlToBinary(state,blob);
             restored->setStateInformation(blob.getData(),int(blob.getSize()));
         } else if (argc == 4) {

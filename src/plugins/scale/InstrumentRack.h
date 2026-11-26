@@ -52,6 +52,7 @@ public:
     }
     void prepare(double sr,int size) {
         rate=sr; blockSize=size; prepared=true; voices={}; stopPreview();
+        previewOut.ensureSize(32768);
         if (child) { child->setRateAndBufferSizeDetails(sr,size); child->prepareToPlay(sr,size); }
     }
     void release() {
@@ -114,12 +115,23 @@ public:
         const juce::ScopedLock lock(owner.getCallbackLock());
         sequence.clear(); cursor=0; elapsed=0; flush=true;
     }
+    void setPreviewMidiOut(bool enabled) {
+        const juce::ScopedLock lock(owner.getCallbackLock());
+        if (external.load()==enabled) return;
+        stopPreview();
+        external.store(enabled);
+    }
+    bool previewMidiOut() const {return external.load();}
     void process(juce::AudioBuffer<float>& audio,juce::MidiBuffer& midi) {
         audio.clear();
+        previewOut.clear();
         if(flush) {
-            for(int k=0;k<128;++k) if(sounding[size_t(k)]) midi.addEvent(juce::MidiMessage::noteOff(previewChannel,k),0);
+            auto& previous = lastExternal ? previewOut : midi;
+            for(int k=0;k<128;++k) if(sounding[size_t(k)]) previous.addEvent(juce::MidiMessage::noteOff(previewChannel,k),0);
             sounding={}; flush=false;
         }
+        lastExternal=external.load();
+        auto& destination=lastExternal ? previewOut : midi;
         const int count=audio.getNumSamples();
         while(cursor<sequence.size()) {
             const auto& e=sequence[cursor];
@@ -127,8 +139,8 @@ public:
             if(pos>=count) break;
             const auto offset=int(std::max<juce::int64>(0,pos));
             auto& active=sounding[size_t(e.key)];
-            if(e.velocity || active==1)
-                midi.addEvent(e.velocity ? juce::MidiMessage::noteOn(previewChannel,e.key,(juce::uint8)e.velocity)
+            if(e.velocity ? (!lastExternal || active==0) : active==1)
+                destination.addEvent(e.velocity ? juce::MidiMessage::noteOn(previewChannel,e.key,(juce::uint8)e.velocity)
                                          : juce::MidiMessage::noteOff(previewChannel,e.key),offset);
             active=e.velocity ? active+1 : std::max(0,active-1);
             ++cursor;
@@ -160,7 +172,7 @@ public:
             reference(audio,pos,count);
             audio.copyFrom(1,0,audio,0,0,count);
         }
-        midi.clear();
+        midi.swapWith(previewOut);
     }
     bool hasInstrument() const {return child!=nullptr;}
 private:
@@ -182,6 +194,9 @@ private:
     std::unique_ptr<Window> window;
     std::array<Voice,32> voices{};
     std::array<int,128> sounding{};
+    juce::MidiBuffer previewOut;
+    std::atomic<bool> external{false};
+    bool lastExternal=false;
     std::vector<Event> sequence;
     size_t cursor=0;
     juce::int64 elapsed=0;
