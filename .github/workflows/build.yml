@@ -79,7 +79,22 @@ jobs:
           test "$(git -C build/_deps/juce-src rev-parse HEAD)" = d60b7a78030661574a615b586d9325ba7a7fa7dd
           cmake --build build --config Release --parallel 2
       - name: Run tests
+        id: tests
         run: ctest --test-dir build -C Release --output-on-failure --no-tests=error
+      - name: Diagnose an aborted macOS smoke test
+        if: failure() && steps.tests.outcome == 'failure' && runner.os == 'macOS'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          build = pathlib.Path("build")
+          failed = {s.split(":", 1)[1] for s in (build / "Testing/Temporary/LastTestsFailed.log").read_text().splitlines()}
+          catalog = json.loads(subprocess.check_output(["ctest", "--test-dir", str(build), "-C", "Release", "--show-only=json-v1"]))
+          for test in catalog["tests"]:
+              if test["name"] in failed & {"ostf_studio_plugin_focus", "ostf_scale_instrument_tests"}:
+                  print("Debugger trace for", test["name"], flush=True)
+                  subprocess.run(["xcrun", "lldb", "--batch", "-o", "run", "-k", "thread backtrace", "--", *test["command"]], timeout=120)
+          PY
       - name: Package Windows installer and Portable ZIP
         if: runner.os == 'Windows'
         shell: pwsh
