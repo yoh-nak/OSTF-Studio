@@ -204,6 +204,18 @@ int main(int argc, char** argv) {
     nasal.preparePitchMarks();
     if(nasal.voicedStart<320 || nasal.voicedStart>560) return 41;
     if(nasal.vowelFirst>1750 || nasal.vowelLast<3600) return 42;
+    RecordedMora fricative;
+    fricative.rate=24000; fricative.period=120; fricative.consonantFrames=1080;
+    fricative.loopStart=4500; fricative.loopEnd=5940;
+    unsigned noise=1;
+    for (int i=0;i<9000;++i) {
+        noise=noise*1664525u+1013904223u;
+        fricative.frames.push_back(i<2400 ? float((double(noise)/2147483648.-1.)*.15)
+            : float(.4*std::sin(juce::MathConstants<double>::twoPi*i/120)));
+    }
+    fricative.preparePitchMarks();
+    std::cout << "100 ms frication, detected voicing at " << 1000.*fricative.voicedStart/fricative.rate << " ms\n";
+    if (std::abs(fricative.voicedStart-2400)>240) return 50;
     const auto source = juce::File(juce::String::fromUTF8(argv[1])).loadFileAsString();
     const auto demoScore = juce::JSON::parse(source);
     const auto& scoreUnits = items(demoScore["lyrics"]["units"]);
@@ -259,6 +271,34 @@ int main(int argc, char** argv) {
         singer->processBlock(audio,midi);
         return juce::AudioBuffer<float>(audio);
     };
+    // An isolated English /s/ or /t/ is borrowed from a Japanese CV. The
+    // following recorded vowel must not become an extra pitched syllable.
+    auto renderPhone = [&](Phone phone, int key) {
+        singer->reset();
+        midi.clear();
+        midi.addEvent(phoneMessage(1,key,phone,.16),0);
+        midi.addEvent(juce::MidiMessage::noteOn(1,key,juce::uint8(105)),0);
+        juce::AudioBuffer<float> rendered(2,7680);
+        for (int pos=0; pos<rendered.getNumSamples(); pos+=256) {
+            juce::AudioBuffer<float> slice(rendered.getArrayOfWritePointers(),2,pos,256);
+            singer->processBlock(slice,midi);
+            midi.clear();
+        }
+        return rendered;
+    };
+    for (int consonant : {31,33}) {
+        Phone phone;
+        phone.english=consonant;
+        const auto low=renderPhone(phone,45), high=renderPhone(phone,69);
+        double difference=0;
+        for (int i=0; i<low.getNumSamples(); ++i)
+            difference+=std::pow(low.getSample(0,i)-high.getSample(0,i),2);
+        difference=std::sqrt(difference/low.getNumSamples());
+        std::cout << "Mei English " << (consonant==31 ? "/s/" : "/t/") << " pitch-dependent RMS " << difference << '\n';
+        if (low.getRMSLevel(0,0,7680)<.001f || difference>.0001) return 48;
+    }
+    const auto japaneseCV=renderPhone({0,sibilant},69);
+    if (japaneseCV.getRMSLevel(0,5760,1920)<.01f) return 49;
     auto accented = render({0,0,0,plain,0,65,250});
     auto unaccented = render({0,0,0,plain,0,1,250});
     if (!(accented.getRMSLevel(0,512,1536) > 1.04f * unaccented.getRMSLevel(0,512,1536))) return 30;

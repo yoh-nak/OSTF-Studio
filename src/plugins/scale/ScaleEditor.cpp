@@ -32,12 +32,36 @@ public:
     void setCurrentProgram(int) override {}
     const juce::String getProgramName(int) override { return {}; }
     void changeProgramName(int,const juce::String&) override {}
-    void prepareToPlay(double rate,int block) override {rack.prepare(rate,block);}
-    void releaseResources() override {rack.release();}
+    void reset() override {heldChannels.fill(0); inputPitchClasses.store(0);}
+    void prepareToPlay(double rate,int block) override {reset(); rack.prepare(rate,block);}
+    void releaseResources() override {rack.release(); reset();}
     bool isBusesLayoutSupported(const BusesLayout& layout) const override {
         return layout.getMainOutputChannelSet()==juce::AudioChannelSet::stereo();
     }
-    void processBlock(juce::AudioBuffer<float>& audio,juce::MidiBuffer& midi) override {rack.process(audio,midi);}
+    void processBlock(juce::AudioBuffer<float>& audio,juce::MidiBuffer& midi) override {
+        // Observe host input before the rack inserts its preview notes.
+        bool changed=false;
+        for (const auto packet : midi) {
+            if (packet.numBytes!=3) continue;
+            const auto message=packet.getMessage();
+            const unsigned channel=1u << (packet.data[0] & 15);
+            if (message.isNoteOn() || message.isNoteOff()) {
+                auto& held=heldChannels[size_t(message.getNoteNumber())];
+                held=message.isNoteOn() ? held|channel : held&~channel;
+                changed=true;
+            } else if (message.isAllNotesOff() || message.isAllSoundOff()) {
+                for (auto& held : heldChannels) held&=~channel;
+                changed=true;
+            }
+        }
+        if (changed) {
+            int mask=0;
+            for (size_t key=0; key<heldChannels.size(); ++key)
+                if (heldChannels[key]) mask |= 1 << (key%12);
+            inputPitchClasses.store(mask,std::memory_order_relaxed);
+        }
+        rack.process(audio,midi);
+    }
     bool hasEditor() const override { return true; }
     juce::AudioProcessorEditor* createEditor() override;
     juce::VST3ClientExtensions* getVST3ClientExtensions() override { return this; }
@@ -82,6 +106,8 @@ public:
         const juce::ScopedLock lock(stateLock);
         juce::XmlElement xml("ScaleEditor");
         xml.setAttribute("baseHash",document.baseHash);
+        xml.setAttribute("editorWidth",lastEditorSize.x);
+        xml.setAttribute("editorHeight",lastEditorSize.y);
         xml.createNewChildElement("Score")->addTextElement(document.text);
         if (unavailableInstrument) xml.addChildElement(new juce::XmlElement(*unavailableInstrument));
         else rack.save(xml);
@@ -90,6 +116,8 @@ public:
     void setStateInformation(const void* data,int size) override {
         if (const auto xml = getXmlFromBinary(data,size); xml && xml->hasTagName("ScaleEditor")) {
             const juce::ScopedLock lock(stateLock);
+            lastEditorSize={juce::jlimit(740,8192,xml->getIntAttribute("editorWidth",1120)),
+                            juce::jlimit(550,8192,xml->getIntAttribute("editorHeight",800))};
             const auto* score=xml->getChildByName("Score");
             const auto restored=rack.restore(xml->getChildByName("Instrument"));
             rackError=restored.getErrorMessage();
@@ -107,6 +135,8 @@ public:
         }
     }
     juce::CriticalSection stateLock;
+    std::atomic<int> inputPitchClasses{0};
+    std::array<unsigned,128> heldChannels{};
     juce::Point<int> lastEditorSize{1120,800};
     Document document;
     juce::String offered,rackError;
@@ -166,7 +196,7 @@ public:
     void selectedRowsChanged(int i) override { if (i>=0 && choose) choose(i); }
 };
 
-class Editor final : public juce::AudioProcessorEditor, private juce::ChangeListener {
+class Editor final : public juce::AudioProcessorEditor, private juce::ChangeListener, private juce::Timer {
 public:
     explicit Editor(Processor& p) : AudioProcessorEditor(p), proc(p) {
         for (juce::Component* c : std::initializer_list<juce::Component*>{&song,&chords,&roots,&modes,&apply,&open,&refresh,&save,&drag,&status,&back,&forward,&strategy,&lens,&genre,&choices,&details,&notes,&audition,&compare,&stop,&loadInstrument,&showInstrument})
@@ -300,7 +330,8 @@ public:
         refresh.onClick = [this]{ requestLoad(proc.offered); };
         proc.addChangeListener(this);
         sync();
-        auto size = proc.lastEditorSize;
+        juce::Point<int> size;
+        { const juce::ScopedLock lock(proc.stateLock); size=proc.lastEditorSize; }
         if (const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) {
             size.x = std::min(size.x,display->userArea.getWidth()-24);
             size.y = std::min(size.y,display->userArea.getHeight()-60);
@@ -308,12 +339,17 @@ public:
         setResizable(true,true); setResizeLimits(740,550,8192,8192);
         setSize(std::max(740,size.x),std::max(550,size.y));
         showWorkspaceForFirstScore();
+        startTimerHz(25);
     }
     ~Editor() override {
-        proc.lastEditorSize={getWidth(),getHeight()};
+        stopTimer();
         proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this);
     }
     void resized() override {
+        if (getWidth()>=740 && getHeight()>=550) {
+            const juce::ScopedLock lock(proc.stateLock);
+            proc.lastEditorSize={getWidth(),getHeight()};
+        }
         auto area=getLocalBounds().reduced(12);
         auto head=area.removeFromTop(32); sourceToggle.setBounds(head.removeFromRight(95)); returnWorkspace.setBounds(head.removeFromRight(140).reduced(1)); fullWorkspace.setBounds(head.removeFromRight(145).reduced(1)); song.setBounds(head);
         auto files=area.removeFromTop(32);
@@ -649,6 +685,15 @@ private:
         sync(); showWorkspaceForFirstScore();
         proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
+    int shownPitchClasses=-1;
+    void timerCallback() override {
+        if (!workspace || !workspace->isShowing()) { shownPitchClasses=-1; return; }
+        const int held=proc.inputPitchClasses.load(std::memory_order_relaxed);
+        if (held!=shownPitchClasses) {
+            workspace->emitEventIfBrowserIsVisible("ostfScaleInput",held);
+            shownPitchClasses=held;
+        }
+    }
     void openFullWorkspace() {
         if (workspace && workspace->isVisible()) {
             workspace->setVisible(false);
@@ -674,6 +719,9 @@ private:
        #if JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE
         if (Browser::areOptionsSupported(options)) {
             options = options.withNativeIntegrationEnabled()
+                .withEventListener("ostfScaleInputReady", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
+                    if (self) self->shownPitchClasses=-1;
+                })
                 .withEventListener("ostfScaleOpen", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
                     if (self) self->choose(false);
                 })

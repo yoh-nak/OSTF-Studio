@@ -25,6 +25,10 @@ class SyllableVoice {
             {760, 1200, 2600}, {290, 2250, 3100}, {330, 1250, 2350}, {490, 1880, 2650}, {490, 900, 2450}};
         constexpr float bandwidth[3] = {90, 120, 175};
         englishSound = p.english ? &VoiceBank::english()[size_t(p.english & 63)] : nullptr;
+        const int arpabet = accentPhone & 63;
+        // CH, F, HH, K, P, S, SH, T and TH have no sung fundamental.
+        unvoicedEnglishConsonant = bank && (arpabet==17 || arpabet==20 || arpabet==22 || arpabet==24
+            || arpabet==29 || arpabet==31 || arpabet==32 || arpabet==33 || arpabet==34);
         morphFromPrevious = waveReady && legato;
         waveReady = false;
         joinedRecording = false;
@@ -110,30 +114,27 @@ class SyllableVoice {
             }
             return float(level * tone);
         }
+        // In a Japanese CV bank the /s/ in "lights" comes from a complete
+        // mora. Singing the vowel portion adds a second, unintended syllable.
+        if (unvoicedEnglishConsonant)
+            return float(level * unvoicedAttack(time,sr));
         float recording = 0;
         if (recorded) {
-            const double tunedStep = pitch * recorded->period / sr;
-            double step = tunedStep;
-            if (!vowelSample && phone.onset != vowelOnly && recorded->consonantFrames > 0) {
-                const double mix = std::clamp((position - recorded->consonantFrames) / (.014 * recorded->rate), 0., 1.);
-                // Fit the recorded attack to the scored English consonant. Keep a
-                // long sibilant in its consonant region until the vowel arrives.
-                double attackStep = recorded->rate / sr;
-                if ((accentPhone & 63) > 15 && phone.durationMs > 0)
-                    attackStep = std::clamp(recorded->consonantFrames / (sr * phone.durationMs * .001),
-                                            .55 * attackStep, 1.75 * attackStep);
-                step = std::lerp(attackStep, tunedStep, mix);
-            }
-            const double onset = phone.onset == vowelOnly || vowelSample ? 0. :
-                recorded->voicedStart / recorded->rate;
+            const double attackFrames = phone.onset == vowelOnly || vowelSample ? 0. : recorded->voicedStart;
+            double attackStep = recorded->rate / sr;
+            if ((accentPhone & 63)>15 && phone.durationMs>0 && attackFrames>0)
+                attackStep=std::clamp(attackFrames/(sr*phone.durationMs*.001),.55*attackStep,1.75*attackStep);
+            // Keep the frication at its source rate all the way to the detected
+            // voicing boundary, even when it follows the bank's nominal split.
+            const double onset = attackFrames / (sr * attackStep);
             if (recorded->pitchMarks.size() < 3 || time < onset) {
+                const double step = time<onset ? attackStep : pitch*recorded->period/sr;
                 recording = recorded->read(position,step);
                 lastAttack = recording;
             } else {
                 // Pitch analysis found a contiguous voiced region here. Marks in the
                 // breath or release can jump between harmonics on consecutive cycles.
-                const double low = onset > 0. || (phone.onset != vowelOnly && !vowelSample)
-                    ? std::min(recorded->voicedStart, recorded->vowelFirst) : recorded->vowelFirst;
+                const double low = phone.onset != vowelOnly && !vowelSample ? recorded->voicedStart : recorded->vowelFirst;
                 const double high = std::max(low,double(recorded->vowelLast));
                 // Advance once through the voiced recording over the scored duration.
                 // A live MIDI note has no known end, so approach its sustain gradually.
@@ -203,6 +204,27 @@ class SyllableVoice {
     std::array<Resonator, 3> resonators{};
     const RecordedMora* recorded = nullptr;
     const RecordedMora* englishSound = nullptr;
+    bool unvoicedEnglishConsonant = false;
+    float unvoicedAttack(double time,double sr) {
+        const double allotted = phone.durationMs>0 ? .001*phone.durationMs : .065;
+        if (recorded && !vowelSample && recorded->voicedStart-recorded->attackFirst >= .003*recorded->rate) {
+            const int frames=recorded->voicedStart-recorded->attackFirst;
+            const double natural=frames/recorded->rate;
+            const double duration=stop ? std::min(allotted,natural) : allotted;
+            if (time>=duration) return 0;
+            const double step=frames/(duration*sr);
+            const double taper=std::clamp((duration-time)/.003,0.,1.);
+            return float(taper)*recorded->cycleSample(recorded->attackFirst+time*frames/duration,step);
+        }
+        // A vowel-only custom bank has no recorded hiss or release burst.
+        if (time>=allotted) return 0;
+        noise=noise*1664525u+1013904223u;
+        const double white=double(noise)/2147483648.0-1.;
+        const double hiss=white-previousNoise;
+        previousNoise=white;
+        const double env=std::min(1.,time/.002)*std::clamp((allotted-time)/.004,0.,1.);
+        return float(.085*hiss*env*(stop ? std::exp(-time/.012) : 1.));
+    }
     bool waveReady = false, morphFromPrevious = false, joinedRecording = false;
     float lastAttack = 0.f, joinDelta = 0.f;
     RecordedMora::Wave previousWave{}, nextWave{};
@@ -244,14 +266,14 @@ class Voice : public SyllableVoice {
     void start(int ch, int pitch, float velocity, Phone p, double sr, const VoiceBank* bank) {
         preparePhones(p, bank);
         beginTransition(ch, segments[0], sr);
-        SyllableVoice::start(ch, pitch, velocity, segments[0], sr, bank);
         accentPhone = p.english;
+        SyllableVoice::start(ch, pitch, velocity, segments[0], sr, bank);
     }
     void articulate(Phone p, double sr, const VoiceBank* bank) {
         preparePhones(p, bank);
         beginTransition(channel, segments[0], sr);
-        SyllableVoice::articulate(segments[0], sr, bank, true);
         accentPhone = p.english;
+        SyllableVoice::articulate(segments[0], sr, bank, true);
     }
     void stopNote() { count = 0; SyllableVoice::stopNote(); }
     float sample(double sr, double bend, float expression, const juce::dsp::FFT& fft) {

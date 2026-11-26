@@ -124,6 +124,8 @@ std::optional<RecordedMora> readMora(std::unique_ptr<juce::InputStream> stream, 
 // to avoid switching between harmonics as the singer changes pitch or timbre.
 void RecordedMora::preparePitchMarks() {
     pitchMarks.clear();
+    spectra.clear();
+    attackFirst = 0;
     voicedStart = consonantFrames;
     if (period < 2 || frames.size() < 3) return;
     const int end = int(frames.size()) - 2;
@@ -214,7 +216,8 @@ void RecordedMora::preparePitchMarks() {
     // well before the configured vowel boundary. Require adjacent, similar
     // cycles so that a single burst of unvoiced noise cannot start retuning.
     int stable = 0;
-    for (size_t i=0; i+2<pitchMarks.size() && pitchMarks[i]<consonantFrames; ++i) {
+    const double searchEnd=std::max(consonantFrames,vowelFirst)+3*period;
+    for (size_t i=0; i+2<pitchMarks.size() && pitchMarks[i]<=searchEnd; ++i) {
         const auto a=pitchMarks[i], b=pitchMarks[i+1], c=pitchMarks[i+2];
         double energyA=0., energyB=0., cross=0.;
         for (int n=0;n<32;++n) {
@@ -225,6 +228,13 @@ void RecordedMora::preparePitchMarks() {
             && cross>.84*std::sqrt(energyA*energyB);
         stable=voiced ? stable+1 : 0;
         if(stable==3) { voicedStart=pitchMarks[i-2]; break; }
+    }
+    if (voicedStart > 0) {
+        float peak = 0;
+        for (int i=0; i<voicedStart; ++i) peak=std::max(peak,std::abs(frames[i]));
+        const float threshold=std::max(.001f,peak*.025f);
+        while (attackFirst<voicedStart && std::abs(frames[attackFirst])<threshold) ++attackFirst;
+        if (attackFirst<voicedStart) attackFirst=std::max(0,attackFirst-int(.002*rate));
     }
     prepareSpectra();
 }

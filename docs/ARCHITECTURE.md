@@ -47,11 +47,15 @@ The footer and File menu expose the score and clip edit journal, including the s
 
 Formant Singer plays the recorded consonant onset at its source rate, then transitions to the pitched vowel. A voiced continuation on the same channel keeps a single oscillator phase while the harmonic magnitudes change to the next phone. Sustained notes gain a delayed, low-depth pitch variation within the note's authored expression.
 
+The bank loader detects periodic voicing across the nominal consonant boundary and records the first audible attack sample. For English unvoiced consonants sung with a Japanese CV bank, the renderer uses samples up to that boundary and tapers the release. A short noise model supplies missing attacks. A Japanese CV crosses the same boundary into the tuned vowel.
+
 ## Shared instruments, track ordering and voice processing
 
 Instrument Rack and Effect Rack are VST3s with an internal JUCE processor graph. Each layer has a serial chain and a gain stage feeding the shared stereo output. Instrument layers receive the same timestamped MIDI. Effect layers receive the same input audio. The plug-in state contains the ordered device descriptions and their parameter-state bytes. A missing device preserves its state and silences its layer. The host can reopen a moved stock device from its portable or installed VST3 folder.
 
 Scale Editor serves the original offline workspace and an opening score snapshot from memory. Applying a workspace edit reads the exported score through the embedded browser and passes it through the existing scale-only import check. The embedded workspace saves its validated score snapshot through the system file chooser. Instrument and effect windows forward the hosted editor’s resize constraints to the decorated window.
+
+Scale Editor records its size in VST3 state. The audio callback tracks held input keys by MIDI channel before the audition scheduler adds its notes. A message-thread timer forwards changes in the twelve pitch classes to the browser. The diagram keeps the scale and chord annotations visible inside the outlined keys.
 
 The scanner retains file paths for incremental scans. The browser and instrument/FX menus share a catalogue keyed by VST3 component identity and manufacturer. It prefers an existing portable bundle and omits the retired OSTF Arranger preview. During theory analysis, each pitched part caches matching and total note ticks for each global chord and scale event. Combining those ticks yields the ensemble percentage. The derived chord voicing, percussion, audio and disabled events do not enter the ensemble denominator.
 

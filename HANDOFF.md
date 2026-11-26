@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Mei consonants and MIDI input in Scale Editor
+
+Branch `feat/singer-consonants-scale-midi`. An isolated English /s/ rendered with Mei at MIDI 45 and 69 had an RMS sample difference of 0.171 in the previous build. The CV renderer was including the following pitched vowel. `ostf_singing_tests` now checks a non-silent, pitch-independent /s/ and /t/, a voiced Japanese /sa/, and a 100 ms noise-to-vowel transition with a 45 ms nominal attack. For listening comparisons run `ostf_singing_tests <paper-lantern-replies.ostf> <new-file.wav> bilingual-mei` for the English pre-chorus or `bridge-mei` for the Japanese bridge, and match RMS between revisions.
+
+Rebuild `OSTFSynthSinger_VST3`, `OSTFSynthScaleEditor_VST3`, `ostf_singing_tests` and `ostf_scale_instrument_tests` in Release. Windows tests exercised the hosted WebView keyboard with notes on two channels, channel-specific note release, VST3 state recall into a fresh editor, and host window resizing. The Windows portable copy also runs the Studio host smoke tests. Physical MIDI keyboards, speaker monitoring and the macOS WebKit build need separate validation.
+
 ## Vowel resonance and hosted Scale Editor resizing
 
 Branch `feat/singer-envelope-scale-window`. The former pitch-window renderer kept the score F0 but transposed the recorded vowel's resonances. A reproducible UTAU test vowel has a broad resonance at 1,600 Hz. At A2 and A4 its strongest measured harmonic moved from 990 and 2,200 Hz in the previous build to 1,650 and 1,760 Hz in this build. The test measures the stationary portion and checks the score pitch separately. Compare the same Mei phrase at matched RMS when evaluating audible changes. Source material is a short bank of pre-synthesized phones. Expressive singing and perceived naturalness still need listening evaluation.

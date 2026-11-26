@@ -50,10 +50,22 @@ int main(int argc,char** argv) {
         editor->setSize(1800,950);
         if (browser->getWidth()-narrow.getWidth()!=1040 || browser->getHeight()-narrow.getHeight()!=370) return 46;
         editor->setSize(920,640);
+        processor->getStateInformation(bytes);
+        const auto sized=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
+        if (!sized || sized->getIntAttribute("editorWidth")!=920 || sized->getIntAttribute("editorHeight")!=640) return 47;
+        {
+            std::unique_ptr<juce::AudioProcessor> recalled(createPluginFilter());
+            recalled->setStateInformation(bytes.getData(),int(bytes.getSize()));
+            std::unique_ptr<juce::AudioProcessorEditor> reopened(recalled->createEditorAndMakeActive());
+            const auto* display=juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+            if (display && display->userArea.getWidth()>=944 && display->userArea.getHeight()>=700
+                && (reopened->getWidth()!=920 || reopened->getHeight()!=640)) return 48;
+        }
         editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
         editor->setVisible(true);
         const auto title = juce::JSON::parse(juce::File(juce::String::fromUTF8(argv[2])).loadFileAsString())["song"]["title"].toString();
         bool pending = false, applying = false, heardPreview = false;
+        int inputStage=0, sentStage=-1;
         int result = 44;
         const auto deadline = juce::Time::getMillisecondCounterHiRes() + 45000.;
         struct Poll : juce::Timer {
@@ -74,6 +86,30 @@ int main(int argc,char** argv) {
                 if (heardPreview && doc["song"]["title"].toString() == title && doc["harmony"]["scales"].size() == 0) {
                     result = 0; juce::MessageManager::getInstance()->stopDispatchLoop();
                 }
+            } else if (!pending && inputStage<3) {
+                if (sentStage!=inputStage) {
+                    midi.clear();
+                    if (inputStage==0) {
+                        for (const auto key : {48,60,64}) midi.addEvent(juce::MidiMessage::noteOn(1,key,juce::uint8(100)),0);
+                        midi.addEvent(juce::MidiMessage::noteOn(2,60,juce::uint8(100)),0);
+                    } else if (inputStage==1) {
+                        midi.addEvent(juce::MidiMessage::noteOff(1,48),0);
+                        midi.addEvent(juce::MidiMessage::allNotesOff(1),0);
+                    } else midi.addEvent(juce::MidiMessage::allSoundOff(2),0);
+                    processor->processBlock(block,midi);
+                    sentStage=inputStage;
+                }
+                pending=true;
+                browser->evaluateJavascript(R"JS((() => {
+                    const keys=document.querySelectorAll('#keyboard g[data-pitch]');
+                    if(keys.length!==12 || !document.querySelector('#studioInput'))return -1;
+                    return [...keys].reduce((mask,k)=>mask|(k.classList.contains('input-held')?1<<(k.dataset.pitch%12):0),0);
+                })())JS",[&](auto evaluated){
+                    pending=false;
+                    const auto* value=evaluated.getResult();
+                    const int expectedMasks[]{17,1,0};
+                    if (value && (value->isInt() || value->isDouble()) && int(*value)==expectedMasks[inputStage]) ++inputStage;
+                });
             } else if (!pending) {
                 pending = true;
                 browser->evaluateJavascript(R"JS((() => {

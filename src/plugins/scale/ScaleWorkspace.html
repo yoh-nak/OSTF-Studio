@@ -543,6 +543,8 @@ body.sidebar-resizing,body.sidebar-resizing * {cursor:col-resize!important;user-
 /* Clear selection-first editing: quick action remains adjacent to scale cards. */
 .quick-set{font-size:12px;min-height:31px;margin-left:8px;padding:5px 14px;letter-spacing:.015em;white-space:normal}
 @media(max-width:740px){.quick-set{order:2;flex:1;margin-left:0}}
+#keyboard g.input-held > rect{stroke:#ffcc65;stroke-width:5px}
+#studioInput{color:#ffdc93;font-variant-numeric:tabular-nums}
 </style><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script></head><body>
 <div id="app">
 <header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Edit scales, keys and modes in OSTF.</div></div><span class="version">v1.0 · DIRECT SET</span></div><div class="head-actions"><button id="open" title="Open a local OSTF file · Ctrl+O">Open…</button><button id="save" title="Save to the currently linked file · Ctrl+S">Save</button><button id="saveAs" title="Always choose a destination · Ctrl+Shift+S">Save As…</button><button id="autoSetSong" class="primary" title="Preview the highest-ranked eligible scale for every chord, then apply all at once">AUTO-SET SONG</button><span class="sep"></span><button id="undo" title="Undo the last assignment" disabled>Undo</button><button id="redo" disabled>Redo</button><button id="demos">Demos</button><button id="help" class="quiet">Help</button></div></header>
@@ -2318,6 +2320,18 @@ function renderCards(){
 function keyboard(s,cur){const info=SA.noteInfo(s,cur),byPC=new Map(info.map(x=>[x.pc,x])),white=[0,2,4,5,7,9,11],black=[[1,1],[3,2],[6,4],[8,5],[10,6]],names=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'],w=100,colors={chord:'#7fe0c0',color:'#9caeff',caution:'#efc17c'};
  function mark(pc,x,y,isBlack){const n=byPC.get(pc),r=pc===s.root;return '<g pointer-events="none">'+(n?'<circle cx="'+x+'" cy="'+y+'" r="'+(r?9:6)+'" fill="'+colors[n.kind]+'"'+(r?' stroke="#ffffff" stroke-width="2"':'')+'/>':'')+'<text x="'+x+'" y="'+(isBlack?y-12:y-12)+'" font-size="11" fill="'+(isBlack?'#e8f0f6':'#263747')+'" text-anchor="middle">'+esc(n?.name||names[pc])+'</text></g>';}
  return '<svg viewBox="0 0 700 94" preserveAspectRatio="none" role="img" aria-label="Clickable piano keys: chord tones green, color tones blue, cautions amber">'+white.map((pc,i)=>'<g data-pitch="'+(60+pc)+'"><rect x="'+(i*w+.5)+'" y="1" width="99" height="92" rx="3" fill="'+(byPC.has(pc)?'#d9e8f0':'#a8bdcb')+'" stroke="#172838"/>'+mark(pc,i*w+50,79,false)+'</g>').join('')+black.map(([pc,i])=>'<g data-pitch="'+(60+pc)+'"><rect x="'+(i*w-30)+'" y="1" width="60" height="56" rx="3" fill="#1b2838" stroke="#6c7f94"/>'+mark(pc,i*w,43,true)+'</g>').join('')+'</svg>';}
+let studioHeldNotes=0;
+function showStudioInput(){
+ const label=$('studioInput');
+ if(!label)return;
+ const names=[];
+ for(let pc=0;pc<12;pc++)if(studioHeldNotes&(1<<pc))names.push(SA.pitchName(pc));
+ label.textContent='MIDI IN · '+(names.join(' ')||'—');
+ for(const key of $('keyboard').querySelectorAll('g[data-pitch]')){
+  key.classList.toggle('input-held',Boolean(studioHeldNotes&(1<<(Number(key.dataset.pitch)%12))));
+ }
+ $('audioLabel').textContent='Scale Editor instrument';
+}
 function resolutionSVG(ch,s,next,nextS){
  if(!ch||!next||!s||!nextS)return '<div class="emptymap">Select a chord with a following harmony event.</div>';
  const motions=SA.flow.transitions(ch,s,next,nextS).slice(0,5);
@@ -2388,6 +2402,7 @@ function comparisonSVG(model){
  return svg+'</svg>';
 }
 function renderListenLab(){
+ showStudioInput();
  const m=compareModel(),buttons=['hearReference','hearCandidate','hearAB'];
  if(!m?.plans.a||!m.plans.b){$('auditionRoll').textContent='Select a chord and a scale to begin.';for(const id of buttons)$(id).disabled=true;return;}
  const d=m.plans.diff,pre=m.plans.a.hasPrevious,next=m.plans.a.hasNext;
@@ -3242,6 +3257,19 @@ function nativeInit(){if(nativeBound||!window.max||typeof window.max.outlet!=='f
 // Exposed, bounded test / host interface. Never eval imported data.
 window.ScaleAdviserApp={state,finishStudioSave,exportAudit:()=>SA.audit.inspect(state.doc,state.sourceCore),currentPatternModel,applyPatternMatches,renderPatternStudio,scopeSelection,doScopeApply,renderScaleMap,renderNoteFit,selectedCompatibility,importString,selectChord,render,apply:doApply,applyAndNext,jumpNextUnassigned,autoSetSong,view,save,saveAs,analyzeSong,stop,playCompare,compareModel,exportText:()=>JSON.stringify(state.doc,null,2),nativeInit};
 initSidebarResize();bind();
+if(window.__JUCE__?.backend){
+ const input=document.createElement('span');
+ input.id='studioInput';
+ input.title='Held MIDI input notes, across all octaves and channels';
+ $('audioLabel').before(input);
+ $('hostLabel').textContent='OSTF Scale Editor · VST3';
+ window.__JUCE__.backend.addEventListener('ostfScaleInput',mask=>{
+  studioHeldNotes=Number(mask)&4095;
+  showStudioInput();
+ });
+ window.__JUCE__.backend.emitEvent('ostfScaleInputReady',{});
+ showStudioInput();
+}
 const incoming = document.getElementById('studio-score');
 if (incoming && /^[A-Za-z0-9+/]+=*$/.test(incoming.textContent.trim())) {
   const bytes = Uint8Array.from(atob(incoming.textContent.trim()), c => c.charCodeAt(0));
