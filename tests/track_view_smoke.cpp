@@ -654,6 +654,10 @@ public:
     PluginFocusProbe(const juce::File& bundle, std::function<void(int)> done)
         : file(bundle), finished(std::move(done)) {
         studio.setBounds(-10000, -10000, 1440, 900);
+#if JUCE_MAC
+        if (const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+            studio.setBounds(studio.getBounds().constrainedWithin(display->userArea));
+#endif
         studio.addToDesktop(juce::ComponentPeer::windowHasTitleBar);
         studio.setVisible(true);
         studio.newProject();
@@ -679,7 +683,9 @@ private:
             editor = slot.editor.get();
             if (!editor || box->isCurrentlyModal() || editor->isCurrentlyBlockedByAnotherModalComponent()
                 || editor->getAssociatedComponent() != &studio || !editor->isShowing()) return 4;
+#if ! JUCE_MAC
             editor->setTopLeftPosition(-9500, -9500);
+#endif
             return 0;
         }
         return 5;
@@ -703,6 +709,20 @@ private:
                       << ", workspace " << host << ", foreground PID " << foregroundProcess
                       << ", Studio PID " << GetCurrentProcessId() << '\n';
         return correctFocus && correctStack;
+#elif JUCE_MAC
+        if (!editor->getPeer() || editor->getAssociatedComponent() != &studio
+            || !editor->isShowing() || editor->isCurrentlyBlockedByAnotherModalComponent()) return false;
+        if (editor->getPeer()->isFocused()) return true;
+        const bool active = juce::Process::isForegroundProcess();
+        for (int i = 0; i < juce::ComponentPeer::getNumPeers(); ++i) {
+            auto* peer = juce::ComponentPeer::getPeer(i);
+            if (peer->isFocused()) {
+                std::cerr << "Unexpected key window: " << peer->getComponent().getName() << '\n';
+                return false;
+            }
+        }
+        if (active) std::cerr << "Studio is active with no key window\n";
+        return !active;
 #else
         return editor->getPeer()->isFocused();
 #endif

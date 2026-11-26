@@ -194,6 +194,11 @@ void showStudioWindow(juce::DocumentWindow& window, juce::Component& owner) {
     }
     window.setVisible(true);
     window.toFront(true);
+#if JUCE_MAC
+    // AppKit may return key status to the parent while JUCE reorders its child window.
+    if (auto* peer = window.getPeer(); peer && juce::Process::isForegroundProcess() && !peer->isFocused())
+        peer->grabFocus();
+#endif
 }
 
 class PluginWindow final : public juce::DocumentWindow {
