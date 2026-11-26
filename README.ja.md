@@ -1,5 +1,7 @@
 # OSTF Studio
 
+**公開アルファ1をダウンロード** · [Windows x64 インストーラー](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Setup.exe) · [Windows ポータブル ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Portable.zip) · [Appleシリコン Mac 用 DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_macOS_arm64.dmg) · [リリースノートと対応ソース](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1)
+
 Formant Singerは「フレイム」のような1つの歌詞を複数の音符に割り当てたとき、最初の音で子音を発音し、途中は母音でつないで最後の音で語尾を歌います。Singerに直接読み込んだOSTFでは、音符の途中のテンポ変更も発音の長さに反映されます。
 
 Scale Editorでは鍵盤の横の「音源」から試聴先を選べます。ポータブル版の移動などでプロジェクトを開いたときに音源が見つからない場合、一覧またはファイル参照から同じ音源を選び直すと、保存した音色も復元します。
@@ -91,8 +93,6 @@ MIDIトラックの「IN」で入力ポートとチャンネルを選びます�
 「外部連携 → Splice Sounds を開く」で、スキャン済みの公式VST3が独立したウィンドウで開きます。閉じたあと同じメニューを選ぶと、同じインスタンスを再表示します。ダウンロード済みのWAVファイルはオーディオトラックにドロップできます。
 
 MIDIトラックの「IN」で入力を選び、「R」を押すと停止中も音源を演奏でき、トラックとミキサーに音量が表示されます。外部音源はトラックの音源ボタンの「MIDI OUT」で出力ポートを選んでください。鍵盤入力と曲のMIDIが外部へ送られます。外部音源の音量をStudioで確認するには、戻りの音声をオーディオ入力に接続します。
-
-**1.0.0 alpha 3 をダウンロード** · [Windows x64 インストーラー](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Setup.exe) · [Windows Portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon Mac 用 DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_macOS_arm64.dmg)
 
 OSTF Studio は、楽曲の構造と演奏情報を OSTF 5.0 で扱う Windows・macOS 用の DAW です。現在は 1.0.0 のアルファ版を公開しています。同梱のデモ曲で、グローバルタイムライン、ピアノロール、VST3 音源とミキサーを試せます。
 
