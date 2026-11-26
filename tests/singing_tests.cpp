@@ -316,6 +316,8 @@ int main(int argc, char** argv) {
     const auto handsReading = readingFor("hands");
     const auto hands = sungReading("hands",handsReading);
     const auto punctuated = sungReading("\"Hands!\"", handsReading);
+    const auto japanesePunctuation = sungReading(juce::String::fromUTF8("「Hands！」"), handsReading);
+    if (japanesePunctuation.empty() || japanesePunctuation.size() != hands.size() || japanesePunctuation.back().english != 38) return 88;
     if (punctuated.size() != hands.size() || punctuated.back().english != 38
         || sungReading("hand,s",handsReading).back().english != 0) return 88;
     const auto literalHands = lyricPhones(handsReading);

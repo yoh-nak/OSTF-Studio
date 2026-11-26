@@ -36,14 +36,16 @@ class InstallerChoices(unittest.TestCase):
             for p in plugins:
                 code, group, name = p["code"], p["group"], p["name"]
                 component = group + "\\" + code
+                label = name if name in {"OSTF Studio", "OSTF Formant Singer", "OSTF Scale Editor"} else name.removeprefix("OSTF ")
                 with self.subTest(code=code):
-                    self.assertIn(f'Name: "{component}"; Description: "{name}"; Types: full', components)
-                    self.assertIn(f'Name: "{code}"; Description: "{name}"; Types: full', helper)
+                    self.assertIn(f'Name: "{component}"; Description: "{label}"; Types: full', components)
+                    self.assertIn(f'Name: "{code}"; Description: "{label}"; Types: full', helper)
                     self.assertTrue(any(f"Selected('{component}')" in line and f"',{code}'" in line
                                         for line in selections))
                     self.assertTrue(any(f'{name}.vst3"; Components: {code};' in line for line in payloads))
                     self.assertIsNotNone(mac.find(f"choices-outline/line[@choice='{group}']/line[@choice='{code}']"))
                     choice = mac.find(f"choice[@id='{code}']")
+                    self.assertEqual(choice.get("title"), label)
                     self.assertEqual(choice.get("start_selected"), "true")
                     self.assertIsNone(choice.get("selected"))
                     receipt = choice.find("pkg-ref").get("id")

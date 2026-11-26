@@ -454,6 +454,7 @@ int main(int argc,char** argv) {
         if (list->getModel()->getNumRows()!=0) return 58;
         search->setText(instrument->name+" "+instrument->manufacturerName,false); search->onTextChange();
         if (list->getModel()->getNumRows()<1) return 59;
+        if (!list->getModel()->getTooltipForRow(list->getSelectedRow()).containsIgnoreCase(".vst3")) return 93;
         juce::ToggleButton* route=nullptr;
         for (auto* child:editor->getChildren())
             if (auto* b=dynamic_cast<juce::ToggleButton*>(child); b && b->getButtonText()=="Preview MIDI out") route=b;

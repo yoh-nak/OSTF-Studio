@@ -10,6 +10,8 @@ OSTF Studio is a desktop music workstation for arranging, playing and editing Op
 
 ## OSTF 5.2 studio preview
 
+The transport retains the last key at the end of the score. Click its coloured Camelot number to see the 24 major and minor keys with the current key highlighted. Switch **Bypass** on in an FX chain, the instrument destination menu, or a rack to audition the mix with an individual device inactive. Save the session as an OSTFP to recall the assignments and switch settings.
+
 ### Run Studio inside another DAW (development build)
 
 Load **OSTF Studio** on a stereo instrument track and open an `.ostf` or `.ostfp` in its editor. The arrangement, live session, piano roll and mixer use the same project as the standalone application. **Follow DAW transport** starts and stops the song with the host and follows its timeline position in seconds. The OSTF tempo map controls the song's tempo. Turn follow off to audition Studio independently.

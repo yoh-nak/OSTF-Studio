@@ -15,6 +15,12 @@ GROUPS = {
 }
 
 
+def display_name(plugin):
+    if plugin["code"] in {"Osd1", "Ose1", "Osg1"}:
+        return plugin["name"]
+    return plugin["name"].removeprefix("OSTF ")
+
+
 def catalog():
     plugins = [{"code": "Ogm1", "name": "OSTF GM Sound Module", "group": "instruments"},
                {"code": "Osd1", "name": "OSTF Studio", "group": "composition"}]
@@ -43,8 +49,9 @@ def windows_files(stage, plugins):
         for p in children:
             code, name = p["code"], p["name"]
             component = group + "\\" + code
-            components.append(f'Name: "{component}"; Description: "{name}"; Types: full')
-            flat.append(f'Name: "{code}"; Description: "{name}"; Types: full')
+            label = display_name(p)
+            components.append(f'Name: "{component}"; Description: "{label}"; Types: full')
+            flat.append(f'Name: "{code}"; Description: "{label}"; Types: full')
             bundle = name + ".vst3"
             source = "{#GmBundle}" if code == "Ogm1" else "{#EffectsDir}\\" + bundle
             files.append(f'Source: "{source}\\*"; DestDir: "{{commoncf64}}\\VST3\\OSTF Studio\\{bundle}"; '

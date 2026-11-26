@@ -256,7 +256,17 @@ private:
     void editVocalNote(const ostfstudio::PitchedNote&);
     void linkAudio(std::size_t index);
     void setupOutputTracks();
+    struct PluginSwitch {
+        ostfstudio::SessionMix::DeviceState state;
+        std::shared_ptr<std::atomic<bool>> bypassed = std::make_shared<std::atomic<bool>>(false);
+        void set(ostfstudio::SessionMix::DeviceState value) {
+            state = value;
+            bypassed->store(!state.active());
+        }
+        void toggle() { set({true, state.active()}); }
+    };
     struct EffectSlot {
+        PluginSwitch power;
         juce::String id;
         juce::String savedState;
         ostfstudio::SessionMix::ParameterValues initialParameters;
@@ -391,6 +401,7 @@ private:
         std::optional<std::size_t> outputTrack;
         int midiChannel = 1;
         juce::var instrumentAssignment;
+        PluginSwitch instrumentPower;
         std::optional<juce::PluginDescription> inactiveInstrument;
         juce::MemoryBlock inactiveInstrumentState;
     };

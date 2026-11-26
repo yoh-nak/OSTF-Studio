@@ -772,7 +772,7 @@ private:
         const auto paths=juce::VST3PluginFormat{}.getDefaultLocationsToSearch();
         juce::File start;
         for(int i=0;i<paths.getNumPaths();++i) if(paths[i].isDirectory()){start=paths[i];break;}
-        chooser=std::make_unique<juce::FileChooser>("Load a VST3 instrument",start,"*.vst3",useNativeVst3Chooser);
+        chooser=std::make_unique<juce::FileChooser>(words("Load a VST3 instrument","VST3音源を読み込む"),start,"*.vst3",useNativeVst3Chooser);
         chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles|juce::FileBrowserComponent::canSelectDirectories,
             [self=juce::Component::SafePointer<Editor>(this)](const auto& fc){
                 if(!self || fc.getResult()==juce::File{}) return;

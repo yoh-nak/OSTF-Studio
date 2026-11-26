@@ -242,12 +242,12 @@ private:
 
 class EffectChainPanel final : public juce::Component, private juce::Timer {
 public:
-    struct Entry { juce::String name; bool editable; juce::String key; };
+    struct Entry { juce::String name; bool editable; juce::String key; bool bypassed; };
     struct State { std::vector<Entry> entries; bool busy = true; };
 
     EffectChainPanel(const juce::String& track, std::function<State()> read,
                      std::function<void(int, int)> move, std::function<void(int)> edit,
-                     std::function<void(int)> remove, std::function<void(juce::Component&)> add,
+                     std::function<void(int)> bypass, std::function<void(int)> remove, std::function<void(juce::Component&)> add,
                      std::function<void()> browser, std::function<void(int,juce::Component&)> selectKey)
         : read_(std::move(read)), move_(std::move(move)) {
         title_.setText(track + TRANS(" / FX chain"), juce::dontSendNotification);
@@ -277,6 +277,8 @@ public:
                 edit(index);
             };
             row.remove.onClick = [this, remove, index] { remove(index); refresh(); };
+            row.bypass.setTooltip(TRANS("Pass audio through this slot without processing it"));
+            row.bypass.onClick = [this, bypass, index] { bypass(index); refresh(); };
             row.up.onClick = [this, index] { moveRow(index, index - 1); };
             row.down.onClick = [this, index] { moveRow(index, index + 1); };
             for (auto* component : row.components()) addChildComponent(component);
@@ -293,6 +295,7 @@ public:
             auto& row = rows_[static_cast<std::size_t>(i)];
             auto line = area.removeFromTop(rowHeight).reduced(0, 2);
             row.handle.setBounds(line.removeFromLeft(40).reduced(1, 0));
+            row.bypass.setBounds(line.removeFromLeft(76).reduced(1, 0));
             row.remove.setBounds(line.removeFromRight(60).reduced(1, 0));
             row.open.setBounds(line.removeFromRight(48).reduced(1, 0));
             row.down.setBounds(line.removeFromRight(54).reduced(1, 0));
@@ -317,8 +320,8 @@ private:
     struct Row {
         juce::TextButton handle {"::"}, up {TRANS("Up")}, down {TRANS("Down")}, open {TRANS("Edit")}, remove {TRANS("Remove")};
         juce::Label name;
-        juce::TextButton key;
-        std::array<juce::Component*, 7> components() { return {&handle, &name, &up, &down, &open, &remove,&key}; }
+        juce::TextButton key, bypass{TRANS("Bypass")};
+        std::array<juce::Component*, 8> components() { return {&handle, &name, &up, &down, &open, &remove,&key,&bypass}; }
     };
 
     void timerCallback() override { refresh(); }
@@ -335,6 +338,8 @@ private:
             row.name.setText(juce::String(i + 1) + ". " + entry.name, juce::dontSendNotification);
             row.name.setTooltip(entry.name);
             row.key.setVisible(entry.key.isNotEmpty());
+            row.bypass.setEnabled(!state.busy);
+            row.bypass.setToggleState(entry.bypassed, juce::dontSendNotification);
             row.key.setButtonText(entry.key);
             row.key.setTooltip(TRANS("Sidechain source") + " / " + entry.key);
             row.handle.setEnabled(!state.busy && count_ > 1);
@@ -2696,6 +2701,7 @@ void MainComponent::restoreInstrumentAssignments(const ostfstudio::SessionMix& m
         if (!reference.isObject()) continue;
         auto& track = *trackControls_[index];
         track.instrumentAssignment = reference;
+        track.instrumentPower.set(mix.deviceState(ostfstudio::SessionMix::instrumentSlot(index)));
         if (!track.outputTrack) restoreLocalInstrument(index, types);
     }
 }
@@ -2847,10 +2853,13 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
             unavailable.push_back(juce::String::fromUTF8(project_->trackLanes[i].label));
     }
     PreviewTransport::Inserts inserts {};
+    for (size_t i = 0; i < tracks.size(); ++i)
+        if (tracks[i].instrument) inserts.bypass.emplace(tracks[i].instrument, trackControls_[i]->instrumentPower.bypassed);
     const auto copyEffects = [&](const EffectChain& chain, PreviewTransport::Chain& destination) {
         for (std::size_t slot = 0; slot < chain.slots.size(); ++slot) {
             const auto& fx=chain.slots[slot];
             destination[slot]=fx.effect.get();
+            if (fx.effect) inserts.bypass.emplace(fx.effect.get(), fx.power.bypassed);
             const int key=project_->trackIds.indexOf(fx.keyTrackId);
             if(fx.effect && key>=0 && size_t(key)<tracks.size())
                 inserts.keyTracks[fx.effect.get()]=tracks[size_t(key)].outputTrack.value_or(size_t(key));
@@ -3506,11 +3515,14 @@ ostfstudio::SessionMix MainComponent::sessionMix() {
     for (const auto& track : trackControls_) {
         mix.midiRoutes.push_back({track->midiChannel, track->outputTrack});
         mix.instruments.push_back(track->instrumentAssignment);
+        if (track->instrumentAssignment.isObject() && !track->instrumentPower.state.active())
+            mix.deviceStates[ostfstudio::SessionMix::instrumentSlot(mix.instruments.size()-1)] = track->instrumentPower.state;
     }
     auto saveChain = [&](const EffectChain& chain, juce::StringArray& ids, bool output, std::size_t index) {
         for (const auto& slot : chain.slots) {
             const auto key = ostfstudio::SessionMix::effectSlot(output, index, ids.size());
             ids.add(slot.id);
+            if (!slot.power.state.active()) mix.deviceStates[key] = slot.power.state;
             if (!slot.initialParameters.empty()) {
                 auto& values = mix.insertParameters[key];
                 values = slot.initialParameters;
@@ -4002,6 +4014,7 @@ void MainComponent::copyEffectChain(bool output, std::size_t from, std::size_t t
         slot.id = old.id;
         slot.savedState = old.savedState;
         slot.initialParameters = old.initialParameters;
+        slot.power.set(old.power.state);
         if (old.effect) {
             juce::MemoryBlock state;
             old.effect->getStateInformation(state);
@@ -4143,6 +4156,7 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         track.playableInstrument = old.playableInstrument;
         track.midiChannel = old.midiChannel;
         track.instrumentAssignment = old.instrumentAssignment;
+        track.instrumentPower = std::move(old.instrumentPower);
         track.inactiveInstrument = std::move(old.inactiveInstrument);
         track.inactiveInstrumentState = std::move(old.inactiveInstrumentState);
         track.outputTrack = old.outputTrack;
@@ -4179,6 +4193,7 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         copy.pluginPath = src.pluginPath;
         copy.candidatePath = src.candidatePath;
         copy.instrumentAssignment = src.instrumentAssignment.clone();
+        copy.instrumentPower.set(src.instrumentPower.state);
         copy.inactiveInstrument = src.inactiveInstrument;
         copy.inactiveInstrumentState = src.inactiveInstrumentState;
         copy.plugin.setButtonText(src.plugin.getButtonText());
@@ -4736,6 +4751,10 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
     menu.addItem(3, TRANS("Choose plug-in bundle folder..."), !control.loading);
     menu.addItem(4, TRANS("Load selected VST3"), control.candidatePath.hasFileExtension("vst3") && !control.loading);
     const auto editorTrack = control.outputTrack.value_or(index);
+    const auto& instrumentHost = *trackControls_[editorTrack];
+    menu.addItem(18, control.outputTrack ? TRANS("Bypass shared instrument") : TRANS("Bypass instrument"),
+                 !instrumentHost.loading && (instrumentHost.instance || instrumentHost.instrumentAssignment.isObject()),
+                 !instrumentHost.instrumentPower.state.active());
     menu.addItem(5, control.outputTrack ? TRANS("Open shared instrument") : TRANS("Open plug-in editor"),
                  editorTrack < trackControls_.size() && trackControls_[editorTrack]->instance != nullptr);
     menu.addSeparator();
@@ -4746,6 +4765,12 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
             if (selection == 1 || selection == 3) self->chooseTrackPlugin(index, selection == 3);
             if (selection == 4) self->scanTrackPlugin(index);
             if (selection == 5) self->openTrackPluginEditor(self->trackControls_[index]->outputTrack.value_or(index));
+            if (selection == 18) {
+                auto& owner = *self->trackControls_[self->trackControls_[index]->outputTrack.value_or(index)];
+                owner.instrumentPower.toggle();
+                self->markSessionEdited();
+                self->queueMixerPluginRefresh();
+            }
             if (selection == 8) self->linkAudio(index);
             if (selection == 9) self->showPatch(index, 0);
             if (selection == 10) self->addSharedPart(index);
@@ -4791,6 +4816,7 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
                 strip.playableInstrument = false;
                 if (!strip.instrumentAssignment.isVoid()) self->markSessionEdited();
                 strip.instrumentAssignment = juce::var{};
+                strip.instrumentPower.set({});
                 strip.inactiveInstrument.reset();
                 strip.inactiveInstrumentState.reset();
                 strip.pluginPath = juce::File{};
@@ -5167,6 +5193,7 @@ void MainComponent::loadTrackPlugin(std::size_t index, const juce::PluginDescrip
         target.inactiveInstrumentState.reset();
         if (!restoring) {
             target.instrumentAssignment = instrumentReference(description);
+            target.instrumentPower.set({});
             self->markSessionEdited();
         }
         target.plugin.setButtonText(target.instance->getName());
@@ -5412,6 +5439,7 @@ void MainComponent::refreshMixerPlugins() {
                 const auto& source = *trackControls_[owner];
                 if (source.instance) {
                     auto name = source.instance->getName();
+                    if (!source.instrumentPower.state.active()) name += TRANS(" (bypassed)");
                     if (track.outputTrack || hasSharedParts(index))
                         name += "  #" + juce::String(int(owner+1)) + " Ch " + juce::String(track.midiChannel);
                     entries.push_back({name,-1,true});
@@ -5432,6 +5460,7 @@ void MainComponent::refreshMixerPlugins() {
             const auto& slot=chain.slots[p];
             auto name=slot.effect ? slot.effect->getName() : slot.id.upToLastOccurrenceOf("|",false,false).fromLastOccurrenceOf("|",false,false);
             if (!slot.effect) name = name.isEmpty() ? TRANS("Loading...") : name+TRANS(" (unavailable)");
+            if (!slot.power.state.active()) name += TRANS(" (bypassed)");
             entries.push_back({name,int(p),slot.effect != nullptr && !chain.loading});
             if (slot.effect) width=std::clamp(slot.effect->getMainBusNumOutputChannels(),1,2);
         }
@@ -5472,7 +5501,7 @@ void MainComponent::showEffects(bool output, std::size_t index) {
                         const int source=self->project_->trackIds.indexOf(slot.keyTrackId);
                         key=TRANS("Key") + " / " + (source>=0 ? juce::String::fromUTF8(self->project_->trackLanes[size_t(source)].label) : TRANS("Off"));
                     }
-                    state.entries.push_back({name, slot.effect != nullptr,key});
+                    state.entries.push_back({name, slot.effect != nullptr,key,!slot.power.state.active()});
                 }
             }
             return state;
@@ -5498,6 +5527,15 @@ void MainComponent::showEffects(bool output, std::size_t index) {
             auto& slot = chain.slots[static_cast<std::size_t>(position)];
             if (!slot.effect) return;
             self->openEffectEditor(output, index, size_t(position));
+        },
+        [current, output, index](int position) {
+            if (auto* self = current()) {
+                auto& chain = self->effectChain(output, index);
+                if (chain.loading || size_t(position) >= chain.slots.size()) return;
+                chain.slots[size_t(position)].power.toggle();
+                self->markSessionEdited();
+                self->queueMixerPluginRefresh();
+            }
         },
         [current, output, index](int position) {
             auto* self = current();
@@ -6080,6 +6118,7 @@ void MainComponent::restoreEffects(bool output, std::size_t index, const juce::S
     for (int i = 0; i < ids.size(); ++i) {
         auto& slot = chain.slots[static_cast<std::size_t>(i)];
         slot.id = ids[i];
+        slot.power.set(project_->savedMix->deviceState(ostfstudio::SessionMix::effectSlot(output,index,i)));
         const auto& values = project_->savedMix->insertParameters;
         if (auto it=values.find(ostfstudio::SessionMix::effectSlot(output,index,i)); it!=values.end()) slot.initialParameters=it->second;
         const auto& keys=project_->savedMix->sidechainTracks;
@@ -6245,10 +6284,13 @@ void MainComponent::toggleCellPlayer(size_t track,int row,bool restart) {
     }
     PreviewTransport::Inserts inserts{};
     const auto destination=controls.outputTrack.value_or(track);
+    if (routes[destination].instrument)
+        inserts.bypass.emplace(routes[destination].instrument, host.instrumentPower.bypassed);
     for (size_t i=0;i<host.effects.slots.size();++i) if (auto* fx=host.effects.slots[i].effect.get()) {
         auto* copy=copyPlugin(*fx);
         if (!copy) {statusLabel_.setText(error,juce::dontSendNotification);return;}
         inserts[PreviewTransport::outputCount+destination][i]=copy;
+        inserts.bypass.emplace(copy, host.effects.slots[i].power.bypassed);
     }
     PreviewTransport::TakeOptions options;
     options.sections={section};

@@ -864,6 +864,9 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
     juce::Array<juce::var> automation;
     auto states = object({});
     auto externalKeys = object({});
+    auto localSwitches = object({});
+    for (const auto& [slot, state] : mix.deviceStates)
+        if (!state.active()) localSwitches.getDynamicObject()->setProperty(slot, object({{"enabled",state.enabled},{"bypass",state.bypass}}));
     auto attachEffects = [&](juce::var& channel, bool output, std::size_t index, const juce::StringArray& chain) {
         if (output && mix.outputNames[index].isNotEmpty()) channel.getDynamicObject()->setProperty("name", mix.outputNames[index]);
         auto ids = array(channel["deviceIds"]);
@@ -887,7 +890,9 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
                             {"targetDeviceId",id},{"targetPortId","vst3-aux-1"},{"tapPoint","preFader"},
                             {"followMute",false},{"gainDb",0.0},{"enabled",true}}));
                 }
-                devices.add(object({{"id", id}, {"role", "effect"}, {"enabled", true}, {"bypass", false},
+                const auto state = mix.deviceState(id);
+                localSwitches.getDynamicObject()->removeProperty(id);
+                devices.add(object({{"id", id}, {"role", "effect"}, {"enabled", state.enabled}, {"bypass", state.bypass},
                     {"onUnavailable", "reportAndPreserve"}, {"plugin", object({{"format", "vst3"}, {"vendor", "OSTF Studio"},
                         {"name", fx.displayName()}, {"pluginId", fx.classId()}})}}));
                 if (const auto state = mix.stockEffectStates.find(id); state != mix.stockEffectStates.end())
@@ -937,10 +942,12 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
                                   {"targetChannelId", returnId(r)}, {"gainDb", 20.0 * std::log10(settings.returnSends[r])},
                                   {"preFader", false}, {"enabled", true}}));
         if (!isVoicing && index < mix.instruments.size() && mix.instruments[index].isObject()) {
-            const auto device = "instrument-" + juce::String(i + 1);
+            const auto device = SessionMix::instrumentSlot(index);
+            const auto state = mix.deviceState(device);
+            localSwitches.getDynamicObject()->removeProperty(device);
             model->setProperty("deviceIds", juce::Array<juce::var>{device});
             devices.add(object({{"id", device}, {"role", "instrument"}, {"plugin", mix.instruments[index]},
-                                {"enabled", true}, {"bypass", false}, {"onUnavailable", "reportAndPreserve"}}));
+                                {"enabled", state.enabled}, {"bypass", state.bypass}, {"onUnavailable", "reportAndPreserve"}}));
         }
         model->setProperty("sends", sends);
         if (index < mix.trackEffects.size()) {
@@ -954,6 +961,8 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
         if (isVoicing) voicingMix = channel;
         else channels.add(std::move(channel));
         auto local = object({{"trackId", id}, {"midiChannel", midi.channel}, {"cue", settings.cue}});
+        if (isVoicing && index < mix.instruments.size() && mix.instruments[index].isObject())
+            local.getDynamicObject()->setProperty("instrument", mix.instruments[index]);
         if (midi.destination && *midi.destination < sourceCount)
             local.getDynamicObject()->setProperty("destinationTrackId", tracks[static_cast<int>(*midi.destination)]["id"]);
         if (index < mix.audioTracks.size() && mix.audioTracks[index])
@@ -988,6 +997,8 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
                         {"data", object({{"tracks", routes}, {"trackOrder", order}, {"cueDb", mix.routing.cueDb}, {"inserts", inserts}, {"outputEffects", outputEffects}, {"stockEffectStates", states}, {"chordVoicingMix", voicingMix}, {"chordVoicingRoute", voicingRoute}})}}));
     if (externalKeys.getDynamicObject()->getProperties().size() > 0)
         hostData[0]["data"].getDynamicObject()->setProperty("externalSidechainTracks",externalKeys);
+    if (localSwitches.getDynamicObject()->getProperties().size() > 0)
+        hostData[0]["data"].getDynamicObject()->setProperty("localDeviceStates", localSwitches);
     if (!mix.recordCycle.isEmpty())
         hostData[0]["data"].getDynamicObject()->setProperty("recordCycle", object({
             {"start", mix.recordCycle.getStart()}, {"end", mix.recordCycle.getEnd()}, {"enabled", mix.cycleEnabled}}));
@@ -1005,7 +1016,8 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
     return document;
 }
 
-SessionMix readMix(const juce::var& score, const juce::var& production, PanAutomation& envelopes) {
+SessionMix readMix(const juce::var& score, const juce::var& production, PanAutomation& envelopes,
+                   std::map<juce::String,juce::String>* deviceIdsBySlot = nullptr) {
     const auto host = production["hostExtensions"];
     const auto extensions = host.isVoid() ? juce::Array<juce::var>{} : array(host);
     require(extensions.isEmpty() || (extensions.size() == 1 && extensions[0]["namespace"] == mixNamespace
@@ -1029,6 +1041,12 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
         return std::clamp(v, -60.0, 6.0);
     };
     SessionMix mix;
+    auto readSwitch = [](const juce::var& device) -> SessionMix::DeviceState {
+        return {bool(device["enabled"]), bool(device["bypass"])};
+    };
+    if (auto* switches = local["localDeviceStates"].getDynamicObject())
+        for (const auto& property : switches->getProperties())
+            mix.deviceStates[property.name.toString()] = readSwitch(property.value);
     if (const auto cycle = local["recordCycle"]; cycle.isObject()) {
         const auto first = integer(cycle["start"]), last = integer(cycle["end"]);
         require(first >= 0 && last > first, "Invalid Studio recording range.");
@@ -1039,6 +1057,8 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
     mix.tracks.resize(voicingIndex + static_cast<std::size_t>(voicingMix.isObject()));
     mix.midiRoutes.resize(mix.tracks.size());
     mix.instruments.resize(mix.tracks.size());
+    if (voicingMix.isObject() && voicingRoute["instrument"].isObject())
+        mix.instruments[voicingIndex] = voicingRoute["instrument"];
     mix.trackEffects.resize(mix.tracks.size());
     for (int i = 0; i < tracks.size(); ++i) {
         const auto midi = tracks[i]["midi"];
@@ -1064,6 +1084,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
     // Legacy Studio chains can also contain cached host IDs for third-party plug-ins.
     // Translate state keys after merging those chains, so mixed chains keep slot order.
     std::map<juce::String, juce::StringArray> effectDeviceIds;
+    std::map<juce::String, SessionMix::DeviceState> effectStates;
     for (const auto& entry : channels) {
         const auto id = entry["id"].toString();
         const bool outputChannel = entry["kind"] != "track";
@@ -1081,12 +1102,16 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
             const auto& device = *found;
             if (device["role"] == "instrument") {
                 require(!outputChannel && fx.isEmpty() && !mix.instruments[track].isObject(), "Unsupported instrument order");
-                if (static_cast<bool>(device["enabled"]) && !static_cast<bool>(device["bypass"]))
-                    mix.instruments[track] = device["plugin"];
+                mix.instruments[track] = device["plugin"];
+                if (deviceIdsBySlot) (*deviceIdsBySlot)[SessionMix::instrumentSlot(track)] = deviceId.toString();
+                const auto state = readSwitch(device);
+                if (!state.active()) mix.deviceStates[SessionMix::instrumentSlot(track)] = state;
+                else mix.deviceStates.erase(SessionMix::instrumentSlot(track));
                 continue;
             }
-            require(device["role"] == "effect" && static_cast<bool>(device["enabled"]) && !static_cast<bool>(device["bypass"]),
-                    "Unsupported production device or bypass state");
+            require(device["role"] == "effect", "Unsupported production device");
+            const auto deviceState = readSwitch(device);
+            effectStates.emplace(deviceId.toString(), deviceState);
             const auto ref = device["plugin"];
             const auto stock = std::find_if(std::begin(stockEffects), std::end(stockEffects), [&](const auto& item) {
                 return ref["format"] == "vst3" && ref["pluginId"].toString().equalsIgnoreCase(item.classId());
@@ -1202,6 +1227,12 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
                 const auto key = SessionMix::effectSlot(output, channel, slot);
                 const juce::Identifier deviceId(voicing ? key : it->second[device++]);
                 slotByDevice[deviceId.toString()] = key;
+                if (deviceIdsBySlot && !voicing) (*deviceIdsBySlot)[key] = deviceId.toString();
+                if (!voicing) {
+                    const auto state = effectStates.at(deviceId.toString());
+                    if (state.active()) mix.deviceStates.erase(key);
+                    else mix.deviceStates[key] = state;
+                }
                 if(auto source=deviceKeys.find(deviceId.toString()); source!=deviceKeys.end()) mix.sidechainTracks[key]=source->second;
                 const auto state = local["stockEffectStates"][deviceId];
                 if (state.isString()) mix.stockEffectStates[key] = state.toString();
@@ -3476,7 +3507,7 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
                 next = projectScore(score, false, imported);
             }
             const auto viewScore = withProductionRows(score, imported);
-            next->savedMix = readMix(viewScore, playback, next->panAutomation);
+            next->savedMix = readMix(viewScore, playback, next->panAutomation, imported ? &imported->deviceIdsBySlot : nullptr);
             const auto source = production.hasProperty("assets") || production.hasProperty("audioRegions")
                 ? playback : score["extensions"][mixNamespace]["data"];
             readAudioReferences(viewScore, source, *next, manifest, documentPath);
@@ -3528,6 +3559,7 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
                 baseline.midiRoutes.resize(baseline.tracks.size());
             }
             imported->mixerSnapshot=jsonBytes(productionMix(withProductionRows(score,imported),*next->savedMix,next->panAutomation));
+            imported->originalDeviceStates = next->savedMix->deviceStates;
         } else require(loadedAssets.size() == assets.size(), "OSTFP audio inventory mismatch");
         if (next->savedMix)
             for (std::size_t i = 0; i < next->trackKinds.size(); ++i)
@@ -3559,19 +3591,45 @@ static void writeImportedProduction(const OstfpPreview& project, const SessionMi
     const auto score = savedScore(project,true);
     const auto core = parseObject(score);
     const auto view = withProductionRows(core,project.importedProduction);
-    require(jsonBytes(productionMix(view,mix,project.panAutomation)) == source.mixerSnapshot,
+    const bool switchesEdited = mix.deviceStates != source.originalDeviceStates;
+    auto comparableMix = mix;
+    comparableMix.deviceStates = source.originalDeviceStates;
+    require(jsonBytes(productionMix(view,comparableMix,project.panAutomation)) == source.mixerSnapshot,
             "This imported Production uses its original mixer. Export the edited score separately to retain your musical edits.");
     auto manifest=parseObject(source.manifestBytes);
     auto scoreRef=manifest["score"]; juce::var companion;
     for (const auto& doc : array(manifest["documents"])) if (doc["role"] == "productionSession") companion=doc;
-    require(!audioEdited || companion.isObject(),"Edited audio needs a Production companion");
+    require((!audioEdited && !switchesEdited) || companion.isObject(),"Edited devices and audio need a Production companion");
     auto production=source.productionBytes; auto manifestBytes=source.manifestBytes;
     const auto hash=juce::SHA256(score).toHexString();
-    if (hash!=scoreRef["sha256"].toString() || audioEdited) {
+    if (hash!=scoreRef["sha256"].toString() || audioEdited || switchesEdited) {
         require(array(manifest["documents"]).size() == (companion.isObject() ? 1 : 0),
                 "An additional companion refers to the original revision. Save the edited score as OSTF.");
         if (companion.isObject()) {
             auto session=parseObject(production); auto binding=session["score"];
+            if (switchesEdited) {
+                auto devices = session["devices"];
+                for (const auto& [slot,id] : source.deviceIdsBySlot) {
+                    const auto state = mix.deviceState(slot);
+                    const auto original = source.originalDeviceStates.find(slot);
+                    if (state == (original == source.originalDeviceStates.end() ? SessionMix::DeviceState{} : original->second))
+                        continue;
+                    for (const auto& device : array(devices)) {
+                        if (device["id"] != id) continue;
+                        device.getDynamicObject()->setProperty("enabled", state.enabled);
+                        device.getDynamicObject()->setProperty("bypass", state.bypass);
+                        break;
+                    }
+                }
+                const auto hosts = session["hostExtensions"];
+                if (hosts.size() && hosts[0]["namespace"] == mixNamespace) {
+                    auto data = hosts[0]["data"];
+                    const auto settings = productionMix(view,mix,project.panAutomation);
+                    const auto local = settings["hostExtensions"][0]["data"]["localDeviceStates"];
+                    if (local.isObject()) data.getDynamicObject()->setProperty("localDeviceStates", local);
+                    else data.getDynamicObject()->removeProperty("localDeviceStates");
+                }
+            }
             if (audioEdited) {
                 auto host=session.getProperty("hostExtensions",juce::Array<juce::var>{});
                 if (!host.size()) host.getArray()->add(object({{"namespace",mixNamespace},{"version","1.0"},{"data",object({})}}));
@@ -3595,7 +3653,8 @@ static void writeImportedProduction(const OstfpPreview& project, const SessionMi
             binding.getDynamicObject()->setProperty("sha256",hash);
             for(const auto key:{"documentId","revisionId"}) if(binding.hasProperty(key))
                 binding.getDynamicObject()->setProperty(key,core["document"][juce::String(key)=="documentId"?"id":"revisionId"]);
-            production=audioEdited ? editedScoreBytes(source.productionBytes,session,{"score","hostExtensions"})
+            production=switchesEdited ? editedScoreBytes(source.productionBytes,session,{"score","hostExtensions","devices"})
+                                   : audioEdited ? editedScoreBytes(source.productionBytes,session,{"score","hostExtensions"})
                                    : editedScoreBytes(source.productionBytes,session,{"score"});
             companion.getDynamicObject()->setProperty("sha256",juce::SHA256(production).toHexString());
         }

@@ -348,14 +348,17 @@ static bool checkStudioSidechain(ostfstudio::OstfpPreview& song, juce::AudioPlug
     auto signal=original.front(); signal.track=0;
     auto detector=signal; detector.track=1;
     song.audio={signal,detector};
-    auto measure=[&](bool connect) {
+    auto measure=[&](bool connect, bool bypass = false, bool installed = true) {
         PreviewTransport engine;
         PreviewTransport::Inserts inserts{};
-        inserts[PreviewTransport::outputCount][0]=&effect;
+        if (installed) inserts[PreviewTransport::outputCount][0]=&effect;
+        auto switchState = std::make_shared<std::atomic<bool>>(false);
+        inserts.bypass.emplace(&effect, switchState);
         if(connect) inserts.keyTracks[&effect]=1;
         if(engine.preparePlayback(song,{},inserts,48000,256).failed()) return -1.;
         for(size_t i=0;i<song.sourceTrackCount();++i) engine.setChannelMix(i,{},i==0,0);
         engine.setOutputMix({}); engine.seekToTick(signal.startTick);
+        switchState->store(bypass);
         juce::AudioBuffer<float> audio(2,256);
         double energy=0;
         for(int b=0;b<90;++b) {
@@ -365,8 +368,9 @@ static bool checkStudioSidechain(ostfstudio::OstfpPreview& song, juce::AudioPlug
         engine.stop(); return energy;
     };
     const auto dry=measure(false),wet=measure(true);
+    const auto bypassed = measure(true,true), noInsert = measure(false,false,false);
     song.audio=std::move(original);
-    return dry>1 && wet>0 && wet<dry*.98;
+    return dry>1 && wet>0 && wet<dry*.98 && noInsert>1 && std::abs(bypassed-noInsert)<.0001;
 }
 
 static bool checkCueMonitoring(ostfstudio::OstfpPreview& song) {

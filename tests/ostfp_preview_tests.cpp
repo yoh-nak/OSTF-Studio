@@ -376,6 +376,13 @@ static int checkGallery(const juce::File& directory) {
             mix.trackEffects.resize(index + 1);
             mix.trackEffects[index].add(ostfstudio::stockEffects[2].chainId());
             mix.stockEffectStates[ostfstudio::SessionMix::effectSlot(false, index, 0)] = "voicing-state";
+            mix.deviceStates[ostfstudio::SessionMix::effectSlot(true,3,0)] = {false,false};
+            mix.deviceStates[ostfstudio::SessionMix::effectSlot(false,index,0)] = {true,true};
+            for (size_t track=0; track<index; ++track)
+                if (mix.instruments[track].isObject()) {
+                    mix.deviceStates[ostfstudio::SessionMix::instrumentSlot(track)] = {true,true};
+                    break;
+                }
             juce::MemoryOutputStream plain;
             juce::TemporaryFile destination("ostf");
             const auto file = destination.getFile();
@@ -385,6 +392,7 @@ static int checkGallery(const juce::File& directory) {
             juce::MemoryInputStream plainInput(plain.getData(), plain.getDataSize(), false);
             if (ostfstudio::readOstfPreview(plainInput, fromScore).failed() || !fromScore->savedMix
                 || fromScore->savedMix->trackOrder != mix.trackOrder
+                || fromScore->savedMix->deviceStates != mix.deviceStates
                 || fromScore->savedMix->stockEffectStates != mix.stockEffectStates
                 || fromScore->savedMix->trackEffects != mix.trackEffects) return 1;
             juce::MemoryOutputStream saved;
@@ -393,6 +401,7 @@ static int checkGallery(const juce::File& directory) {
             std::unique_ptr<ostfstudio::OstfpPreview> reopened;
             if (ostfstudio::readOstfpPreview(roundtrip, reopened).failed() || !reopened->savedMix
                 || reopened->sourceTrackCount() != index || reopened->sourceScore != project->sourceScore
+                || reopened->savedMix->deviceStates != mix.deviceStates
                 || reopened->savedMix->instruments.front()["pluginId"] != mix.instruments.front()["pluginId"]
                 || reopened->savedMix->tracks.size() != index + 1 || !reopened->savedMix->tracks[index].muted
                 || reopened->savedMix->tracks[index].pan != 0.35f
@@ -732,6 +741,49 @@ static int checkOstf52(const juce::File& fixtures) {
         }
         if(opened.failed()) {std::cerr<<package.getFileName()<<": "<<opened.getErrorMessage()<<"\n";return 10;}
         if(!project->importedProduction) return 11;
+        if (name.startsWith("10-audio-")) {
+            const auto& source = *project->importedProduction;
+            auto manifest = juce::JSON::parse(source.manifestBytes.toString());
+            auto session = juce::JSON::parse(source.productionBytes.toString());
+            const auto& fx = ostfstudio::stockEffects[0];
+            auto device = juce::JSON::parse(R"({"id":"foreign-fx","role":"effect","enabled":true,"bypass":false,"onUnavailable":"reportAndPreserve","plugin":{"format":"vst3","vendor":"OSTF Studio"}})");
+            device["plugin"].getDynamicObject()->setProperty("name",fx.displayName());
+            device["plugin"].getDynamicObject()->setProperty("pluginId",fx.classId());
+            session.getDynamicObject()->setProperty("devices",juce::Array<juce::var>{device});
+            session["channels"][0].getDynamicObject()->setProperty("deviceIds",juce::Array<juce::var>{"foreign-fx"});
+            auto toBytes=[](const juce::var& value) {
+                const auto json=juce::JSON::toString(value);
+                return juce::MemoryBlock(json.toRawUTF8(),json.getNumBytesAsUTF8());
+            };
+            const auto production = toBytes(session);
+            auto companion=manifest["documents"][0];
+            companion.getDynamicObject()->setProperty("sha256",juce::SHA256(production).toHexString());
+            const auto manifestData=toBytes(manifest);
+            juce::ZipFile original(package); juce::ZipFile::Builder builder;
+            for(int i=0; i<original.getNumEntries(); ++i) {
+                const auto path=original.getEntry(i)->filename;
+                std::unique_ptr<juce::InputStream> stream(original.createStreamForEntry(i));
+                if (path=="manifest.json") stream=std::make_unique<juce::MemoryInputStream>(manifestData,false);
+                if (path==companion["path"].toString()) stream=std::make_unique<juce::MemoryInputStream>(production,false);
+                builder.addEntry(std::move(stream),path=="mimetype"?0:9,path,{});
+            }
+            juce::MemoryOutputStream inputZip,editedZip;
+            if(!builder.writeToStream(inputZip,nullptr)) return 33;
+            juce::MemoryInputStream before(inputZip.getData(), inputZip.getDataSize(), false);
+            std::unique_ptr<OstfpPreview> test;
+            if(const auto result=readOstfpPreview(before,test); result.failed()) {
+                std::cerr << "Read imported device fixture: " << result.getErrorMessage() << '\n'; return 34;
+            }
+            auto mix=*test->savedMix;
+            mix.deviceStates[SessionMix::effectSlot(true,0,0)]={true,true};
+            if(const auto result=writeOstfpPreview(*test,mix,editedZip); result.failed()) {
+                std::cerr << "Save imported bypass: " << result.getErrorMessage() << '\n'; return 35;
+            }
+            juce::MemoryInputStream after(editedZip.getData(), editedZip.getDataSize(), false);
+            if(readOstfpPreview(after,test).failed() || test->savedMix->deviceStates!=mix.deviceStates) return 36;
+            const auto savedDevice=juce::JSON::parse(test->importedProduction->productionBytes.toString())["devices"][0];
+            if(savedDevice["id"]!="foreign-fx" || !bool(savedDevice["bypass"])) return 37;
+        }
         const auto active=std::count_if(project->audio.begin(),project->audio.end(),[](const auto& audio){return !audio.muted;});
         if(package.getFileName().startsWith("01-") ? active!=0 : active<1) return 12;
         if(package.getFileName().startsWith("02-") && active!=2) return 12;
@@ -914,6 +966,7 @@ int main(int argc, char** argv) {
         mix.sidechainTracks[ostfstudio::SessionMix::effectSlot(true,0,slot)] = project->trackIds[1];
     }
     mix.sidechainTracks[ostfstudio::SessionMix::effectSlot(true,ostfstudio::busOutput(3),0)] = project->trackIds[2];
+    mix.deviceStates[ostfstudio::SessionMix::effectSlot(true,ostfstudio::busOutput(3),0)] = {true,true};
     mix.routing.masterDb = -6.0;
     mix.routing.returnCount = 2;
     mix.routing.returnDb[1] = -8.0;
@@ -932,6 +985,7 @@ int main(int argc, char** argv) {
         || scoreOnly->sourceScore != package->sourceScore || scoreOnly->pitchedNotes[0].size() != 6
         || scoreOnly->pitchedNotes[1].size() != 2 || scoreOnly->pitchedNotes[1][1].velocity != 77) return 1;
     const auto& saved = *package->savedMix;
+    if (saved.deviceStates != mix.deviceStates) return 1;
     if (saved.sidechainTracks.empty() || saved.sidechainTracks != mix.sidechainTracks) return 1;
     if (saved.routing.busCount != 4 || saved.routing.busDb[3] != -4.5 || saved.tracks[2].outputBus != 3
         || saved.outputEffects[ostfstudio::busOutput(3)] != mix.outputEffects[ostfstudio::busOutput(3)]) return 1;

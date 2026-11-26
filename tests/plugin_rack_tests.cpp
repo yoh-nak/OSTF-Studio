@@ -12,7 +12,7 @@ int main(int argc,char** argv) {
     vst.findAllTypesForFile(effects,juce::String::fromUTF8(argv[2]));
     if(synths.size()!=1 || effects.size()!=1) return 2;
     for(bool instrument:{false,true}) {
-        auto render=[&](int count,bool missing=false){
+        auto render=[&](int count,bool missing=false,bool bypassFirst=false){
             std::unique_ptr<juce::AudioProcessor> processor(createOstfRack(instrument));
             juce::XmlElement xml("ParallelRack");xml.setAttribute("instrument",instrument);
             for(int i=0;i<count;++i) {
@@ -24,6 +24,7 @@ int main(int argc,char** argv) {
                     .getChildFile("Unavailable test effect.vst3").getFullPathName();
                 auto* effectNode = layer->createNewChildElement("Device");
                 effectNode->addChildElement(effect.createXml().release());
+                if (bypassFirst) layer->getFirstChildElement()->setAttribute("bypass", true);
                 if (missing) effectNode->setAttribute("state", juce::MemoryBlock("saved",5).toBase64Encoding());
             }
             juce::MemoryBlock state;juce::AudioProcessor::copyXmlToBinary(xml,state);
@@ -45,12 +46,15 @@ int main(int argc,char** argv) {
             for(auto* layer:saved->getChildWithTagNameIterator("Layer")) {
                 if(layer->getNumChildElements()!=(instrument?2:1) || std::abs(layer->getDoubleAttribute("level")-.25)>.001) return -1.;
                 const auto* last = layer->getChildElement(layer->getNumChildElements() - 1);
+                if (layer->getFirstChildElement()->getBoolAttribute("bypass") != bypassFirst) return -1.;
                 if (missing && last->getStringAttribute("state") != juce::MemoryBlock("saved",5).toBase64Encoding()) return -1.;
             }
             processor->releaseResources();
             return energy;
         };
         const double one=render(1),two=render(2);
+        const auto bypassed=render(1,!instrument,true);
+        if (instrument ? bypassed!=0. : bypassed<=0.) return 4;
         if(one<.001 || !std::isfinite(two) || std::abs(two/one-2.)>.025 || render(1,true)!=0.) {
             std::cerr<<(instrument?"Instrument":"Effect")<<" rack: one layer "<<one<<", two layers "<<two<<'\n';return 3;
         }

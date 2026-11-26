@@ -23,6 +23,11 @@ public:
     static_assert(maxTracks >= ostfstudio::OstfpPreview::maxTracks + 1);
     using Chain = std::array<juce::AudioPluginInstance*, ostfstudio::SessionMix::maxEffects>;
     struct Inserts : std::array<Chain, outputCount + maxTracks> {
+        std::map<juce::AudioProcessor*, std::shared_ptr<std::atomic<bool>>> bypass;
+        bool bypassed(juce::AudioProcessor* device) const {
+            const auto it = bypass.find(device);
+            return it != bypass.end() && it->second->load();
+        }
         std::map<juce::AudioPluginInstance*, size_t> keyTracks;
     };
     struct MidiDestination {
@@ -191,6 +196,7 @@ private:
     std::array<ostfstudio::PeakMailbox, outputCount> outputMeters_;
     ostfstudio::PeakMailbox cueMeter_;
     struct InstrumentTrack {
+        bool sounding = false;
         juce::AudioProcessor* instance = nullptr;
         std::shared_ptr<MidiDestination> external;
         std::array<bool,16> externalChannels{}, sentChannels{};

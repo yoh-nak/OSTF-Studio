@@ -601,6 +601,20 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     auto text = juce::JSON::toString(score);
     juce::MemoryInputStream raw(text.toRawUTF8(), text.getNumBytesAsUTF8(), false);
     if (readOstfPreview(raw, song).failed()) return 2;
+    {
+        TransportPanel panel;
+        panel.setPosition(*song, song->durationTicks + 240, -1, 2);
+        auto* key = dynamic_cast<juce::Label*>(panel.findChildWithID("key"));
+        auto* scale = dynamic_cast<juce::Label*>(panel.findChildWithID("scale"));
+        auto* badge = dynamic_cast<juce::Button*>(panel.findChildWithID("transport-camelot"));
+        if (!key || key->getText() != "A major" || !badge || badge->getButtonText() != "11B"
+            || !scale || scale->getText() != juce::String::charToString(0x2014)) return 130;
+        if (!badge->onClick) return 131;
+        badge->onClick();
+        auto* popup = dynamic_cast<juce::CallOutBox*>(juce::Component::getCurrentlyModalComponent());
+        if (!popup || !popup->findChildWithID("camelot-wheel")) return 132;
+        popup->exitModalState(0);
+    }
     if (song->clock.bpmAt(959) != 120 || song->clock.bpmAt(960) != 60
         || song->clock.nextChangeAfter(959) != 960 || song->clock.nextChangeAfter(960)
         || std::abs(song->clock.secondsAt(1920) - 1.5) > 1e-8 || std::abs(song->clock.tickAt(1.5) - 1920) > 1e-8

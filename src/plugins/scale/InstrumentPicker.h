@@ -162,6 +162,11 @@ private:
         load.setEnabled(!visible.empty()); loadAndTest.setEnabled(!visible.empty()); list.repaint();
     }
     int getNumRows() override {return int(visible.size());}
+    juce::String getTooltipForRow(int row) override {
+        if (!juce::isPositiveAndBelow(row, getNumRows())) return {};
+        const auto& choice = choices[visible[size_t(row)]];
+        return choice.name + "\n" + choice.path;
+    }
     void selectedRowsChanged(int row) override {
         if (!filtering && juce::isPositiveAndBelow(row,getNumRows())) preferred=visible[size_t(row)];
     }

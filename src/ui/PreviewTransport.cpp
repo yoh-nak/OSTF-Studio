@@ -920,7 +920,7 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PreviewTransport::getPosition(
 void PreviewTransport::processEffects(const Chain& effects, juce::AudioBuffer<float>& audio, int count, const juce::MidiBuffer* patches) {
     juce::AudioBuffer<float> stereo(audio.getArrayOfWritePointers(), 2, count);
     for (auto* effect : effects) {
-        if (!effect) continue;
+        if (!effect || inserts_.bypassed(effect)) continue;
         pluginMidi_.clear();
         if (patches && effect->acceptsMidi()) pluginMidi_.addEvents(*patches, 0, -1, 0);
         const int keys = effect->getTotalNumInputChannels()-2;
@@ -1048,7 +1048,18 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
         if (slot.instance) {
             juce::AudioBuffer<float> pluginBlock(block.getArrayOfWritePointers(),
                 std::max(slot.instance->getTotalNumInputChannels(), slot.instance->getTotalNumOutputChannels()), count);
-            slot.instance->processBlock(pluginBlock, pluginMidi_);
+            const bool active = !inserts_.bypassed(slot.instance);
+            if (active) slot.instance->processBlock(pluginBlock, pluginMidi_);
+            else if (slot.sounding) {
+                pluginMidi_.clear();
+                for (int ch = 1; ch <= 16; ++ch) {
+                    pluginMidi_.addEvent(juce::MidiMessage::allNotesOff(ch), 0);
+                    pluginMidi_.addEvent(juce::MidiMessage::allSoundOff(ch), 0);
+                }
+                slot.instance->processBlock(pluginBlock, pluginMidi_);
+                pluginBlock.clear();
+            }
+            slot.sounding = active;
             if (slot.instance->getMainBusNumOutputChannels() == 1) block.copyFrom(1, 0, block, 0, 0, count);
         }
         if (hardware && liveInputs_ && route->monitorInput+route->monitorWidth<=liveInputCount_)

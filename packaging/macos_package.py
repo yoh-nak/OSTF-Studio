@@ -6,7 +6,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from plugin_choices import GROUPS, ROOT, catalog
+from plugin_choices import GROUPS, ROOT, catalog, display_name
 
 
 def distribution(plugins, version, display_version=None):
@@ -33,7 +33,7 @@ def distribution(plugins, version, display_version=None):
             parent = ET.SubElement(outline, "line", choice=group)
             ET.SubElement(doc, "choice", id=group, title=title, description=title)
             for p in children:
-                leaf(parent, p["code"], p["name"])
+                leaf(parent, p["code"], display_name(p))
     return ET.ElementTree(doc)
 
 
