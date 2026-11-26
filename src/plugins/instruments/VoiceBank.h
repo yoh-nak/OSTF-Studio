@@ -1,10 +1,20 @@
 #pragma once
 #include "JapaneseMora.h"
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_dsp/juce_dsp.h>
 #include <map>
 
 namespace ostfstudio::singing {
 struct RecordedMora {
+    static constexpr int waveOrder = 8, waveSize = 1 << waveOrder, partials = waveSize / 2;
+    using Wave = std::array<float, waveSize + 1>;
+    struct Spectrum {
+        int position{};
+        float fundamental{};
+        std::array<float, partials> magnitude{};
+    };
+    std::vector<Spectrum> spectra;
+    std::array<std::complex<float>, partials> pulsePhase{};
     std::vector<float> frames;
     double rate{}, period{};
     int loopStart{}, loopEnd{}, fade{}, consonantFrames{};
@@ -14,6 +24,8 @@ struct RecordedMora {
     // Octave-spaced low-pass versions used when a period is played faster than recorded.
     std::vector<std::vector<float>> filtered;
     void preparePitchMarks();
+    void prepareSpectra();
+    void renderCycle(Wave& wave, const juce::dsp::FFT& fft, double position, double pitch, double outputRate) const;
     float cycleSample(double at, double step) const {
         if (step <= 1. || filtered.empty()) return sampleAt(at);
         const auto level = std::clamp(std::log2(step),0.,double(filtered.size()));

@@ -51,5 +51,9 @@ int main(int argc, char** argv) {
     if(workspace.load(input).failed() || workspace.importWorkspaceScales(committed,"stale").wasOk()) return 15;
     auto scalesOnly=original.clone(); scalesOnly["harmony"].getDynamicObject()->setProperty("scales",doc.score["harmony"]["scales"]);
     if(!check(workspace.importWorkspaceScales(juce::JSON::toString(scalesOnly),digest(input))) || workspace.baseHash!=digest(input)) return 16;
+    juce::TemporaryFile copy(".ostf"), other(".txt");
+    if (workspace.saveAs(copy.getFile()).failed() || copy.getFile().loadFileAsString()!=workspace.text) return 17;
+    if (!other.getFile().replaceWithText("original") || workspace.saveAs(other.getFile()).wasOk()
+        || other.getFile().loadFileAsString()!="original") return 18;
     return 0;
 }

@@ -4,7 +4,7 @@
 
 Studio validates Core 5.1.0, Production Session 0.4.0 and Manifest 1.1.0 with the pinned upstream schemas. Existing 5.0 projects retain their format. Playback reads enabled materialized MIDI clips. Whole-section take creation keeps alternate sources disabled and writes a complete region map and note links. Choosing a comp for adoption updates the output flags and activeCompId together. Audition creates an isolated MIDI projection. Each live cue stores the selected comp ID per intersecting group when queued. Queued selections can be adopted together in one undoable score edit. Whole-take note edits update their source. Studio retains complex source/region maps when it cannot safely author them. Visit-based comp scheduling, audio comp editing and distributed playback are open work.
 
-Production device automation restores authored normalized parameters at tick zero on stock inserts. Instrument patches in the demos use score program changes. Scale Editor browser imports compare the score snapshot and accept only harmony scale changes. The native instrument can then return the change to the host. Recorded vowels in Formant Singer use pitch-synchronous overlapping windows, retaining the source waveform rate within each voiced grain.
+Production device automation restores authored normalized parameters at tick zero on stock inserts. Instrument patches in the demos use score program changes. Scale Editor browser imports compare the score snapshot and accept only harmony scale changes. The native instrument can then return the change to the host. Recorded vowels supply short-time harmonic magnitudes measured over neighbouring pitch periods. A preallocated inverse FFT rebuilds band-limited cycles from the source envelope at the score harmonics every 5 ms. Adjacent voiced phones morph on one continuous phase clock. Unvoiced onsets retain their time-domain playback path.
 
 ## Section performance and presentation
 
@@ -45,13 +45,13 @@ The local singing instrument analyses pitch marks when a voice bank loads. Susta
 
 The footer and File menu expose the score and clip edit journal, including the state of pending chord decisions. Selecting an earlier or later entry uses the same restoration path as Undo and Redo. The platform meter samples system CPU counters and physical memory once a second on the message thread.
 
-Formant Singer plays a recorded consonant onset at its source rate, then transitions to the pitched vowel. Adjacent notes on the same channel can share a short pitch transition and sample crossfade. Sustained notes gain a delayed, low-depth pitch variation within the note's authored expression.
+Formant Singer plays the recorded consonant onset at its source rate, then transitions to the pitched vowel. A voiced continuation on the same channel keeps a single oscillator phase while the harmonic magnitudes change to the next phone. Sustained notes gain a delayed, low-depth pitch variation within the note's authored expression.
 
 ## Shared instruments, track ordering and voice processing
 
 Instrument Rack and Effect Rack are VST3s with an internal JUCE processor graph. Each layer has a serial chain and a gain stage feeding the shared stereo output. Instrument layers receive the same timestamped MIDI. Effect layers receive the same input audio. The plug-in state contains the ordered device descriptions and their parameter-state bytes. A missing device preserves its state and silences its layer. The host can reopen a moved stock device from its portable or installed VST3 folder.
 
-Scale Editor serves the original offline workspace and an opening score snapshot from memory. Applying a workspace edit reads the exported score through the embedded browser and passes it through the existing scale-only import check. The singer estimates the continuous periodic part of each recorded vowel at bank load and uses the period on each side of a pitch mark when overlapping grains.
+Scale Editor serves the original offline workspace and an opening score snapshot from memory. Applying a workspace edit reads the exported score through the embedded browser and passes it through the existing scale-only import check. The embedded workspace saves its validated score snapshot through the system file chooser. Instrument and effect windows forward the hosted editor’s resize constraints to the decorated window.
 
 The scanner retains file paths for incremental scans. The browser and instrument/FX menus share a catalogue keyed by VST3 component identity and manufacturer. It prefers an existing portable bundle and omits the retired OSTF Arranger preview. During theory analysis, each pitched part caches matching and total note ticks for each global chord and scale event. Combining those ticks yields the ensemble percentage. The derived chord voicing, percussion, audio and disabled events do not enter the ensemble denominator.
 

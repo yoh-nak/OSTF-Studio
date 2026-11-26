@@ -107,6 +107,7 @@ public:
         }
     }
     juce::CriticalSection stateLock;
+    juce::Point<int> lastEditorSize{1120,800};
     Document document;
     juce::String offered,rackError;
     InstrumentRack rack;
@@ -212,6 +213,10 @@ public:
         source.setMultiLine(true); source.setReadOnly(true); source.setScrollbarsShown(true);
         addChildComponent(source);
         sourceToggle.onClick=[this] {
+            if (workspace && workspace->isVisible()) {
+                workspace->evaluateJavascript("window.ScaleAdviserApp.view(window.ScaleAdviserApp.state.view === 'text' ? 'visual' : 'text')");
+                return;
+            }
             const bool show=!source.isVisible();
             source.setVisible(show);
             if (show) { source.setText(proc.document.text,false); source.toFront(false); }
@@ -287,14 +292,27 @@ public:
             }
             else status.setText(r.getErrorMessage(),juce::dontSendNotification);
         };
-        open.onClick = [this]{ choose(false); }; save.onClick = [this]{ choose(true); };
+        open.onClick = [this]{ choose(false); };
+        save.onClick = [this]{
+            if (workspace && workspace->isVisible()) workspace->evaluateJavascript("window.ScaleAdviserApp.saveAs()");
+            else choose(true);
+        };
         refresh.onClick = [this]{ requestLoad(proc.offered); };
         proc.addChangeListener(this);
         sync();
-        setResizable(true,false); setResizeLimits(795,655,1700,1150); setSize(1120,800);
+        auto size = proc.lastEditorSize;
+        if (const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) {
+            size.x = std::min(size.x,display->userArea.getWidth()-24);
+            size.y = std::min(size.y,display->userArea.getHeight()-60);
+        }
+        setResizable(true,true); setResizeLimits(740,550,8192,8192);
+        setSize(std::max(740,size.x),std::max(550,size.y));
         showWorkspaceForFirstScore();
     }
-    ~Editor() override { proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this); }
+    ~Editor() override {
+        proc.lastEditorSize={getWidth(),getHeight()};
+        proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this);
+    }
     void resized() override {
         auto area=getLocalBounds().reduced(12);
         auto head=area.removeFromTop(32); sourceToggle.setBounds(head.removeFromRight(95)); returnWorkspace.setBounds(head.removeFromRight(140).reduced(1)); fullWorkspace.setBounds(head.removeFromRight(145).reduced(1)); song.setBounds(head);
@@ -600,8 +618,16 @@ private:
         };
     }
     void requestLoad(juce::String source) {
+        if (workspace && workspace->isVisible()) {
+            workspace->evaluateJavascript("Boolean(window.ScaleAdviserApp?.state.dirty || window.ScaleAdviserApp?.state.textDirty)",
+                [self=juce::Component::SafePointer<Editor>(this),source](auto result) {
+                    if (self) self->confirmLoad(source,result.getResult() && bool(*result.getResult()));
+                });
+        } else confirmLoad(source,false);
+    }
+    void confirmLoad(const juce::String& source,bool workspaceDirty) {
         const juce::ScopedLock lock(proc.stateLock);
-        if (proc.document.text.isEmpty() || proc.document.baseHash == digest(proc.document.text)) {
+        if (!workspaceDirty && (proc.document.text.isEmpty() || proc.document.baseHash == digest(proc.document.text))) {
             load(source);
             return;
         }
@@ -648,6 +674,12 @@ private:
        #if JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE
         if (Browser::areOptionsSupported(options)) {
             options = options.withNativeIntegrationEnabled()
+                .withEventListener("ostfScaleOpen", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
+                    if (self) self->choose(false);
+                })
+                .withEventListener("ostfScaleSave", [self=juce::Component::SafePointer<Editor>(this)](juce::var request) {
+                    if (self) self->saveWorkspaceFile(request);
+                })
                 .withEventListener("ostfScalePreview", [self=juce::Component::SafePointer<Editor>(this)](juce::var notes) {
                     if (!self || !notes.isArray() || notes.size() > 2048) return;
                     if (notes.size()) self->proc.rack.audition(notes);
@@ -712,6 +744,32 @@ private:
                 self->proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
             });
     }
+    void saveWorkspaceFile(const juce::var& request) {
+        if (!workspace) return;
+        const auto text = request["text"].toString();
+        const int ticket = request["ticket"];
+        const auto reply = [browser=juce::Component::SafePointer<juce::WebBrowserComponent>(workspace.get()),ticket](bool ok) {
+            if (browser) browser->evaluateJavascript("window.ScaleAdviserApp.finishStudioSave(" + juce::String(ticket)
+                + "," + (ok ? "true" : "false") + ")");
+        };
+        if (workspaceSaveChooser) { reply(false); return; }
+        auto checked=std::make_shared<Document>();
+        if (text.getNumBytesAsUTF8() > maxBytes || checked->load(text).failed()) {
+            status.setText("Invalid OSTF export.",juce::dontSendNotification); reply(false); return;
+        }
+        workspaceSaveChooser=std::make_unique<juce::FileChooser>("Save edited OSTF as",juce::File{},"*.ostf");
+        workspaceSaveChooser->launchAsync(juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::warnAboutOverwriting,
+            [self=juce::Component::SafePointer<Editor>(this),checked,reply](const juce::FileChooser& fc) {
+                if (!self) return;
+                const auto file = fc.getResult();
+                if (file != juce::File{}) {
+                    const auto result=checked->saveAs(file);
+                    self->status.setText(result.wasOk() ? "Saved edited OSTF." : result.getErrorMessage(),juce::dontSendNotification);
+                    reply(result.wasOk());
+                } else reply(false);
+                self->workspaceSaveChooser.reset();
+            });
+    }
     void choose(bool writing) {
         chooser=std::make_unique<juce::FileChooser>(writing?"Save OSTF":"Open OSTF",juce::File{},"*.ostf");
         using F=juce::FileBrowserComponent;
@@ -721,11 +779,8 @@ private:
                 auto file=fc.getResult(); if(file==juce::File{}) return;
                 if (!writing && file.getSize()<=maxBytes) {self->requestLoad(file.loadFileAsString());return;}
                 const juce::ScopedLock lock(self->proc.stateLock);
-                if (writing && !file.hasFileExtension("ostf")) {
-                    self->status.setText("Choose a filename ending in .ostf.",juce::dontSendNotification); return;
-                }
-                const bool ok=writing && file.replaceWithText(self->proc.document.text,false,false,nullptr);
-                self->status.setText(ok?"Saved OSTF.":"Unable to read or write this score.",juce::dontSendNotification);
+                const auto result = writing ? self->proc.document.saveAs(file) : juce::Result::fail("Score exceeds 24 MiB.");
+                self->status.setText(result.wasOk()?"Saved OSTF.":result.getErrorMessage(),juce::dontSendNotification);
             });
     }
     using ChangeDetails = juce::AudioProcessorListener::ChangeDetails;
@@ -742,6 +797,7 @@ private:
     bool showingReview=false;
     juce::TextButton fullWorkspace{"Full editor"}, returnWorkspace{"Apply scales"};
     std::unique_ptr<juce::WebBrowserComponent> workspace;
+    std::unique_ptr<juce::FileChooser> workspaceSaveChooser;
     juce::String workspaceHash;
     bool openedFirstScore = false;
     std::unique_ptr<juce::TemporaryFile> workspaceFile;

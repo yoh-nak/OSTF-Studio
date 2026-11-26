@@ -226,6 +226,78 @@ void RecordedMora::preparePitchMarks() {
         stable=voiced ? stable+1 : 0;
         if(stable==3) { voicedStart=pitchMarks[i-2]; break; }
     }
+    prepareSpectra();
+}
+
+void RecordedMora::prepareSpectra() {
+    spectra.clear();
+    if (rate <= 0 || pitchMarks.size() < 2) return;
+    juce::dsp::FFT fft(waveOrder);
+    const int anchor = loopStart > 0 ? loopStart : int(frames.size() / 2);
+    int closest = std::numeric_limits<int>::max();
+    for (size_t i = 0; i + 1 < pitchMarks.size(); ++i) {
+        const int at = pitchMarks[i];
+        if (!spectra.empty() && at - spectra.back().position < .010 * rate && i + 2 < pitchMarks.size()) continue;
+        Spectrum frame;
+        frame.position = at;
+        const int distance = std::abs(at - anchor);
+        int count = 0;
+        // Average neighbouring pulse powers. Their absolute phases need not match.
+        for (size_t j = i ? i - 1 : 0; j <= std::min(i + 1, pitchMarks.size() - 2); ++j) {
+            const int length = pitchMarks[j+1] - pitchMarks[j];
+            if (length < 2) continue;
+            std::array<float, waveSize * 2> data{};
+            for (int n = 0; n < waveSize; ++n)
+                data[n] = cycleSample(pitchMarks[j] + n * double(length) / waveSize, double(length) / waveSize);
+            fft.performRealOnlyForwardTransform(data.data(), true);
+            for (int h = 1; h < partials; ++h) {
+                const std::complex<float> bin(data[2*h], data[2*h+1]);
+                if (h < length / 2.) frame.magnitude[h] += std::norm(bin);
+                if (j == i && distance < closest)
+                    pulsePhase[h] = std::abs(bin) > 0.0001f ? bin / std::abs(bin) : std::complex<float>(0,-1);
+            }
+            frame.fundamental += float(rate / length);
+            ++count;
+        }
+        if (!count) continue;
+        closest = std::min(closest, distance);
+        frame.fundamental /= count;
+        for (auto& magnitude : frame.magnitude) magnitude = std::sqrt(magnitude / count);
+        spectra.push_back(frame);
+    }
+}
+
+void RecordedMora::renderCycle(Wave& wave, const juce::dsp::FFT& fft, double at, double pitch, double outputRate) const {
+    if (spectra.empty()) { wave.fill(0); return; }
+    const auto upper = std::lower_bound(spectra.begin(), spectra.end(), at,
+        [](const Spectrum& f, double position) { return f.position < position; });
+    const auto& b = upper == spectra.end() ? spectra.back() : *upper;
+    const auto& a = upper == spectra.begin() ? b : *std::prev(upper);
+    const float t = a.position == b.position ? 0.f : float((at - a.position) / (b.position - a.position));
+    std::array<float, partials> envelope{};
+    float sourcePower = 0;
+    for (int h = 1; h < partials; ++h) {
+        envelope[h] = std::lerp(a.magnitude[h], b.magnitude[h], t);
+        sourcePower += envelope[h] * envelope[h];
+    }
+    const double sourceHz = std::lerp(a.fundamental, b.fundamental, t);
+    // A nearly sinusoidal source has no resolvable formants to transpose.
+    const float shape = std::clamp(5.f * (1.f - envelope[1]*envelope[1] / std::max(1.e-12f,sourcePower)), 0.f, 1.f);
+    std::array<float, 2 * waveSize> data{};
+    float targetPower = 0;
+    for (int h = 1; h < partials && h * pitch < .5 * std::min(rate, outputRate); ++h) {
+        const double pos = std::max(1., h * pitch / sourceHz);
+        if (pos >= partials - 1) break;
+        const int k = int(pos);
+        const float magnitude = std::lerp(envelope[h], std::lerp(envelope[k], envelope[k+1], float(pos-k)), shape);
+        const auto bin = magnitude * pulsePhase[h];
+        data[2*h] = bin.real(); data[2*h+1] = bin.imag();
+        targetPower += magnitude * magnitude;
+    }
+    const float gain = std::min(2.f, std::sqrt(sourcePower / std::max(targetPower,1.e-12f)));
+    fft.performRealOnlyInverseTransform(data.data());
+    for (int n = 0; n < waveSize; ++n) wave[n] = gain * data[n];
+    wave.back() = wave.front();
 }
 
 std::unique_ptr<VoiceBank> VoiceBank::load(const juce::File& directory, juce::String& error) {

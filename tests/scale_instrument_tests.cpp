@@ -44,6 +44,12 @@ int main(int argc,char** argv) {
             if (auto* button = dynamic_cast<juce::TextButton*>(child); button && button->getButtonText() == "Apply scales")
                 applyScales = button;
         if (!browser || !applyScales) return 43;
+        if (!editor->isResizable()) return 45;
+        editor->setSize(760,580);
+        auto narrow = browser->getBounds();
+        editor->setSize(1800,950);
+        if (browser->getWidth()-narrow.getWidth()!=1040 || browser->getHeight()-narrow.getHeight()!=370) return 46;
+        editor->setSize(920,640);
         editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
         editor->setVisible(true);
         const auto title = juce::JSON::parse(juce::File(juce::String::fromUTF8(argv[2])).loadFileAsString())["song"]["title"].toString();

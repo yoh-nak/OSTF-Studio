@@ -25,7 +25,8 @@ class SyllableVoice {
             {760, 1200, 2600}, {290, 2250, 3100}, {330, 1250, 2350}, {490, 1880, 2650}, {490, 900, 2450}};
         constexpr float bandwidth[3] = {90, 120, 175};
         englishSound = p.english ? &VoiceBank::english()[size_t(p.english & 63)] : nullptr;
-        grainReady = false;
+        morphFromPrevious = waveReady && legato;
+        waveReady = false;
         joinedRecording = false;
         phone = p;
         age = 0;
@@ -62,7 +63,7 @@ class SyllableVoice {
     }
     void stopNote() { released = true; }
     bool endingOn(int ch) const { return channel == ch && released && envelope > 0; }
-    float sample(double sr, double bendRatio, float expression) {
+    float sample(double sr, double bendRatio, float expression, const juce::dsp::FFT& fft) {
         envelope = std::clamp(envelope + (released ? -36.0 : 110.0) / sr, 0.0, 1.0);
         if (released && envelope == 0) { key = channel = -1; return 0; }
         const double time = age++ / sr, held = noteAge++ / sr;
@@ -97,11 +98,11 @@ class SyllableVoice {
                 const double fraction = phone.durationMs ? std::clamp(time * 1000 / phone.durationMs, 0., 1.)
                                                         : std::min(.85, time / .24);
                 const auto centre = length * (.10 + .76 * fraction * fraction * (3. - 2. * fraction));
-                tone = grain(sound, centre, pitch, sr);
+                tone = voicedSample(sound, centre, pitch, sr, fft);
             } else if ((phone.english & 63) >= 25 && (phone.english & 63) <= 28 && !sound.pitchMarks.empty()) {
                 // Carry the sung pitch through L, M, N and NG into the vowel.
                 const double fraction = std::min(1., time / std::max(.025, phone.durationMs * .001));
-                tone = grain(sound, length * (.13 + .70 * fraction), pitch, sr);
+                tone = voicedSample(sound, length * (.13 + .70 * fraction), pitch, sr, fft);
             } else {
                 const double seconds = phone.durationMs ? phone.durationMs / 1000. : .055;
                 const double pos = time * length / seconds;
@@ -140,7 +141,7 @@ class SyllableVoice {
                 const double fraction = phone.durationMs > 0
                     ? std::min(1., elapsed / std::max(.020, phone.durationMs * .001 - onset))
                     : elapsed / (elapsed + .23);
-                const auto sustained = grain(*recorded, std::lerp(low, high, fraction), pitch, sr);
+                const auto sustained = voicedSample(*recorded, std::lerp(low, high, fraction), pitch, sr, fft);
                 // Join the unvoiced attack once. Mixing the raw pitched vowel and
                 // its retuned copy produces beating whenever their phases diverge.
                 if (!joinedRecording) { joinDelta = onset > 0 ? lastAttack-sustained : 0.f; joinedRecording = true; }
@@ -202,45 +203,33 @@ class SyllableVoice {
     std::array<Resonator, 3> resonators{};
     const RecordedMora* recorded = nullptr;
     const RecordedMora* englishSound = nullptr;
-    bool grainReady = false, joinedRecording = false;
+    bool waveReady = false, morphFromPrevious = false, joinedRecording = false;
     float lastAttack = 0.f, joinDelta = 0.f;
-    int oldMark = 0, newMark = 0;
-    float grain(const RecordedMora& source, double at, double pitch, double sr) {
-        // Resample one glottal cycle to one output period. Reading an output-sized
-        // window from a high voice can replay several source cycles on low notes.
-        if (source.pitchMarks.size() < 2) return 0;
-        auto cycleAt = [&] {
-            const auto& marks = source.pitchMarks;
-            const auto it = std::lower_bound(marks.begin(), marks.end(), at);
-            return juce::jlimit(0, int(marks.size()) - 2, int(it - marks.begin()) - 1);
-        };
-        if (!grainReady) {
-            oldMark = newMark = cycleAt();
-            grainReady = true;
+    RecordedMora::Wave previousWave{}, nextWave{};
+    int frameAge = 0, frameLength = 1;
+    float voicedSample(const RecordedMora& source, double at, double pitch, double sr, const juce::dsp::FFT& fft) {
+        const int hop = std::max(1, juce::roundToInt(sr * .005));
+        if (!waveReady || frameAge >= frameLength) {
+            const bool connected = !waveReady && morphFromPrevious && age < sr * .010;
+            if (connected) {
+                // Morph the timbre of adjacent voiced phones on the same pitch clock.
+                const float blend = std::min(1.f,float(frameAge) / frameLength);
+                for (size_t i = 0; i < previousWave.size(); ++i)
+                    previousWave[i] = std::lerp(previousWave[i], nextWave[i], blend);
+            } else if (waveReady) previousWave = nextWave;
+            source.renderCycle(nextWave, fft, at, pitch, sr);
+            if (!waveReady && !connected) previousWave = nextWave;
+            waveReady = true;
+            morphFromPrevious = false;
+            frameLength = connected ? 2 * hop : hop;
+            frameAge = 0;
         }
-        const float mix = float(.5 - .5 * std::cos(juce::MathConstants<double>::pi * phase));
-        // Overlap two pitch-synchronous windows around glottal closures. Near the
-        // recorded register the sample clock stays at its native rate, keeping the
-        // vowel resonances in place when the fundamental moves. Bound the window
-        // on low notes so it cannot replay several unshifted pulses per output cycle.
-        const double outputPeriod = source.rate / pitch;
-        auto window = [&](int index, double relativePhase) {
-            const auto centre = source.pitchMarks[size_t(index)];
-            // The left half of a pulse belongs to its preceding source cycle.
-            // Using the following cycle's length on both sides misaligns the
-            // two windows when the original singer's pitch is moving.
-            const double sourcePeriod = relativePhase < 0 && index > 0
-                ? centre - source.pitchMarks[size_t(index-1)] : source.pitchMarks[size_t(index+1)] - centre;
-            const double span = std::clamp(outputPeriod, .65 * sourcePeriod, 1.18 * sourcePeriod);
-            return source.cycleSample(centre + relativePhase * span, span * pitch / sr);
-        };
-        const float out = std::lerp(window(oldMark, phase), window(newMark, phase - 1.), mix);
+        const double position = phase * RecordedMora::waveSize;
+        const int i = int(position);
+        auto read = [&](const RecordedMora::Wave& wave) { return std::lerp(wave[i], wave[i+1], float(position-i)); };
+        const float out = std::lerp(read(previousWave), read(nextWave), float(frameAge++) / frameLength);
         phase += std::min(.45, pitch / sr);
-        if (phase >= 1) {
-            phase -= 1;
-            oldMark = newMark;
-            newMark = cycleAt();
-        }
+        phase -= std::floor(phase);
         return out;
     }
     Phone phone;
@@ -265,14 +254,14 @@ class Voice : public SyllableVoice {
         accentPhone = p.english;
     }
     void stopNote() { count = 0; SyllableVoice::stopNote(); }
-    float sample(double sr, double bend, float expression) {
+    float sample(double sr, double bend, float expression, const juce::dsp::FFT& fft) {
         if (stage+1 < count && ++stageFrames >= segments[stage].durationMs * .001 * sr) {
             const auto next = segments[++stage];
             beginTransition(channel,next,sr);
             SyllableVoice::articulate(next,sr,sourceBank,true);
             stageFrames = 0;
         }
-        const float current = SyllableVoice::sample(sr, bend, expression);
+        const float current = SyllableVoice::sample(sr, bend, expression, fft);
         if (remaining == length) spliceOffset = lastOutput - current;
         const float t = float(remaining) / length;
         if (remaining > 0) --remaining;
@@ -541,7 +530,7 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
             float sample = 0;
             for (auto& v : voices)
                 if (v.key >= 0)
-                    sample += v.sample(rate, bend[v.channel - 1], expression[v.channel - 1]);
+                    sample += v.sample(rate, bend[v.channel - 1], expression[v.channel - 1], synthesisFFT);
             const float magnitude = std::abs(sample);
             if (magnitude > .9f)
                 sample = std::copysign(.9f + .1f * std::tanh((magnitude - .9f) * 10.f), sample);
@@ -590,6 +579,7 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
     std::vector<Part> parts;
     int selected = -1, generation = 0, seen = -1, lastPart = -1, cursor = -1, lastIndex = -1;
     double rate = 48000, expected = -1;
+    juce::dsp::FFT synthesisFFT{RecordedMora::waveOrder};
     std::array<Voice, 16> voices{};
     const VoiceBank& factoryBank = VoiceBank::factory();
     std::unique_ptr<VoiceBank> bank;

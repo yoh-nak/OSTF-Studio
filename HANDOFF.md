@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Vowel resonance and hosted Scale Editor resizing
+
+Branch `feat/singer-envelope-scale-window`. The former pitch-window renderer kept the score F0 but transposed the recorded vowel's resonances. A reproducible UTAU test vowel has a broad resonance at 1,600 Hz. At A2 and A4 its strongest measured harmonic moved from 990 and 2,200 Hz in the previous build to 1,650 and 1,760 Hz in this build. The test measures the stationary portion and checks the score pitch separately. Compare the same Mei phrase at matched RMS when evaluating audible changes. Source material is a short bank of pre-synthesized phones. Expressive singing and perceived naturalness still need listening evaluation.
+
+The embedded Scale Editor's Open, Save and Save As actions now use the native validated score file path. The plugin remembers the window size while the same instance is open. Studio forwards resize constraints through its native plugin windows. Rebuild the Windows Release host and both VST3s together. Run `ostf_singing_tests`, `ostf_scale_workspace`, `ostf_scale_instrument_tests`, `ostf_scale_editor_tests` and `ostf_scale_host_resize`. The last test opens the VST3 on a real Studio track and changes its window size. The workspace test also checks that the embedded browser changes size. macOS hosting, hardware listening and manual file chooser interaction remain unverified for this change.
+
 ## Parallel racks, voice rendering and embedded Scale Editor
 
 Branch `feat/performance-racks-and-voice`. Build both rack VST3s together with the Singer, Scale Editor and Studio app. The Scale Editor bundles the original offline workspace. The Windows build uses the pinned WebView2 SDK and ships its loader notices. The browser's scale and A/B auditions send note sequences to the plug-in's instrument. Applying assignments checks the opening score snapshot before updating the plug-in document.

@@ -3012,7 +3012,18 @@ async function view(which){if(which==='text'&&state.view!=='text'&&!state.textDi
 async function refreshText(){if(state.textDirty&&!await confirmAction('Replace edited text?','Text edits have not been imported. Replace them with the current song document?'))return;setText();}
 async function copyText(){try{const text=$('textArea').value;try{await navigator.clipboard.writeText(text);}catch(_){$('textArea').focus();$('textArea').select();if(!document.execCommand('copy'))throw Error('Clipboard access is unavailable. Text is selected; use Ctrl+C / Cmd+C.');}status('Copied the complete OSTF text.','success');}catch(e){error(e);}}
 function checkText(){try{const p=SA.parse($('textArea').value);$('textFeedback').textContent='Core structure check passed · '+p.doc.harmony.chords.length+' chords.\n'+p.validation.warnings.join('\n');status('Text checked. Current song not changed.','success');}catch(e){$('textFeedback').textContent=e.message;error(e);}}
-function openFile(){if(!hostSend('openfile'))$('fileInput').click();}
+let studioSaveTicket=0;
+function finishStudioSave(ticket,saved){
+ if(ticket!==studioSaveTicket || !state.savePendingText)return;
+ const unchanged=state.savePendingText===JSON.stringify(state.doc);
+ state.savePendingText=null;
+ if(saved && unchanged){state.dirty=false;render();}
+ status(saved?'Saved edited OSTF.':'File was not saved.',saved?'success':'');
+}
+function openFile(){
+ if(window.__JUCE__?.backend)window.__JUCE__.backend.emitEvent('ostfScaleOpen',{});
+ else if(!hostSend('openfile'))$('fileInput').click();
+}
 async function handleFile(file){if(!file)return;if(file.size>24*1024*1024){error(Error('File is larger than 24 MB.'));return;}status('Reading '+file.name+'…');try{const ok=await importString(await file.text(),file.name);if(ok)await view('visual');}catch(e){error(e);}}
 async function save(mode='save'){
  try{
@@ -3048,6 +3059,9 @@ async function save(mode='save'){
      for(let i=0;i<encoded.length;i+=6000)hostSend('saveChunk',encoded.slice(i,i+6000));
      hostSend('saveEnd');
      status(selectingNew?'Checks passed. Choose a destination in Save As…':'Checks passed. Saving the linked file…');
+    }else if(window.__JUCE__?.backend){
+     state.savePendingText=JSON.stringify(state.doc);
+     window.__JUCE__.backend.emitEvent('ostfScaleSave',{text,ticket:++studioSaveTicket});
     }else{
      const blob=new Blob([text],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
      a.href=url;a.download=state.filename.replace(/\.(ostf|json|txt)$/i,'')+'_scales.ostf';a.click();
@@ -3226,7 +3240,7 @@ function nativeInit(){if(nativeBound||!window.max||typeof window.max.outlet!=='f
  window.max.bindInlet('saFileBinding',(name,bound)=>{state.fileBound=Number(bound)===1;if(state.fileBound&&name)state.filename=String(name);renderFileBinding();});window.max.bindInlet('saSaved',name=>{const unchanged=state.savePendingText===JSON.stringify(state.doc);state.savePendingText=null;state.saveModePending=null;state.fileBound=true;if(unchanged){state.dirty=false;state.sourceCore=SA.audit.snapshot(state.doc);}if(name)state.filename=String(name);render();status('Saved OSTF: '+(name||'file')+(unchanged?' · verified on disk':' · document changed during save; newer changes remain unsaved'),'success');notifyState();});window.max.bindInlet('saSaveCanceled',()=>{state.savePendingText=null;state.saveModePending=null;status('Save As canceled. The current song and linked file were not changed.');});window.max.bindInlet('saOpenCanceled',()=>status('Open canceled. Current song unchanged.'));window.max.bindInlet('saError',message=>{state.savePendingText=null;state.saveModePending=null;error(Error(String(message)));});
  $('hostLabel').textContent='Max for Live · MIDI effect';$('audioLabel').textContent='MIDI OUT → following instrument';hostSend('ui_ready');hostSend('midimode',state.midiMode);setMidiModeUI();return true;}
 // Exposed, bounded test / host interface. Never eval imported data.
-window.ScaleAdviserApp={state,exportAudit:()=>SA.audit.inspect(state.doc,state.sourceCore),currentPatternModel,applyPatternMatches,renderPatternStudio,scopeSelection,doScopeApply,renderScaleMap,renderNoteFit,selectedCompatibility,importString,selectChord,render,apply:doApply,applyAndNext,jumpNextUnassigned,autoSetSong,view,save,saveAs,analyzeSong,stop,playCompare,compareModel,exportText:()=>JSON.stringify(state.doc,null,2),nativeInit};
+window.ScaleAdviserApp={state,finishStudioSave,exportAudit:()=>SA.audit.inspect(state.doc,state.sourceCore),currentPatternModel,applyPatternMatches,renderPatternStudio,scopeSelection,doScopeApply,renderScaleMap,renderNoteFit,selectedCompatibility,importString,selectChord,render,apply:doApply,applyAndNext,jumpNextUnassigned,autoSetSong,view,save,saveAs,analyzeSong,stop,playCompare,compareModel,exportText:()=>JSON.stringify(state.doc,null,2),nativeInit};
 initSidebarResize();bind();
 const incoming = document.getElementById('studio-score');
 if (incoming && /^[A-Za-z0-9+/]+=*$/.test(incoming.textContent.trim())) {

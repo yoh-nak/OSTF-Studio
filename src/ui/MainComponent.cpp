@@ -202,12 +202,35 @@ public:
         : DocumentWindow(name, juce::Colour(panel), DocumentWindow::closeButton, false) {
         setUsingNativeTitleBar(true);
     }
+    ~PluginWindow() override { setConstrainer(nullptr); }
+    void attachEditor(std::unique_ptr<juce::AudioProcessorEditor> editor) {
+        const bool flexible = editor->isResizable();
+        setResizable(flexible, false);
+        setContentOwned(editor.release(), true);
+        if (flexible) setConstrainer(&editorLimits);
+    }
     std::function<void()> onClosed;
     std::unique_ptr<ostfstudio::InstrumentProgramWatch> programWatch;
     void closeButtonPressed() override {
         setVisible(false);
         if (onClosed) onClosed();
     }
+private:
+    struct EditorLimits final : juce::BorderedComponentBoundsConstrainer {
+        explicit EditorLimits(PluginWindow& w) : window(w) {}
+        juce::ComponentBoundsConstrainer* getWrappedConstrainer() const override {
+            if (auto* e = dynamic_cast<juce::AudioProcessorEditor*>(window.getContentComponent()))
+                return e->getConstrainer();
+            return nullptr;
+        }
+        juce::BorderSize<int> getAdditionalBorder() const override {
+            auto border = window.getContentComponentBorder();
+            if (auto* peer = window.getPeer())
+                if (const auto frame = peer->getFrameSizeIfPresent()) border = border.addedTo(*frame);
+            return border;
+        }
+        PluginWindow& window;
+    } editorLimits{*this};
 };
 
 
@@ -5016,7 +5039,7 @@ void MainComponent::openTrackPluginEditor(std::size_t index) {
                 [w = window.get()] { return w->isVisible(); },
                 [this] { return !transportActive_ && !recordTrack_; },
                 [this, index](int channel, int program) { offerInstrumentProgram(index, channel, program); });
-        window->setContentOwned(editor.release(), true);
+        window->attachEditor(std::move(editor));
         window->centreWithSize(window->getWidth(), window->getHeight());
         if (hasSharedParts(index)) {
             for (size_t i = 0; i < trackControls_.size(); ++i) {
@@ -5802,9 +5825,7 @@ void MainComponent::openSplice() {
                 safe->spliceInstance_ = std::move(instance);
                 safe->splicePlayer_.setProcessor(safe->spliceInstance_.get());
                 auto window = std::make_unique<PluginWindow>("Splice Sounds");
-                const auto resizable = editor->isResizable();
-                window->setResizable(resizable, false);
-                window->setContentOwned(editor.release(), true);
+                window->attachEditor(std::move(editor));
                 window->centreAroundComponent(safe.getComponent(), window->getWidth(), window->getHeight());
                 window->onClosed = [safe] { if (safe) safe->updateSplicePlayback(); };
                 safe->spliceWindow_ = std::move(window);
@@ -5862,7 +5883,7 @@ void MainComponent::openEffectEditor(bool output, std::size_t index, std::size_t
         std::unique_ptr<juce::AudioProcessorEditor> editor(slot.effect->createEditorAndMakeActive());
         if (!editor) editor = std::make_unique<juce::GenericAudioProcessorEditor>(*slot.effect);
         auto window = std::make_unique<PluginWindow>(slot.effect->getName());
-        window->setContentOwned(editor.release(), true);
+        window->attachEditor(std::move(editor));
         window->centreWithSize(window->getWidth(), window->getHeight());
         slot.editor = std::move(window);
     }

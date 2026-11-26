@@ -261,5 +261,8 @@ if (OSTF_STUDIO_BUILD_GUI)
         add_test(NAME ostf_studio_plugin_focus COMMAND OSTFStudio --plugin-focus-smoke
             "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF Harmonizer.vst3")
         set_tests_properties(ostf_studio_plugin_focus PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+        add_test(NAME ostf_scale_host_resize COMMAND OSTFStudio --plugin-focus-smoke
+            "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF Scale Editor.vst3")
+        set_tests_properties(ostf_scale_host_resize PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
     endif()
 endif()

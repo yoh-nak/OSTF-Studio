@@ -730,6 +730,26 @@ private:
         return 0;
     }
     void timerCallback() override {
+        if (file.getFileNameWithoutExtension() == "OSTF Scale Editor") {
+            stopTimer();
+            juce::OwnedArray<juce::PluginDescription> types;
+            studio.pluginFormats_.getFormat(0)->findAllTypesForFile(types,file.getFullPathName());
+            studio.editTracks(ostfstudio::TrackKind::pitched);
+            if (types.size()!=1 || studio.trackControls_.empty()) {finished(20); return;}
+            auto& track=*studio.trackControls_.front();
+            juce::String error;
+            track.instance=studio.pluginFormats_.createPluginInstance(*types[0],48000,256,error);
+            if (!track.instance) {finished(21); return;}
+            studio.openTrackPluginEditor(0);
+            auto* window=track.editor.get();
+            if (!window || !window->isResizable()) {finished(22); return;}
+            for (int width : {825,1760}) {
+                window->setBoundsConstrained(window->getBounds().withSizeKeepingCentre(width,700));
+                auto* content=window->getContentComponent();
+                if (!content || std::abs(content->getWidth()-width)>32) {finished(23); return;}
+            }
+            finished(0); return;
+        }
         const int result = advance();
         if (result != 0 || ++tick == 9) { stopTimer(); finished(result); }
     }

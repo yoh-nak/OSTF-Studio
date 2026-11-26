@@ -2,6 +2,7 @@
 #include "../src/plugins/instruments/VoiceBank.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <cmath>
+#include <complex>
 #include <iostream>
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 
@@ -15,6 +16,52 @@ static std::unique_ptr<juce::AudioFormatWriter> wavWriter(const juce::File& file
     if (!out) return {};
     return juce::WavAudioFormat{}.createWriterFor(out, juce::AudioFormatWriterOptions{}
         .withSampleRate(rate).withNumChannels(1).withBitsPerSample(16));
+}
+
+// The source vowel has a 200 Hz fundamental and a strong vocal-tract resonance at
+// 1.6 kHz. Moving the sung note must move the harmonic spacing while leaving the
+// resonance in the same band. A pure-tone pitch test cannot detect this failure.
+static bool testVowelResonance(const juce::File& folder) {
+    using namespace ostfstudio::singing;
+    juce::AudioBuffer<float> raw(1, 12000);
+    raw.clear();
+    for (int h = 1; h <= 24; ++h) {
+        const double amplitude = h == 1 ? .12 : .16 * std::exp(-.5 * std::pow((h * 200. - 1600.) / 260., 2));
+        for (int n = 0; n < raw.getNumSamples(); ++n)
+            raw.addSample(0, n, float(amplitude * std::sin(juce::MathConstants<double>::twoPi * h * n / 120.)));
+    }
+    auto writer = wavWriter(folder.getChildFile("a.wav"), 24000);
+    if (!writer || !writer->writeFromAudioSampleBuffer(raw, 0, raw.getNumSamples())) return false;
+    writer.reset();
+    juce::XmlElement state("OSTFSinger");
+    state.setAttribute("voiceFolder", folder.getFullPathName());
+    juce::MemoryBlock bytes; juce::AudioProcessor::copyXmlToBinary(state, bytes);
+    std::unique_ptr<juce::AudioProcessor> singer(createPluginFilter());
+    singer->setStateInformation(bytes.getData(), int(bytes.getSize()));
+    bool passed = true;
+    for (int key : {45, 69}) {
+        singer->prepareToPlay(48000, 256);
+        juce::AudioBuffer<float> block(2, 256);
+        juce::MidiBuffer notes;
+        notes.addEvent(phoneMessage(1, key, {0, vowelOnly}), 0);
+        notes.addEvent(juce::MidiMessage::noteOn(1, key, juce::uint8(100)), 0);
+        std::array<std::complex<double>, 36> bins{};
+        const auto pitch = juce::MidiMessage::getMidiNoteInHertz(key);
+        for (int b = 0; b < 100; ++b) {
+            singer->processBlock(block, notes); notes.clear();
+            if (b < 25) continue;
+            for (int n = 0; n < 256; ++n) {
+                const auto fundamental = std::polar(1., -juce::MathConstants<double>::twoPi * pitch * (b * 256 + n) / 48000.);
+                auto harmonic = fundamental;
+                for (auto& bin : bins) { bin += double(block.getSample(0,n)) * harmonic; harmonic *= fundamental; }
+            }
+        }
+        const auto peak = std::max_element(bins.begin() + 1, bins.end(), [](auto a, auto b){ return std::norm(a) < std::norm(b); });
+        const auto resonance = (1 + std::distance(bins.begin(), peak)) * pitch;
+        std::cout << "Input resonance 1600 Hz, sung F0 " << pitch << " Hz, output peak " << resonance << " Hz\n";
+        passed &= std::abs(*peak) > 1. && std::abs(resonance - 1600.) <= pitch * .5 + 65.;
+    }
+    return passed;
 }
 
 static bool testRecordedVoice() {
@@ -134,7 +181,8 @@ static bool testRecordedVoice() {
             prev=value;
         }
     }
-    return std::abs(crossings-88)<=3; // 0.8 s at A2, well below the recorded 200 Hz.
+    if (std::abs(crossings-88)>3 || !oto.deleteFile() || !wav.deleteFile()) return false;
+    return testVowelResonance(dir);
 
 }
 

@@ -83,6 +83,14 @@ juce::Result Document::load(const juce::String& utf8) {
         return juce::Result::ok();
     } catch (const std::exception& e) { return juce::Result::fail(juce::String::fromUTF8(e.what())); }
 }
+juce::Result Document::saveAs(const juce::File& file) const {
+    if (!file.hasFileExtension("ostf")) return juce::Result::fail("Choose a filename ending in .ostf.");
+    if (text.isEmpty()) return juce::Result::fail("Open a score first.");
+    juce::TemporaryFile temp(file);
+    if (!temp.getFile().replaceWithText(text,false,false,nullptr) || !temp.overwriteTargetFileWithTemporary())
+        return juce::Result::fail("Unable to save the edited score.");
+    return juce::Result::ok();
+}
 juce::Result Document::assign(int chordIndex, int tonic, int mode) {
     return assign(std::vector<int>{chordIndex}, tonic, mode);
 }
