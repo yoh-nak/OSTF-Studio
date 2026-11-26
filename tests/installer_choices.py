@@ -13,7 +13,9 @@ from plugin_choices import GROUPS, catalog, windows_files
 class InstallerChoices(unittest.TestCase):
     def check_choices(self, plugins):
         version = "1.0.0"
-        mac = distribution(plugins, version).getroot()
+        display_version = "1.0.0-public-alpha.1-dev"
+        mac = distribution(plugins, version, display_version).getroot()
+        self.assertEqual(mac.findtext("title"), "OSTF Studio " + display_version)
         self.assertEqual(mac.find("options").get("customize"), "always")
         self.assertEqual(mac.find("choice[@id='application']").get("enabled"), "false")
         self.assertEqual(mac.find("choice[@id='application']").get("selected"), "true")

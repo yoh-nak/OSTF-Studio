@@ -126,9 +126,7 @@ Choose AI Arrangement Studio, AI Lyric Studio or AI Vocal Studio from the **Mode
 
 The **External connections** menu opens Splice, Melodyne and Ableton Link. Select an audio clip in the arrangement or the lower clip lane to open its source range in Melodyne. Opening Melodyne without a selection launches the standalone editor. Enable Link in both Live and Studio and enable Start Stop Sync in Live to share transport. The Link tempo menu shows the connected peer count. Audio capture holds its starting tempo for the duration of a take.
 
-**Download 1.0.0 alpha 3** · [Windows x64 installer](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Setup.exe) · [Windows portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon Mac DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_macOS_arm64.dmg)
-
-**1.0.0 alpha** is the first public testing series for Windows x64 and Apple silicon Macs. Try a bundled demo to explore the Global Timeline, piano roll, VST3 instruments and session mixer. [Alpha downloads and release notes](https://github.com/yoh-nak/OSTF-Studio/releases)
+**OSTF Studio Public Alpha 1** begins the public testing series for Windows x64 and Apple silicon Macs. The three experimental downloads have been withdrawn. [Public Alpha 1 development and checks](https://github.com/yoh-nak/OSTF-Studio/pull/7) · [Published downloads](https://github.com/yoh-nak/OSTF-Studio/releases)
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
 

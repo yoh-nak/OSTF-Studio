@@ -11,7 +11,7 @@ on:
         options: [none, stable, prerelease]
         default: none
       release_tag:
-        description: New release tag (for example v1.0.0-alpha.1)
+        description: New release tag (for example v1.0.0-public-alpha.1)
         type: string
 
 permissions:
@@ -150,7 +150,7 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          python3 packaging/macos_package.py '${{ steps.version.outputs.binary }}'
+          python3 packaging/macos_package.py '${{ steps.version.outputs.binary }}' --display-version '${{ steps.version.outputs.display }}'
       - name: Verify macOS plug-in selection and full install
         if: runner.os == 'macOS'
         shell: bash

@@ -9,9 +9,9 @@ from pathlib import Path
 from plugin_choices import GROUPS, ROOT, catalog
 
 
-def distribution(plugins, version):
+def distribution(plugins, version, display_version=None):
     doc = ET.Element("installer-gui-script", minSpecVersion="2")
-    ET.SubElement(doc, "title").text = "OSTF Studio"
+    ET.SubElement(doc, "title").text = f"OSTF Studio {display_version or version}"
     ET.SubElement(doc, "options", customize="always", hostArchitectures="arm64")
     ET.SubElement(doc, "domains", enable_anywhere="false", enable_currentUserHome="false", enable_localSystem="true")
     outline = ET.SubElement(doc, "choices-outline")
@@ -63,7 +63,7 @@ def build_component(bundle, location, code, version, work):
             "--identifier", "org.ostf.studio." + code.lower(), "--version", version, work / (code + ".pkg"))
 
 
-def build(build_dir, output, version):
+def build(build_dir, output, version, display_version=None):
     plugins = catalog()
     app = build_dir / "OSTFStudio_artefacts/Release/OSTF Studio.app"
     run("lipo", app / "Contents/MacOS/OSTF Studio", "-verify_arch", "arm64")
@@ -85,7 +85,7 @@ def build(build_dir, output, version):
                 raise ValueError(f"Missing plug-in license: {bundle}")
             build_component(bundle, "/Library/Audio/Plug-Ins/VST3", p["code"], version, work)
         xml = work / "Distribution.xml"
-        distribution(plugins, version).write(xml, encoding="utf-8", xml_declaration=True)
+        distribution(plugins, version, display_version).write(xml, encoding="utf-8", xml_declaration=True)
         resources = work / "Resources"
         for lang, index in (("en", 0), ("ja", 1)):
             folder = resources / (lang + ".lproj")
@@ -101,7 +101,8 @@ def build(build_dir, output, version):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version")
+    parser.add_argument("--display-version", help="Version shown in Installer, including the prerelease suffix")
     parser.add_argument("--build", type=Path, default=Path("build"))
     parser.add_argument("--output", type=Path, default=Path("dist/OSTF_Studio_macOS_arm64.dmg"))
     args = parser.parse_args()
-    build(args.build, args.output, args.version)
+    build(args.build, args.output, args.version, args.display_version)

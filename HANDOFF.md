@@ -1,5 +1,9 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — Public Alpha 1
+
+The owner withdrew the three experimental GitHub Releases and their 12 attached files. The experimental tags remain available for source history. The candidate previously called alpha 4 is now **OSTF Studio Public Alpha 1**, with a fresh tag name reserved for publication, `v1.0.0-public-alpha.1`. PR builds show `1.0.0-public-alpha.1-dev` in Studio and in both installers. The package receipt version remains numeric for upgrades. Review the Windows and macOS checks in [draft PR 7](https://github.com/yoh-nak/OSTF-Studio/pull/7). Publishing still requires explicit authorization.
+
 ## 2026-11-27 — compact Scale Editor controls and alpha 4 preparation
 
 The public README introduces Studio with a 1536 × 970 PNG from the Windows Portable running Paper Lantern Replies. To reproduce it, set `OSTF_LIVE_MATRIX_PNG` to an absolute output path and run Studio with `--live-session-smoke examples/demo-songs/paper-lantern-replies.ostf` using an absolute fixture path. Keep `docs/images/ostf-studio-live-session.png` with the README in the source tree so branches and release tags resolve the same illustration.
