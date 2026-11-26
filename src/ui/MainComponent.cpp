@@ -12,6 +12,7 @@
 #include "ui/PluginRoles.h"
 #include "ui/StudioLanguage.h"
 #include "ui/SongMidi.h"
+#include "ui/SynthVExport.h"
 #include "StockEffects.h"
 #include <BinaryData.h>
 #include <algorithm>
@@ -119,7 +120,7 @@ bool stackTimelineNavigation(int innerWidth, int workspaceHeight) {
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
                    exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, trackTakeMenu, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal, exportMusicXml, exportChordPro, showSamplesPane, moveRowUp, moveRowDown,
-                   printLeadSheet, printPartScore, openLiveSession, pasteScaleReturn };
+                   printLeadSheet, printPartScore, openLiveSession, pasteScaleReturn, exportSvpLead, exportSvpChorus, exportSvpAll };
 constexpr struct { const char* name; const char* first; const char* second; const char* third; } studioModes[] {
     {"AI Arrangement Studio", "Keep just piano and bass in the verse. Suggest an eight-bar build into the chorus.",
                               "Suggest two bass lines with different rhythms over these chords.",
@@ -1495,6 +1496,11 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addSubMenu(TRANS("Print"),printing,project_!=nullptr);
             menu.addItem(exportMusicXml, TRANS("Export MusicXML..."), project_ != nullptr);
             menu.addItem(exportChordPro, TRANS("Export ChordPro..."), project_ != nullptr);
+            juce::PopupMenu svp;
+            svp.addItem(exportSvpLead, TRANS("Lead melody only"));
+            svp.addItem(exportSvpChorus, TRANS("Chorus only"));
+            svp.addItem(exportSvpAll, TRANS("Lead melody and chorus"));
+            menu.addSubMenu(TRANS("Export Synthesizer V (.svp)"), svp, project_ != nullptr);
             menu.addSeparator();
             menu.addItem(importMedia, TRANS("Import and transcription"));
             break;
@@ -1720,6 +1726,9 @@ void MainComponent::menuItemSelected(int item, int) {
             break;
         case saveProject: saveDocument(SaveFormat::package); break;
         case exportMusicXml: saveDocument(SaveFormat::musicXml); break;
+        case exportSvpLead: saveDocument(SaveFormat::svpLead); break;
+        case exportSvpChorus: saveDocument(SaveFormat::svpChorus); break;
+        case exportSvpAll: saveDocument(SaveFormat::svpAll); break;
         case exportChordPro: saveDocument(SaveFormat::chordPro); break;
         case exportMidi0: saveDocument(SaveFormat::midi0); break;
         case exportMidi1: saveDocument(SaveFormat::midi1); break;
@@ -3648,20 +3657,22 @@ void MainComponent::saveDocument(SaveFormat format) {
     const bool package = format == SaveFormat::package;
     const bool xml = format == SaveFormat::musicXml;
     const bool chords = format == SaveFormat::chordPro;
-    const bool exporting = xml || chords || midi;
-    const juce::String extension = xml ? "musicxml" : chords ? "chordpro" : midi ? "mid" : package ? "ostfp" : "ostf";
+    const bool svp = format == SaveFormat::svpLead || format == SaveFormat::svpChorus || format == SaveFormat::svpAll;
+    const bool exporting = xml || chords || midi || svp;
+    const juce::String extension = svp ? "svp" : xml ? "musicxml" : chords ? "chordpro" : midi ? "mid" : package ? "ostfp" : "ostf";
     auto title = juce::File::createLegalFileName(project_->title).trim();
     if (title.isEmpty()) title = "Untitled";
+    if (svp) title += format == SaveFormat::svpLead ? "-lead" : format == SaveFormat::svpChorus ? "-chorus" : "-vocals";
     const bool upgrading = !exporting && legacySourceFile_ != juce::File{};
     const auto start = upgrading
         ? legacySourceFile_.getSiblingFile(legacySourceFile_.getFileNameWithoutExtension() + "-5.0.0." + extension)
         : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(title + "." + extension);
-    const auto dialogTitle = juce::translate(xml ? "Export MusicXML..." : chords ? "Export ChordPro..." : midi ? "Save as MIDI (SMF)" : package ? "Save as OSTFP" : "Save as OSTF")
+    const auto dialogTitle = juce::translate(svp ? "Export Synthesizer V (.svp)" : xml ? "Export MusicXML..." : chords ? "Export ChordPro..." : midi ? "Save as MIDI (SMF)" : package ? "Save as OSTFP" : "Save as OSTF")
         + (upgrading ? " (OSTF " + project_->sourceVersion + " " + juce::String::charToString(0x2192) + " 5.0.0)" : juce::String{});
     chooser_ = std::make_unique<juce::FileChooser>(dialogTitle, start, chords ? "*.chordpro;*.cho" : "*." + extension);
     chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                               | juce::FileBrowserComponent::warnAboutOverwriting,
-        [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, package, midi, xml, chords, exporting, format,
+        [safe = juce::Component::SafePointer<MainComponent>(this), generation = projectGeneration_, package, midi, xml, chords, svp, exporting, format,
          extension](const juce::FileChooser& chooser) {
             if (!safe || safe->projectGeneration_ != generation) return;
             const auto file = chooser.getResult();
@@ -3675,7 +3686,11 @@ void MainComponent::saveDocument(SaveFormat format) {
             auto result = juce::Result::fail(TRANS("Could not open a temporary file for saving"));
             {
                 juce::FileOutputStream output(temporary.getFile());
-                if (output.openedOk() && (xml || chords)) {
+                if (output.openedOk() && svp) {
+                    using ostfstudio::SynthVParts;
+                    const auto parts = format == SaveFormat::svpLead ? SynthVParts::lead : format == SaveFormat::svpChorus ? SynthVParts::chorus : SynthVParts::all;
+                    result = ostfstudio::writeSynthV(*safe->project_, parts, output);
+                } else if (output.openedOk() && (xml || chords)) {
                     const auto score = ostfstudio::notationScore(*safe->project_);
                     result = xml ? ostfstudio::writeSongXml(output, score) : ostfstudio::writeChordPro(output, score);
                 } else if (output.openedOk() && midi) {
@@ -3703,7 +3718,8 @@ void MainComponent::saveDocument(SaveFormat format) {
                 safe->legacySourceFile_ = juce::File{};
                 safe->updateDocumentLabel();
             }
-            safe->statusLabel_.setText(result.wasOk() ? TRANS("Saved ") + file.getFileName() : juce::translate(result.getErrorMessage()),
+            const auto detail = svp ? TRANS(" / Set the voice and vocal expression in Synthesizer V.") : juce::String{};
+            safe->statusLabel_.setText(result.wasOk() ? TRANS("Saved ") + file.getFileName() + detail : juce::translate(result.getErrorMessage()),
                                        juce::dontSendNotification);
         });
 }

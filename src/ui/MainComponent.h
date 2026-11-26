@@ -187,7 +187,7 @@ private:
     bool openPreview(juce::InputStream& input, const juce::String& filename, bool plainScore = false, const juce::File& sourceFolder = {});
     void editSongInformation();
     void updateDocumentLabel();
-    enum class SaveFormat { score, package, midi0, midi1, musicXml, chordPro };
+    enum class SaveFormat { score, package, midi0, midi1, musicXml, chordPro, svpLead, svpChorus, svpAll };
     void saveDocument(SaveFormat);
     juce::PopupMenu timelineMenu() const;
     void selectTrack(std::size_t index, bool keepMixer = false);

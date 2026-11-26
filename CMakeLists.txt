@@ -171,7 +171,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         target_sources(${studio_target} PRIVATE src/ui/MainComponent.cpp src/ui/SystemUsageMeter.cpp src/ui/ArrangementClipEdits.cpp src/ui/ChordReview.cpp src/ui/OstfpPreview.cpp
             src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
             src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
-            src/ui/TheoryGuide.cpp)
+            src/ui/TheoryGuide.cpp src/ui/SynthVExport.cpp)
         target_include_directories(${studio_target} PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
         target_compile_definitions(${studio_target} PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
         target_compile_definitions(${studio_target} PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
@@ -241,13 +241,14 @@ if (OSTF_STUDIO_BUILD_GUI)
     target_link_libraries(ostf_pitch_probe PRIVATE juce::juce_audio_formats)
     add_test(NAME ostf_audio_pitch_render COMMAND ostf_pitch_probe --self-test)
 
-    add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
+    add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp tests/synthv_export_tests.cpp src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp src/ui/SynthVExport.cpp)
     target_include_directories(ostf_studio_ostfp_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(ostf_studio_ostfp_tests PRIVATE JUCE_USE_CURL=0)
     target_link_libraries(ostf_studio_ostfp_tests PRIVATE ostf_studio_core ostf_score_validation juce::juce_cryptography juce::juce_audio_formats)
     add_test(NAME ostf_studio_ostfp_tests COMMAND ostf_studio_ostfp_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
     add_test(NAME ostf_studio_52 COMMAND ostf_studio_ostfp_tests --ostf52 "${CMAKE_SOURCE_DIR}/tests/fixtures/ostf52")
+    add_test(NAME ostf_studio_synthv_export COMMAND ostf_studio_ostfp_tests --svp "${CMAKE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/svp-test-output")
     foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0)
         add_test(NAME ostf_studio_read_${version} COMMAND ostf_studio_ostfp_tests --legacy
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/legacy/${version}.ostf")

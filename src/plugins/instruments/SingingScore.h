@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "EnglishLyrics.h"
+#include "../../LyricAlignment.h"
 #include "../../core/TempoMap.h"
 #include <map>
 #include <string_view>
@@ -20,10 +21,7 @@ inline void appendMelisma(Lyrics& lyrics, const std::vector<Phone>& phones,
         return p.onset != closure && p.onset != moraN && p.onset != lengthMark
             && p.vowelTiming != VowelTiming::support && p.vowelTiming != VowelTiming::offglide;
     });
-    std::vector<juce::String> notes;
-    for (const auto& id : ids) notes.push_back(id.toString());
-    if (std::all_of(notes.begin(),notes.end(),[&](const auto& id){ return starts.contains(id); }))
-        std::stable_sort(notes.begin(),notes.end(),[&](const auto& a,const auto& b){ return starts.at(a)<starts.at(b); });
+    const auto notes = lyricIdsInTimeOrder(ids,starts);
 
     if (nucleus == phones.rend()) {
         // A standalone length mark is resolved against the previous sung note below.
@@ -54,8 +52,10 @@ inline void appendMelisma(Lyrics& lyrics, const std::vector<Phone>& phones,
 inline Lyrics lyricsFor(const juce::var& score) {
     Lyrics lyrics;
     Lyrics readings;
+    LyricStarts unitStarts;
     std::map<juce::String, std::vector<juce::var>> phraseUnits;
     for (const auto& unit : items(score["lyrics"]["units"])) {
+        if (unit.hasProperty("start")) unitStarts.emplace(unit["id"].toString(),juce::int64(unit["start"]));
         auto reading = unit["pronunciation"].toString().trim();
         readings[unit["id"].toString()] = sungReading(unit["text"].toString().trim(), reading);
         phraseUnits[unit["phraseId"].toString()].push_back(unit);
@@ -101,12 +101,25 @@ inline Lyrics lyricsFor(const juce::var& score) {
     }
     std::map<juce::String,juce::int64> noteStarts;
     const auto& alignments = items(score["lyrics"]["alignments"]);
-    if (std::any_of(alignments.begin(),alignments.end(),[](const auto& a){return a["unitIds"].size()==1 && a["noteIds"].size()>1;}))
+    if (std::any_of(alignments.begin(),alignments.end(),[](const auto& a){return a["noteIds"].size()>1;}))
         for (const auto& track : items(score["tracks"]))
             for (const auto& clip : items(track["clips"]))
                 for (const auto& note : items(clip["notes"]))
                     noteStarts.emplace(note["id"].toString(),juce::int64(clip["start"])+juce::int64(note["start"]));
     for (const auto& alignment : alignments) {
+        const auto& ids = items(alignment["noteIds"]);
+        const auto& units = items(alignment["unitIds"]);
+        if (ids.size() > 1 && ids.size() == units.size()) {
+            const auto notes = lyricIdsInTimeOrder(ids,noteStarts);
+            const auto syllables = lyricIdsInTimeOrder(units,unitStarts);
+            for (size_t i = 0; i < notes.size(); ++i) {
+                const auto src = readings.find(syllables[i]);
+                if (src == readings.end()) continue;
+                auto& dest = lyrics[notes[i]];
+                dest.insert(dest.end(),src->second.begin(),src->second.end());
+            }
+            continue;
+        }
         std::vector<Phone> phones;
         for (const auto& id : items(alignment["unitIds"])) {
             const auto found = readings.find(id.toString());
@@ -115,7 +128,6 @@ inline Lyrics lyricsFor(const juce::var& score) {
             phones.insert(phones.end(), next.begin(), next.end());
         }
         if (phones.empty()) continue;
-        const auto& ids = items(alignment["noteIds"]);
         if (alignment["unitIds"].size()==1 && ids.size()>1) {
             appendMelisma(lyrics,phones,ids,noteStarts);
             continue;

@@ -856,7 +856,10 @@ static int checkOstf52(const juce::File& fixtures) {
     return readOstfPreview(bad,rejected).failed()?0:9;
 }
 
+int checkSynthVExport(const juce::File& root, const juce::File& output);
 int main(int argc, char** argv) {
+    if (argc==4 && std::string_view(argv[1])=="--svp")
+        return checkSynthVExport(juce::File(argv[2]),juce::File(argv[3]));
     if (argc==3 && std::string_view(argv[1])=="--ostf52") return checkOstf52(juce::File::createFileWithoutCheckingPath(argv[2]));
     if (argc == 3 && std::string_view(argv[1]) == "--legacy")
         return legacyRoundTrip(juce::File::createFileWithoutCheckingPath(argv[2]));

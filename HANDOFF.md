@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — Synthesizer V vocal export
+
+Branch `feat/synthesizer-v-vocal-export` adds **File → Export Synthesizer V (.svp)** to the standalone and hosted workstation. Choose the lead, chorus, or both. The writer uses separate monophonic SVP tracks for distinct voices and simultaneous harmony notes. It preserves aligned lyric text, enabled arrangement notes, tempo and meter. Select voice databases in Synthesizer V. Formant Singer also assigns a group of equally many lyric units and notes one to one, preventing repeated syllables on short notes.
+
+Build the Windows Release targets `OSTFStudio`, `ostf_hosted_studio_tests`, `OSTFSynthSinger_VST3`, `ostf_singing_tests` and `ostf_studio_ostfp_tests`. Run `ctest -C Release -R ostf_studio_synthv_export --output-on-failure` in the build directory to produce the three Paper Lantern Replies projects under `svp-test-output`. LibreSVIP 2.9.2 independently loaded all three and reproduced the original 194 lead and 10 backing notes, including their pitches, times and lyrics. Vocal synthesis in the commercial Synthesizer V editor, subjective listening and macOS execution remain unverified.
+
+Windows x64 Release passed all 46 CTest cases. Additional SVP assertions checked the selected comp and an instrumental countermelody. The local portable build and three sample files are in `E:/OSTF-Studio-build-cache/synthv-export-windows`. The staged application opened the demo in its startup smoke test and the staged workstation VST3 passed its external-host playback and recall test.
+
 ## 2026-11-27 — plug-in switches and transport key display
 
 Branch `feat/device-bypass-camelot` builds on the hosted workstation. Both installer component trees use each VST3's display name. Bundle paths and component IDs stay stable for upgrades. The transport retains the last effective key at the end of a score. Clicking its Camelot code opens a 24-key wheel with the current key highlighted.

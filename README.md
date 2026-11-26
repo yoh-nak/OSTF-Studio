@@ -10,6 +10,8 @@ OSTF Studio is a desktop music workstation for arranging, playing and editing Op
 
 ## OSTF 5.2 studio preview
 
+In the development build, choose **File → Export Synthesizer V (.svp)** and select the lead melody, chorus, or both. The combined file opens as one song with separate vocal tracks. Notes retain their pitches, timing and lyrics, including the saved arrangement take. Select the singers and adjust their expression in Synthesizer V.
+
 The transport retains the last key at the end of the score. Click its coloured Camelot number to see the 24 major and minor keys with the current key highlighted. Switch **Bypass** on in an FX chain, the instrument destination menu, or a rack to audition the mix with an individual device inactive. Save the session as an OSTFP to recall the assignments and switch settings.
 
 ### Run Studio inside another DAW (development build)
@@ -315,7 +317,7 @@ On macOS arm64, run **Install OSTF Studio and VST3.pkg** inside the DMG to insta
 - `AGENTS.md` instructions for continuing in Codex
 - Architecture/roadmap/checklists
 
-Pending work includes full OSTFP conformance, SVP export, network sync, AI-assisted editing and signed binaries.
+Pending work includes full OSTFP conformance, verification in the Synthesizer V desktop editor, network sync, AI-assisted editing and signed binaries.
 
 ## Stock effects and mixed demos in alpha 3
 

@@ -181,6 +181,8 @@ The right pane uses the JUCE directory browser for local audio. Drag payloads ca
 
 ## Score interchange
 
+The File menu exports Synthesizer V project version 113. The adapter writes 705,600,000 blicks per quarter note, converts the start and end of each enabled arrangement note, and carries the tempo and meter maps. Voice-specific lyric alignments and performance note IDs separate singers sharing an OSTF 5.2 core track. Overlapping notes use additional monophonic tracks. One lyric unit sustained across notes uses a continuation, and an equal number of units and notes is paired in musical order. Untimed units retain authored order. Wordless humming uses `m` and an unlabelled pitched note uses `la`. The transfer covers the score and lyric text. Custom phones, expression curves, plug-in audio and voice libraries are outside this mapping. [Dreamtonics track model](https://sv2.docs.dreamtonics.com/en/voice-setup) · [SVP file model](https://github.com/SoulMelody/LibreSVIP/blob/master/libresvip/plugins/svp/model.py)
+
 MusicXML partwise documents and compressed MXL containers feed the same in-memory score import and validated OSTF save path. Local PDF recognition passes the Audiveris MXL output directly to this reader. Full-song MusicXML exports the source notation parts, with harmony on the first part. ChordPro exports chord symbols with aligned lyrics. These are score interchange views of the current project.
 
 ## Mixer and plug-in controls
@@ -268,7 +270,7 @@ Both installers derive their selectable plug-ins from the build catalogues. Each
 | `DeviceGraph` | ASIO/WASAPI/CoreAudio multiple-device aggregation |
 | `AIEditEngine` | proposed edits, diff preview and approve-at-boundary |
 | `DistributedSession` | remote state synchronization with jitter strategies |
-| `Exchange` | Song export to SMF 0/1 and selected-track MIDI drag. Planned conversions include SVP and OSTF TEXT import/export and merge. |
+| `Exchange` | Song export to SMF 0/1, selected-track MIDI drag and lead/chorus export to Synthesizer V. Range-based OSTF TEXT merge is planned. |
 
 ## Principles
 1. Score/source coordinates must not be overwritten by playback loop/sync time.
@@ -318,7 +320,7 @@ Next engraving milestones are rhythmic spelling and beams, enharmonic spelling i
 | M1 · OSTF TEXT | After official release intake, implement validation and read-only mapping to section, chord, key, meter, tempo, and phrasing lanes. Add text export, clipboard and range exchange, and a merge preview with undo and explicit approval for destructive edits. Verify with official positive and negative fixtures and semantic round trips. |
 | M2 · Projects and playback | Implement OSTFP load/save with the official manifest and digest rules. Test optional audio, missing assets, unknown-data handling and save recovery. Keep source musical positions, finite repeat/loop plans, and session/audio clock separate. Verify deterministic rendering and SMF Type 1 export with independent MIDI readback. |
 | M3 · Hosting and sound | Compare JUCE and Tracktion Engine for licensing, state persistence, routing, and deterministic scheduling. Implement the chosen host boundary and test VST3 discovery, state restoration and missing plugins, AU on macOS where supported, and baseline playback on real Windows and Mac devices. |
-| M4 · Vocal exchange | Version the SVP mapping, report unmapped expression, and verify manual import in Synthesizer V. Evaluate ARA and any automated integration using documented vendor APIs. |
+| M4 · Vocal exchange | Implemented SVP version 113 export of the lead, chorus, or both. Verify import and rendering in the commercial editor. Vocal expression conversion and automated integration remain open. |
 | M5 · Audio devices and AI edits | Measure Windows ASIO input and WASAPI output with independent clocks, and verify CoreAudio on macOS. Test buffering, resampling, drift and latency compensation. Validate AI proposals and diffs off the audio thread and apply approved edits at safe musical boundaries. |
 | M6 · Collaboration and distribution | Test edit ordering, reconnect, conflict handling and transport under simulated WAN latency. Complete licensing, signing, notarization and real-device release verification. |
 
