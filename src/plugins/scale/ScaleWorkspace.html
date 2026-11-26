@@ -561,7 +561,18 @@ body.sidebar-resizing,body.sidebar-resizing * {cursor:col-resize!important;user-
 #hostTools #hostDrag:disabled{border-color:var(--line);cursor:default}
 #hostDrag .grip{pointer-events:none;padding-right:5px;color:var(--accent)}
 #hostTools :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.studio-host header{flex-wrap:wrap}
+header{flex-wrap:wrap}
+.tool-symbols{position:absolute;pointer-events:none}
+[data-hint]{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:28px}
+.tool-icon{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linejoin:round;stroke-linecap:round;pointer-events:none}
+#hostDrag .tool-icon{stroke-width:3;color:var(--accent)}
+#hostTools .group-name{color:var(--dim);font-size:11px}
+#hostTools .tool-value{font-size:11px;font-weight:400;overflow:hidden;text-overflow:ellipsis;max-width:13ch}
+#hostTools .tool-value:not(:empty){border-inline-start:1px solid var(--line);padding-inline-start:6px}
+#hostTools{row-gap:4px}
+#actionHint{position:fixed;z-index:1000;box-sizing:border-box;max-width:min(32ch,calc(100vw - 12px));pointer-events:none;color:var(--control-text,var(--text));background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:6px 9px;font:12px/1.5 "Segoe UI",sans-serif;box-shadow:0 2px 8px #0005}
+@media(forced-colors:active){#actionHint{color:CanvasText;background:Canvas;border-color:CanvasText}}
+
 @media(forced-colors:active){#hostTools button,#hostLanguage{color:ButtonText;background:ButtonFace;border-color:ButtonText}#hostTools button:disabled{color:GrayText;opacity:1}}
 .studio-host #hostAudition{display:flex;align-items:center;flex-wrap:wrap;gap:5px 9px;padding:6px 0}
 #hostAudition label{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--dim);cursor:pointer}
@@ -586,20 +597,42 @@ body.sidebar-resizing,body.sidebar-resizing * {cursor:col-resize!important;user-
 .studio-host .scale-card.selected,.studio-host .workspace-tabs button.active{border-color:var(--accent)}
 .studio-host .section.has-current>.section-title{box-shadow:inset 3px 0 var(--accent)}
 </style><!--STUDIO_THEME--><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script><script id="studio-draft" type="application/octet-stream"><!--STUDIO_DRAFT--></script><script id="studio-file" type="application/octet-stream"><!--STUDIO_FILE--></script></head><body>
+<svg class="tool-symbols" aria-hidden="true" width="0" height="0"><defs>
+<symbol id="tool-folder" viewBox="0 0 22 22"><path d="M2 5h6l2 2h10v3H6l-3 8H2z M3 18l3-8h15l-3 8z"/></symbol>
+<symbol id="tool-save" viewBox="0 0 22 22"><path d="M3 3h13l3 3v13H3z M7 3v6h8V3 M7 19v-6h8v6"/></symbol>
+<symbol id="tool-save-as" viewBox="0 0 22 22"><path d="M3 18V3h12l3 3v3 M6 3v6h7V3 M8 19l1-4 8-8 3 3-8 8z"/></symbol>
+<symbol id="tool-suggest" viewBox="0 0 22 22"><path d="M2 16h4v-4h4V8h4 M16 2l1.4 4.4L21 8l-3.6 1.6L16 14l-1.4-4.4L11 8l3.6-1.6z"/></symbol>
+<symbol id="tool-undo" viewBox="0 0 22 22"><path d="M8 4L3 9l5 5 M3 9h9a6 6 0 0 1 6 6v3"/></symbol>
+<symbol id="tool-redo" viewBox="0 0 22 22"><path d="M14 4l5 5-5 5 M19 9h-9a6 6 0 0 0-6 6v3"/></symbol>
+<symbol id="tool-help" viewBox="0 0 22 22"><path d="M20 11a9 9 0 1 1-18 0 9 9 0 0 1 18 0z M8 8a3 3 0 1 1 5 2c-1 1-2 1-2 4 M11 16v.5"/></symbol>
+<symbol id="tool-keys" viewBox="0 0 22 22"><path d="M2 4h18v14H2z M6 4v8h2V4 M12 4v8h2V4 M7 12v6 M13 12v6"/></symbol>
+<symbol id="tool-sliders" viewBox="0 0 22 22"><path d="M2 6h6m4 0h8 M2 15h10m4 0h4 M8 3h4v6H8z M12 12h4v6h-4z"/></symbol>
+<symbol id="tool-note" viewBox="0 0 22 22"><path d="M9 15V5l10-2v10 M9 7l10-2 M9 15c0 4-6 5-6 2 0-3 6-5 6-2z M19 13c0 4-6 5-6 2 0-3 6-5 6-2z"/></symbol>
+<symbol id="tool-receive" viewBox="0 0 22 22"><path d="M11 2v10 M7 8l4 4 4-4 M3 12v6h16v-6"/></symbol>
+<symbol id="tool-out" viewBox="0 0 22 22"><path d="M11 14V3 M7 7l4-4 4 4 M3 12v6h16v-6"/></symbol>
+<symbol id="tool-grip" viewBox="0 0 22 22"><path d="M7 5h1m5 0h1 M7 11h1m5 0h1 M7 17h1m5 0h1"/></symbol>
+<symbol id="tool-copy" viewBox="0 0 22 22"><path d="M7 7h12v12H7z M3 15V3h12"/></symbol>
+<symbol id="tool-apply" viewBox="0 0 22 22"><path d="M3 4h16v14H3z M6 10l3 3 6-6"/></symbol>
+<symbol id="tool-panel" viewBox="0 0 22 22"><path d="M2 4h18v14H2z M2 8h18 M8 8v10"/></symbol>
+<symbol id="tool-check" viewBox="0 0 22 22"><path d="M3 11l5 5L19 5"/></symbol>
+<symbol id="tool-text" viewBox="0 0 22 22"><path d="M4 3h10l4 4v12H4z M13 3v5h5 M7 11h7 M7 15h6"/></symbol>
+<symbol id="tool-grid" viewBox="0 0 22 22"><path d="M2 3h18v16H2z M2 8h18 M2 13h18 M8 3v16"/></symbol>
+</defs></svg>
+<div id="actionHint" role="tooltip" hidden></div>
 <div id="app">
-<header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Edit scale assignments in an OSTF file.</div></div><span class="version">v1.0 · DIRECT SET</span></div><div class="head-actions"><button id="open" title="Open a local OSTF file · Ctrl+O">Open OSTF…</button><button id="save" title="Save to the currently linked file · Ctrl+S">Save edited OSTF</button><button id="saveAs" title="Save the file being edited in this plug-in to a new location · Ctrl+Shift+S">Save edited OSTF as…</button>
-<button id="autoSetSong" class="primary" title="Review scale suggestions for the OSTF open in this editor">Suggest scales for the song</button><span class="sep"></span><button id="undo" title="Undo the last assignment" disabled>Undo</button><button id="redo" disabled>Redo</button><button id="help" class="quiet">Help</button></div>
+<header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Edit scale assignments in an OSTF file.</div></div></div><div class="head-actions"><button id="open" data-hint="Open an OSTF file in this plug-in (Ctrl+O)." data-hint-ja="OSTFファイルをプラグインで開きます（Ctrl+O）。" data-label-ja="開く…"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-folder"/></svg><span class="tool-label">Open…</span></button><button id="save" data-hint="Save the plug-in’s edited OSTF to its linked file (Ctrl+S)." data-hint-ja="プラグインで編集中のOSTFをリンク先に保存します（Ctrl+S）。" data-label-ja="保存"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-save"/></svg><span class="tool-label">Save</span></button><button id="saveAs" data-hint="Choose a new file for the OSTF edited in this plug-in (Ctrl+Shift+S)." data-hint-ja="プラグインで編集中のOSTFを別のファイルに保存します（Ctrl+Shift+S）。" data-label-ja="別名保存…"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-save-as"/></svg><span class="tool-label">Save as…</span></button>
+<button id="autoSetSong" class="primary" data-hint="Preview scale suggestions for the whole song. Confirm to apply them inside this editor." data-hint-ja="曲全体のスケール候補を確認し、選んだ内容をプラグイン内の曲に適用します。" data-label-ja="全曲候補"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-suggest"/></svg><span class="tool-label">Suggest scales</span></button><span class="sep"></span><button id="undo" disabled data-hint="Undo the last scale assignment in this plug-in." data-hint-ja="プラグイン内で直前に行ったスケール設定を取り消します。" data-label-ja="戻す"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-undo"/></svg><span class="tool-label">Undo</span></button><button id="redo" disabled data-hint="Redo the last undone scale assignment." data-hint-ja="取り消したスケール設定をやり直します。" data-label-ja="やり直す"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-redo"/></svg><span class="tool-label">Redo</span></button><button id="help" class="quiet" data-hint="Open the Scale Editor guide." data-hint-ja="Scale Editorの操作ガイドを開きます。" data-label-ja="ヘルプ"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-help"/></svg><span class="tool-label">Help</span></button></div>
 <div id="hostTools" class="studio-only">
-<div class="tool-group"><button id="studioInstrumentPicker">Choose audition instrument…</button><button id="hostInstrumentEditor" disabled>Instrument controls</button><button id="hostTest">Test note</button></div>
-<div class="tool-group"><button id="hostRead" disabled title="Available when OSTF Studio hosts this plug-in and supplies a score">Read from OSTF Studio</button>
-<button id="hostDrag" disabled title="Drag the edited scales onto the scale track in an open OSTF Studio song"><span class="grip" aria-hidden="true">⠿</span>Drag to OSTF Studio scale track</button>
-<button id="hostReturn" title="Paste these scales using the Edit menu in OSTF Studio">Copy scales</button>
-<button id="hostCommit">Apply to plug-in score</button></div>
+<div class="tool-group"><button id="studioInstrumentPicker" data-hint="Choose the instrument used for auditioning scales." data-hint-ja="スケールの試聴に使う音源を選びます。" data-label-ja="試聴音源"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-keys"/></svg><span class="tool-label">Sound</span><span class="tool-value"></span></button><button id="hostInstrumentEditor" disabled data-hint="Open the loaded instrument’s controls. Select a VST3 instrument to enable this." data-hint-ja="試聴用VST3音源の設定を開きます。音源を読み込むと使えます。" data-label-ja="音源設定"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-sliders"/></svg><span class="tool-label">Controls</span></button><button id="hostTest" data-hint="Play a test note through the audition instrument." data-hint-ja="選択中の試聴音源でテスト音を鳴らします。" data-label-ja="試聴"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-note"/></svg><span class="tool-label">Test note</span></button></div>
+<div class="tool-group exchange-tools"><span class="group-name">OSTF Studio</span><button id="hostRead" disabled data-hint="Read the host’s song into the plug-in. Available when OSTF Studio supplies a score." data-hint-ja="ホストのOSTF Studioで開いている曲をプラグインに読み込みます。他のDAWでは使えません。" data-label-ja="曲を受信"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-receive"/></svg><span class="tool-label">Read score</span></button>
+<button id="hostDrag" disabled data-hint="Drag this handle onto the scale track in OSTF Studio. Enter copies the scales instead." data-hint-ja="この取っ手をOSTF Studioのスケールトラックへドラッグします。Enterキーでコピーできます。" data-label-ja="ドラッグ"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-grip"/></svg><span class="tool-label">Drag scales</span></button>
+<button id="hostReturn" data-hint="Copy the assignments for Edit → Paste scales from Scale Editor in OSTF Studio." data-hint-ja="スケールをコピーします。OSTF Studioの「編集」から貼り付けられます。" data-label-ja="スケールをコピー"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-copy"/></svg><span class="tool-label">Copy scales</span></button>
+</div><div class="tool-group"><button id="hostCommit" data-hint="Commit visual scale assignments to the plug-in’s own score." data-hint-ja="ビジュアル画面の設定を、このプラグインが保持する譜面に反映します。" data-label-ja="内部に適用"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-apply"/></svg><span class="tool-label">Apply locally</span></button></div>
 <div class="tool-group"><div id="hostLanguage" role="radiogroup" aria-labelledby="languageLabel"><span id="languageLabel">Display language</span>
 <label><input name="host-language" type="radio" value="system" checked>System language</label><label><input name="host-language" type="radio" value="en">English</label><label><input name="host-language" type="radio" value="ja">日本語</label></div>
-<button id="hostNative">Simple editor</button></div></div></header>
+<button id="hostNative" data-hint="Switch to the native Scale Editor controls." data-hint-ja="プラグインの簡易エディターに切り替えます。" data-label-ja="簡易表示"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-panel"/></svg><span class="tool-label">Simple view</span></button></div></div></header>
 <div id="emptyScore">Open or drop an OSTF score to edit its scales.</div>
-<div class="songline"><span class="songtitle" id="songTitle"></span><span class="chip" id="songKey"></span><span class="chip" id="songVersion"></span><span class="chip" id="fileBinding" title="Save requires a linked file; imported text or drag-and-drop must use Save As">Not linked</span><span id="dirty"></span><div class="viewtabs"><button id="visualTab" class="active">VISUAL</button><button id="textTab">Plug-in OSTF text</button></div></div>
+<div class="songline"><span class="songtitle" id="songTitle"></span><span class="chip" id="songKey"></span><span class="chip" id="songVersion"></span><span class="chip" id="fileBinding" title="Save requires a linked file; imported text or drag-and-drop must use Save As">Not linked</span><span id="dirty"></span><div class="viewtabs"><button id="visualTab" class="active" data-hint="Edit scales on the chord timeline." data-hint-ja="コード進行を見ながらスケールを編集します。" data-label-ja="ビジュアル"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-grid"/></svg><span class="tool-label">Visual</span></button><button id="textTab" data-hint="Show the text of the score open in this plug-in." data-hint-ja="プラグインに読み込んでいる曲のOSTFテキストを表示します。" data-label-ja="OSTFテキスト"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-text"/></svg><span class="tool-label">OSTF text</span></button></div></div>
 <div id="visual">
 <aside class="left"><div class="pane-head"><h2>01 &nbsp; CHORD TIMELINE</h2><button class="tiny" id="collapseAll">Collapse others</button><button class="tiny" id="analyze">Analyze</button></div><div class="left-hint">Sections fold independently. Solid scales are assigned; suggestions remain uncommitted.</div><div id="timeline"></div><div class="left-foot"><span>✓ Assigned</span><span>·· Suggested only</span><span>Drop a .ostf file anywhere</span></div></aside>
 <div id="paneDivider" class="pane-divider" role="separator" tabindex="0" aria-label="Resize chord timeline and scale workspace" aria-orientation="vertical" aria-valuemin="258" aria-valuemax="680" aria-valuenow="336" title="Drag to resize · Double-click to reset · Arrow keys adjust width"><span class="divider-grip" aria-hidden="true"></span></div>
@@ -662,7 +695,7 @@ body.sidebar-resizing,body.sidebar-resizing * {cursor:col-resize!important;user-
 <div class="applybar"><div class="assignment-overview"><span id="assignmentInfo"></span><div class="assignment-progress"><span id="assignmentCount">0 / 0 assigned</span><div class="assignment-meter" role="progressbar" aria-label="Assigned chords" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="assignmentMeterFill"></i></div></div></div><div class="assignment-actions"><button id="clear" class="quiet tiny">Remove assignment</button><button id="nextOpen" title="Jump to the next chord that has no scale assigned">Next unassigned →</button><button id="apply" class="primary">SET SCALE</button><button id="applyAndNext" class="primary" title="Set the selected scale then jump to the next unassigned chord">SET &amp; NEXT →</button></div></div>
 </main></div>
 <section id="textView" hidden><div class="flex wrap"><strong id="textSource"></strong><span class="grow"></span>
-<button id="refreshText">Show plug-in OSTF in text box</button><button id="copyText">Copy text box</button><button id="validateText">Validate text box</button><button id="importText" class="primary">Load text box into plug-in</button></div>
+<button id="refreshText" data-hint="Fill the text box from the OSTF open in this plug-in. You’ll be asked before replacing edits." data-hint-ja="プラグイン内のOSTFをテキスト欄に表示します。書きかけのテキストは確認してから置き換えます。" data-label-ja="欄に表示"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-out"/></svg><span class="tool-label">Show OSTF</span></button><button id="copyText" data-hint="Copy the entire text box to the clipboard." data-hint-ja="テキスト欄の全文をクリップボードにコピーします。" data-label-ja="コピー"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-copy"/></svg><span class="tool-label">Copy</span></button><button id="validateText" data-hint="Check the OSTF in the text box before importing it." data-hint-ja="テキスト欄にあるOSTFの内容を、読み込む前に検証します。" data-label-ja="検証"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-check"/></svg><span class="tool-label">Validate</span></button><button id="importText" class="primary" data-hint="Load the text box into the plug-in, replacing its open score. Save separately to write a file." data-hint-ja="テキスト欄の内容でプラグイン内の曲を置き換えます。ファイルへの保存は別の操作です。" data-label-ja="欄から読込"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-receive"/></svg><span class="tool-label">Load text</span></button></div>
 <div class="text-info">Edit or paste a complete OSTF below. Loading it replaces the score open in this plug-in. To update a file, save the edited OSTF.</div>
 <textarea id="textArea" spellcheck="false" aria-labelledby="textSource" autocomplete="off"></textarea><div id="textFeedback" aria-live="polite"></div></section>
 <footer><span id="status">Ready.</span><span id="hostLabel">Offline · browser</span></footer>
@@ -2324,7 +2357,7 @@ const japaneseUI = {
  'Apply safe matches':'一致箇所に適用','Repeated patterns':'反復パターン','All events':'全イベント',
  'Remove assignment':'設定を削除','Next unassigned →':'次の未設定コード →','SET & NEXT →':'設定して次へ →',
  'Show plug-in OSTF in text box':'プラグインのOSTFをテキスト欄に表示','Copy text box':'テキスト欄をコピー','Validate text box':'テキスト欄を検証','Load text box into plug-in':'テキスト欄の内容をプラグインに読み込む',
- 'Edit or paste a complete OSTF below. Loading it replaces the score open in this plug-in. To update a file, save the edited OSTF.':'この欄にOSTF全文を入力するか貼り付けます。読み込むとプラグイン内の曲が置き換わります。ファイルへの保存は「編集中のOSTFを保存」で行います。',
+ 'Edit or paste a complete OSTF below. Loading it replaces the score open in this plug-in. To update a file, save the edited OSTF.':'この欄にOSTF全文を入力するか貼り付けます。読み込むとプラグイン内の曲が置き換わります。ファイルへの保存は「保存」で行います。',
  'Edit or paste a complete OSTF document, then choose Import text. Text edits alone do not change the current song. Invalid imports leave the current song untouched.':'OSTF全文を編集または貼り付けてから「テキストを読み込む」を押すと、検証後に曲に反映します。',
  'Ready.':'準備完了','DROP OSTF HERE':'ここにOSTFをドロップ','Cancel':'キャンセル','Continue':'続ける','OK':'OK',
  'Save linked file':'リンク先に保存','Choose file & save':'保存先を選んで保存','Harmony':'和声',
@@ -2337,17 +2370,52 @@ function translated(english) {
  return document.documentElement.lang==='ja' && Object.prototype.hasOwnProperty.call(japaneseUI,english) ? japaneseUI[english] : english;
 }
 function languageText(english,japanese){return document.documentElement.lang==='ja'?japanese:english;}
+const toolsWithHints=[...document.querySelectorAll('button[data-hint]')];
+for(const button of toolsWithHints)button.dataset.labelEn=button.querySelector('.tool-label').textContent;
+const hint=$('actionHint');
+let hintTarget=null,hintTimer=0;
+function hideActionHint(){
+ clearTimeout(hintTimer);
+ if(hintTarget)hintTarget.removeAttribute('aria-describedby');
+ hintTarget=null;hint.hidden=true;
+}
+function showActionHint(button,delay){
+ if(!button || hintTarget===button)return;
+ hideActionHint();hintTarget=button;
+ hintTimer=setTimeout(()=>{
+  hint.textContent=button.getAttribute('aria-description');
+  hint.hidden=false;button.setAttribute('aria-describedby','actionHint');
+  const r=button.getBoundingClientRect(),t=hint.getBoundingClientRect();
+  hint.style.left=Math.max(6,Math.min(r.left,innerWidth-t.width-6))+'px';
+  hint.style.top=(r.bottom+t.height+7<innerHeight?r.bottom+4:Math.max(4,r.top-t.height-4))+'px';
+ },delay);
+}
+for(const button of toolsWithHints){
+ button.addEventListener('pointerenter',()=>showActionHint(button,300));
+ button.addEventListener('pointerleave',()=>{if(hintTarget===button)hideActionHint();});
+ button.addEventListener('focus',()=>showActionHint(button,0));
+ button.addEventListener('blur',hideActionHint);
+ button.addEventListener('pointerdown',hideActionHint);
+}
+window.addEventListener('keydown',e=>{if(e.key==='Escape')hideActionHint();});
+window.addEventListener('resize',hideActionHint);
+document.addEventListener('scroll',hideActionHint,true);
 const interfaceText=[];
 const walker=document.createTreeWalker($('app'),NodeFilter.SHOW_TEXT);
 while(walker.nextNode()){
  const node=walker.currentNode, english=node.nodeValue, key=english.trim().replace(/\s+/g,' ');
- if(Object.prototype.hasOwnProperty.call(japaneseUI,key))interfaceText.push({node,english,key});
+ if(!node.parentElement.closest('.tool-label')&&Object.prototype.hasOwnProperty.call(japaneseUI,key))interfaceText.push({node,english,key});
 }
 const interfaceTitles=[...$('app').querySelectorAll('[title]')].filter(el=>Object.prototype.hasOwnProperty.call(japaneseUI,el.title)).map(el=>[el,el.title]);
 function setDisplayLanguage(locale){
  document.documentElement.lang=locale==='ja'?'ja':'en';
  for(const {node,english,key} of interfaceText)if(node.isConnected)node.nodeValue=languageText(english,japaneseUI[key]);
  for(const [el,title] of interfaceTitles)el.title=translated(title);
+ hideActionHint();
+ for(const button of toolsWithHints){
+  button.querySelector('.tool-label').textContent=languageText(button.dataset.labelEn,button.dataset.labelJa);
+  button.setAttribute('aria-description',languageText(button.dataset.hint,button.dataset.hintJa));
+ }
  if(state.doc)render();
  if(state.view==='text'&&state.textDirty)$('textFeedback').textContent=languageText('Text box edited. Load it to update the plug-in score.','テキスト欄の編集中です。読み込むとプラグイン内の曲に反映します。');
  if(document.body.classList.contains('studio-host'))showStudioInput();
@@ -2463,7 +2531,7 @@ function renderFileBinding(){
  chip.textContent=state.fileBound?languageText('Linked: ','リンク先：')+state.filename:translated('Not linked · Save As for new location');
  chip.className='chip '+(state.fileBound?'bound':'unbound');
  chip.title=state.fileBound?'Save will overwrite the linked file after safety checks. Save As always asks for a new name.':'No verified native file path. Save will ask for a location.';
- const b=$('save');if(b)b.title=state.fileBound?languageText('Save the edited OSTF to its linked file · Ctrl+S','編集中のOSTFをリンク先に保存 · Ctrl+S'):languageText('Choose a location for the edited OSTF · Ctrl+S','編集中のOSTFの保存先を選択 · Ctrl+S');
+ const b=$('save');if(b)b.setAttribute('aria-description',state.fileBound?languageText('Save the edited OSTF to its linked file · Ctrl+S','編集中のOSTFをリンク先に保存 · Ctrl+S'):languageText('Choose a location for the edited OSTF · Ctrl+S','編集中のOSTFの保存先を選択 · Ctrl+S'));
 }
 function render(){const d=state.doc;if(!d)return;document.body.classList.remove('no-score');$('hostDrag').disabled=false;$('songTitle').textContent=d.song.title||'Untitled';$('songTitle').title=d.song.title;$('textSource').textContent=languageText('OSTF open in the plug-in · ','プラグインで開いているOSTF · ')+(d.song.title||state.filename||languageText('Untitled','無題'));$('songKey').textContent=SA.labelKey(d,getChord()?.start||0);$('songVersion').textContent='OSTF '+d.version+(!state.validation.writable?' · READ ONLY':'');$('songVersion').classList.toggle('read-only',!state.validation.writable);$('dirty').textContent=(state.dirty||state.textDirty)?'● '+translated('Unsaved changes'):'';renderFileBinding();$('undo').disabled=!state.history.length;$('redo').disabled=!state.future.length;
  renderTargets();renderTimeline();renderContext();renderApproaches();renderStrategies();renderCards();renderInspector();renderFlowWorkspace();renderApply();}
@@ -2578,8 +2646,8 @@ function showStudioInput(){
  const instrument=studioInstrument||languageText('Reference tone','基準音');
  studioPreviewRoute=studioExternal?languageText('Host MIDI output · Ch 1','ホストMIDI出力 · Ch 1'):instrument;
  const picker=$('studioInstrumentPicker');
- picker.textContent=languageText('Choose audition instrument · ','試聴音源を選択 · ')+instrument;
- picker.title=languageText('Choose an instrument to load or audition','音源を選んで読み込み・試聴');
+ picker.querySelector('.tool-value').textContent=instrument;
+ picker.setAttribute('aria-description',languageText('Choose the audition instrument. Current sound: ','試聴音源を選びます。使用中の音源：')+instrument);
  $('audioLabel').textContent=studioExternal?studioPreviewRoute:'';
 }
 function resolutionSVG(ch,s,next,nextS){
@@ -3298,7 +3366,7 @@ async function save(mode='save'){
  try{
   if(!['save','saveas'].includes(mode))mode='save';
   if(state.savePendingText){status('A file save is still in progress. Complete or cancel the dialog first.');return;}
-  if(state.textDirty){await dialog(languageText('Review your text box edits','テキスト欄の変更を確認してください'),languageText('Load the text box into the plug-in before saving, or show the plug-in OSTF in the text box to discard the text edits.','テキスト欄の内容をプラグインに読み込んでから保存してください。テキスト欄の変更を取り消すには「プラグインのOSTFをテキスト欄に表示」を選びます。'));return;}
+  if(state.textDirty){await dialog(languageText('Review your text box edits','テキスト欄の変更を確認してください'),languageText('Load the text box into the plug-in before saving, or show the plug-in OSTF in the text box to discard the text edits.','テキスト欄の内容をプラグインに読み込んでから保存してください。テキスト欄の変更を取り消すには「欄に表示」を選びます。'));return;}
   const report=SA.audit.inspect(state.doc,state.sourceCore);
   const selectingNew=mode==='saveas'||!(native||window.__JUCE__?.backend)||!state.fileBound;
   const action=selectingNew?languageText('Save edited OSTF as','編集中のOSTFを別名で保存'):languageText('Save edited OSTF','編集中のOSTFを保存');
@@ -3437,7 +3505,7 @@ function hearContext(){
  if(n)notes.push(...n.intervals.map(i=>({at:780,note:48+n.root+i,velocity:65,ms:900,role:'chord',beat:2})));
  playSimplePreview(notes,'Chord → Next');
 }
-function help(){if(document.documentElement.lang==='ja'){dialog('OSTF Scale Editor の使い方',['1. OSTFを開き、コード進行から編集するコードを選びます。','2. 書き込み先に「和声」またはトラックを選び、候補をA / Bで試聴します。ヘッダーの「試聴音源を選択」で音源を指定できます。','3. 「スケールを設定」で適用します。「全曲のスケールを提案」で候補を確認し、「このエディターに適用」でプラグイン内の曲に反映できます。','4. 「編集中のOSTFを保存」でリンク先を更新し、「編集中のOSTFを別名で保存」で別のファイルに書き出します。','OSTF Studioの曲へ戻すには、ヘッダーの点線のハンドルをスケールトラックにドラッグします。'].join('\n\n'));return;}dialog('OSTF Scale Editor · v1.0 Scale Workflow',[
+function help(){if(document.documentElement.lang==='ja'){dialog('OSTF Scale Editor の使い方',['1. OSTFを開き、コード進行から編集するコードを選びます。','2. 書き込み先に「和声」またはトラックを選び、候補をA / Bで試聴します。ヘッダーの「試聴音源」で音源を指定できます。','3. 「スケールを設定」で適用します。「全曲候補」で候補を確認し、「このエディターに適用」でプラグイン内の曲に反映できます。','4. 「保存」でリンク先を更新し、「別名保存」で別のファイルに書き出します。','OSTF Studioの曲へ戻すには、ヘッダーの点線のハンドルをスケールトラックにドラッグします。'].join('\n\n'));return;}dialog('OSTF Scale Editor · v1.0 Scale Workflow',[
 '1. Import OSTF via file, drag/drop, or OSTF TEXT.',
 'Progressions finds repeated chord + neighboring harmony + duration + key matches; select a scale card, preview each match, then Apply safe matches. Existing assignments are always protected. No concrete notes means a hearing check remains necessary.',
 '2. Choose Balanced / Smooth / Color & Tension. This recomputes suggestions only.',

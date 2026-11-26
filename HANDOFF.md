@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — compact Scale Editor controls and alpha 4 preparation
+
+The public README introduces Studio with a 1536 × 970 PNG from the Windows Portable running Paper Lantern Replies. To reproduce it, set `OSTF_LIVE_MATRIX_PNG` to an absolute output path and run Studio with `--live-session-smoke examples/demo-songs/paper-lantern-replies.ostf` using an absolute fixture path. Keep `docs/images/ostf-studio-live-session.png` with the README in the source tree so branches and release tags resolve the same illustration.
+
+Toolbar and text-view buttons use compact English and Japanese labels with vector icons. Pointer hover and keyboard focus open the action description; Escape dismisses it. The Studio exchange group, selected audition instrument, disabled host-read state and drag grip remain visible. Headless Edge exercised the Japanese toolbar, a disabled control’s hint, keyboard focus, Escape, drag and text import at widths of 1440 and 760 pixels.
+
+The Singer's English syllable matcher handles the final /ndz/ written as n-zu in “hands” and still honours a separately transcribed stop. The regression uses the reading from Paper Lantern Replies. The next candidate is `v1.0.0-alpha.4`; publication requires a separate authorization.
+
 ## 2026-11-27 — Scale Editor score exchange, text workflow and sung ノット
 
 Branch `feat/ostf-52-studio`. The header exposes the audition instrument, test note, language choices, Studio score input, clipboard and a separate drag grip. Studio score input is enabled only after the hosting instance supplies a score through the VST3 score interface. A recalled document or an OSTF file opened in another host does not enable it. Dragging captures the current assignments when the pointer crosses the threshold, even when the browser releases pointer capture during the gesture. The receiving Studio instance still checks the original score revision and supports Undo.

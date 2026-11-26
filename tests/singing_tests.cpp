@@ -313,6 +313,14 @@ int main(int argc, char** argv) {
     const auto notEdges = articulationPositions(notPhones,.120);
     if (std::abs(notEdges[1]*.120-.088)>.0001) return 86;
     const auto lights = sungReading("lights",readingFor("lights"));
+    const auto handsReading = readingFor("hands");
+    const auto hands = sungReading("hands",handsReading);
+    const auto literalHands = lyricPhones(handsReading);
+    const auto explicitStop = sungReading("hands",juce::String::fromUTF8("ハンドズ"));
+    if (hands.size()!=3 || literalHands.size()!=3 || hands.front().sampleKey()!=literalHands.front().sampleKey()
+        || (hands[1].english & 63)!=27 || (hands[2].english & 63)!=38
+        || explicitStop.size()!=4 || (explicitStop[2].english & 63)!=18
+        || sungReading(handsReading,handsReading).back().english!=0) return 87;
     if (lights.size()!=4 || lights[0].onset!=r || lights[1].vowelTiming!=VowelTiming::offglide
         || lights[2].english!=33 || lights[3].english!=31) return 78;
     const auto flame = sungReading("flame",readingFor("flame"));

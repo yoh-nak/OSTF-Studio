@@ -265,7 +265,8 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
             })())JS");
         } else if (stage==1) {
             language()->setSelectedId(3,juce::sendNotificationSync);
-            checkPage(R"JS(document.documentElement.lang==='ja' && document.querySelector('#save').textContent==='\u7de8\u96c6\u4e2d\u306eOSTF\u3092\u4fdd\u5b58'
+            checkPage(R"JS(document.documentElement.lang==='ja' && document.querySelector('#save').textContent==='\u4fdd\u5b58'
+                && document.querySelector('#save').getAttribute('aria-description').includes('OSTF')
                 && document.querySelector('#songTitle').textContent==='Save'
                 && document.querySelector('#textArea').value==='\u672a\u78ba\u5b9a <draft> &')JS");
         } else if (stage==2) {
@@ -285,7 +286,7 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
             })())JS");
         } else if (stage==4) {
             language()->setSelectedId(2,juce::sendNotificationSync);
-            checkPage("document.documentElement.lang==='en' && document.querySelector('#save').textContent==='Save edited OSTF'");
+            checkPage("document.documentElement.lang==='en' && document.querySelector('#save').textContent==='Save' && document.querySelector('#save').getAttribute('aria-description').includes('OSTF')");
         } else if (stage==5) {
             for (auto* child:editor->getChildren())
                 if (auto* b=dynamic_cast<juce::TextButton*>(child); b && b->getButtonText()=="Apply scales") {
@@ -590,6 +591,10 @@ int main(int argc,char** argv) {
                         }
                     }
                     const header=document.querySelector('header'), read=header.querySelector('#hostRead');
+                    const readHint=read.getAttribute('aria-description');
+                    if(!readHint?.includes('OSTF Studio') || !read.querySelector('svg[aria-hidden=true]'))return false;
+                    const controls=[...document.querySelectorAll('header button,#textView button')];
+                    if(controls.some(c=>!c.querySelector('.tool-label')||!c.getAttribute('aria-description')))return false;
                     const radios=[...header.querySelectorAll('#hostLanguage input[type=radio]')];
                     if(!header.contains(b) || !b.offsetHeight || !read?.disabled || !read.offsetHeight
                        || radios.length!==3 || !radios.some(r=>r.checked)

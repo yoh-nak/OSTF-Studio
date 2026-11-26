@@ -150,6 +150,10 @@ inline bool matchSungSyllable(const std::vector<Phone>& word, size_t begin, size
         if (ending.onset == ts && ending.vowel == 2 && ending.morae == 1 && (word[i].english & 63) == 33
             && i+1 < end && (word[i+1].english & 63) == 31) {
             result.push_back(word[i++]); // One written "tsu" in "lights" covers both /t/ and /s/.
+        } else if (en == 18 && (word[i-1].english & 63) == 27 && i+2 == end
+                   && (word[i+1].english & 63) == 38 && support(ending,38)) {
+            // Written n-zu in "hands" joins /n/ to /z/. An explicit do keeps the stop.
+            ++i;
         } else if (!support(ending, word[i].english & 63)) return false;
         result.push_back(word[i]);
     }
