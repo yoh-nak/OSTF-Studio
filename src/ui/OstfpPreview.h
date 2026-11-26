@@ -145,6 +145,7 @@ struct ProjectAudio {
     juce::File localFile;
     RegionAudioBytes embedded;
     juce::int64 startTick = 0, durationTicks = 0, startFrame = 0, frameCount = 0;
+    juce::int64 fadeInTicks = 0, fadeOutTicks = 0;
     double gainDb = 0;
     bool muted = false;
     juce::String sha256;
@@ -186,7 +187,17 @@ struct ScoreCompChoice {
     bool active;
     juce::String label;
 };
+// Original Production-only channels have no Core track owner. These rows are
+// projected for monitoring; their IDs and audio never become authored Core tracks.
+struct ImportedProduction {
+    juce::var viewTracks{juce::Array<juce::var>{}};
+    juce::MemoryBlock manifestBytes, productionBytes;
+    std::map<juce::String, RegionAudioBytes> members;
+    std::vector<ProjectAudio> originalAudio;
+    juce::MemoryBlock mixerSnapshot;
+};
 struct OstfpPreview {
+    std::shared_ptr<const ImportedProduction> importedProduction;
     std::vector<ScoreCompChoice> compChoices;
     juce::Result addScoreTake(size_t track,juce::Range<juce::int64>,juce::MemoryBlock& before);
     juce::Result compPlayback(const std::vector<ScoreCompChoice>&, std::unique_ptr<OstfpPreview>&) const;
@@ -240,7 +251,7 @@ struct OstfpPreview {
     std::map<juce::String, juce::StringArray> trackLyricDocuments;
     std::vector<DisplayPhrase> displayPhrases;
     bool partDisplaysDocument(size_t track, const juce::String& document) const;
-    juce::StringArray lyricTrackIds;
+    juce::StringArray lyricTrackIds, declaredVocalTrackIds, specialTrackNames;
     juce::Result editVocalNote(size_t track, const juce::String& noteId, const VocalNote&, juce::MemoryBlock& before);
     struct ProgramChange { juce::int64 tick; int program; std::optional<int> channel; juce::int64 order = 1; size_t ordinal = 0; };
     std::vector<std::vector<ProgramChange>> programChanges;
@@ -251,9 +262,14 @@ struct OstfpPreview {
     int chordVoicings = 0;
     std::optional<std::size_t> chordVoicingTrack, primaryMelodyTrack;
     std::size_t sourceTrackCount() const { return chordVoicingTrack.value_or(trackLanes.size()); }
+    bool supportsScoreTakes() const { return sourceVersion == "5.1.0" || sourceVersion == "5.2.0"; }
     bool isGlobalNoteTrack(std::size_t index) const {
+        return chordVoicingTrack == index || isMelodyOrLyricTrack(index);
+    }
+    bool isMelodyOrLyricTrack(std::size_t index) const {
         const auto group = mixerGroups[index];
-        return chordVoicingTrack == index || group == MixerTrackGroup::melody || group == MixerTrackGroup::vocal;
+        return group == MixerTrackGroup::melody || group == MixerTrackGroup::vocal
+            || declaredVocalTrackIds.contains(trackIds[int(index)]);
     }
     std::deque<std::vector<ArrangementRegion>> regions;
     std::vector<std::vector<ArrangementRegion>> editedTrackRegions;

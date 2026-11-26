@@ -354,19 +354,25 @@ int main(int argc,char** argv) {
         if (list->getModel()->getNumRows()!=0) return 58;
         search->setText(instrument->name+" "+instrument->manufacturerName,false); search->onTextChange();
         if (list->getModel()->getNumRows()<1) return 59;
-        search->onReturnKey();
-        testSound->onClick();
+        juce::ToggleButton* route=nullptr;
+        for (auto* child:editor->getChildren())
+            if (auto* b=dynamic_cast<juce::ToggleButton*>(child); b && b->getButtonText()=="Preview MIDI out") route=b;
+        if (!route || route->getToggleState()) return 61;
+        route->setToggleState(true,juce::dontSendNotification); route->onClick();
+        auto* loadAndTest=dynamic_cast<juce::TextButton*>(picker->findChildWithID("load-instrument-and-audition"));
+        if (!loadAndTest || !loadAndTest->isEnabled()) return 85;
+        loadAndTest->onClick();
         float peak=0;
         for (int i=0;i<80;++i) {
             midi.clear(); processor->processBlock(block,midi);
+            if (!midi.isEmpty()) return 86;
             peak=std::max(peak,block.getMagnitude(0,block.getNumSamples()));
         }
         std::cout<<"Instrument picker / test note: "<<instrument->name<<" peak "<<peak<<"\n";
         if (peak<.001f) return 60;
+        if (!route->getToggleState()) return 87;
+        route->setToggleState(false,juce::dontSendNotification); route->onClick();
         if (auditionOnly) { editor.reset(); processor->releaseResources(); return 0; }
-        juce::ToggleButton* route=nullptr;
-        for (auto* child:editor->getChildren())
-            if (auto* b=dynamic_cast<juce::ToggleButton*>(child); b && b->getButtonText()=="Preview MIDI out") route=b;
         if (!processor->producesMidi() || !route || route->getToggleState() || !midi.isEmpty()) return 61;
         processor->releaseResources(); processor->setRateAndBufferSizeDetails(44100,256);
         processor->prepareToPlay(44100,256);

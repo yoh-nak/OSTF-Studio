@@ -1,5 +1,7 @@
 # OSTF score schemas
 
+The 5.2.0 Core, Manifest 1.2, Production 0.5 and their six companion schemas are unmodified files from the [official CC0 5.2 release](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.2/tree/2be1c2ddd62708fdd4f9ffd86403c86336cc7a9f). The example fixtures under tests/fixtures/ostf52 have the same source and license.
+
 The unmodified 5.1 score, Manifest 1.1 and Production 0.4 schemas and `26-midi-comp.ostf` are from the [official CC0 release](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.1/tree/957bd071cecc58a12f417ad212c40723ba9812ca).
 
 Open Song Timeline Format by yoh-nak. These schemas ship with Studio for offline score import.

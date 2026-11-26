@@ -60,7 +60,8 @@ if (OSTF_STUDIO_BUILD_GUI)
         URL_HASH SHA256=6de746d3fd381937c9fc58ed47df7404792881b9ba924d43124dc6fb7c22f741)
     FetchContent_MakeAvailable(jsoncons)
     set(score_schemas)
-    foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0 5.0.0 5.1.0 package-manifest-1.1 production-session-0.4)
+    foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0 5.0.0 5.1.0 package-manifest-1.1 production-session-0.4
+            5.2.0 package-manifest-1.2 production-session-0.5 common-1.0 special-tracks-1.0 notation-1.0 musical-model-1.0 interchange-1.0 audio-model-1.0)
         list(APPEND score_schemas "third_party/ostf-schemas/ostf-${version}.schema.json")
     endforeach()
     juce_add_binary_data(OSTFScoreSchemas HEADER_NAME ScoreSchemas.h NAMESPACE ScoreSchemas SOURCES ${score_schemas})
@@ -200,12 +201,19 @@ if (OSTF_STUDIO_BUILD_GUI)
     target_link_libraries(ostf_studio_chatgpt_tests PRIVATE juce::juce_core)
     add_test(NAME ostf_studio_chatgpt_connection COMMAND ostf_studio_chatgpt_tests)
 
+    add_executable(ostf_pitch_probe tests/audio_pitch_probe.cpp)
+    target_include_directories(ostf_pitch_probe PRIVATE third_party/signalsmith)
+    target_compile_definitions(ostf_pitch_probe PRIVATE JUCE_USE_CURL=0)
+    target_link_libraries(ostf_pitch_probe PRIVATE juce::juce_audio_formats)
+    add_test(NAME ostf_audio_pitch_render COMMAND ostf_pitch_probe --self-test)
+
     add_executable(ostf_studio_ostfp_tests tests/ostfp_preview_tests.cpp src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
     target_include_directories(ostf_studio_ostfp_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_definitions(ostf_studio_ostfp_tests PRIVATE JUCE_USE_CURL=0)
     target_link_libraries(ostf_studio_ostfp_tests PRIVATE ostf_score_validation juce::juce_cryptography juce::juce_audio_formats)
     add_test(NAME ostf_studio_ostfp_tests COMMAND ostf_studio_ostfp_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/10-comprehensive-core.ostfp")
+    add_test(NAME ostf_studio_52 COMMAND ostf_studio_ostfp_tests --ostf52 "${CMAKE_SOURCE_DIR}/tests/fixtures/ostf52")
     foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0)
         add_test(NAME ostf_studio_read_${version} COMMAND ostf_studio_ostfp_tests --legacy
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/legacy/${version}.ostf")
@@ -227,7 +235,9 @@ if (OSTF_STUDIO_BUILD_GUI)
         set_tests_properties(ostf_studio_transport PROPERTIES TIMEOUT 90)
         add_test(NAME ostf_studio_notation COMMAND OSTFStudio --notation-smoke
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostfp" "${CMAKE_CURRENT_BINARY_DIR}/notation-check")
-        set_tests_properties(ostf_studio_notation PROPERTIES TIMEOUT 120)
+        add_test(NAME ostf_studio_written_notation COMMAND OSTFStudio --notation-smoke
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ostf52/11-notation-piano-tie-grace.ostf" "${CMAKE_CURRENT_BINARY_DIR}/notation-52-check")
+        set_tests_properties(ostf_studio_notation ostf_studio_written_notation PROPERTIES TIMEOUT 120)
         add_test(NAME ostf_native_comps COMMAND OSTFStudio --native-comp-smoke "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/26-midi-comp.ostf")
         add_test(NAME ostf_studio_live_session COMMAND OSTFStudio --live-session-smoke
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostf")

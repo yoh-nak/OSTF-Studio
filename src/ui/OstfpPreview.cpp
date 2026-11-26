@@ -188,7 +188,19 @@ void readCompChoices(const juce::var& score, OstfpPreview& project) {
     }
 }
 
-std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVoicingRow = false) {
+juce::var withProductionRows(const juce::var& core, const std::shared_ptr<const ImportedProduction>& imported) {
+    if (!imported || imported->viewTracks.size() == 0) return core;
+    auto view = core.clone();
+    auto& rows = *view.getDynamicObject()->getProperty("tracks").getArray();
+    for (const auto& lane : array(imported->viewTracks)) {
+        for (const auto& row : rows) require(row["id"] != lane["id"], "Production display ID conflicts with a score track");
+        rows.add(lane);
+    }
+    return view;
+}
+std::unique_ptr<OstfpPreview> projectScore(const juce::var& core, bool retainVoicingRow = false,
+                                          std::shared_ptr<const ImportedProduction> imported = {}) {
+    const auto score = withProductionRows(core, imported);
     require(score["format"] == "OSTF", "Expected an OSTF score");
     const auto timeline = score["timeline"];
     const auto ppq = integer(score["ppq"]);
@@ -211,6 +223,7 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
             "The score exceeds the supported timeline range.");
 
     auto out = std::make_unique<OstfpPreview>();
+    out->importedProduction = imported;
     out->sourceVersion = score["version"].toString();
     readCompChoices(score,*out);
     out->documentId = score["document"]["id"].toString();
@@ -422,7 +435,8 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         }
     for (const auto& track : tracks) {
         addLane(out->trackLanes, track["name"].toString(), intervals(track["clips"], "id", true));
-        out->trackKinds.push_back(track["trackType"] == "drum" ? TrackKind::drum : TrackKind::pitched);
+        const bool productionAudio = imported && out->trackKinds.size() >= static_cast<size_t>(core["tracks"].size());
+        out->trackKinds.push_back(productionAudio ? TrackKind::audio : track["trackType"] == "drum" ? TrackKind::drum : TrackKind::pitched);
         const auto role = track["role"].toString();
         const auto primary = score["song"]["primaryMelodyTrackId"].toString();
         if ((!primary.isEmpty() && track["id"].toString() == primary) || (primary.isEmpty() && !out->primaryMelodyTrack && (role.equalsIgnoreCase("melody") || role.equalsIgnoreCase("lead"))))
@@ -569,6 +583,17 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& score, bool retainVo
         if (group == MixerTrackGroup::other && !notes.empty()) group = MixerTrackGroup::pitched;
     }
     // The lyric document can be displayed even when no singing instrument or notes exist.
+    const auto declarations = score["specialTracks"]["tracks"];
+    if (const auto* declared = declarations.getArray()) {
+        const auto voices = lyrics["voices"];
+        for (const auto& entry : *declared) {
+            if (entry["presentation"].getProperty("visible", true))
+                out->specialTrackNames.add(entry["name"].toString().isNotEmpty() ? entry["name"].toString() : entry["id"].toString());
+            if (entry["kind"] == "vocal" && voices.isArray())
+                for (const auto& voice : array(voices)) if (entry["voiceId"] == voice["id"] && voice["trackId"].isString())
+                    out->declaredVocalTrackIds.addIfNotAlreadyThere(voice["trackId"].toString());
+        }
+    }
     out->displayDocument = score["song"]["primaryLyricDocumentId"].toString();
     if (lyrics["voices"].isArray())
         for (const auto& voice : array(lyrics["voices"]))
@@ -758,7 +783,7 @@ juce::MemoryBlock editedScoreBytes(const juce::MemoryBlock& original, const juce
 
 juce::MemoryBlock savedScore(const OstfpPreview& project, bool writing = false) {
     require(!project.sourceScore.isEmpty(), "No OSTF score to save");
-    const bool upgrade = writing && project.sourceVersion != "5.0.0" && project.sourceVersion != "5.1.0";
+    const bool upgrade = writing && project.sourceVersion != "5.0.0" && !project.supportsScoreTakes();
     if (project.addedClips.empty() && !upgrade) return project.sourceScore;
     auto score = parseObject(project.sourceScore);
     if (upgrade) score.getDynamicObject()->setProperty("version", "5.0.0");
@@ -1270,7 +1295,7 @@ void readAudioReferences(const juce::var& score, const juce::var& production, Os
         const auto& clips = array(regions);
         require(descriptors.size() <= static_cast<int>(OstfpPreview::maxAudioRegions) && clips.size() <= static_cast<int>(OstfpPreview::maxAudioRegions)
                 && references.isVoid(), "Too many audio assets or regions");
-        require(!manifest.isObject() || array(bindings).size() == descriptors.size(), "Missing production asset bindings");
+        require(project.importedProduction || !manifest.isObject() || array(bindings).size() == descriptors.size(), "Missing production asset bindings");
         juce::StringArray usedIds, regionIds;
         const auto channels = production["channels"];
         const auto tracks = score["tracks"];
@@ -1323,8 +1348,10 @@ void readAudioReferences(const juce::var& score, const juce::var& production, Os
                     item.timing.markers.push_back({double(p["position"]), double(p["source"])});
                 require(item.timing.valid(), "Invalid Studio warp markers");
             }
-            require((fit || region["playbackMode"] == "native") && integer(region.getProperty("fadeInTicks", 0)) == 0
-                    && integer(region.getProperty("fadeOutTicks", 0)) == 0, "Unsupported audio region stretch or fade");
+            item.fadeInTicks=integer(region.getProperty("fadeInTicks",0));
+            item.fadeOutTicks=integer(region.getProperty("fadeOutTicks",0));
+            require((fit || region["playbackMode"] == "native") && item.fadeInTicks>=0 && item.fadeInTicks<=item.durationTicks
+                    && item.fadeOutTicks>=0 && item.fadeOutTicks<=item.durationTicks, "Unsupported audio region stretch or fade");
             require(item.startTick >= 0 && item.durationTicks > 0 && item.durationTicks <= project.playbackEndTick() - item.startTick
                     && item.startFrame >= 0 && item.frameCount > 0 && item.frameCount <= item.assetFrames - item.startFrame
                     && std::isfinite(item.gainDb), "Invalid audio region range");
@@ -1346,7 +1373,7 @@ void readAudioReferences(const juce::var& score, const juce::var& production, Os
                 project.savedMix->audioTracks[item.track] = true;
             project.audio.push_back(std::move(item));
         }
-        require(usedIds.size() == descriptors.size(), "Unused or duplicate production audio asset");
+        require(project.importedProduction || usedIds.size() == descriptors.size(), "Unused or duplicate production audio asset");
         return;
     }
     if (!references.isArray()) return;
@@ -1401,6 +1428,8 @@ void describeWav(const OstfpPreview& project, const ProjectAudio& audio, const j
     regions.add(object({{"id", audio.regionId}, {"channelId", "track-" + number}, {"sourceAssetId", id},
         {"startTick", audio.startTick}, {"durationTicks", length}, {"sourceStartFrame", audio.startFrame},
         {"sourceFrameCount", frames}, {"playbackMode", "native"}, {"gainDb", audio.gainDb}, {"mute", audio.muted}}));
+    if (audio.fadeInTicks) regions.getLast().getDynamicObject()->setProperty("fadeInTicks",audio.fadeInTicks);
+    if (audio.fadeOutTicks) regions.getLast().getDynamicObject()->setProperty("fadeOutTicks",audio.fadeOutTicks);
     if (!audio.timing.phaseOffset && audio.timing.cycleTicks == length && !audio.timing.loop && !audio.timing.leadingTicks && !audio.timing.sourceLimitTicks) {
         regions.getLast().getDynamicObject()->setProperty("playbackMode", "fit");
         regions.getLast().getDynamicObject()->setProperty("pitchPolicy", "followRate");
@@ -1473,7 +1502,7 @@ SongInformation OstfpPreview::songInformation() const {
 
 juce::Result OstfpPreview::applySongDetails(const SongInformation& info, const SongMusicEdit& music, juce::MemoryBlock& previous) try {
     const auto original = savedScore(*this);
-    auto draft = projectScore(parseObject(original), chordVoicingTrack.has_value());
+    auto draft = projectScore(parseObject(original), chordVoicingTrack.has_value(), importedProduction);
     draft->sourceScore = original;
     draft->sourceVersion = sourceVersion;
     auto result = draft->applySongInformation(info);
@@ -1736,6 +1765,8 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
         auto score = parseObject(before);
         auto tracks = score["tracks"];
         auto& entries = *tracks.getArray();
+        require(!importedProduction || importedProduction->viewTracks.size() == 0,
+                "This imported Production has separate audio channels. Track layout changes require a new project.");
         auto extensions = score["extensions"];
         if (auto* values = extensions.getDynamicObject()) values->removeProperty(mixNamespace);
         const auto revision = "studio-" + juce::Uuid().toString();
@@ -1823,7 +1854,7 @@ juce::Result OstfpPreview::editTracks(TrackKind kind, std::optional<std::size_t>
             score.getDynamicObject()->setProperty("tracks", tracks);
         }
         reviseDocument(score, before, revision);
-        auto next = projectScore(score);
+        auto next = projectScore(score, false, importedProduction);
         next->sourceScore =
             editedScoreBytes(before, score, {"tracks", "document", "extensions", "lyrics", "soundSlots", "drumKits", "presentation", StudioMidiTakes::extension});
         require(next->sourceScore.getSize() <= maxBytes, "OSTF score is too large.");
@@ -2372,7 +2403,7 @@ juce::Result OstfpPreview::extendedForImport(juce::int64 end, std::unique_ptr<Os
     score["timeline"].getDynamicObject()->setProperty("duration", end);
     reviseDocument(score, original, "import-" + juce::Uuid().toString());
     auto bytes = editedScoreBytes(original, score, {"timeline", "document"});
-    auto next = projectScore(score, chordVoicingTrack.has_value());
+    auto next = projectScore(score, chordVoicingTrack.has_value(), importedProduction);
     next->sourceScore = std::move(bytes);
     next->sourceManifest = sourceManifest;
     next->trackKinds = trackKinds;
@@ -2615,7 +2646,7 @@ juce::Result OstfpPreview::editMidiClip(size_t track, const juce::String& id, Mi
 
 juce::Result OstfpPreview::restoreNoteScore(const juce::MemoryBlock& bytes) try {
     require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
-    auto next = projectScore(parseObject(bytes), chordVoicingTrack.has_value());
+    auto next = projectScore(parseObject(bytes), chordVoicingTrack.has_value(), importedProduction);
     require(next->sourceTrackCount() == sourceTrackCount() && next->chordVoicingTrack == chordVoicingTrack, "Track layout changed.");
     next->sourceScore = bytes;
     next->sourceManifest = sourceManifest;
@@ -2885,10 +2916,10 @@ void appendWholeTake(juce::var group, juce::var clips, juce::Range<juce::int64> 
 }
 
 juce::Result OstfpPreview::addScoreTake(size_t trackIndex, juce::Range<juce::int64> ticks, juce::MemoryBlock& before) try {
-    require(trackIndex<sourceTrackCount() && !ticks.isEmpty(),"Select a MIDI track and section.");
+    require(trackIndex<sourceTrackCount() && trackKinds[trackIndex]!=TrackKind::audio && !ticks.isEmpty(),"Select a MIDI track and section.");
     const auto base=savedScore(*this,true);
     auto score=parseObject(base);
-    require(score["version"]=="5.1.0","Native comp authoring requires OSTF 5.1.");
+    require(supportsScoreTakes(),"Native comp authoring requires OSTF 5.1 or 5.2.");
     auto track=score["tracks"][int(trackIndex)];
     auto clips=arrayProperty(track,"clips");
     auto groups=arrayProperty(score,"takeGroups");
@@ -2929,7 +2960,7 @@ juce::Result OstfpPreview::addScoreTake(size_t trackIndex, juce::Range<juce::int
     auto second=blank(); clips.getArray()->add(second); appendWholeTake(group,clips,ticks,second,false);
     reviseDocument(score,base,"take-"+juce::Uuid().toString());
     const auto bytes=editedScoreBytes(base,score,{"takeGroups","tracks","document"});
-    validateVersion("5.1.0",bytes);
+    validateVersion(score["version"].toString(),bytes);
     const auto r=restoreNoteScore(bytes); if(r.wasOk()) before=base;
     return r;
 } catch(const std::exception& e){return juce::Result::fail(e.what());}
@@ -2959,10 +2990,12 @@ void applyCompChoice(juce::var& score, const ScoreCompChoice& choice) {
 juce::Result OstfpPreview::compPlayback(const std::vector<ScoreCompChoice>& choices, std::unique_ptr<OstfpPreview>& playback) const try {
     auto score = parseObject(savedScore(*this));
     for (const auto& choice : choices) applyCompChoice(score, choice);
-    auto projected = projectScore(score, chordVoicingTrack.has_value());
+    auto projected = projectScore(score, chordVoicingTrack.has_value(), importedProduction);
     projected->sourceScore = jsonBytes(score);
     projected->trackKinds = trackKinds;
     projected->panAutomation = panAutomation;
+    projected->audio = audio;
+    projected->savedMix = savedMix;
     playback = std::move(projected);
     return juce::Result::ok();
 } catch (const std::exception& e) { return juce::Result::fail(e.what()); }
@@ -2977,7 +3010,7 @@ juce::Result OstfpPreview::selectScoreComps(const std::vector<ScoreCompChoice>& 
     for (const auto& choice : choices) applyCompChoice(score, choice);
     reviseDocument(score,base,"comp-"+juce::Uuid().toString());
     const auto bytes=editedScoreBytes(base,score,{"tracks","takeGroups","document"});
-    validateVersion("5.1.0",bytes);
+    validateVersion(score["version"].toString(),bytes);
     const auto result=restoreNoteScore(bytes);
     if(result.wasOk()) before=base;
     return result;
@@ -3215,7 +3248,7 @@ juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64
         appendWholeTake(group,trackClips,owned,clip,false);
         reviseDocument(score,before,"record-"+juce::Uuid().toString());
         const auto bytes=editedScoreBytes(before,score,{"tracks","drumKits","soundSlots","takeGroups","document"});
-        validateVersion("5.1.0",bytes);
+        validateVersion(score["version"].toString(),bytes);
         return restoreNoteScore(bytes);
     }
     if(takeState.count>1) writeTrackTakes(score,track,takeState);
@@ -3224,7 +3257,7 @@ juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
 bool OstfpPreview::addSessionClip(std::size_t track, juce::String name, std::vector<PitchedNote> notes) {
-    if (track >= sourceTrackCount() || notes.empty() || ticksPerBar <= 0) return false;
+    if (track >= sourceTrackCount() || trackKinds[track] == TrackKind::audio || notes.empty() || ticksPerBar <= 0) return false;
     auto firstTick = notes.front().startTick;
     auto lastTick = notes.front().endTick;
     const auto endTick = (bars.endBar - bars.firstBar) * ticksPerBar;
@@ -3290,7 +3323,7 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
                 && (header[6] & 1) == 0 && juce::ByteOrder::littleEndianShort(header + 8) == 0 && input.setPosition(0),
                 "Expected a stored OSTFP mimetype header");
         juce::ZipFile zip(input);
-        require(zip.getNumEntries() >= 3 && zip.getNumEntries() <= 4 + static_cast<int>(OstfpPreview::maxAudioRegions)
+        require(zip.getNumEntries() >= 3 && zip.getNumEntries() <= 19 + static_cast<int>(OstfpPreview::maxAudioRegions)
                 && zip.getEntry(0)->filename == "mimetype" && zip.getEntry(1)->filename == "manifest.json",
                 "Preview supports an OSTFP score and optional Studio mixer document");
         const auto mime = readMember(zip, 0);
@@ -3298,61 +3331,112 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
                 "Incorrect OSTFP media type");
         const auto manifestBytes = readMember(zip, 1);
         const auto manifest = parseObject(manifestBytes);
+        const bool manifest12 = manifest["packageVersion"] == "1.2.0";
+        if (manifest12) validateVersion("package-manifest-1.2", manifestBytes);
         const bool manifest11 = manifest["packageVersion"] == "1.1.0";
         if (manifest11) validateVersion("package-manifest-1.1", manifestBytes);
-        require(manifest["packageFormat"] == "OSTFP" && (manifest11 || manifest["packageVersion"] == "1.0.0"), "Unsupported OSTFP manifest version");
+        require(manifest["packageFormat"] == "OSTFP" && (manifest12 || manifest11 || manifest["packageVersion"] == "1.0.0"), "Unsupported OSTFP manifest version");
         const auto documentData = manifest["documents"];
         const auto& documents = array(documentData);
         const auto assetData = manifest["assets"];
         const auto& assets = array(assetData);
-        require(documents.size() <= 1 && assets.size() <= static_cast<int>(OstfpPreview::maxAudioRegions) && zip.getNumEntries() == 3 + documents.size() + assets.size()
+        require(documents.size() <= (manifest12 ? 16 : 1) && assets.size() <= static_cast<int>(OstfpPreview::maxAudioRegions) && zip.getNumEntries() == 3 + documents.size() + assets.size()
                 && (manifest["externalAssets"].isVoid() || array(manifest["externalAssets"]).isEmpty()),
                 "Unsupported OSTFP documents or assets");
         const auto descriptor = manifest["score"];
         const auto path = descriptor["path"].toString();
         const auto scoreIndex = zip.getIndexOfFileName(path);
-        require(descriptor["format"] == "OSTF" && ((manifest11 && descriptor["version"] == "5.1.0") || descriptor["version"] == "5.0.0" || descriptor["version"] == "4.3.0") && safeScorePath(path)
+        require(descriptor["format"] == "OSTF" && ((manifest12 && descriptor["version"] == "5.2.0") || ((manifest11 || manifest12) && descriptor["version"] == "5.1.0") || descriptor["version"] == "5.0.0" || descriptor["version"] == "4.3.0") && safeScorePath(path)
                 && scoreIndex >= 2, "Invalid or unsupported OSTFP score entry");
         auto scoreBytes = readMember(zip, scoreIndex);
         const auto hash = juce::SHA256(scoreBytes).toHexString();
         require(hash == descriptor["sha256"].toString(), "OSTFP score SHA-256 mismatch");
         const auto score = parseObject(scoreBytes);
         require(score["version"] == descriptor["version"], "OSTFP manifest and score versions differ");
+        const bool is52 = score["version"] == "5.2.0";
         const bool is51 = score["version"] == "5.1.0";
+        if (is52) validateVersion("5.2.0", scoreBytes);
         if (is51) validateVersion("5.1.0", scoreBytes);
         if (score["version"] == "4.3.0") {
             require(documents.isEmpty(), "Import the standalone 4.3 score; historical session documents require separate migration");
             validateVersion("4.3.0", scoreBytes);
         }
         auto next = projectScore(score);
-        if (!documents.isEmpty()) {
-            const auto document = documents[0];
+        std::shared_ptr<ImportedProduction> imported;
+        juce::var document;
+        std::set<juce::String> paths{path};
+        std::size_t companionBytes = 0;
+        for (const auto& desc : documents) {
+            const auto member = desc["path"].toString();
+            require(safeScorePath(member) && paths.insert(member).second, "Duplicate or invalid companion path");
+            if (desc["role"] == "productionSession") {
+                require(!document.isObject(), "Multiple Production sessions in one package");
+                document = desc;
+                continue;
+            }
+            const int idx = zip.getIndexOfFileName(member);
+            require(manifest12 && idx >= 2, "Unsupported or missing companion");
+            auto bytes = readMember(zip,idx);
+            companionBytes += bytes.getSize();
+            require(companionBytes <= maxPackageBytes - 2 * maxBytes && juce::SHA256(bytes).toHexString() == desc["sha256"].toString(), "Companion size or hash mismatch");
+            if (!imported) imported = std::make_shared<ImportedProduction>();
+            imported->members.emplace(member,std::move(bytes));
+        }
+        for (const auto& asset : assets) {
+            const auto member = asset["path"].toString();
+            require(safeScorePath(member) && paths.insert(member).second, "Duplicate or invalid asset path");
+        }
+        if (document.isObject()) {
             const auto documentPath = document["path"].toString();
             const auto index = zip.getIndexOfFileName(documentPath);
             require(document["role"] == "productionSession" && document["family"] == "OSTF-Production-Session"
-                    && document["version"] == (is51 ? "0.4.0" : "0.3.0") && safeScorePath(documentPath) && index >= 2 && index != scoreIndex,
+                    && document["version"] == (is52 ? "0.5.0" : is51 ? "0.4.0" : "0.3.0") && safeScorePath(documentPath) && index >= 2 && index != scoreIndex,
                     "Unsupported OSTFP companion document");
             const auto bytes = readMember(zip, index);
             require(juce::SHA256(bytes).toHexString() == document["sha256"].toString(), "OSTFP production document SHA-256 mismatch");
+            if (is52) validateVersion("production-session-0.5", bytes);
             if (is51) validateVersion("production-session-0.4", bytes);
             const auto production = parseObject(bytes);
             for (const auto key : {"documentId","revisionId"})
                 require(!production["score"].hasProperty(key) || production["score"][key] == score["document"][juce::String(key) == "documentId" ? "id" : "revisionId"], "Production score identity mismatch");
-            require(production["audioTakeGroups"].size() == 0, "This editor cannot yet preserve audio take groups.");
+
             require(production["profile"] == "OSTF-Production-Session" && production["profileVersion"] == document["version"]
                     && production["score"]["formatVersion"] == score["version"] && production["score"]["sha256"] == hash,
                     "OSTFP production profile or score hash mismatch");
-            next->savedMix = readMix(score, production, next->panAutomation);
+            auto playback = production.clone();
+            for (const auto& ch : array(production["channels"]))
+                if (!imported && ch["kind"] == "audioTrack") imported = std::make_shared<ImportedProduction>();
+            if (!imported && (production.hasProperty("audioModel") || production.hasProperty("audioTakeGroups")
+                              || (is52 && !production.hasProperty("hostExtensions"))))
+                imported = std::make_shared<ImportedProduction>();
+            if (imported) {
+                imported->manifestBytes = manifestBytes; imported->productionBytes = bytes;
+                for (auto& ch : *playback.getDynamicObject()->getProperty("channels").getArray()) {
+                    if (ch["kind"] != "audioTrack") continue;
+                    const auto label = ch["name"].toString().isNotEmpty() ? ch["name"].toString() : ch["id"].toString();
+                    const auto id = "studio-audio-row-" + ch["id"].toString();
+                    imported->viewTracks.getArray()->add(object({{"id",id},{"name",label},{"clips",juce::Array<juce::var>{}}}));
+                    ch.getDynamicObject()->setProperty("kind","track"); ch.getDynamicObject()->setProperty("trackId",id);
+                }
+                next = projectScore(score, false, imported);
+            }
+            const auto viewScore = withProductionRows(score, imported);
+            next->savedMix = readMix(viewScore, playback, next->panAutomation);
             const auto source = production.hasProperty("assets") || production.hasProperty("audioRegions")
-                ? production : score["extensions"][mixNamespace]["data"];
-            readAudioReferences(score, source, *next, manifest, documentPath);
+                ? playback : score["extensions"][mixNamespace]["data"];
+            readAudioReferences(viewScore, source, *next, manifest, documentPath);
         } else {
+            if (manifest12 && (imported || !assets.isEmpty())) {
+                if (!imported) imported = std::make_shared<ImportedProduction>();
+                imported->manifestBytes = manifestBytes;
+                next->importedProduction = imported;
+            }
             next->savedMix = readEmbeddedMix(score, next->panAutomation);
             readAudioReferences(score, score["extensions"][mixNamespace]["data"], *next, manifest);
         }
 
         std::map<juce::String, RegionAudioBytes> loadedAssets;
-        std::size_t loadedBytes = 0;
+        std::size_t loadedBytes = companionBytes;
         for (auto& audio : next->audio) {
             require(safeScorePath(audio.path), "Invalid OSTFP audio path");
             const auto asset = std::find_if(assets.begin(), assets.end(), [&](const auto& item) {
@@ -3371,7 +3455,25 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
                     && juce::SHA256(audio.embedded).toHexString() == (*asset)["sha256"].toString(), "OSTFP audio asset hash or size mismatch");
             loadedAssets.emplace(audio.path, audio.embedded);
         }
-        require(loadedAssets.size() == assets.size(), "OSTFP audio inventory mismatch");
+        if (imported) {
+            for (const auto& asset : assets) {
+                const auto path = asset["path"].toString();
+                require(safeScorePath(path) && !imported->members.contains(path), "Invalid or repeated package asset path");
+                if (auto found=loadedAssets.find(path); found!=loadedAssets.end()) {imported->members.emplace(path,found->second); continue;}
+                const auto index=zip.getIndexOfFileName(path); require(index>=2,"Missing package asset");
+                auto data=readMember(zip,index,maxAudioBytes); loadedBytes+=data.getSize();
+                require(loadedBytes<=maxPackageBytes && integer(asset["sizeBytes"])==static_cast<juce::int64>(data.getSize())
+                        && juce::SHA256(data).toHexString()==asset["sha256"].toString(), "Package asset size or hash mismatch");
+                imported->members.emplace(path,std::move(data));
+            }
+            imported->originalAudio=next->audio;
+            if (!next->savedMix) {
+                auto& baseline = next->savedMix.emplace();
+                baseline.tracks.resize(next->trackLanes.size());
+                baseline.midiRoutes.resize(baseline.tracks.size());
+            }
+            imported->mixerSnapshot=jsonBytes(productionMix(withProductionRows(score,imported),*next->savedMix,next->panAutomation));
+        } else require(loadedAssets.size() == assets.size(), "OSTFP audio inventory mismatch");
         if (next->savedMix)
             for (std::size_t i = 0; i < next->trackKinds.size(); ++i)
                 if (i < next->sourceTrackCount() && i < next->savedMix->audioTracks.size() && next->savedMix->audioTracks[i])
@@ -3395,8 +3497,47 @@ juce::Result writeOstfPreview(const OstfpPreview& project, juce::OutputStream& o
     }
 }
 
+static void writeImportedProduction(const OstfpPreview& project, const SessionMix& mix, juce::OutputStream& output) {
+    const auto& source = *project.importedProduction;
+    require(source.originalAudio == project.audio, "This imported Production contains original audio or take references. Saving edited audio regions in it is not supported.");
+    const auto score = savedScore(project,true);
+    const auto core = parseObject(score);
+    const auto view = withProductionRows(core,project.importedProduction);
+    require(jsonBytes(productionMix(view,mix,project.panAutomation)) == source.mixerSnapshot,
+            "This imported Production uses its original mixer. Export the edited score separately to retain your musical edits.");
+    auto manifest=parseObject(source.manifestBytes);
+    auto scoreRef=manifest["score"]; juce::var companion;
+    for (const auto& doc : array(manifest["documents"])) if (doc["role"] == "productionSession") companion=doc;
+    auto production=source.productionBytes; auto manifestBytes=source.manifestBytes;
+    const auto hash=juce::SHA256(score).toHexString();
+    if (hash!=scoreRef["sha256"].toString()) {
+        require(array(manifest["documents"]).size() == (companion.isObject() ? 1 : 0),
+                "An additional companion refers to the original revision. Save the edited score as OSTF.");
+        if (companion.isObject()) {
+            auto session=parseObject(production); auto binding=session["score"];
+            binding.getDynamicObject()->setProperty("sha256",hash);
+            for(const auto key:{"documentId","revisionId"}) if(binding.hasProperty(key))
+                binding.getDynamicObject()->setProperty(key,core["document"][juce::String(key)=="documentId"?"id":"revisionId"]);
+            production=editedScoreBytes(source.productionBytes,session,{"score"});
+            companion.getDynamicObject()->setProperty("sha256",juce::SHA256(production).toHexString());
+        }
+        scoreRef.getDynamicObject()->setProperty("sha256",hash);
+        manifestBytes=editedScoreBytes(source.manifestBytes,manifest,{"score","documents"});
+    }
+    juce::ZipFile::Builder zip;
+    auto add=[&](const juce::String& name,const juce::MemoryBlock& bytes){
+        zip.addEntry(std::make_unique<juce::MemoryInputStream>(bytes,false),9,name,{});
+    };
+    zip.addEntry(std::make_unique<juce::MemoryInputStream>(mediaType,sizeof mediaType-1,false),0,"mimetype",{});
+    add("manifest.json",manifestBytes); add(scoreRef["path"].toString(),score);
+    if (companion.isObject()) add(companion["path"].toString(),production);
+    for(const auto& [path,data]:source.members) add(path,data.read());
+    require(zip.writeToStream(output,nullptr),"Could not write the original Production and its assets");
+}
+
 juce::Result writeOstfpPreview(const OstfpPreview& project, const SessionMix& mix, juce::OutputStream& output) {
     try {
+        if(project.importedProduction) {writeImportedProduction(project,mix,output); return juce::Result::ok();}
         juce::Array<juce::var> sources, regions, bindings, assets;
         std::vector<juce::MemoryBlock> media;
         std::size_t total = 0;
@@ -3433,7 +3574,8 @@ juce::Result writeOstfpPreview(const OstfpPreview& project, const SessionMix& mi
         }
         profile->setProperty("profile", "OSTF-Production-Session");
         const bool is51 = core["version"] == "5.1.0";
-        const auto productionVersion = is51 ? "0.4.0" : "0.3.0";
+        const bool is52 = core["version"] == "5.2.0";
+        const auto productionVersion = is52 ? "0.5.0" : is51 ? "0.4.0" : "0.3.0";
         profile->setProperty("profileVersion", productionVersion);
         profile->setProperty("score", object({{"formatVersion", core["version"]}, {"sha256", hash}}));
         const auto production = jsonBytes(document);
@@ -3441,7 +3583,7 @@ juce::Result writeOstfpPreview(const OstfpPreview& project, const SessionMix& mi
         auto manifest = project.sourceManifest.isObject() ? project.sourceManifest.clone() : object({});
         auto* fields = manifest.getDynamicObject();
         fields->setProperty("packageFormat", "OSTFP");
-        fields->setProperty("packageVersion", is51 || manifest["packageVersion"] == "1.1.0" ? "1.1.0" : "1.0.0");
+        fields->setProperty("packageVersion", is52 || manifest["packageVersion"] == "1.2.0" ? "1.2.0" : is51 || manifest["packageVersion"] == "1.1.0" ? "1.1.0" : "1.0.0");
         if (manifest["projectId"].toString().isEmpty())
             fields->setProperty("projectId", "studio-" + juce::Uuid().toString());
         fields->setProperty("title", project.title);
@@ -3478,6 +3620,7 @@ juce::Result writeOstfPreview(const OstfpPreview& project, const SessionMix& mix
 juce::Result writeOstfPreview(const OstfpPreview& project, const SessionMix& mix, const juce::File& destination,
                              juce::OutputStream& output) {
     try {
+        if(project.importedProduction) return writeOstfPreview(project,output);
         juce::Array<juce::var> sources, regions;
         if (!project.audio.empty()) {
             require(destination != juce::File{}, "An OSTF file destination is needed to copy referenced audio");

@@ -554,7 +554,78 @@ static int legacyRoundTrip(const juce::File& file) {
     return 0;
 }
 
+static int checkOstf52(const juce::File& fixtures) {
+    using namespace ostfstudio;
+    const auto files=fixtures.findChildFiles(juce::File::findFiles,false,"*.ostf");
+    if (files.size()<5) return 1;
+    for (const auto& file : files) {
+        juce::FileInputStream in(file); std::unique_ptr<OstfpPreview> p;
+        const auto opened=readOstfPreview(in,p);
+        if(opened.failed()) {std::cerr<<file.getFileName()<<": "<<opened.getErrorMessage()<<"\n";return 2;}
+        if(!p->supportsScoreTakes()) return 3;
+        juce::MemoryOutputStream out;
+        if(writeOstfPreview(*p,out).failed() || out.toString()!=file.loadFileAsString()) return 4;
+        if(file.getFileName().startsWith("31-") && (p->declaredVocalTrackIds.size()!=1 || p->specialTrackNames.size()!=4)) return 5;
+        if(file.getFileName().startsWith("03-")) {
+            juce::MemoryOutputStream packed;
+            SessionMix mix;
+            mix.tracks.resize(p->trackLanes.size());
+            mix.midiRoutes.resize(mix.tracks.size());
+            const auto saved = writeOstfpPreview(*p,mix,packed);
+            if (saved.failed()) {std::cerr << saved.getErrorMessage() << "\n"; return 15;}
+            juce::MemoryInputStream zip(packed.getData(),packed.getDataSize(),false);
+            std::unique_ptr<OstfpPreview> unpacked;
+            const auto loaded = readOstfpPreview(zip,unpacked);
+            if (loaded.failed()) {std::cerr << loaded.getErrorMessage() << "\n"; return 16;}
+            if (unpacked->sourceVersion != "5.2.0" || unpacked->compChoices.size() != p->compChoices.size()) return 17;
+            if(p->compChoices.empty()) return 6;
+            const auto choices=p->compChoices;
+            const auto alternative=std::find_if(choices.begin(),choices.end(),[](const auto& c){return !c.active && c.comp.isNotEmpty();});
+            if(alternative==choices.end()) return 7;
+            juce::MemoryBlock undo;
+            if(p->selectScoreComps({*alternative},undo).failed() || p->sourceVersion!="5.2.0") return 8;
+        }
+    }
+    for(const auto& package:fixtures.findChildFiles(juce::File::findFiles,false,"*.ostfp")) {
+        juce::FileInputStream in(package); std::unique_ptr<OstfpPreview> project;
+        const auto opened=readOstfpPreview(in,project);
+        const auto name = package.getFileName();
+        if (name.startsWith("04-") || name.startsWith("06-")) {
+            const auto expected = name.startsWith("04-") ? "Unsupported sidechain routing" : "Unknown device or unsupported state asset";
+            if (opened.getErrorMessage()!=expected || project) return 18;
+            continue;
+        }
+        if(opened.failed()) {std::cerr<<package.getFileName()<<": "<<opened.getErrorMessage()<<"\n";return 10;}
+        if(!project->importedProduction) return 11;
+        const auto active=std::count_if(project->audio.begin(),project->audio.end(),[](const auto& audio){return !audio.muted;});
+        if(package.getFileName().startsWith("01-") ? active!=0 : active<1) return 12;
+        if(package.getFileName().startsWith("02-") && active!=2) return 12;
+        juce::MemoryOutputStream copy; const auto saved=writeOstfpPreview(*project,project->savedMix.value_or(SessionMix{}),copy);
+        if(saved.failed()){std::cerr<<saved.getErrorMessage()<<"\n";return 13;}
+        juce::MemoryInputStream second(copy.getData(),copy.getDataSize(),false); std::unique_ptr<OstfpPreview> reopened;
+        if(readOstfpPreview(second,reopened).failed() || reopened->sourceScore!=project->sourceScore
+           || reopened->importedProduction->productionBytes!=project->importedProduction->productionBytes
+           || reopened->importedProduction->members!=project->importedProduction->members) return 14;
+        if (name.startsWith("11-")) {
+            auto info=project->songInformation();
+            info.title="Edited score with original audio";
+            if (project->applySongInformation(info).failed()) return 19;
+            juce::MemoryOutputStream edited;
+            if (writeOstfpPreview(*project,*project->savedMix,edited).failed()) return 20;
+            juce::MemoryInputStream archive(edited.getData(),edited.getDataSize(),false);
+            if (readOstfpPreview(archive,reopened).failed() || reopened->title!=info.title
+                || reopened->importedProduction->members!=project->importedProduction->members) return 21;
+        }
+    }
+    auto invalid=juce::JSON::parse(fixtures.getChildFile("10-notation-minimal.ostf"));
+    invalid["notation"].getDynamicObject()->setProperty("profileVersion","99.0");
+    const auto json=juce::JSON::toString(invalid);
+    juce::MemoryInputStream bad(json.toRawUTF8(),json.getNumBytesAsUTF8(),false); std::unique_ptr<OstfpPreview> rejected;
+    return readOstfPreview(bad,rejected).failed()?0:9;
+}
+
 int main(int argc, char** argv) {
+    if (argc==3 && std::string_view(argv[1])=="--ostf52") return checkOstf52(juce::File::createFileWithoutCheckingPath(argv[2]));
     if (argc == 3 && std::string_view(argv[1]) == "--legacy")
         return legacyRoundTrip(juce::File::createFileWithoutCheckingPath(argv[2]));
     if (argc == 3 && std::string_view(argv[1]) == "--smf")

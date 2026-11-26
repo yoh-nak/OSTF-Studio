@@ -97,6 +97,10 @@ PluginBrowser::PluginBrowser() {
     addAndMakeVisible(scanButton_);
     addAndMakeVisible(scanOneButton_);
     addAndMakeVisible(filter_);
+    addAndMakeVisible(manufacturer_);
+    manufacturer_.setComponentID("plugin-manufacturer");
+    manufacturer_.setTitle(TRANS("Manufacturer"));
+    manufacturer_.onChange = [this] { refreshTree(); };
     addAndMakeVisible(search_);
     search_.setComponentID("plugin-search");
     search_.setTitle(TRANS("Search plug-ins"));
@@ -158,7 +162,7 @@ void PluginBrowser::resized() {
     auto tabs = area.removeFromTop(28);
     pluginTab_.setBounds(tabs.removeFromLeft(tabs.getWidth()/2).reduced(1,2));
     sampleTab_.setBounds(tabs.reduced(1,2));
-    for (juce::Component* control : std::array<juce::Component*,6>{&scanButton_, &scanOneButton_, &filter_, &search_, &status_, &tree_})
+    for (juce::Component* control : std::array<juce::Component*,7>{&scanButton_, &scanOneButton_, &filter_, &manufacturer_, &search_, &status_, &tree_})
         control->setVisible(!showingSamples_);
     progress_.setVisible(!showingSamples_ && scanProcess_ != nullptr);
     folder_.setVisible(showingSamples_);
@@ -172,6 +176,7 @@ void PluginBrowser::resized() {
     scanOneButton_.setBounds(buttons.removeFromRight(buttons.getWidth() / 2).reduced(2, 0));
     scanButton_.setBounds(buttons.reduced(2, 0));
     filter_.setBounds(area.removeFromTop(28).reduced(2, 2));
+    manufacturer_.setBounds(area.removeFromTop(28).reduced(2, 2));
     search_.setBounds(area.removeFromTop(27).reduced(2,1));
     status_.setBounds(area.removeFromTop(28));
     if (progress_.isVisible()) progress_.setBounds(area.removeFromTop(14).reduced(0, 2));
@@ -360,13 +365,23 @@ void PluginBrowser::registerBundledPlugins() {
 }
 
 void PluginBrowser::refreshTree() {
+    juce::StringArray allMakers;
+    for (const auto& type : catalog_) allMakers.addIfNotAlreadyThere(displayManufacturer(type), true);
+    allMakers.sort(true);
+    const auto selected = manufacturer_.getSelectedId() > 1 ? manufacturer_.getText() : juce::String{};
+    manufacturer_.clear(juce::dontSendNotification);
+    manufacturer_.addItem(TRANS("All manufacturers"), 1);
+    manufacturer_.addItemList(allMakers, 2);
+    const auto index = allMakers.indexOf(selected, true);
+    manufacturer_.setSelectedId(index + 2, juce::dontSendNotification);
     auto types = catalog_;
     const auto filter = filter_.getSelectedId();
     const auto words = juce::StringArray::fromTokens(search_.getText().trim()," \t",{});
     for (int i = types.size(); --i >= 0;) {
         const auto& plugin = types.getReference(i);
         const auto text = plugin.name + " " + displayManufacturer(plugin) + " " + plugin.category;
-        if ((filter != 1 && browserCategory(plugin) != filter)
+        if ((index >= 0 && !displayManufacturer(plugin).equalsIgnoreCase(selected))
+            || (filter != 1 && browserCategory(plugin) != filter)
             || std::any_of(words.begin(),words.end(),[&](const auto& word){return !text.containsIgnoreCase(word);}))
             types.remove(i);
     }

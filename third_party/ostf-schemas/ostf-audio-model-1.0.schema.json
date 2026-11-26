@@ -1,0 +1,2571 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yoh-nak.github.io/ostf/schema/ostf-audio-model-1.0.schema.json",
+  "title": "OSTF Audio Model Profile 1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+      "description": "Stable identity of this logical Audio Model profile; its individual snapshot records follow immutable ID rules."
+    },
+    "profileVersion": {
+      "const": "1.0.0",
+      "description": "Audio Model Profile version, embedded in Production Session 0.5.0."
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "minItems": 1,
+      "description": "Immutable bindings to existing Production audioSource assets."
+    },
+    "analyses": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Analysis"
+      },
+      "minItems": 0,
+      "description": "Immutable analysis snapshots."
+    },
+    "hypotheses": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      },
+      "minItems": 0,
+      "description": "Coherent alternative interpretations."
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Object"
+      },
+      "minItems": 0,
+      "description": "Acoustic objects and observations, independently addressable."
+    },
+    "representations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Representation"
+      },
+      "minItems": 0,
+      "description": "Public or preserved opaque representations."
+    },
+    "decompositions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Decomposition"
+      },
+      "minItems": 0,
+      "description": "Coherent component groups and residual accounting."
+    },
+    "editPlans": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/EditPlan"
+      },
+      "minItems": 0,
+      "description": "Non-destructive ordered edit transactions."
+    },
+    "renders": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Render"
+      },
+      "minItems": 0,
+      "description": "Pinned rendered outputs and exact saved-region bindings."
+    },
+    "processors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ProcessorDeclaration"
+      },
+      "minItems": 0,
+      "description": "Optional producer capability declarations."
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "ostf-common-1.0.schema.json#/$defs/CapabilityRequirement"
+      },
+      "minItems": 0,
+      "description": "Profile-level feature requirements."
+    },
+    "extensions": {
+      "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+      "description": "Namespaced extension data; preserve unknown values without executing them."
+    }
+  },
+  "required": [
+    "id",
+    "profileVersion",
+    "sources"
+  ],
+  "description": "Optional native acoustic analysis/edit interchange layer. Ordinary Production audioRegions remain saved playback authority.",
+  "$defs": {
+    "Engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Namespaced stable processor identifier.",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]+$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact processor version; display names alone are insufficient."
+        },
+        "modelId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Model identifier when a learned or parameterized model is used."
+        },
+        "modelVersion": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact model version, when known."
+        },
+        "modelSha256": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Sha256",
+          "description": "Digest of the exact model bytes, when available."
+        },
+        "configurationSha256": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Sha256",
+          "description": "Digest of the exact configuration asset bytes; not a digest of arbitrary reserialized JSON."
+        },
+        "configurationAssetId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Existing Production asset containing processing settings."
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Recorded random seed; a seed alone does not guarantee cross-engine determinism."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "description": "Processor identity and reproducibility metadata. No processor is mandated by this profile."
+    },
+    "SourceRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Audio Model source ID."
+        },
+        "startFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "First decoded sample frame, inclusive; shared across channels."
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Number of frames; range is [startFrame,startFrame+frameCount)."
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Zero-based channel index."
+          },
+          "minItems": 1,
+          "description": "Selected source channels; absent means all channels.",
+          "uniqueItems": true
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "sourceId",
+        "startFrame",
+        "frameCount"
+      ],
+      "description": "A bounded range in immutable original/derived source frames."
+    },
+    "Source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable source ID; changes to decoded content require a new ID."
+        },
+        "assetId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Existing Production audioSource asset; its sampling metadata defines this source."
+        },
+        "assetSha256": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Sha256",
+          "description": "Pinned exact asset bytes; MUST equal the referenced Production asset digest."
+        },
+        "role": {
+          "enum": [
+            "original",
+            "analysis-proxy",
+            "separated",
+            "residual",
+            "rendered",
+            "generated"
+          ],
+          "description": "Provenance role, never a playback instruction."
+        },
+        "decoding": {
+          "enum": [
+            "pcm-container",
+            "specified-decoder"
+          ],
+          "description": "PCM containers use their decoded PCM sample order; other codecs require a decoder identity."
+        },
+        "decoder": {
+          "$ref": "#/$defs/Engine",
+          "description": "Required for specified-decoder; identifies the same complete decoded stream described by existing Production asset metadata. No cropping or redefinition of asset.frameCount."
+        },
+        "originalAssetId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Retained original bytes when this source is a canonical decoded or derived asset."
+        },
+        "channelLabels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Channel label, for example mono, left or right."
+          },
+          "minItems": 1,
+          "description": "Ordered labels; length equals Production asset audioChannels."
+        },
+        "derivedFromSourceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 1,
+          "description": "Source lineage; no inferred processing algorithm.",
+          "uniqueItems": true
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "id",
+        "assetId",
+        "assetSha256",
+        "role",
+        "decoding"
+      ],
+      "description": "Immutable source binding. Asset bytes and complete decoded-stream sampling metadata remain in Production assets.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "decoding": {
+                "const": "specified-decoder"
+              }
+            },
+            "required": [
+              "decoding"
+            ]
+          },
+          "then": {
+            "required": [
+              "decoder"
+            ]
+          }
+        }
+      ]
+    },
+    "AnalysisProxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "proxySourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Derived analysis-proxy source."
+        },
+        "originalSourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Original source used to create the proxy."
+        },
+        "originalOffsetFrames": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/NonnegativeRational",
+          "description": "Original-frame position corresponding to proxy frame zero."
+        },
+        "originalFramesPerProxyFrame": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/PositiveRational",
+          "description": "Exact affine slope from proxy frames to original frames."
+        },
+        "channelMatrix": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "description": "Linear mixing coefficient."
+            },
+            "minItems": 1,
+            "description": "One output proxy channel row."
+          },
+          "minItems": 1,
+          "description": "Rows are proxy channels; columns are original channels."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "proxySourceId",
+        "originalSourceId",
+        "originalOffsetFrames",
+        "originalFramesPerProxyFrame",
+        "channelMatrix"
+      ],
+      "description": "Recorded affine resampling/downmix map. Non-affine preprocessing requires a declared opaque extension and cannot claim this mapping is exact."
+    },
+    "Analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Immutable analysis snapshot ID."
+        },
+        "engine": {
+          "$ref": "#/$defs/Engine"
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "pitch",
+              "note-segmentation",
+              "instrument-attribution",
+              "source-separation",
+              "transient",
+              "spectral",
+              "alignment",
+              "other"
+            ],
+            "description": "Analysis task."
+          },
+          "minItems": 1,
+          "description": "Tasks actually attempted.",
+          "uniqueItems": true
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRange"
+          },
+          "minItems": 1,
+          "description": "Native source ranges analyzed."
+        },
+        "proxyMaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AnalysisProxy"
+          },
+          "minItems": 0,
+          "description": "Any recorded proxy resampling/downmix transformations."
+        },
+        "status": {
+          "enum": [
+            "complete",
+            "partial",
+            "failed"
+          ],
+          "description": "Completion state; complete does not claim correctness."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional producer timestamp."
+        },
+        "supersedesAnalysisIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 0,
+          "description": "Prior snapshots superseded for this interpretation, retained for lineage.",
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable scope, limitations or diagnostics; never machine instructions."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "id",
+        "engine",
+        "tasks",
+        "inputs",
+        "status"
+      ],
+      "description": "Analysis observations are immutable and never silently overwritten by user edits."
+    },
+    "Hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Immutable hypothesis ID."
+        },
+        "analysisId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Owning analysis ID."
+        },
+        "groupId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Alternative group within that analysis; at most one selected member per group."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable interpretation label."
+        },
+        "selected": {
+          "type": "boolean",
+          "description": "Authored selection only; selecting does not render or replace Core notes."
+        },
+        "selectionAuthority": {
+          "enum": [
+            "engine",
+            "user"
+          ],
+          "description": "Who made the recorded selection."
+        },
+        "confidence": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Confidence",
+          "description": "Interpretation score with declared method, not universally calibrated probability."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "id",
+        "analysisId",
+        "groupId",
+        "selected",
+        "selectionAuthority"
+      ],
+      "description": "Alternative coherent interpretation; unselected hypotheses remain preservable."
+    },
+    "PitchEstimate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "centerHz": {
+          "type": "number",
+          "description": "Estimated fundamental or perceived pitch in Hz.",
+          "exclusiveMinimum": 0
+        },
+        "confidence": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Confidence"
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Estimator or attribution description."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "centerHz"
+      ],
+      "description": "Pitch observation. Absence is valid for unpitched, unresolved or unvoiced objects."
+    },
+    "Attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Estimated instrument or source label; not a historical track identity."
+        },
+        "confidence": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Confidence"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "description": "Instrument attribution may be uncertain or absent."
+    },
+    "Object": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Immutable acoustic-object ID."
+        },
+        "kind": {
+          "enum": [
+            "mixture",
+            "stem",
+            "note",
+            "percussion",
+            "transient",
+            "noise",
+            "reverberation",
+            "unknown"
+          ],
+          "description": "Semantic category; overlapping ranges are permitted."
+        },
+        "sourceRange": {
+          "$ref": "#/$defs/SourceRange",
+          "description": "Location of evidence in an input source, not necessarily isolated audio."
+        },
+        "provenance": {
+          "enum": [
+            "observed",
+            "estimated",
+            "authored",
+            "generated"
+          ],
+          "description": "Distinguishes inference and editorial/generated content."
+        },
+        "isolation": {
+          "enum": [
+            "not-separated",
+            "estimated",
+            "recorded-isolated",
+            "generated"
+          ],
+          "description": "Detected note pitches do not imply separated waveform availability."
+        },
+        "analysisId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Analysis snapshot from which the object was derived."
+        },
+        "hypothesisId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Hypothesis that contains this object."
+        },
+        "musicalObjectId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Optional link to current Score musicalModel.objects."
+        },
+        "relatedEntities": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+          },
+          "minItems": 0,
+          "description": "Explicit many-to-many representation links; do not imply edit propagation."
+        },
+        "pitch": {
+          "$ref": "#/$defs/PitchEstimate"
+        },
+        "instrument": {
+          "$ref": "#/$defs/Attribution"
+        },
+        "confidence": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Confidence"
+        },
+        "parentObjectIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 1,
+          "description": "Structural parents, including mixtures; graph is acyclic.",
+          "uniqueItems": true
+        },
+        "supersedesObjectIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 1,
+          "description": "Earlier objects replaced/split/merged by this new immutable interpretation.",
+          "uniqueItems": true
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional readable label."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "sourceRange",
+        "provenance",
+        "isolation"
+      ],
+      "description": "An audio contribution or observation, not necessarily an independently recoverable signal.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "provenance": {
+                "const": "estimated"
+              }
+            },
+            "required": [
+              "provenance"
+            ]
+          },
+          "then": {
+            "required": [
+              "analysisId",
+              "hypothesisId"
+            ]
+          }
+        }
+      ]
+    },
+    "CurvePoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Absolute frame in curve.sourceId before edits."
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Numeric value in declared unit; null explicitly marks an unknown/unvoiced interval boundary."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "frame",
+        "value"
+      ],
+      "description": "Curve point. Points are strictly increasing in frame."
+    },
+    "Curve": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Source coordinate space shared by all curve points."
+        },
+        "unit": {
+          "enum": [
+            "hertz",
+            "cents-offset",
+            "decibels",
+            "linear-gain",
+            "ratio"
+          ],
+          "description": "Declared public scalar unit; Hz values are positive and gains/ratios nonnegative."
+        },
+        "interpolation": {
+          "enum": [
+            "step",
+            "linear"
+          ],
+          "description": "Interpolation within two consecutive non-null points."
+        },
+        "outside": {
+          "enum": [
+            "undefined",
+            "hold"
+          ],
+          "description": "Behavior before first/after last point; null endpoints remain undefined."
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CurvePoint"
+          },
+          "minItems": 1,
+          "description": "Ordered observations or target values; no interpolation across a null endpoint."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "sourceId",
+        "unit",
+        "interpolation",
+        "outside",
+        "points"
+      ],
+      "description": "Source-frame scalar trajectory; frequency and offsets are never inferred from unlabelled numbers."
+    },
+    "Stft": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Source signal to which the mask transform applies."
+        },
+        "startFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Source frame at the declared transform origin."
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Source-frame span covered by transform."
+        },
+        "fftSize": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 16777216,
+          "description": "Transform length in samples."
+        },
+        "hopFrames": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216,
+          "description": "Distance between transform-frame origins in source frames."
+        },
+        "window": {
+          "enum": [
+            "hann",
+            "hamming",
+            "rectangular",
+            "asset"
+          ],
+          "description": "Analysis/synthesis window shape."
+        },
+        "windowPeriodic": {
+          "type": "boolean",
+          "description": "For hann/hamming, true uses denominator N and false N-1."
+        },
+        "windowAssetId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Window coefficients asset for window=asset; float64le, fftSize entries."
+        },
+        "normalization": {
+          "enum": [
+            "unitary",
+            "forward",
+            "inverse"
+          ],
+          "description": "Raw-sum DFT scaling: unitary=1/sqrt(N) both directions; forward=1/N forward and 1 inverse; inverse=1 forward and 1/N inverse."
+        },
+        "centering": {
+          "enum": [
+            "left",
+            "center"
+          ],
+          "description": "Transform origin at left sample or center; centered uses floor(N/2) left extension."
+        },
+        "padding": {
+          "enum": [
+            "zero",
+            "reflect",
+            "none"
+          ],
+          "description": "Boundary extension; reflect excludes the edge sample; none omits incomplete windows."
+        },
+        "sidedness": {
+          "enum": [
+            "one-sided",
+            "two-sided"
+          ],
+          "description": "Bins count floor(N/2)+1 or N."
+        },
+        "dtype": {
+          "enum": [
+            "float32le",
+            "float64le"
+          ],
+          "description": "Contiguous little-endian real mask values."
+        },
+        "axisOrder": {
+          "const": [
+            "channel",
+            "time",
+            "frequency"
+          ],
+          "description": "Row-major tensor; frequency index varies fastest."
+        },
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "Positive dimension."
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Channel, transform-time and frequency-bin counts."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "sourceId",
+        "startFrame",
+        "frameCount",
+        "fftSize",
+        "hopFrames",
+        "window",
+        "windowPeriodic",
+        "normalization",
+        "centering",
+        "padding",
+        "sidedness",
+        "dtype",
+        "axisOrder",
+        "dimensions"
+      ],
+      "description": "Public STFT-mask descriptor. Coefficients are amplitudes in [0,1]; phase comes from the identified source transform.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "window": {
+                "const": "asset"
+              }
+            },
+            "required": [
+              "window"
+            ]
+          },
+          "then": {
+            "required": [
+              "windowAssetId"
+            ]
+          }
+        }
+      ]
+    },
+    "Representation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Immutable representation ID."
+        },
+        "objectId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Acoustic object represented; source may be a derived isolated asset."
+        },
+        "kind": {
+          "enum": [
+            "waveform",
+            "curve",
+            "stft-mask",
+            "opaque"
+          ],
+          "description": "Public representations or versioned opaque payload."
+        },
+        "waveform": {
+          "$ref": "#/$defs/SourceRange",
+          "description": "Actual decoded waveform range; only present for waveform."
+        },
+        "curve": {
+          "$ref": "#/$defs/Curve",
+          "description": "Only present for curve."
+        },
+        "assetId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Production data asset for stft-mask or opaque representation."
+        },
+        "stft": {
+          "$ref": "#/$defs/Stft",
+          "description": "Only present for stft-mask."
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Payload media type, required for opaque."
+        },
+        "formatId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Namespaced representation format identifier, required for opaque."
+        },
+        "formatVersion": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact opaque representation format version."
+        },
+        "engine": {
+          "$ref": "#/$defs/Engine",
+          "description": "Model identity needed to interpret model-specific payloads."
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/CapabilityRequirement"
+          },
+          "minItems": 0,
+          "description": "Actions and features required to interpret/edit/render this representation."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "id",
+        "objectId",
+        "kind"
+      ],
+      "description": "Parallel audio descriptions. An opaque latent is not a portable waveform.",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "waveform"
+            }
+          },
+          "required": [
+            "waveform"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "curve"
+                ]
+              },
+              {
+                "required": [
+                  "assetId"
+                ]
+              },
+              {
+                "required": [
+                  "stft"
+                ]
+              },
+              {
+                "required": [
+                  "mediaType"
+                ]
+              },
+              {
+                "required": [
+                  "formatId"
+                ]
+              },
+              {
+                "required": [
+                  "formatVersion"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "curve"
+            }
+          },
+          "required": [
+            "curve"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "waveform"
+                ]
+              },
+              {
+                "required": [
+                  "assetId"
+                ]
+              },
+              {
+                "required": [
+                  "stft"
+                ]
+              },
+              {
+                "required": [
+                  "mediaType"
+                ]
+              },
+              {
+                "required": [
+                  "formatId"
+                ]
+              },
+              {
+                "required": [
+                  "formatVersion"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "stft-mask"
+            }
+          },
+          "required": [
+            "assetId",
+            "stft"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "waveform"
+                ]
+              },
+              {
+                "required": [
+                  "curve"
+                ]
+              },
+              {
+                "required": [
+                  "mediaType"
+                ]
+              },
+              {
+                "required": [
+                  "formatId"
+                ]
+              },
+              {
+                "required": [
+                  "formatVersion"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "opaque"
+            }
+          },
+          "required": [
+            "assetId",
+            "mediaType",
+            "formatId",
+            "formatVersion"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "waveform"
+                ]
+              },
+              {
+                "required": [
+                  "curve"
+                ]
+              },
+              {
+                "required": [
+                  "stft"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "Component": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "objectId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Contributing acoustic object."
+        },
+        "representationId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Waveform representation of the contribution on its source grid."
+        },
+        "role": {
+          "enum": [
+            "signal",
+            "residual"
+          ],
+          "description": "Residual is bound to this exact decomposition, not discarded noise."
+        },
+        "gainLinear": {
+          "type": "number",
+          "description": "Linear amplitude multiplier, applied before channel mixing; may be negative."
+        },
+        "delayFrames": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "Integer delay at input sample rate, before placement at decomposition input start; negative is advance."
+        },
+        "channelMatrix": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "description": "Linear mixing coefficient."
+            },
+            "minItems": 1,
+            "description": "One mixture output-channel row."
+          },
+          "minItems": 1,
+          "description": "Rows are input-mixture channels; columns are component waveform channels. Absent requires equal channel counts and identity mapping."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "objectId",
+        "representationId",
+        "role",
+        "gainLinear",
+        "delayFrames"
+      ],
+      "description": "Explicit contribution to a linear reconstruction or documented nonlinear input."
+    },
+    "ReconstructionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "const": "normalized-decoded-pcm",
+          "description": "Each integer PCM source is scaled by 2^(bits-1); floating PCM retains numerical amplitude."
+        },
+        "maxAbsoluteError": {
+          "type": "number",
+          "description": "Producer-asserted maximum absolute channel-sample error after stated alignment.",
+          "minimum": 0
+        },
+        "comparedFrames": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Frame count over which the comparison was made."
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Producer method description including decode, arithmetic and clipping policies."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "domain",
+        "maxAbsoluteError",
+        "comparedFrames",
+        "method"
+      ],
+      "description": "A producer assertion, not certification by a schema validator or this specification release."
+    },
+    "Decomposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Immutable decomposition identity."
+        },
+        "analysisId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Owning separation analysis."
+        },
+        "hypothesisId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Coherent selected or unselected interpretation."
+        },
+        "input": {
+          "$ref": "#/$defs/SourceRange",
+          "description": "Mixture range whose decomposition is described."
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Component"
+          },
+          "minItems": 1,
+          "description": "Contributions; at most one residual entry."
+        },
+        "mixing": {
+          "enum": [
+            "linear-sum",
+            "nonlinear-process",
+            "unknown"
+          ],
+          "description": "Only linear-sum has a native numerical summation contract."
+        },
+        "processAssetId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Opaque process graph/recipe for nonlinear-process; not executed on load."
+        },
+        "reconstruction": {
+          "enum": [
+            "unknown",
+            "approximate",
+            "sample-consistent"
+          ],
+          "description": "Degree asserted by producer; sample-consistent requires numerical evidence and linear-sum."
+        },
+        "evidence": {
+          "$ref": "#/$defs/ReconstructionEvidence"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "id",
+        "analysisId",
+        "hypothesisId",
+        "input",
+        "components",
+        "mixing",
+        "reconstruction"
+      ],
+      "description": "Decomposition and residual binding; does not identify historic multitrack recordings.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mixing": {
+                "const": "nonlinear-process"
+              }
+            },
+            "required": [
+              "mixing"
+            ]
+          },
+          "then": {
+            "required": [
+              "processAssetId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reconstruction": {
+                "const": "sample-consistent"
+              }
+            },
+            "required": [
+              "reconstruction"
+            ]
+          },
+          "then": {
+            "required": [
+              "evidence"
+            ],
+            "properties": {
+              "mixing": {
+                "const": "linear-sum"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "WarpAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sourceFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Absolute original frame in target object source range."
+        },
+        "outputOffsetFrame": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Frame offset from output object start, at the target source sample rate."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "sourceFrame",
+        "outputOffsetFrame"
+      ],
+      "description": "Strictly increasing monotonic anchor pair; endpoints cover entire target object range."
+    },
+    "Operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Operation ID scoped to its immutable edit plan."
+        },
+        "kind": {
+          "enum": [
+            "pitch-shift",
+            "pitch-curve",
+            "gain",
+            "gain-curve",
+            "formant-shift",
+            "time-warp",
+            "spectral-mask",
+            "replace",
+            "reverse",
+            "engine-operation"
+          ],
+          "description": "Explicit edit operation."
+        },
+        "targetObjectId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Single acoustic object target; several targets use separate operations."
+        },
+        "coordinateSpace": {
+          "const": "original-source-frames",
+          "description": "All curves and anchors refer to original object evidence frames, transported through earlier warps."
+        },
+        "cents": {
+          "type": "number",
+          "description": "Relative pitch/formant shift in cents; 1200 cents is frequency factor 2."
+        },
+        "gainDb": {
+          "type": "number",
+          "description": "Amplitude change in dB; amplitude multiplier is 10^(gainDb/20)."
+        },
+        "curveRepresentationId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Curve representation: pitch-curve permits hertz or cents-offset; gain-curve requires decibels."
+        },
+        "pitchIntent": {
+          "enum": [
+            "correction",
+            "drift",
+            "vibrato",
+            "transition",
+            "other"
+          ],
+          "description": "Optional editorial meaning; resolved curve remains authoritative."
+        },
+        "anchors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WarpAnchor"
+          },
+          "minItems": 2,
+          "description": "Piecewise-linear monotonic frame map. First output offset is zero; source endpoints equal target range endpoints."
+        },
+        "pitchPolicy": {
+          "enum": [
+            "preserve",
+            "follow-rate"
+          ],
+          "description": "Time-warp pitch intent; DSP output equality is not standardized."
+        },
+        "maskRepresentationId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "stft-mask representation whose source and extent match target."
+        },
+        "replacementRepresentationId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Waveform representation replacing target audio; generated/recorded provenance remains on its object/source."
+        },
+        "feature": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Namespaced feature identifier required for engine-operation."
+        },
+        "parametersAssetId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Opaque operation parameters/recipe in Production assets."
+        },
+        "engine": {
+          "$ref": "#/$defs/Engine",
+          "description": "Processor intended for engine-operation; missing runtime uses fallback or unsupported state."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "targetObjectId",
+        "coordinateSpace"
+      ],
+      "description": "Ordered frozen edit intent. Parsing does not execute processing.",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "pitch-shift",
+                "formant-shift"
+              ]
+            }
+          },
+          "required": [
+            "cents"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "pitch-curve"
+            }
+          },
+          "required": [
+            "curveRepresentationId"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "gain"
+            }
+          },
+          "required": [
+            "gainDb"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "gain-curve"
+            }
+          },
+          "required": [
+            "curveRepresentationId"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "time-warp"
+            }
+          },
+          "required": [
+            "anchors",
+            "pitchPolicy"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "spectral-mask"
+            }
+          },
+          "required": [
+            "maskRepresentationId"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "replace"
+            }
+          },
+          "required": [
+            "replacementRepresentationId"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "reverse"
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "engine-operation"
+            }
+          },
+          "required": [
+            "feature",
+            "parametersAssetId",
+            "engine"
+          ]
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "pitch-shift"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "gainDb"
+                  ]
+                },
+                {
+                  "required": [
+                    "curveRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchIntent"
+                  ]
+                },
+                {
+                  "required": [
+                    "anchors"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchPolicy"
+                  ]
+                },
+                {
+                  "required": [
+                    "maskRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "replacementRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "feature"
+                  ]
+                },
+                {
+                  "required": [
+                    "parametersAssetId"
+                  ]
+                },
+                {
+                  "required": [
+                    "engine"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "formant-shift"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "gainDb"
+                  ]
+                },
+                {
+                  "required": [
+                    "curveRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchIntent"
+                  ]
+                },
+                {
+                  "required": [
+                    "anchors"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchPolicy"
+                  ]
+                },
+                {
+                  "required": [
+                    "maskRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "replacementRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "feature"
+                  ]
+                },
+                {
+                  "required": [
+                    "parametersAssetId"
+                  ]
+                },
+                {
+                  "required": [
+                    "engine"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "pitch-curve"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "cents"
+                  ]
+                },
+                {
+                  "required": [
+                    "gainDb"
+                  ]
+                },
+                {
+                  "required": [
+                    "anchors"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchPolicy"
+                  ]
+                },
+                {
+                  "required": [
+                    "maskRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "replacementRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "feature"
+                  ]
+                },
+                {
+                  "required": [
+                    "parametersAssetId"
+                  ]
+                },
+                {
+                  "required": [
+                    "engine"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "gain"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "cents"
+                  ]
+                },
+                {
+                  "required": [
+                    "curveRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchIntent"
+                  ]
+                },
+                {
+                  "required": [
+                    "anchors"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchPolicy"
+                  ]
+                },
+                {
+                  "required": [
+                    "maskRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "replacementRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "feature"
+                  ]
+                },
+                {
+                  "required": [
+                    "parametersAssetId"
+                  ]
+                },
+                {
+                  "required": [
+                    "engine"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "gain-curve"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "cents"
+                  ]
+                },
+                {
+                  "required": [
+                    "gainDb"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchIntent"
+                  ]
+                },
+                {
+                  "required": [
+                    "anchors"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchPolicy"
+                  ]
+                },
+                {
+                  "required": [
+                    "maskRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "replacementRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "feature"
+                  ]
+                },
+                {
+                  "required": [
+                    "parametersAssetId"
+                  ]
+                },
+                {
+                  "required": [
+                    "engine"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "time-warp"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "cents"
+                  ]
+                },
+                {
+                  "required": [
+                    "gainDb"
+                  ]
+                },
+                {
+                  "required": [
+                    "curveRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchIntent"
+                  ]
+                },
+                {
+                  "required": [
+                    "maskRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "replacementRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "feature"
+                  ]
+                },
+                {
+                  "required": [
+                    "parametersAssetId"
+                  ]
+                },
+                {
+                  "required": [
+                    "engine"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "spectral-mask"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "cents"
+                  ]
+                },
+                {
+                  "required": [
+                    "gainDb"
+                  ]
+                },
+                {
+                  "required": [
+                    "curveRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchIntent"
+                  ]
+                },
+                {
+                  "required": [
+                    "anchors"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchPolicy"
+                  ]
+                },
+                {
+                  "required": [
+                    "replacementRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "feature"
+                  ]
+                },
+                {
+                  "required": [
+                    "parametersAssetId"
+                  ]
+                },
+                {
+                  "required": [
+                    "engine"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "replace"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "cents"
+                  ]
+                },
+                {
+                  "required": [
+                    "gainDb"
+                  ]
+                },
+                {
+                  "required": [
+                    "curveRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchIntent"
+                  ]
+                },
+                {
+                  "required": [
+                    "anchors"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchPolicy"
+                  ]
+                },
+                {
+                  "required": [
+                    "maskRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "feature"
+                  ]
+                },
+                {
+                  "required": [
+                    "parametersAssetId"
+                  ]
+                },
+                {
+                  "required": [
+                    "engine"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "reverse"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "cents"
+                  ]
+                },
+                {
+                  "required": [
+                    "gainDb"
+                  ]
+                },
+                {
+                  "required": [
+                    "curveRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchIntent"
+                  ]
+                },
+                {
+                  "required": [
+                    "anchors"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchPolicy"
+                  ]
+                },
+                {
+                  "required": [
+                    "maskRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "replacementRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "feature"
+                  ]
+                },
+                {
+                  "required": [
+                    "parametersAssetId"
+                  ]
+                },
+                {
+                  "required": [
+                    "engine"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "engine-operation"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "cents"
+                  ]
+                },
+                {
+                  "required": [
+                    "gainDb"
+                  ]
+                },
+                {
+                  "required": [
+                    "curveRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchIntent"
+                  ]
+                },
+                {
+                  "required": [
+                    "anchors"
+                  ]
+                },
+                {
+                  "required": [
+                    "pitchPolicy"
+                  ]
+                },
+                {
+                  "required": [
+                    "maskRepresentationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "replacementRepresentationId"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "EditPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Immutable edit-plan revision ID; any operation or binding change requires new ID."
+        },
+        "inputSourceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 1,
+          "description": "Original/derived sources the plan depends on.",
+          "uniqueItems": true
+        },
+        "analysisIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 0,
+          "description": "Analysis snapshots used for object identity and interpretation.",
+          "uniqueItems": true
+        },
+        "hypothesisIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 0,
+          "description": "Chosen coherent hypotheses; other alternatives must not be implicitly summed.",
+          "uniqueItems": true
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Operation"
+          },
+          "minItems": 0,
+          "description": "Ordered operations; source coordinate anchors are stable across previous transforms."
+        },
+        "state": {
+          "enum": [
+            "ready",
+            "unresolved"
+          ],
+          "description": "Unresolved plans are preserved but not automatically rendered."
+        },
+        "unresolvedObjectIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 1,
+          "description": "Targets whose reanalysis mapping could not be resolved.",
+          "uniqueItems": true
+        },
+        "supersedesPlanIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 1,
+          "description": "Prior edit plans retained for non-destructive history.",
+          "uniqueItems": true
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/CapabilityRequirement"
+          },
+          "minItems": 0,
+          "description": "Explicit required processing features and fallback behavior."
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Editorial notes, not executable instructions."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "id",
+        "inputSourceIds",
+        "analysisIds",
+        "hypothesisIds",
+        "operations",
+        "state"
+      ],
+      "description": "Immutable ordered edit transaction, separate from analysis and saved Production playback.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unresolved"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "unresolvedObjectIds"
+            ]
+          }
+        }
+      ]
+    },
+    "InputBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Exact source dependency."
+        },
+        "assetSha256": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Sha256",
+          "description": "Digest equal to both source binding and Production asset."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "sourceId",
+        "assetSha256"
+      ],
+      "description": "Pinned source input to a render."
+    },
+    "DataBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assetId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Existing Production non-audio payload dependency, such as a mask or processor configuration."
+        },
+        "assetSha256": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Sha256",
+          "description": "Digest of the exact payload bytes; MUST equal Production asset.sha256."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "assetId",
+        "assetSha256"
+      ],
+      "description": "Pinned non-waveform dependency of an analysis/edit/render recipe."
+    },
+    "Render": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Immutable render cache identity."
+        },
+        "editPlanId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Exact immutable edit-plan ID."
+        },
+        "scoreSha256": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Sha256",
+          "description": "Exact raw UTF-8 bound Score bytes; changed Score invalidates freshness until explicit rebind/re-render."
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InputBinding"
+          },
+          "minItems": 1,
+          "description": "Every waveform source dependency of the edit plan, including supplied replacement sources. Non-waveform dependencies use dataInputs."
+        },
+        "dataInputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DataBinding"
+          },
+          "minItems": 0,
+          "description": "All non-waveform dependencies of referenced representations, operations and processor configuration."
+        },
+        "engine": {
+          "$ref": "#/$defs/Engine"
+        },
+        "mode": {
+          "enum": [
+            "replacement",
+            "delta"
+          ],
+          "description": "Complete replacement signal or difference signal; never inferred from a file name."
+        },
+        "output": {
+          "$ref": "#/$defs/SourceRange",
+          "description": "Actual rendered waveform source/range."
+        },
+        "stage": {
+          "const": "pre-channel-processing",
+          "description": "Output enters Production channel insert chain once; no implicit wet/dry duplication."
+        },
+        "coveredAudioRegionIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 1,
+          "description": "Authored input regions covered by this render.",
+          "uniqueItems": true
+        },
+        "outputAudioRegionIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 1,
+          "description": "Materialized ordinary Production audioRegions; their existing mute/comp state is playback authority.",
+          "uniqueItems": true
+        },
+        "determinism": {
+          "enum": [
+            "unspecified",
+            "same-engine-asserted",
+            "stored-output-only"
+          ],
+          "description": "Producer assertion. Stored output digest defines exact interchange, not another renderer."
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional render limitations/diagnostics."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "id",
+        "editPlanId",
+        "scoreSha256",
+        "inputs",
+        "engine",
+        "mode",
+        "output",
+        "stage",
+        "coveredAudioRegionIds",
+        "outputAudioRegionIds",
+        "determinism"
+      ],
+      "description": "Scoped cached render. Adding this metadata never starts playback or changes region mute flags."
+    },
+    "ProcessorFeature": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "feature": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Feature identifier from Audio Model feature registry or a namespace-qualified extension."
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Supported feature version."
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "read",
+              "preserve",
+              "edit",
+              "render",
+              "export"
+            ],
+            "description": "Supported action."
+          },
+          "minItems": 1,
+          "description": "Claims are per action, not a single aggregate capability level.",
+          "uniqueItems": true
+        },
+        "materialDomains": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "monophonic",
+              "single-instrument-polyphonic",
+              "multi-instrument-mixture",
+              "unpitched"
+            ],
+            "description": "Claimed input material class."
+          },
+          "minItems": 1,
+          "description": "Domains for which support is claimed.",
+          "uniqueItems": true
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "feature",
+        "version",
+        "actions",
+        "materialDomains"
+      ],
+      "description": "Self-declared capability; not a quality or certification guarantee."
+    },
+    "ProcessorDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "$ref": "#/$defs/Engine"
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProcessorFeature"
+          },
+          "minItems": 1,
+          "description": "Producer-declared processing capabilities."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced extension data; preserve unknown values without executing them."
+        }
+      },
+      "required": [
+        "engine",
+        "features"
+      ],
+      "description": "Optional processor advertisement snapshot."
+    }
+  }
+}

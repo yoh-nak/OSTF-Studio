@@ -1,0 +1,260 @@
+{
+  "format": "OSTF",
+  "version": "5.2.0",
+  "ppq": 960,
+  "song": {
+    "title": "Written and sounding pitch, spelling and mid-measure key change"
+  },
+  "timeline": {
+    "sections": [
+      {
+        "id": "A",
+        "name": "A",
+        "start": 0,
+        "duration": 3840
+      }
+    ],
+    "tempoChanges": [
+      {
+        "at": 0,
+        "bpm": 120
+      }
+    ],
+    "meterChanges": [
+      {
+        "at": 0,
+        "numerator": 4,
+        "denominator": 4
+      }
+    ]
+  },
+  "harmony": {
+    "chords": [],
+    "scales": []
+  },
+  "tracks": [],
+  "soundSlots": [],
+  "lyrics": {
+    "documents": [],
+    "phrases": [],
+    "units": [],
+    "alignments": []
+  },
+  "resources": [],
+  "notation": {
+    "profileVersion": "1.0.0",
+    "id": "notation-transposing",
+    "title": "Clarinet in B-flat notation example",
+    "parts": [
+      {
+        "id": "p1",
+        "name": "Clarinet in B-flat",
+        "order": 0,
+        "instrumentIds": [
+          "clarinet"
+        ]
+      }
+    ],
+    "staves": [
+      {
+        "id": "s1",
+        "partId": "p1",
+        "number": 1,
+        "kind": "standard",
+        "initialAttributes": {
+          "clef": {
+            "sign": "G",
+            "line": 2
+          },
+          "meter": {
+            "kind": "measured",
+            "groups": [
+              {
+                "beats": [
+                  4
+                ],
+                "beatType": 4
+              }
+            ]
+          },
+          "key": {
+            "kind": "traditional",
+            "fifths": 0
+          },
+          "transpose": {
+            "diatonic": -1,
+            "chromatic": {
+              "numerator": -2,
+              "denominator": 1
+            },
+            "octaveChange": 0
+          },
+          "instrumentId": "clarinet"
+        }
+      }
+    ],
+    "voices": [
+      {
+        "id": "v1",
+        "partId": "p1",
+        "label": "1",
+        "defaultStaffId": "s1"
+      }
+    ],
+    "measures": [
+      {
+        "id": "m1",
+        "partId": "p1",
+        "order": 0,
+        "label": "1",
+        "durationQuarter": {
+          "numerator": 4,
+          "denominator": 1
+        }
+      }
+    ],
+    "events": [
+      {
+        "id": "c4",
+        "kind": "note",
+        "partId": "p1",
+        "staffId": "s1",
+        "voiceId": "v1",
+        "measureId": "m1",
+        "offsetQuarter": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "value": {
+          "type": "quarter",
+          "dots": 0
+        },
+        "writtenPitch": {
+          "step": "C",
+          "alter": {
+            "numerator": 0,
+            "denominator": 1
+          },
+          "octave": 4
+        },
+        "soundingPitch": {
+          "step": "B",
+          "alter": {
+            "numerator": -1,
+            "denominator": 1
+          },
+          "octave": 3
+        }
+      },
+      {
+        "id": "c-sharp4",
+        "kind": "note",
+        "partId": "p1",
+        "staffId": "s1",
+        "voiceId": "v1",
+        "measureId": "m1",
+        "offsetQuarter": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "value": {
+          "type": "quarter",
+          "dots": 0
+        },
+        "writtenPitch": {
+          "step": "C",
+          "alter": {
+            "numerator": 1,
+            "denominator": 1
+          },
+          "octave": 4
+        },
+        "accidental": {
+          "code": "sharp",
+          "visible": true
+        },
+        "soundingPitch": {
+          "step": "B",
+          "alter": {
+            "numerator": 0,
+            "denominator": 1
+          },
+          "octave": 3
+        }
+      },
+      {
+        "id": "d-flat4",
+        "kind": "note",
+        "partId": "p1",
+        "staffId": "s1",
+        "voiceId": "v1",
+        "measureId": "m1",
+        "offsetQuarter": {
+          "numerator": 2,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 2,
+          "denominator": 1
+        },
+        "value": {
+          "type": "half",
+          "dots": 0
+        },
+        "writtenPitch": {
+          "step": "D",
+          "alter": {
+            "numerator": -1,
+            "denominator": 1
+          },
+          "octave": 4
+        },
+        "accidental": {
+          "code": "flat",
+          "cautionary": true,
+          "parentheses": true
+        },
+        "soundingPitch": {
+          "step": "C",
+          "alter": {
+            "numerator": -1,
+            "denominator": 1
+          },
+          "octave": 4
+        }
+      }
+    ],
+    "instruments": [
+      {
+        "id": "clarinet",
+        "name": "Clarinet in B-flat"
+      }
+    ],
+    "attributeChanges": [
+      {
+        "id": "key-change",
+        "partId": "p1",
+        "staffId": "s1",
+        "measureId": "m1",
+        "offsetQuarter": {
+          "numerator": 2,
+          "denominator": 1
+        },
+        "attributes": {
+          "key": {
+            "kind": "traditional",
+            "fifths": -5
+          }
+        }
+      }
+    ]
+  }
+}

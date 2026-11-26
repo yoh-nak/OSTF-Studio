@@ -1,0 +1,363 @@
+{
+  "format": "OSTF",
+  "version": "5.2.0",
+  "ppq": 960,
+  "song": {
+    "title": "Two explicit voices on one Core track, including wordless humming",
+    "primaryMelodyTrackId": "track-shared",
+    "melodyTrackIds": [
+      "track-shared"
+    ],
+    "primaryLyricDocumentId": "lyric-main"
+  },
+  "timeline": {
+    "sections": [
+      {
+        "id": "section-song",
+        "name": "Song",
+        "start": 0,
+        "duration": 3840
+      }
+    ],
+    "tempoChanges": [
+      {
+        "at": 0,
+        "bpm": 120
+      }
+    ],
+    "meterChanges": [
+      {
+        "at": 0,
+        "numerator": 4,
+        "denominator": 4
+      }
+    ],
+    "duration": 3840
+  },
+  "harmony": {
+    "chords": [],
+    "scales": []
+  },
+  "tracks": [
+    {
+      "id": "track-shared",
+      "name": "Sung and hummed voices",
+      "trackType": "melodic",
+      "clips": [
+        {
+          "id": "clip-shared",
+          "start": 0,
+          "duration": 1920,
+          "notes": [
+            {
+              "id": "note-singer-1",
+              "start": 0,
+              "duration": 960,
+              "pitch": 60,
+              "velocity": 90
+            },
+            {
+              "id": "note-hum-1",
+              "start": 120,
+              "duration": 840,
+              "pitch": 55,
+              "velocity": 75
+            },
+            {
+              "id": "note-singer-2",
+              "start": 960,
+              "duration": 960,
+              "pitch": 62,
+              "velocity": 90
+            },
+            {
+              "id": "note-hum-2",
+              "start": 1080,
+              "duration": 840,
+              "pitch": 57,
+              "velocity": 75
+            }
+          ],
+          "vocalPerformances": [
+            {
+              "id": "performance-singer",
+              "voiceId": "voice-singer",
+              "noteIds": [
+                "note-singer-1",
+                "note-singer-2"
+              ],
+              "expressionCurves": [
+                {
+                  "id": "singer-dynamics",
+                  "parameter": "dynamics",
+                  "interpolation": "step",
+                  "points": [
+                    {
+                      "at": 0,
+                      "value": 0.72
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "performance-hum",
+              "voiceId": "voice-hum",
+              "noteIds": [
+                "note-hum-1",
+                "note-hum-2"
+              ],
+              "pitchCurves": [
+                {
+                  "id": "hum-pitch",
+                  "targetNoteId": "note-hum-1",
+                  "unit": "cents",
+                  "interpolation": "step",
+                  "points": [
+                    {
+                      "at": 120,
+                      "value": -5
+                    }
+                  ]
+                }
+              ],
+              "techniques": [
+                {
+                  "id": "hum-technique-1",
+                  "start": 120,
+                  "duration": 840,
+                  "kind": "humming",
+                  "targetNoteId": "note-hum-1"
+                },
+                {
+                  "id": "hum-technique-2",
+                  "start": 1080,
+                  "duration": 840,
+                  "kind": "humming",
+                  "targetNoteId": "note-hum-2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "soundSlots": [],
+  "lyrics": {
+    "documents": [
+      {
+        "id": "lyric-main",
+        "title": "そら",
+        "language": "ja"
+      },
+      {
+        "id": "lyric-wordless",
+        "title": "Wordless voice"
+      }
+    ],
+    "phrases": [
+      {
+        "id": "phrase-main",
+        "documentId": "lyric-main",
+        "text": "そら",
+        "pronunciation": "そら"
+      }
+    ],
+    "units": [
+      {
+        "id": "unit-so",
+        "phraseId": "phrase-main",
+        "text": "そ",
+        "pronunciation": "そ",
+        "phonetics": [
+          {
+            "alphabet": "ipa",
+            "language": "ja",
+            "symbols": [
+              "s",
+              "o"
+            ],
+            "preferred": true
+          }
+        ]
+      },
+      {
+        "id": "unit-ra",
+        "phraseId": "phrase-main",
+        "text": "ら",
+        "pronunciation": "ら",
+        "phonetics": [
+          {
+            "alphabet": "ipa",
+            "language": "ja",
+            "symbols": [
+              "ɾ",
+              "a"
+            ],
+            "preferred": true
+          }
+        ]
+      }
+    ],
+    "alignments": [
+      {
+        "id": "alignment-singer-1",
+        "unitIds": [
+          "unit-so"
+        ],
+        "noteIds": [
+          "note-singer-1"
+        ],
+        "voiceId": "voice-singer"
+      },
+      {
+        "id": "alignment-singer-2",
+        "unitIds": [
+          "unit-ra"
+        ],
+        "noteIds": [
+          "note-singer-2"
+        ],
+        "voiceId": "voice-singer"
+      }
+    ],
+    "voices": [
+      {
+        "id": "voice-singer",
+        "name": "Singer",
+        "role": "lead",
+        "trackId": "track-shared",
+        "documentId": "lyric-main",
+        "vocalProfile": {
+          "language": "ja",
+          "deliveryMode": "sing"
+        }
+      },
+      {
+        "id": "voice-hum",
+        "name": "Humming voice",
+        "role": "backing",
+        "trackId": "track-shared",
+        "documentId": "lyric-wordless",
+        "vocalProfile": {
+          "deliveryMode": "hum"
+        }
+      }
+    ]
+  },
+  "resources": [],
+  "specialTracks": {
+    "profileVersion": "1.0.0",
+    "id": "special-tracks-shared-core",
+    "tracks": [
+      {
+        "id": "special-lyrics",
+        "name": "Sung lyrics",
+        "kind": "lyrics",
+        "documentId": "lyric-main"
+      },
+      {
+        "id": "special-singer",
+        "name": "Singer",
+        "kind": "vocal",
+        "voiceId": "voice-singer",
+        "presentation": {
+          "visible": true
+        }
+      },
+      {
+        "id": "special-hum",
+        "name": "Wordless humming",
+        "kind": "vocal",
+        "voiceId": "voice-hum",
+        "presentation": {
+          "visible": true
+        }
+      },
+      {
+        "id": "special-ensemble",
+        "name": "Vocal ensemble",
+        "kind": "chorus",
+        "memberTrackIds": [
+          "special-singer",
+          "special-hum"
+        ],
+        "presentation": {
+          "collapsed": true
+        }
+      }
+    ]
+  },
+  "musicalModel": {
+    "profileVersion": "1.0.0",
+    "id": "model-shared-vocal-parts",
+    "objects": [
+      {
+        "id": "model-singer-part",
+        "kind": "part",
+        "state": "authored",
+        "members": [
+          {
+            "domain": "core",
+            "type": "specialTrack",
+            "id": "special-singer"
+          },
+          {
+            "domain": "core",
+            "type": "lyricVoice",
+            "id": "voice-singer"
+          },
+          {
+            "domain": "core",
+            "type": "lyricDocument",
+            "id": "lyric-main"
+          },
+          {
+            "domain": "core",
+            "type": "lyricPhrase",
+            "id": "phrase-main"
+          },
+          {
+            "domain": "core",
+            "type": "vocalPerformance",
+            "id": "performance-singer",
+            "ownerId": "clip-shared"
+          }
+        ]
+      },
+      {
+        "id": "model-hum-part",
+        "kind": "part",
+        "state": "authored",
+        "members": [
+          {
+            "domain": "core",
+            "type": "specialTrack",
+            "id": "special-hum"
+          },
+          {
+            "domain": "core",
+            "type": "lyricVoice",
+            "id": "voice-hum"
+          },
+          {
+            "domain": "core",
+            "type": "lyricDocument",
+            "id": "lyric-wordless"
+          },
+          {
+            "domain": "core",
+            "type": "vocalPerformance",
+            "id": "performance-hum",
+            "ownerId": "clip-shared"
+          }
+        ]
+      }
+    ],
+    "relations": [],
+    "clocks": [],
+    "timeMaps": [],
+    "occurrences": []
+  }
+}

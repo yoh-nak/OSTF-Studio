@@ -1,5 +1,15 @@
 # OSTF Studio
 
+## OSTF 5.2 studio preview
+
+In **Scale Editor → Instruments**, select a manufacturer or search by name, select an instrument, then choose **Load and audition** to hear C4 through its audio outputs. The **Preview MIDI out** routing for comparison phrases stays available. **OSTF Formant Singer** now carries pitch into a connected sung nasal. With the Mei bank, a connected Japanese ん enters the voiced nasal directly.
+
+New songs use OSTF 5.2. Studio opens 5.2 scores and Manifest 1.2 projects and preserves 5.1 MIDI takes and comp selections at their source version. In the arrangement, **Melody / Lyrics Tracks** groups the melody and vocal lanes at their original position. Declared lyrics, vocal and chorus names appear in the heading. A shared Core track sounds once. The plug-in browser and Scale Editor's instrument picker now have a manufacturer filter that combines with text search.
+
+The score view, print path and MusicXML exporter read written parts from the 5.2 Notation profile. They support written pitches, separate voices and staves, ties and grace notes. MusicXML retains common enharmonic spellings and the initial transposition. Complex engraving and microtonal pitch export are incomplete.
+
+The audio preview plays materialized Production regions, including selected comp regions with fades. Packaged analyses, edit plans and their source assets are retained. A separate offline prototype retunes a selected monophonic WAV passage to a MIDI pitch while preserving its sample length. Automatic note segmentation, independent editing within chords and an in-app pitch editor are still in development planning. [Official specification and examples](https://github.com/yoh-nak/Open-Song-Timeline-Format-5.2)
+
 ## OSTF 5.1 studio preview
 
 In **OSTF Scale Editor**, turn on **MIDI thru** to send played notes to another instrument through the host's MIDI routing. The receiving instrument gets the original channel, velocity and timing. **Preview MIDI out** separately routes the scale audition. On the shared output, a held keyboard note takes priority over an audition of the same pitch and channel. MIDI thru starts on for a new instance. Projects saved before this option was added start with it off.

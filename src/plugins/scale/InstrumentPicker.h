@@ -72,16 +72,26 @@ inline std::vector<InstrumentChoice> availableInstruments(const std::optional<ju
 
 class InstrumentPicker final : public juce::Component, private juce::ListBoxModel {
 public:
-    std::function<void(InstrumentChoice)> onChoose;
+    std::function<void(InstrumentChoice,bool)> onChoose;
     std::function<void()> onBrowse,onReference;
     InstrumentPicker(const std::optional<juce::PluginDescription>& current,bool japanese) : choices(availableInstruments(current)), ja(japanese) {
-        for (juce::Component* c:std::initializer_list<juce::Component*>{&search,&list,&hint,&load,&browse,&reference,&unlisted})
+        for (juce::Component* c:std::initializer_list<juce::Component*>{&search,&manufacturer,&list,&hint,&load,&loadAndTest,&browse,&reference,&unlisted})
             addAndMakeVisible(*c);
         search.setTextToShowWhenEmpty(juce::String::fromUTF8(ja ? "音源名・メーカーで検索" : "Search instruments by name or manufacturer"),juce::Colours::lightgrey);
         if (ja) {
+            loadAndTest.setButtonText(juce::String::fromUTF8("読み込んで試聴"));
             load.setButtonText(juce::String::fromUTF8("読み込む")); browse.setButtonText(juce::String::fromUTF8("VST3を参照…"));
             reference.setButtonText(juce::String::fromUTF8("基準音")); unlisted.setButtonText(juce::String::fromUTF8("未スキャンも表示"));
         }
+        juce::StringArray vendors;
+        for (const auto& choice : choices) if (choice.vendor.isNotEmpty()) vendors.addIfNotAlreadyThere(choice.vendor, true);
+        vendors.sort(true);
+        manufacturer.setComponentID("instrument-manufacturer");
+        manufacturer.setTitle(juce::String::fromUTF8(ja ? "メーカー" : "Manufacturer"));
+        manufacturer.addItem(juce::String::fromUTF8(ja ? "すべてのメーカー" : "All manufacturers"), 1);
+        manufacturer.addItemList(vendors, 2);
+        manufacturer.setSelectedId(1, juce::dontSendNotification);
+        manufacturer.onChange=[this]{filter();};
         search.setTitle("Search instruments");
         list.setComponentID("matching-instruments");
         list.setModel(this); list.setRowHeight(26);
@@ -89,6 +99,8 @@ public:
         search.onTextChange=[this]{filter();};
         search.onReturnKey=[this]{choose();};
         load.onClick=[this]{choose();};
+        loadAndTest.setComponentID("load-instrument-and-audition");
+        loadAndTest.onClick=[this]{choose(true);};
         unlisted.onClick=[this]{filter();};
         browse.onClick=[this]{if(onBrowse) onBrowse();};
         reference.onClick=[this]{if(onReference) onReference();};
@@ -97,10 +109,13 @@ public:
     ~InstrumentPicker() override {list.setModel(nullptr);}
     void resized() override {
         auto r=getLocalBounds().reduced(8);
-        search.setBounds(r.removeFromTop(30)); r.removeFromTop(4);
+        auto top=r.removeFromTop(30);
+        manufacturer.setBounds(top.removeFromRight(173).reduced(2,0));
+        search.setBounds(top); r.removeFromTop(4);
         auto buttons=r.removeFromBottom(29);
         reference.setBounds(buttons.removeFromLeft(124)); browse.setBounds(buttons.removeFromLeft(128));
-        load.setBounds(buttons.removeFromRight(85));
+        loadAndTest.setBounds(buttons.removeFromRight(134));
+        load.setBounds(buttons.removeFromRight(76).reduced(2,0));
         auto status=r.removeFromBottom(26);
         unlisted.setBounds(status.removeFromRight(165)); hint.setBounds(status);
         list.setBounds(r);
@@ -112,14 +127,15 @@ private:
         for (size_t i=0;i<choices.size();++i) {
             const auto& c=choices[i];
             const auto text=c.name+" "+c.vendor;
-            if ((!c.needsInspection || unlisted.getToggleState())
+            if ((manufacturer.getSelectedId()==1 || c.vendor.equalsIgnoreCase(manufacturer.getText()))
+                && (!c.needsInspection || unlisted.getToggleState())
                 && std::all_of(words.begin(),words.end(),[&](const auto& w){return text.containsIgnoreCase(w);})) visible.push_back(i);
         }
         list.deselectAllRows(); list.updateContent();
         if (!visible.empty()) list.selectRow(0);
         hint.setText(visible.empty() ? juce::String::fromUTF8(ja ? "該当する音源がありません" : "No matching instruments")
             : juce::String(int(visible.size()))+juce::String::fromUTF8(ja ? " 件" : " matches"),juce::dontSendNotification);
-        load.setEnabled(!visible.empty()); list.repaint();
+        load.setEnabled(!visible.empty()); loadAndTest.setEnabled(!visible.empty()); list.repaint();
     }
     int getNumRows() override {return int(visible.size());}
     void paintListBoxItem(int row,juce::Graphics& g,int w,int h,bool selected) override {
@@ -131,16 +147,20 @@ private:
         g.setColour(juce::Colour(0xffb8ced6));
         g.drawFittedText(c.needsInspection ? juce::String::fromUTF8(ja ? "未スキャン" : "Unscanned") : c.vendor,2*w/3,0,w/3-6,h,juce::Justification::centredLeft,1);
     }
-    void choose(){const int row=list.getSelectedRow(); if (onChoose && juce::isPositiveAndBelow(row,getNumRows())) onChoose(choices[visible[size_t(row)]]);}
+    void choose(bool audition=false) {
+        const int row=list.getSelectedRow();
+        if (onChoose && juce::isPositiveAndBelow(row,getNumRows())) onChoose(choices[visible[size_t(row)]],audition);
+    }
     void listBoxItemDoubleClicked(int,const juce::MouseEvent&) override {choose();}
     void returnKeyPressed(int) override {choose();}
     std::vector<InstrumentChoice> choices;
     bool ja;
     std::vector<size_t> visible;
     juce::TextEditor search;
+    juce::ComboBox manufacturer;
     juce::ListBox list;
     juce::Label hint;
-    juce::TextButton load{"Load"},browse{"Browse for VST3..."},reference{"Reference tone"};
+    juce::TextButton load{"Load"},loadAndTest{"Load and audition"},browse{"Browse for VST3..."},reference{"Reference tone"};
     juce::ToggleButton unlisted{"Show unscanned"};
 };
 }

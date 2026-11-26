@@ -44,7 +44,7 @@ private:
     int skipped_ = 0;
     juce::TextButton scanButton_ {TRANS("Scan VST3")};
     juce::TextButton scanOneButton_ {TRANS("Scan one...")};
-    juce::ComboBox filter_;
+    juce::ComboBox filter_, manufacturer_;
     juce::TextEditor search_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String scanTarget_;

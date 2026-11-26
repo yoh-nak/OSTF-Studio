@@ -1636,9 +1636,15 @@ int checkTrackView(const juce::File& fixture) {
     auto* tree = descendant<juce::TreeView>(*pane);
     if (!search || !search->isVisible() || !tree || !tree->getRootItem()) return 362;
     const auto makers = tree->getRootItem()->getNumSubItems();
+    auto* vendor = dynamic_cast<juce::ComboBox*>(pane->findChildWithID("plugin-manufacturer"));
+    if (!vendor || vendor->getNumItems()<2) return 365;
+    vendor->setSelectedId(2,juce::sendNotificationSync);
+    if (tree->getRootItem()->getNumSubItems()!=1 || tree->getRootItem()->getSubItem(0)->getUniqueName()!=vendor->getText()) return 366;
     search->setText("no-match-9b218b8a",false); search->onTextChange();
     if (tree->getRootItem()->getNumSubItems()!=0) return 363;
     search->setText({},false); search->onTextChange();
+    if (tree->getRootItem()->getNumSubItems()!=1) return 367;
+    vendor->setSelectedId(1,juce::sendNotificationSync);
     if (tree->getRootItem()->getNumSubItems()!=makers) return 364;
     const auto* imported = audioEditor->sourceClip();
     if (!imported || imported->localFile != sample || imported->durationTicks <= 0) return 54;

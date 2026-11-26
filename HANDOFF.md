@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## OSTF 5.2 Windows preview
+
+Branch `feat/ostf-52-studio`. The schema snapshot and test fixtures come from official commit `2be1c2ddd62708fdd4f9ffd86403c86336cc7a9f`. Build `OSTFStudio`, `OSTFSynthScaleEditor_VST3`, `ostf_studio_ostfp_tests` and `ostf_pitch_probe` in a GUI-enabled Release build. CTest includes `ostf_studio_52`, `ostf_studio_written_notation`, the native-comp tests and the pitch-probe self-test. The written-notation test renders the official grand-staff piano example to PDF and checks transposing clarinet MusicXML.
+
+Run `ostf_pitch_probe --self-test <existing-empty-directory>` for before/after WAVs. The 48 kHz two-note fixture measured 220.00 to 329.45 Hz for a 329.63 Hz target. The official audio-single-edit-render source measured 440.00 to 524.59 Hz over seconds 0.1–0.9 for a 523.25 Hz target. This demonstrates offline correction of a known monophonic interval. A user-facing pitch editor, polyphonic note isolation and macOS hardware verification remain open.
+
+Windows x64 Release passed the 23 Studio/format checks followed by eight focused plug-in/format checks. The official fixture suite reopens six standalone scores and round-trips 14 of the 16 official packages. The remaining two exercise explicit import errors for unsupported sidechain and state-asset routing. The additional edited-score test reopens a changed score from a 5.2 package and compares its audio assets. The portable (38 VST3 bundles and eight demos) passed hybrid-score startup, Scale Editor window and vocal-track smoke checks. CI, installers and macOS were not run for this branch.
+
+In the Scale Editor instrument picker, **Load and audition** plays one C4 locally even when preview MIDI is routed externally. A third-party FM8 test measured peak 0.0717. Run `ostf_scale_instrument_tests <path-to-FM8.vst3> <paper-lantern-replies.ostf> --audition`. Singer’s `nasal-join` option renders Mei entering ん from C4 toward E4. The first periodic window after the change measures 272.7 Hz and the later window 328.8 Hz. The regression also checks fresh vowel attacks and existing consonant closures. Expressive singing quality and full Max for Live parity require listening and host-level comparisons.
+
 ## Scale Editor keyboard MIDI thru and Mei stop releases
 
 Branch `feat/scale-midi-thru-and-vocal-stops`. New Scale Editor instances enable **MIDI thru**. Existing host state without that option starts with it off. For external playback, route the plug-in's outgoing MIDI to an instrument track in the host. **Preview MIDI out** controls the comparison phrases independently. The packaged Windows VST3 test sends notes on channels 3 and 8 and compares their velocities and sample offsets. Processor tests cover a live key interrupting an audition, cancellation while the key is held, pedal release, and saved settings.

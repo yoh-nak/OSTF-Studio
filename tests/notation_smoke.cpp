@@ -450,7 +450,26 @@ static bool checkInterchange(const juce::File& demo, const juce::File& dir) {
 int checkNotation(const juce::File& fixture, const juce::File& dir) {
     std::unique_ptr<OstfpPreview> p;
     juce::FileInputStream input(fixture);
-    if (dir.createDirectory().failed() || readOstfpPreview(input, p).failed())
+    if (dir.createDirectory().failed()) return 1;
+    if (fixture.hasFileExtension("ostf")) {
+        if (readOstfPreview(input, p).failed()) return 110;
+        const auto piano = notationScore(*p);
+        if (piano.parts.size() != 1 || piano.parts.front().preferred != StaffStyle::grand) return 111;
+        const auto measures = partMeasures(piano, 0, StaffStyle::grand);
+        if (measures.empty() || measures.front().size() != 4 || !measures.front().front().grace) return 112;
+        juce::MemoryOutputStream xml;
+        if (writeSongXml(xml,piano).failed() || !xml.toString().contains("<grace slash=\"yes\"")
+            || !xml.toString().contains("<tie type=\"start\"") || !xml.toString().contains("<staff>2</staff>")) return 113;
+        if (!save(dir.getChildFile("written-piano.pdf"),[&](auto& out){return writeSheetPdf(out,piano,0,StaffStyle::grand,{},false);})) return 114;
+        juce::FileInputStream clarinetFile(fixture.getSiblingFile("13-notation-transposition.ostf"));
+        if (readOstfPreview(clarinetFile,p).failed()) return 115;
+        const auto clarinet = notationScore(*p);
+        juce::MemoryOutputStream clarinetXml;
+        if (writeSongXml(clarinetXml,clarinet).failed() || !clarinetXml.toString().contains("<transpose>")
+            || !clarinetXml.toString().contains("<step>D</step>") || !clarinetXml.toString().contains("<alter>-1</alter>")) return 116;
+        return 0;
+    }
+    if (readOstfpPreview(input, p).failed())
         return 1;
     if (!checkInterchange(fixture,dir)) return 48;
     auto s = notationScore(*p);

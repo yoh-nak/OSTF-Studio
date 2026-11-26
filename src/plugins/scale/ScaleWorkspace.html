@@ -879,7 +879,7 @@ function validate(doc){const errors=[],warnings=[];const obj=x=>x&&typeof x==='o
  for(const c of doc.harmony?.chords||[]){if(!idOK(c.id)||!integer(c.start)||!Number.isSafeInteger(c.duration)||c.duration<=0||typeof c.label!=='string'||!c.label.length)errors.push('Invalid chord timing, ID or label: '+(c.id||'?'));if((c.root&&!c.intervals)||(!c.root&&c.intervals))errors.push('Chord root and intervals must be supplied together: '+c.id);if(c.root&&(!isSp(c.root)||!isIntervals(c.intervals,35)))errors.push('Invalid chord pitch data: '+c.id);}
  for(const s of doc.harmony?.scales||[])if(!idOK(s.id)||!integer(s.start)||!Number.isSafeInteger(s.duration)||s.duration<=0||!isSp(s.tonic)||!isIntervals(s.intervals,11))errors.push('Invalid harmony scale: '+(s.id||'?'));
  const seen=new Set();for(const arr of [doc.timeline?.sections,doc.timeline?.keyChanges,doc.harmony?.chords,doc.harmony?.scales,doc.tracks,doc.soundSlots,doc.resources])for(const x of arr||[]){if(x.id){if(seen.has(x.id))errors.push('Duplicate core ID: '+x.id);seen.add(x.id);}}
- const version=String(doc.version||''),recognized=/^(3\.[0-5](?:\.\d+)?|4\.[01](?:\.\d+)?|5\.[01]\.0)$/.test(version);
+ const version=String(doc.version||''),recognized=/^(3\.[0-5](?:\.\d+)?|4\.[01](?:\.\d+)?|5\.[012]\.0)$/.test(version);
  if(!recognized)warnings.push('Unrecognized OSTF version '+version+': preserved read-only. No automatic downgrade or migration.');
  if(doc.harmony?.chords?.length===0)warnings.push('No chord events. Import a song with harmony.chords to receive suggestions.');
  for(const t of doc.tracks||[]){const ds=(t.directions||[]).filter(d=>d.type==='improvisation').sort((a,b)=>a.start-b.start);for(let i=1;i<ds.length;i++)if(ds[i].start<ds[i-1].start+ds[i-1].duration)warnings.push('Overlapping improvisation directions on '+(t.name||t.id)+'.');}
@@ -887,7 +887,7 @@ function validate(doc){const errors=[],warnings=[];const obj=x=>x&&typeof x==='o
  return {ok:!errors.length,errors:[...new Set(errors)],warnings:[...new Set(warnings)],writable:recognized};}
 function parse(text){if(typeof text!=='string'||text.length>24*1024*1024)throw Error('Input exceeds 24 MB or is not text.');let t=text.replace(/^\uFEFF/,'').trim();if(/^```/.test(t))t=t.replace(/^```[^\n]*\n/,'').replace(/\n```\s*$/,'');let d;const nums=t.replace(/"(?:\\.|[^"\\])*"/g,'""').match(/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g)||[];if(nums.some(x=>{const n=Number(x);return !Number.isFinite(n)||(Number.isInteger(n)&&!Number.isSafeInteger(n));}))throw Error('Unsafe numeric precision. The original input was not imported or rewritten.');try{d=JSON.parse(t);}catch(e){throw Error('Invalid JSON: '+e.message);}const v=validate(d);if(!v.ok)throw Error(v.errors.slice(0,8).join('\n'));return {doc:d,validation:v};}
 const overlaps=(a,b)=>a.start<b.start+b.duration&&b.start<a.start+a.duration;
-function supportsTrackScales(version){return /^(?:4\.1(?:\.|$)|5\.[01]\.0$)/.test(version);}
+function supportsTrackScales(version){return /^(?:4\.1(?:\.|$)|5\.[012]\.0$)/.test(version);}
 function relevantScale(s,c,target){if(target==='harmony'){if(!s.targets?.length)return true;return s.targets.some(t=>t.type==='chord'&&t.id===c.id);}return false;}
 function current(doc,c,target){if(target==='harmony')return (doc.harmony.scales||[]).filter(s=>overlaps(s,c)&&relevantScale(s,c,target));const t=doc.tracks.find(x=>x.id===target);return (t?.directions||[]).filter(d=>d.type==='improvisation'&&overlaps(d,c));}
 function allIDs(doc){const ids=new Set();function walk(v){if(!v||typeof v!=='object')return;if(typeof v.id==='string')ids.add(v.id);for(const x of Object.values(v))walk(x);}walk(doc);return ids;}
@@ -896,7 +896,7 @@ function referencers(doc,id){const tracks=[];for(const t of doc.tracks||[])for(c
 function apply(doc,chordID,scaleID,target='harmony',adherence='preferred',allowReplace=false){const v=validate(doc);if(!v.ok)throw Error('Fix the document core errors before applying.');if(!v.writable)throw Error('This document version is read-only.');const c=doc.harmony.chords.find(x=>x.id===chordID);if(!c)throw Error('Select a chord first.');const analysis=candidates(doc,c),s=analysis.items.find(x=>x.id===scaleID);if(!s)throw Error('Select one of the available scale cards.');/* Explicit manual Set may write any selected scale pitch collection to Harmony. AUTO-SET retains its separate conservative policy. */
  /* Manual Key & Mode assignments are intentional user choices; compatibility is shown in the UI, not silently overwritten by recommendations. */
  if(!['preferred','strict'].includes(adherence))throw Error('Invalid adherence.');
- if(target!=='harmony'&&!supportsTrackScales(doc.version))throw Error('Track-level improvisation assignment requires OSTF 4.1, 5.0 or 5.1.');
+ if(target!=='harmony'&&!supportsTrackScales(doc.version))throw Error('Track-level improvisation assignment requires OSTF 4.1, 5.0, 5.1 or 5.2.');
  const old=current(doc,c,target),exact=old.filter(x=>x.start===c.start&&x.duration===c.duration);
  if(target!=='harmony'&&exact.some(d=>d.parameters?.pitchSource?.type!=='explicitScale'))throw Error('This track direction uses another pitch source. Its assignment is protected.');
  if(old.length&&!(old.length===1&&exact.length===1)){
@@ -933,7 +933,7 @@ function autoSetSong(doc,target='harmony',adherence='preferred',mode='fill',choi
  if(!['fill','replace'].includes(mode))throw Error('Unknown auto-set mode.');
  if(!['preferred','strict'].includes(adherence))throw Error('Unknown adherence.');
  if(target!=='harmony'){
-  if(!supportsTrackScales(doc.version))throw Error('Track directions require OSTF 4.1, 5.0 or 5.1.');
+  if(!supportsTrackScales(doc.version))throw Error('Track directions require OSTF 4.1, 5.0, 5.1 or 5.2.');
   const track=doc.tracks.find(x=>x.id===target);
   if(!track)throw Error('Selected track no longer exists.');
   if(track.trackType==='drum'||['drum','drums','percussion'].includes(track.type)||['drum','drums','percussion'].includes(track.role))throw Error('Auto-set requires a pitched track.');
@@ -1770,7 +1770,7 @@ function summary(doc,selection,scale){
 }
 function validateTarget(doc,target,adherence){
  if(target==='harmony')return null;
- if(!SA.supportsTrackScales(doc.version))throw Error('Track assignment requires OSTF 4.1, 5.0 or 5.1. The original file is not migrated automatically.');
+ if(!SA.supportsTrackScales(doc.version))throw Error('Track assignment requires OSTF 4.1, 5.0, 5.1 or 5.2. The original file is not migrated automatically.');
  const t=doc.tracks.find(x=>x.id===target);
  if(!isPitched(t))throw Error('Choose an available pitched track.');
  if(!['preferred','strict'].includes(adherence))throw Error('Unsupported performance adherence.');
@@ -2008,7 +2008,7 @@ SA.compat={group,index,test,scanSong,pitchName};
   const preserved=unchanged(doc,base);
   if(!preserved)errors.push('A non-scale field differs from the last imported OSTF. Save is blocked; re-import intentional raw-text changes first.');
   if(bytes(json)>24*1024*1024)errors.push('Export exceeds the 24 MB safety limit.');
-  if(doc&&doc.version&&!/^((3\.[0-5]|4\.[01])\.0)$/.test(doc.version))warnings.push('OSTF version '+doc.version+' was preserved. Official schema requires separate version-specific verification.');
+  if(doc&&doc.version&&!/^((3\.[0-5]|4\.[01]|5\.[012])\.0)$/.test(doc.version))warnings.push('OSTF version '+doc.version+' was preserved. Official schema requires separate version-specific verification.');
   const scales=doc?.harmony?.scales||[],tracks=doc?.tracks||[];
   const directions=tracks.reduce((n,t)=>n+(t.directions||[]).filter(d=>d.type==='improvisation').length,0);
   const chordIds=new Set((doc?.harmony?.chords||[]).map(c=>c.id));
@@ -2080,7 +2080,7 @@ function proposal(doc,group,scaleId,target='harmony',adherence='preferred'){
  if(!group?.events?.length)throw Error('Select a repeated harmonic context first.');
  if(!['harmony',...doc.tracks.map(t=>t.id)].includes(target))throw Error('Invalid target.');
  const v=SA.validate(doc);if(!v.ok||!v.writable)throw Error('OSTF is read-only or structurally invalid.');
- if(target!=='harmony'&&!SA.supportsTrackScales(doc.version))throw Error('Track-specific scale assignment requires OSTF 4.1, 5.0 or 5.1.');
+ if(target!=='harmony'&&!SA.supportsTrackScales(doc.version))throw Error('Track-specific scale assignment requires OSTF 4.1, 5.0, 5.1 or 5.2.');
  if(!['preferred','strict'].includes(adherence))throw Error('Invalid adherence.');
  const actual=groups(doc).find(g=>g.key===group.key);
  if(!actual)throw Error('The progression has changed; select its new pattern.');

@@ -2048,6 +2048,27 @@ ostfstudio::ArrangementView MainComponent::currentArrangement() const {
     return {original.bars, displayedGlobalLanes_, original.trackLanes};
 }
 
+namespace {
+template<class Heading, class Track>
+void visitArrangementRows(const ostfstudio::OstfpPreview& project, const std::vector<size_t>& order, Heading heading, Track draw) {
+    bool special = false, arrangement = false;
+    for (const auto track : order) {
+        if (project.chordVoicingTrack != track) {
+            if (!special && (project.isMelodyOrLyricTrack(track) || !project.specialTrackNames.isEmpty())) {
+                heading("MELODY / LYRICS TRACKS");
+                special = true;
+            }
+            if (!arrangement && !project.isMelodyOrLyricTrack(track)) {
+                heading("ARRANGEMENT TRACKS");
+                arrangement = true;
+            }
+        }
+        draw(track);
+    }
+    if (!special && !project.specialTrackNames.isEmpty()) heading("MELODY / LYRICS TRACKS");
+}
+}
+
 std::vector<std::size_t> MainComponent::displayedTrackOrder() const {
     std::vector<std::size_t> order;
     if (!project_) return order;
@@ -3340,7 +3361,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     sessionEdited_ = false;
     currentFilename_ = filename;
     liveTracks_.openDocument(project_->documentId.isEmpty() ? project_->title : project_->documentId, *viewPreferences_.getUserSettings());
-    legacySourceFile_ = project_->sourceVersion != "5.0.0" && project_->sourceVersion != "5.1.0" && sourceFolder != juce::File{}
+    legacySourceFile_ = project_->sourceVersion != "5.0.0" && !project_->supportsScoreTakes() && sourceFolder != juce::File{}
                             ? sourceFolder.getChildFile(filename)
                             : juce::File{};
     updateDocumentLabel();
@@ -6302,8 +6323,8 @@ void MainComponent::showTakes(size_t track,juce::Range<juce::int64> range,juce::
         if (live) menu.addSubMenu(TRANS("Audition take"),listen);
         menu.addSubMenu(TRANS("Adopt take"),adopt);
     }
-    if (project_->sourceVersion=="5.1.0") menu.addItem(4,TRANS("Add section take"));
-    if (comps.empty() && (project_->sourceVersion!="5.1.0" || state.count>1)) {
+    if (project_->supportsScoreTakes()) menu.addItem(4,TRANS("Add section take"));
+    if (comps.empty() && (!project_->supportsScoreTakes() || state.count>1)) {
     menu.addItem(1,TRANS("Add empty take"));
     for(int i=1;i<=state.count;++i) {
         const auto label="T"+juce::String(i);
@@ -7902,9 +7923,8 @@ void MainComponent::resized() {
         const int globalHeight = timelineRowHeight() + (theoryVisible_ ? (2 * timelineRowHeight()) : 0) + static_cast<int>(view.globalLanes.size())
             * groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)];
         int contentHeight = globalHeight + (outputs ? arrangementHeadingHeight : 0);
-        if (std::any_of(order.begin(), order.end(), [this](auto i) { return !project_->isGlobalNoteTrack(i); }))
-            contentHeight += arrangementHeadingHeight;
-        for (auto i : order) contentHeight += partLyricHeight(i) + trackControls_[i]->size.height();
+        visitArrangementRows(*project_, order, [&](const char*) { contentHeight += arrangementHeadingHeight; },
+            [&](size_t i) { contentHeight += partLyricHeight(i) + trackControls_[i]->size.height(); });
         for (std::size_t i = 0; i < outputs; ++i) contentHeight += outputControls_[mixer_.routing().outputAt(i)].size.height();
         const auto viewportHeight = std::max(0, arrangement.getHeight());
         verticalScroll_.setRangeLimits(0, std::max(viewportHeight, contentHeight), juce::dontSendNotification);
@@ -7948,18 +7968,13 @@ void MainComponent::resized() {
         const int guideY = ruler_.getBounds().getBottom() + arrangement.getY()
             - juce::roundToInt(verticalScroll_.getCurrentRangeStart()) + after * groupDefaults_[static_cast<std::size_t>(HeightGroup::lanes)];
         functionRow_ = arrangement.withTrimmedLeft(trackHeaderWidth).withY(guideY).withHeight(2 * timelineRowHeight());
-        bool arrangementHeading = false;
         trackRows_.assign(trackControls_.size(), {});
-        for (const auto i : order) {
-            if (!project_->isGlobalNoteTrack(i) && !arrangementHeading) {
-                arrangementHeading = true;
-                y += arrangementHeadingHeight;
-            }
+        visitArrangementRows(*project_, order, [&](const char*) { y += arrangementHeadingHeight; }, [&](size_t i) {
             const int height = trackControls_[i]->size.height();
             y += partLyricHeight(i);
             trackRows_[i] = {arrangement.getX(), y, arrangement.getWidth(), height - TrackRowSize::grip};
             y += height;
-        }
+        });
         auto placeGrip = [this](TrackRowSize& size, juce::Rectangle<int> bounds) {
             bounds = rowOverlay_.getLocalArea(this, bounds);
             size.setBounds(bounds.withY(bounds.getBottom()).withHeight(TrackRowSize::grip));
@@ -8396,7 +8411,10 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         g.setColour(colour);
         g.fillRect(band.removeFromTop(2));
         g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-        g.drawText(juce::translate(title), labels.getX() + 4, y, labels.getWidth() + area.getWidth() - 4,
+        auto caption = juce::translate(title);
+        if (project_ && std::string_view(title) == "MELODY / LYRICS TRACKS" && !project_->specialTrackNames.isEmpty())
+            caption += "    " + project_->specialTrackNames.joinIntoString("  /  ");
+        g.drawText(caption, labels.getX() + 4, y, labels.getWidth() + area.getWidth() - 4,
                    arrangementHeadingHeight, juce::Justification::centredLeft);
         y += arrangementHeadingHeight;
     };
@@ -8529,14 +8547,7 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         y += project_ ? trackControls_[i]->size.height() : laneHeight;
     };
     if (project_) {
-        bool arrangementHeading = false;
-        for (const auto i : displayedTrackOrder()) {
-            if (!project_->isGlobalNoteTrack(i) && !arrangementHeading) {
-                heading("ARRANGEMENT TRACKS");
-                arrangementHeading = true;
-            }
-            drawTrack(i);
-        }
+        visitArrangementRows(*project_, displayedTrackOrder(), heading, drawTrack);
     } else {
         heading("ARRANGEMENT TRACKS / DEMO");
         for (std::size_t i = 0; i < view.trackLanes.size(); ++i) drawTrack(i);

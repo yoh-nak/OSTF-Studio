@@ -75,6 +75,81 @@ const char* staffName(StaffStyle s) {
     }
     return "";
 }
+// Read written events independently of performed Core notes. Keep the original
+// rational values in the score and round only endpoints for the tick-based view.
+static void readWrittenParts(const juce::var& notation, NotationScore& score) {
+    std::map<juce::String, size_t> partIds;
+    auto parts = items(notation["parts"]);
+    std::stable_sort(parts.begin(), parts.end(), [](const auto& a, const auto& b) { return int(a["order"]) < int(b["order"]); });
+    for (const auto& item : parts) {
+        partIds.emplace(item["id"].toString(), score.parts.size());
+        auto& part = score.parts.emplace_back();
+        part.id = item["id"].toString(); part.name = item["name"].toString();
+    }
+    std::map<juce::String, int> staffCounts, staffNumber, voiceCounts, voices;
+    for (const auto& staff : items(notation["staves"])) {
+        const auto id = staff["partId"].toString();
+        const auto it = partIds.find(id); if (it == partIds.end()) continue;
+        auto& part = score.parts[it->second];
+        const auto attrs = staff["initialAttributes"];
+        staffNumber[staff["id"].toString()] = int(staff["number"]);
+        if (staffNumber[staff["id"].toString()] == 1) {
+            const auto trans = attrs["transpose"], chromatic = trans["chromatic"];
+            part.transposeDiatonic = int(trans["diatonic"]);
+            part.transposeOctaves = int(trans["octaveChange"]);
+            part.transposeChromatic = double(chromatic["numerator"]) / std::max(1., double(chromatic["denominator"]));
+        }
+        const auto sign = attrs["clef"]["sign"].toString();
+        if (staff["kind"] == "tablature") part.preferred = StaffStyle::guitarTab;
+        else if (staff["kind"] == "percussion") part.preferred = StaffStyle::percussion;
+        else if (++staffCounts[id] > 1) part.preferred = StaffStyle::grand;
+        else if (sign == "F") part.preferred = StaffStyle::bass;
+        else if (sign == "C") part.preferred = StaffStyle::alto;
+    }
+    for (const auto& voice : items(notation["voices"]))
+        voices[voice["id"].toString()] = ++voiceCounts[voice["partId"].toString()];
+    auto measures = items(notation["measures"]);
+    std::stable_sort(measures.begin(), measures.end(), [](const auto& a, const auto& b) { return int(a["order"]) < int(b["order"]); });
+    std::map<juce::String,std::pair<size_t,size_t>> locations;
+    for (const auto& m : measures) {
+        const auto it = partIds.find(m["partId"].toString()); if (it == partIds.end()) continue;
+        auto& bars = score.parts[it->second].writtenMeasures;
+        locations.emplace(m["id"].toString(), std::pair{it->second, bars.size()});
+        bars.emplace_back(); score.bars = std::max(score.bars, int(bars.size()));
+    }
+    std::set<juce::String> tiedFrom, tiedTo;
+    for (const auto& span : items(notation["spans"])) if (span["kind"] == "tie" && span["status"] != "unresolved") {
+        tiedTo.insert(span["start"]["eventId"].toString()); tiedFrom.insert(span["end"]["eventId"].toString());
+    }
+    auto quarter = [](const juce::var& r) { return double(r["numerator"]) / std::max(1., double(r["denominator"])); };
+    for (const auto& e : items(notation["events"])) {
+        if (e["kind"] != "note") continue;
+        const auto position = locations.find(e["measureId"].toString()); if (position == locations.end()) continue;
+        const auto [part, bar] = position->second;
+        const auto p = e["writtenPitch"]; const auto step = p["step"].toString();
+        const auto letter = juce::String("CDEFGAB").indexOf(step);
+        if (step.length() != 1 || letter < 0) continue;
+        constexpr int semitones[]{0,2,4,5,7,9,11};
+        const auto accidental = juce::roundToInt(quarter(p["alter"]));
+        const int octave = int(p["octave"]), pitch = 12*(octave+1) + semitones[letter] + accidental;
+        const auto at = quarter(e["offsetQuarter"]) * score.ppq;
+        const auto end = at + quarter(e["durationQuarter"]) * score.ppq;
+        if (pitch < 0 || pitch > 127 || at < 0 || end > double(std::numeric_limits<Tick>::max())/2) continue;
+        const auto start = std::llround(at), duration = std::llround(end)-start;
+        const auto grace = e["grace"];
+        if (duration < 0 || (duration == 0 && !grace.isObject())) continue;
+        const auto id = e["id"].toString(); const auto tech = e["technical"];
+        score.parts[part].writtenMeasures[bar].push_back({start, duration, pitch, std::max(1,voices[e["voiceId"].toString()]),
+            int(tech["stringNumber"]), int(tech.getProperty("fret",-1)), tiedFrom.contains(id), tiedTo.contains(id), id, step, accidental, octave,
+            staffNumber[e["staffId"].toString()], grace.isObject(), bool(grace["slash"]), grace["placement"] == "after"});
+    }
+    for (auto& part : score.parts) for (auto& bar : part.writtenMeasures)
+        std::stable_sort(bar.begin(), bar.end(), [](const auto& a, const auto& b) { if (a.at != b.at) return a.at < b.at;
+            const auto order = [](const auto& note) { return note.grace ? (note.graceAfter ? 2 : 0) : 1; };
+            return order(a) < order(b);
+        });
+}
+
 NotationScore notationScore(const OstfpPreview& project) {
     NotationScore s;
     s.title = project.title;
@@ -165,6 +240,8 @@ NotationScore notationScore(const OstfpPreview& project) {
         if (label.isNotEmpty())
             s.keys.push_back({static_cast<Tick>(change["at"]), 0, label});
     }
+    readWrittenParts(doc["notation"], s);
+    if (!s.parts.empty()) return s;
     for (std::size_t i = 0; i < project.trackLanes.size(); ++i) {
         if (project.trackKinds[i] == TrackKind::audio)
             continue;
@@ -195,6 +272,11 @@ static MeasureNotes splitMeasures(const NotationScore& s, int index, StaffStyle 
     MeasureNotes result(starts.size() - 1);
     if (index < 0 || index >= static_cast<int>(s.parts.size()) || s.barTicks <= 0)
         return result;
+    const auto& written = s.parts[index].writtenMeasures;
+    if (!written.empty()) {
+        std::copy_n(written.begin(), std::min(result.size(), written.size()), result.begin());
+        return result;
+    }
     std::vector<Tick> voices;
     const auto& strings = tuning(style);
     std::vector<Tick> busy(strings.size(), 0);
@@ -337,6 +419,13 @@ void addPart(juce::XmlElement &root, juce::XmlElement &list, const NotationScore
                 clef(*a, "F", 4);
             else
                 clef(*a, "G", 2);
+            const auto& source = s.parts[index];
+            if (b == 0 && (source.transposeDiatonic || source.transposeChromatic || source.transposeOctaves)) {
+                auto* transpose = a->createNewChildElement("transpose");
+                field(*transpose, "diatonic", juce::String(source.transposeDiatonic));
+                field(*transpose, "chromatic", juce::String(source.transposeChromatic));
+                if (source.transposeOctaves) field(*transpose, "octave-change", juce::String(source.transposeOctaves));
+            }
         }
         std::map<int, std::vector<ScoreNote>> voices;
         if (conductor) {
@@ -409,17 +498,22 @@ void addPart(juce::XmlElement &root, juce::XmlElement &list, const NotationScore
         for (const auto &[voice, events] : voices) {
             if (rewind)
                 field(*m->createNewChildElement("backup"), "duration", juce::String(length));
-            Tick at = 0;
+            Tick at = 0, previousOnset = -1;
             for (const auto &e : events) {
                 rest(*m, e.at - at, voice);
                 auto *n = m->createNewChildElement("note");
+                if (e.grace) {
+                    auto* ornament = n->createNewChildElement("grace");
+                    if (e.graceSlash) ornament->setAttribute("slash", "yes");
+                } else if (previousOnset == e.at) n->createNewChildElement("chord");
                 const int p = drum ? drumPosition(e.pitch) : e.pitch;
                 auto *tone = n->createNewChildElement(drum ? "unpitched" : "pitch");
-                field(*tone, drum ? "display-step" : "step", steps[p % 12]);
-                if (!drum && alter[p % 12])
-                    field(*tone, "alter", "1");
-                field(*tone, drum ? "display-octave" : "octave", juce::String(octave(p)));
-                field(*n, "duration", juce::String(e.length));
+                const bool written = !drum && e.writtenStep.isNotEmpty();
+                field(*tone, drum ? "display-step" : "step", written ? e.writtenStep : juce::String(steps[p % 12]));
+                const int alteration = written ? e.writtenAlter : alter[p % 12];
+                if (!drum && alteration) field(*tone, "alter", juce::String(alteration));
+                field(*tone, drum ? "display-octave" : "octave", juce::String(written ? e.writtenOctave : octave(p)));
+                if (!e.grace) field(*n, "duration", juce::String(e.length));
                 auto ties = [&](juce::XmlElement &parent, const char *tag) {
                     if (e.tiedFrom)
                         parent.createNewChildElement(tag)->setAttribute("type", "stop");
@@ -433,7 +527,7 @@ void addPart(juce::XmlElement &root, juce::XmlElement &list, const NotationScore
                 if (drum && crossHead(e.pitch))
                     field(*n, "notehead", "x");
                 if (style == StaffStyle::grand)
-                    field(*n, "staff", e.pitch < 60 ? "2" : "1");
+                    field(*n, "staff", juce::String(e.writtenStaff > 0 ? e.writtenStaff : (e.pitch < 60 ? 2 : 1)));
                 if (e.tiedFrom || e.tiedTo || e.string) {
                     auto *notation = n->createNewChildElement("notations");
                     ties(*notation, "tied");
@@ -443,7 +537,7 @@ void addPart(juce::XmlElement &root, juce::XmlElement &list, const NotationScore
                         field(*tech, "fret", juce::String(e.fret));
                     }
                 }
-                if (!e.tiedFrom) {
+                if (!e.tiedFrom && !e.grace) {
                     const bool firstAtOnset = lyricTimes.insert(measureStart + e.at).second;
                     for (const auto &lyric : s.lyrics) {
                         if (lyric.at == measureStart + e.at &&
@@ -452,7 +546,8 @@ void addPart(juce::XmlElement &root, juce::XmlElement &list, const NotationScore
                             field(*n->createNewChildElement("lyric"), "text", lyric.text);
                     }
                 }
-                at = e.at + e.length;
+                at = std::max(at, e.at + e.length);
+                if (!e.grace) previousOnset = e.at;
             }
             rest(*m, length - at, voice);
             rewind = true;
@@ -606,7 +701,8 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
     }
     std::map<int, int> accidentals;
     for (const auto& n : events) {
-        const float x = left + 8 + static_cast<float>(double(n.at) / s.barTicks) * (right - left - 16);
+        const float x = left + 8 + static_cast<float>(double(n.at) / s.barTicks) * (right - left - 16)
+                      + (n.grace ? (n.graceAfter ? 6.f : -6.f) : 0.f);
         g.setColour(ink);
         if (tab) {
             const float y = top + 5 * (n.string ? n.string - 1 : static_cast<int>(tuning(style).size()) + 1);
@@ -616,12 +712,13 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
             text(g, n.string ? juce::String(n.fret) : "?", x - 1, y - 5, 12, 10, 9, true);
             continue;
         }
-        const auto clefStyle =
-            style == StaffStyle::grand ? (n.pitch < 60 ? StaffStyle::bass : StaffStyle::treble) : style;
-        const float staffTop = top + (style == StaffStyle::grand && n.pitch < 60 ? 51 : 0);
+        const bool lowerStaff = n.writtenStaff > 0 ? n.writtenStaff == 2 : n.pitch < 60;
+        const auto clefStyle = style == StaffStyle::grand ? (lowerStaff ? StaffStyle::bass : StaffStyle::treble) : style;
+        const float staffTop = top + (style == StaffStyle::grand && lowerStaff ? 51 : 0);
         const int bottomPitch = clefStyle == StaffStyle::bass ? 43 : clefStyle == StaffStyle::alto ? 53 : 64;
         const int p = style == StaffStyle::percussion ? drumPosition(n.pitch) : n.pitch;
-        const int offset = diatonic(p) - diatonic(bottomPitch);
+        const int staffPitch = n.writtenStep.isEmpty() ? diatonic(p) : 7*n.writtenOctave + juce::String("CDEFGAB").indexOf(n.writtenStep);
+        const int offset = staffPitch - diatonic(bottomPitch);
         const float trueY = staffTop + 20 - offset * 2.5f;
         // Keep extreme pitches legible on paper by showing their explicit octave displacement.
         float y = trueY;
@@ -641,6 +738,12 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
             g.drawLine(x - 4, line, x + 5, line, .7f);
         for (float line = staffTop + 25; line <= y + .2f; line += 5)
             g.drawLine(x - 4, line, x + 5, line, .7f);
+        if (n.grace) {
+            g.fillEllipse(x-2, y-1.3f, 4, 2.6f);
+            g.drawLine(x+1.5f,y,x+1.5f,y-9,.7f);
+            if (n.graceSlash) g.drawLine(x-1,y-3,x+4,y-7,.7f);
+            continue;
+        }
         const double quarters = static_cast<double>(n.length) / s.ppq;
         double closest = 10000, base = 1;
         bool dotted = false;
@@ -663,10 +766,11 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
         if (dotted)
             g.fillEllipse(x + 4.f, y - 2, 1.6f, 1.6f);
         if (style != StaffStyle::percussion) {
-            auto& prior = accidentals[diatonic(p)];
-            if (prior != alter[p % 12] && !n.tiedFrom) {
-                if (alter[p % 12])
-                    text(g, "#", x - 9, y - 5, 6, 10, 9);
+            auto& prior = accidentals[staffPitch];
+            const int alteration = n.writtenStep.isEmpty() ? alter[p % 12] : n.writtenAlter;
+            if (prior != alteration && !n.tiedFrom) {
+                if (alteration)
+                    text(g, juce::String::repeatedString(alteration < 0 ? "b" : "#", std::min(2,std::abs(alteration))), x - 9, y - 5, 6, 10, 9);
                 else {
                     g.drawLine(x - 8, y - 5, x - 8, y + 2, .7f);
                     g.drawLine(x - 5, y - 2, x - 5, y + 5, .7f);
@@ -674,7 +778,7 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
                     g.drawLine(x - 8, y + 2, x - 5, y + 1, .8f);
                 }
             }
-            prior = alter[p % 12];
+            prior = alteration;
         }
         if (base < 4) {
             const bool down = y < staffTop + 10;

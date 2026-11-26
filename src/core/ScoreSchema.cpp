@@ -138,6 +138,20 @@ std::string applyScoreFields(std::string_view original, std::string_view edited,
     return bytes;
 }
 
+static jsoncons::json bundledSchema(int index) {
+    int size = 0;
+    const char* data = ScoreSchemas::getNamedResource(ScoreSchemas::namedResourceList[index], size);
+    std::string schemaText(data, size);
+    // std::regex<char> matches UTF-8 bytes. Spell U+2028/2029 as byte sequences
+    // so this ECMAScript character class also compiles on MSVC and libc++.
+    constexpr std::string_view separators = R"([\\r\\n\\u2028\\u2029])";
+    constexpr std::string_view utf8Separators = R"((?:[\\r\\n]|\\xE2\\x80[\\xA8\\xA9]))";
+    for (auto p = schemaText.find(separators); p != std::string::npos;
+         p = schemaText.find(separators, p + utf8Separators.size()))
+        schemaText.replace(p, separators.size(), utf8Separators);
+    return jsoncons::json::parse(schemaText);
+}
+
 void validateScoreSchema(std::string_view version, std::string_view utf8) {
     using Json = jsoncons::json;
     using Schema = jsoncons::jsonschema::json_schema<Json>;
@@ -152,17 +166,16 @@ void validateScoreSchema(std::string_view version, std::string_view utf8) {
         auto& entry = entries[i];
         try {
             std::call_once(entry.init, [&] {
-                int size = 0;
-                const char* data = ScoreSchemas::getNamedResource(ScoreSchemas::namedResourceList[i], size);
-                std::string schemaText(data, size);
-                // std::regex<char> matches UTF-8 bytes. Spell U+2028/2029 as byte sequences
-                // so this ECMAScript character class also compiles on MSVC and libc++.
-                constexpr std::string_view separators = R"([\\r\\n\\u2028\\u2029])";
-                constexpr std::string_view utf8Separators = R"((?:[\\r\\n]|\\xE2\\x80[\\xA8\\xA9]))";
-                for (auto p = schemaText.find(separators); p != std::string::npos;
-                     p = schemaText.find(separators, p + utf8Separators.size()))
-                    schemaText.replace(p, separators.size(), utf8Separators);
-                entry.schema.emplace(jsoncons::jsonschema::make_json_schema(Json::parse(schemaText)));
+                auto resolve = [](const jsoncons::uri& uri) -> Json {
+                    const auto path = uri.path();
+                    const auto name = path.substr(path.find_last_of('/') + 1);
+                    for (int n = 0; n < ScoreSchemas::namedResourceListSize; ++n) {
+                        if (name != ScoreSchemas::originalFilenames[n]) continue;
+                        return bundledSchema(n);
+                    }
+                    throw std::runtime_error("Unbundled schema reference: " + uri.string());
+                };
+                entry.schema.emplace(jsoncons::jsonschema::make_json_schema(bundledSchema(static_cast<int>(i)), resolve));
             });
             entry.schema->validate(Json::parse(utf8));
         } catch (const std::exception& e) {
@@ -170,6 +183,6 @@ void validateScoreSchema(std::string_view version, std::string_view utf8) {
         }
         return;
     }
-    throw std::runtime_error("Unsupported OSTF score version (supported: 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.0, 5.0.0, 5.1.0)");
+    throw std::runtime_error("Unsupported OSTF score version (supported: 3.5.0, 4.0.0, 4.1.0, 4.2.0, 4.3.0, 5.0.0, 5.1.0, 5.2.0)");
 }
 }

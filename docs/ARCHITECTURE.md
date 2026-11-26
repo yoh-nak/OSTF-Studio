@@ -1,5 +1,15 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## OSTF 5.2 score and audio projection
+
+Scale Editor records the selected audition destination alongside each test sequence. The picker can audition the nested instrument locally with external phrase routing enabled. The audio callback flushes previously sounding notes to the previous destination. Singer uses the existing voice pitch clock to connect a new voiced nasal and enters the recorded nasal sustain during legato. Detached nasal attacks and unvoiced stop closures retain their own timing.
+
+Score 5.2, Manifest 1.2 and Production 0.5 resolve schema references from embedded official resources. Schema validation covers structure. Studio projects supported musical features independently of the lossless source document. The special-track display follows voice references to Core track IDs. Written Notation parts take priority over MIDI-derived engraving. Visual positions use rounded tick endpoints, while the OSTF retains rational notation and source attachments. MIDI take selection uses the same native comp operations for 5.1 and 5.2.
+
+Production-only audio channels have local playback rows. Materialized regions determine what sounds. Analysis hypotheses and render dependencies remain in the package. Saving a previously imported rich Production preserves its members and updates the score binding for supported score edits. Studio detects unsupported changes to its imported mixer or audio regions before writing. External assets need separate handling. Distributed and plug-in companion documents can be retained as bytes. Applying or rewriting their transactions is outside this path. Unsupported detector routings and third-party state-asset restoration are reported on open. Official packages 04 and 06 exercise those cases.
+
+The offline pitch study measures a stable monophonic fundamental, transposes the user's selected interval using Signalsmith Stretch, compensates algorithm latency and crossfades both edges into a new WAV. A future editor can keep note candidates and voiced/unvoiced intervals in the Audio Model, audition a pitch edit, render a separate derived asset, and bind a materialized region to it. Detection on expressive vocals, ARA hosting and polyphonic source separation each need separate validation.
+
 ## OSTF 5.1 score and production session
 
 Scale Editor copies the host MIDI input before sending it to its nested instrument. The outgoing event bus merges that input with routed audition events at their sample offsets. Live keys have priority when both sources use the same note on the same channel. The merger tracks keyboard notes and pedals per channel so disabling thru releases them on the next audio block. The VST3 instance stores the thru switch. New instances enable it, and restoring state without the switch preserves the original local-only keyboard routing.

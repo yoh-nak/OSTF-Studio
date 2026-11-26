@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yoh-nak.github.io/ostf/schema/ostf-special-tracks-1.0.schema.json",
+  "title": "OSTF Special Tracks Profile 1.0.0",
+  "description": "Optional typed lyric, vocal and chorus editing entry points. Existing Core lyrics, voices, notes and vocal performances remain authoritative; these declarations do not sound, route audio or create a second timeline.",
+  "type": "object",
+  "properties": {
+    "profileVersion": {
+      "const": "1.0.0"
+    },
+    "id": {
+      "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+      "description": "Profile identity in the inherited Core global semantic ID namespace. Not an EntityRef target in this revision."
+    },
+    "tracks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SpecialTrack"
+      },
+      "minItems": 0,
+      "description": "Authored declaration order. Order does not change event timing, playback priority or routing."
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "ostf-common-1.0.schema.json#/$defs/CapabilityRequirement"
+      },
+      "minItems": 0
+    },
+    "extensions": {
+      "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+    }
+  },
+  "required": [
+    "profileVersion",
+    "id",
+    "tracks"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "IdList": {
+      "type": "array",
+      "items": {
+        "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+      },
+      "uniqueItems": true
+    },
+    "Presentation": {
+      "type": "object",
+      "properties": {
+        "visible": {
+          "type": "boolean",
+          "description": "Optional presentation preference. False does not disable, mute or remove canonical content."
+        },
+        "collapsed": {
+          "type": "boolean",
+          "description": "Optional presentation preference. No particular host lane or folder layout is required."
+        }
+      },
+      "additionalProperties": false
+    },
+    "SpecialTrack": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/LyricsTrack"
+        },
+        {
+          "$ref": "#/$defs/VocalTrack"
+        },
+        {
+          "$ref": "#/$defs/ChorusTrack"
+        }
+      ]
+    },
+    "LyricsTrack": {
+      "type": "object",
+      "description": "An editing entry point into one existing lyric document, optionally selecting explicitly declared voices for that document. Owns no duplicate text, notes, alignments or timing.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "name": {
+          "type": "string",
+          "description": "Authored display name; names never determine identity or voice assignment."
+        },
+        "kind": {
+          "const": "lyrics"
+        },
+        "documentId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Existing lyrics.documents[].id."
+        },
+        "voiceIds": {
+          "$ref": "#/$defs/IdList",
+          "minItems": 1,
+          "description": "Optional explicit voice filter. Every voice must exist and reference documentId. Absence means document-level view, not inferred vocal assignment."
+        },
+        "presentation": {
+          "$ref": "#/$defs/Presentation"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "documentId"
+      ],
+      "additionalProperties": false
+    },
+    "VocalTrack": {
+      "type": "object",
+      "description": "An editing entry point for exactly one existing lyric voice. Track, lyric document and authored vocal role are resolved from that voice. At most one VocalTrack declaration per voice in this profile.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "name": {
+          "type": "string",
+          "description": "Authored display name; names never determine identity or voice assignment."
+        },
+        "kind": {
+          "const": "vocal"
+        },
+        "voiceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Existing lyrics.voices[].id. Its trackId and documentId remain the only canonical ownership relationship."
+        },
+        "presentation": {
+          "$ref": "#/$defs/Presentation"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "voiceId"
+      ],
+      "additionalProperties": false
+    },
+    "ChorusTrack": {
+      "type": "object",
+      "description": "A non-sounding semantic group of explicit VocalTrack declarations. Not a song section, audio effect, routing bus, generated harmony or duplicate performance.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "name": {
+          "type": "string",
+          "description": "Authored display name; names never determine identity or routing."
+        },
+        "kind": {
+          "const": "chorus"
+        },
+        "memberTrackIds": {
+          "$ref": "#/$defs/IdList",
+          "minItems": 1,
+          "description": "Ordered references only to kind:vocal declarations in the same profile. Nested chorus groups and lyric-track members are invalid. Membership never creates audio routing."
+        },
+        "presentation": {
+          "$ref": "#/$defs/Presentation"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "memberTrackIds"
+      ],
+      "additionalProperties": false
+    },
+    "VoiceBinding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Existing lyric voice identity at export time."
+        },
+        "trackId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Exact Core track binding of this voice at export time."
+        },
+        "documentId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Exact lyric document binding of this voice at export time."
+        }
+      },
+      "required": [
+        "id",
+        "trackId",
+        "documentId"
+      ],
+      "additionalProperties": false
+    },
+    "BindingSnapshot": {
+      "type": "object",
+      "description": "Exact identity snapshot reached from the preserved declarations. Arrays are sorted lexicographically by ID, contain no duplicate identities and must equal the set derived from those declarations. Does not duplicate lyric text or musical content.",
+      "properties": {
+        "documentIds": {
+          "$ref": "#/$defs/IdList",
+          "description": "All documents named by lyrics declarations plus documents of all voices reached by vocal declarations or lyric voice filters."
+        },
+        "voices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VoiceBinding"
+          },
+          "uniqueItems": true,
+          "description": "Exactly the reached voice identities with their original track/document tuples. Duplicate voice IDs are invalid even if their tuples differ."
+        }
+      },
+      "required": [
+        "documentIds",
+        "voices"
+      ],
+      "additionalProperties": false
+    },
+    "CompatibilityData": {
+      "type": "object",
+      "properties": {
+        "sourceVersion": {
+          "const": "5.2.0"
+        },
+        "targetVersion": {
+          "enum": [
+            "4.0.0",
+            "4.1.0",
+            "4.2.0",
+            "4.3.0",
+            "5.0.0",
+            "5.1.0"
+          ],
+          "description": "Exact older Score version of the enclosing export. This label does not establish that the target can natively represent all referenced data."
+        },
+        "specialTracks": {
+          "$ref": "ostf-special-tracks-1.0.schema.json",
+          "description": "Preserved native profile. In an older Score this is opaque compatibility data, not a second active Core authority."
+        },
+        "bindings": {
+          "$ref": "#/$defs/BindingSnapshot"
+        }
+      },
+      "required": [
+        "sourceVersion",
+        "targetVersion",
+        "specialTracks",
+        "bindings"
+      ],
+      "additionalProperties": false
+    },
+    "CompatibilityEnvelope": {
+      "type": "object",
+      "description": "Value of older Score extensions[org.ostf.special-tracks.v1]. Only a current, fully revalidated snapshot may be restored to a native 5.2 profile; stale/unverified/malformed payloads remain unresolved preservation data.",
+      "properties": {
+        "version": {
+          "const": "1.0.0"
+        },
+        "status": {
+          "enum": [
+            "current",
+            "stale",
+            "unverified"
+          ]
+        },
+        "dependencies": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "const": "document"
+            }
+          },
+          "required": [
+            "scope"
+          ],
+          "additionalProperties": false
+        },
+        "data": {
+          "$ref": "#/$defs/CompatibilityData"
+        }
+      },
+      "required": [
+        "version",
+        "status",
+        "dependencies",
+        "data"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -10,12 +10,18 @@ struct ScoreNote {
     int pitch, voice, string = 0, fret = -1;
     bool tiedFrom, tiedTo;
     juce::String noteId;
+    juce::String writtenStep;
+    int writtenAlter = 0, writtenOctave = 0, writtenStaff = 0;
+    bool grace = false, graceSlash = false, graceAfter = false;
 };
 struct ScorePart {
     juce::String id, name;
     StaffStyle preferred = StaffStyle::treble;
     std::vector<PitchedNote> notes;
     int midiChannel = 0;
+    std::vector<std::vector<ScoreNote>> writtenMeasures;
+    int transposeDiatonic = 0, transposeOctaves = 0;
+    double transposeChromatic = 0;
 };
 struct SheetMark {
     juce::int64 at, end;

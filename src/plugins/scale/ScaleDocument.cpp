@@ -82,8 +82,8 @@ juce::Result Document::load(const juce::String& utf8) {
     if (utf8.isEmpty() || utf8.getNumBytesAsUTF8() > maxBytes) return juce::Result::fail("Expected an OSTF file up to 24 MiB.");
     try {
         auto parsed = juce::JSON::parse(utf8);
-        if ((parsed["version"] != "5.0.0" && parsed["version"] != "5.1.0") || parsed["format"].toString() != "OSTF")
-            return juce::Result::fail("Open an OSTF 5.0 or 5.1 score.");
+        if ((parsed["version"] != "5.0.0" && parsed["version"] != "5.1.0" && parsed["version"] != "5.2.0") || parsed["format"].toString() != "OSTF")
+            return juce::Result::fail("Open an OSTF 5.0, 5.1 or 5.2 score.");
         validateScoreSchema(parsed["version"].toString().toStdString(),utf8.toStdString());
         score = parsed;
         text = utf8;

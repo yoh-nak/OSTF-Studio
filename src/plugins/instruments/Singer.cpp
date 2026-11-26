@@ -13,11 +13,13 @@ class SyllableVoice {
     void start(int ch, int pitch, float velocity, Phone p, double sr, const VoiceBank* bank) {
         const bool connected = key >= 0 && channel == ch && envelope > .01;
         const auto targetHz = juce::MidiMessage::getMidiNoteInHertz(pitch);
-        const bool openVowel = accentPhone ? (accentPhone & 63) <= 15 : p.onset == vowelOnly;
+        const int english = accentPhone & 63;
+        const bool voicedJoin = english ? (english <= 15 || (english >= 26 && english <= 28))
+                                        : (p.onset == vowelOnly || p.onset == moraN);
         // A tightly gated short phrase can have a few milliseconds between
         // adjacent vowels even though the singer is still in the same breath.
         const double joinGap = p.durationMs > 0 && p.durationMs <= 150 ? .012 : .003;
-        const bool joinPitch = connected && waveReady && openVowel && p.delivery != scoop
+        const bool joinPitch = connected && waveReady && voicedJoin && p.delivery != scoop
             && key != pitch && (!released || releaseFrames <= sr * joinGap);
         const auto glideMs = p.durationMs > 0 ? std::min(22., p.durationMs * .25) : 22.;
         glideFrames = joinPitch ? std::max(1, juce::roundToInt(sr * glideMs * .001)) : 0;
@@ -54,6 +56,10 @@ class SyllableVoice {
         }
         nasalBody = nullptr;
         nasalAttack = nullptr;
+        // A connected ん continues the breath. Replaying the isolated recording's
+        // unvoiced lead-in would interrupt a short note before it reaches its pitch.
+        if (legato && !arpabet && p.onset == moraN && recorded && recorded->pitchMarks.size() >= 3)
+            nasalBody = recorded;
         if (bank && arpabet >= 26 && arpabet <= 28) {
             // A CV contains both the nasal closure and an open vowel. Keep
             // the distinctive /m/ or /n/ attack, then sustain the bank's /N/.

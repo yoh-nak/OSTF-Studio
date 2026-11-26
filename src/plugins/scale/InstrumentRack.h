@@ -102,7 +102,7 @@ public:
             return juce::Result::fail("Unable to restore the hosted instrument.");
         return install(type,bytes);
     }
-    void audition(const juce::var& notes) {
+    void audition(const juce::var& notes, bool localOnly=false) {
         std::vector<Event> next;
         if (const auto* items=notes.getArray()) for (const auto& item:*items) {
             const int key=item["note"], vel=item["velocity"], at=item["at"], ms=item["ms"];
@@ -112,6 +112,7 @@ public:
         std::stable_sort(next.begin(),next.end(),[](const Event& a,const Event& b){return a.ms<b.ms || (a.ms==b.ms && a.velocity<b.velocity);});
         const juce::ScopedLock lock(owner.getCallbackLock());
         stopPreview(); sequence.swap(next);
+        auditionLocally=localOnly;
     }
     void stopPreview() {
         const juce::ScopedLock lock(owner.getCallbackLock());
@@ -143,7 +144,7 @@ public:
             for(int k=0;k<128;++k) if(sounding[size_t(k)]) previous.addEvent(juce::MidiMessage::noteOff(previewChannel,k),0);
             sounding={}; flush=false;
         }
-        lastExternal=external.load();
+        lastExternal=external.load() && !auditionLocally;
         auto& destination=lastExternal ? previewOut : midi;
         const int count=audio.getNumSamples();
         while(cursor<sequence.size()) {
@@ -213,7 +214,7 @@ private:
     std::atomic<bool> thruEnabled{true};
     bool releaseKeys=false;
     std::atomic<bool> external{false};
-    bool lastExternal=false;
+    bool lastExternal=false, auditionLocally=false;
     std::vector<Event> sequence;
     size_t cursor=0;
     juce::int64 elapsed=0;

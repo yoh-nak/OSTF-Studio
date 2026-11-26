@@ -721,21 +721,22 @@ private:
         if (pickerBox) { pickerBox->toFront(true); return; }
         auto picker=std::make_unique<InstrumentPicker>(proc.rack.description(),japanese);
         const auto self=juce::Component::SafePointer<Editor>(this);
-        picker->onChoose=[self](InstrumentChoice c) {
+        picker->onChoose=[self](InstrumentChoice c,bool audition) {
             if (!self) return;
             self->pickerBox->dismiss();
             self->instrumentChanged(c.scanned ? self->proc.rack.install(*c.scanned,{})
-                : self->proc.rack.choose(juce::File(c.path),c.needsInspection?juce::String{}:c.name));
+                : self->proc.rack.choose(juce::File(c.path),c.needsInspection?juce::String{}:c.name),audition);
         };
         picker->onReference=[self] { if(self) { self->pickerBox->dismiss(); self->instrumentChanged(self->proc.rack.restore(nullptr)); } };
         picker->onBrowse=[self] { if(self) { self->pickerBox->dismiss(); self->browseInstrument(); } };
         pickerBox=&juce::CallOutBox::launchAsynchronously(std::move(picker),loadInstrument.getScreenBounds(),nullptr);
     }
-    void instrumentChanged(const juce::Result& result) {
+    void instrumentChanged(const juce::Result& result,bool audition=false) {
         if (result.failed()) { status.setText(result.getErrorMessage(),juce::dontSendNotification); return; }
         { const juce::ScopedLock lock(proc.stateLock); proc.unavailableInstrument.reset(); proc.rackError.clear(); }
         updateInstrument();
-        status.setText(proc.rack.name()+"  /  Ready to audition",juce::dontSendNotification);
+        if (audition) proc.rack.audition(juce::JSON::parse(R"([{"at":0,"note":60,"velocity":85,"ms":380}])"),true);
+        status.setText(proc.rack.name()+"  /  "+(audition ? words("Playing C4","C4を試聴中") : words("Ready to audition","試聴できます")),juce::dontSendNotification);
         proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
     void browseInstrument() {

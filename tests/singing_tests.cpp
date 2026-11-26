@@ -396,6 +396,16 @@ int main(int argc, char** argv) {
         return 48000./period;
     };
     const auto joined=vowelChange(true), detached=vowelChange(false);
+    const auto nasalJoin = vowelChange(true,0,{2,moraN});
+    const auto nasalEarly = measuredHz(nasalJoin,50), nasalSettled = measuredHz(nasalJoin,1450);
+    std::cout << "Mei connected nasal, onset / settled Hz: " << nasalEarly << " / " << nasalSettled << '\n';
+    if (argc==4 && juce::String(argv[3])=="nasal-join") {
+        juce::File output(juce::String::fromUTF8(argv[2]));
+        if (output.exists()) return 11;
+        auto writer=wavWriter(output,48000);
+        return writer && writer->writeFromAudioSampleBuffer(nasalJoin,0,nasalJoin.getNumSamples()) ? 0 : 13;
+    }
+    if (nasalEarly<255. || nasalEarly>310. || std::abs(nasalSettled-329.63)>5.) return 68;
     // Four 72 ms sung notes with 8 ms of gate separation, followed by a real rest.
     // Keep the exact same MIDI and gain for before/after listening renders.
     singer->reset();

@@ -13,10 +13,13 @@ struct AudioRegionPlayback {
     juce::int64 wavStartTick = 0;
     ClipTiming wavTiming;
     float wavGain = 1;
+    juce::int64 regionStart=0,regionDuration=0,fadeIn=0,fadeOut=0;
 
     juce::Result load(const ProjectAudio& audio, const TempoMap& clock, double rate, int lastSample, SourceCache* cache = nullptr) {
         if (!audio.timing.valid()) return juce::Result::fail("Invalid WAV timing");
         wavTiming = audio.timing;
+        regionStart=audio.startTick; regionDuration=audio.durationTicks;
+        fadeIn=audio.fadeInTicks; fadeOut=audio.fadeOutTicks;
         wavStartTick = audio.sourceTick();
         wavStart = juce::roundToInt(clock.secondsAt(wavStartTick) * rate);
         wavEnd = audio.durationTicks > 0 ? juce::roundToInt(clock.secondsAt(audio.startTick + audio.durationTicks) * rate) : lastSample;
@@ -71,7 +74,13 @@ struct AudioRegionPlayback {
                 if (frame >= wav.getNumSamples()) break;
                 const auto pos = static_cast<int>(frame);
                 const auto next = std::min(pos + 1, wav.getNumSamples() - 1);
-                dest[i] += (source[pos] + (source[next] - source[pos]) * static_cast<float>(frame - pos)) * wavGain;
+                float envelope=wavGain;
+                if(fadeIn || fadeOut) {
+                    const double elapsed=clock.tickAt(position/rate)-regionStart;
+                    if(fadeIn) envelope*=float(std::clamp(elapsed/fadeIn,0.,1.));
+                    if(fadeOut) envelope*=float(std::clamp((regionDuration-elapsed)/fadeOut,0.,1.));
+                }
+                dest[i] += (source[pos] + (source[next] - source[pos]) * static_cast<float>(frame - pos)) * envelope;
             }
         }
     }
