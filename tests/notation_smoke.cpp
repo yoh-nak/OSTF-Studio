@@ -467,6 +467,54 @@ int checkNotation(const juce::File& fixture, const juce::File& dir) {
         juce::MemoryOutputStream clarinetXml;
         if (writeSongXml(clarinetXml,clarinet).failed() || !clarinetXml.toString().contains("<transpose>")
             || !clarinetXml.toString().contains("<step>D</step>") || !clarinetXml.toString().contains("<alter>-1</alter>")) return 116;
+        juce::FileInputStream drumFile(fixture.getSiblingFile("14-notation-tab-percussion.ostf"));
+        if (readOstfPreview(drumFile,p).failed()) return 117;
+        const auto ensemble=notationScore(*p);
+        if (ensemble.parts.size()!=2 || ensemble.parts[1].preferred!=StaffStyle::percussion) return 118;
+        const auto kit=partMeasures(ensemble,1,StaffStyle::percussion);
+        if (kit.empty() || kit[0].size()!=2 || kit[0][0].at!=0 || kit[0][1].at!=ensemble.ppq
+            || kit[0][0].percussionInstrument!="kick" || kit[0][1].percussionInstrument!="snare") return 119;
+        juce::MemoryOutputStream drumXml;
+        if (writeSongXml(drumXml,ensemble).failed()) return 120;
+        auto xmlDoc=juce::parseXML(drumXml.toString());
+        if (!xmlDoc) return 121;
+        auto* kitPart=xmlDoc->getChildByAttribute("id","P2");
+        auto* kitDesc=xmlDoc->getChildByName("part-list")->getChildByAttribute("id","P2");
+        if (!kitPart || !kitDesc) return 122;
+        auto* bar=kitPart->getChildByName("measure");
+        auto* hit=bar ? bar->getChildByName("note") : nullptr;
+        for (const auto& note : kit[0]) {
+            if (!hit) return 123;
+            const auto* pos=hit->getChildByName("unpitched");
+            const auto* inst=hit->getChildByName("instrument");
+            const auto* def=inst ? kitDesc->getChildByAttribute("id",inst->getStringAttribute("id")) : nullptr;
+            if (!pos || !def || pos->getChildElementAllSubText("display-step",{})!=note.writtenStep
+                || pos->getChildElementAllSubText("display-octave",{}).getIntValue()!=note.writtenOctave
+                || def->getChildElementAllSubText("instrument-name",{})!=ensemble.parts[1].percussionNames.at(note.percussionInstrument)) return 124;
+            hit=hit->getNextElementWithTagName("note");
+        }
+        if (!save(dir.getChildFile("written-drums.pdf"),[&](auto& out){return writeSheetPdf(out,ensemble,1,StaffStyle::percussion,{},false);})) return 125;
+        juce::FileInputStream audioFile(fixture.getSiblingFile("11-audio-single-edit-render.ostfp"));
+        if (readOstfpPreview(audioFile,p).failed()) return 126;
+        AudioClipWaveforms waves;
+        waves.load(p->audio);
+        AudioClipEditor editor(waves);
+        editor.clock=[&]() -> const TempoMap& {return p->clock;};
+        editor.recordRuler.visibleBars=[] {return juce::Range<double>(1.,2.);};
+        editor.setSize(1000,220);
+        editor.setTimelineColumns(200,1000);
+        const auto now=juce::Time::getCurrentTime();
+        for (const auto& clip : p->audio) {
+            editor.sourceClip=[&]{return &clip;};
+            editor.bind(p->ppq,p->ticksPerBar,1,true,p->importedProduction);
+            const juce::Point<float> point{300,80};
+            const juce::MouseEvent move{juce::Desktop::getInstance().getMainMouseSource(),point,{},0,0,0,0,0,
+                                        &editor,&editor,now,point,now,0,false};
+            editor.mouseMove(move);
+            if (!editor.getTooltip().contains(clip.regionId=="r-original" ? "440.0 Hz" : "880.0 Hz")) return 127;
+            editor.mouseExit(move);
+            if (editor.getTooltip().contains(" Hz")) return 128;
+        }
         return 0;
     }
     if (readOstfpPreview(input, p).failed())

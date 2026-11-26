@@ -31,6 +31,11 @@ if(WIN32)
 endif()
 juce_enable_copy_plugin_step(OSTFSynthScaleEditor)
 
+find_program(OSTF_NODE_EXECUTABLE NAMES node nodejs)
+if(OSTF_NODE_EXECUTABLE)
+    add_test(NAME ostf_scale_take_context COMMAND "${OSTF_NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/scale_take_context.js")
+endif()
+
 add_executable(ostf_scale_instrument_tests ../../../tests/scale_instrument_tests.cpp)
 target_compile_definitions(ostf_scale_instrument_tests PRIVATE JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1)
 target_include_directories(ostf_scale_instrument_tests PRIVATE "${JUCE_MODULES_DIR}")

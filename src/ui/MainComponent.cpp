@@ -7641,7 +7641,7 @@ void MainComponent::refreshEditor() {
     const bool audio = editing && !tempo && selectedTrack_ && project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::audio;
     audioEditor_.setVisible(audio);
     if (audio) {
-        audioEditor_.bind(project_->ppq, project_->ticksPerBar, project_->bars.firstBar, !recordTrack_.has_value());
+        audioEditor_.bind(project_->ppq, project_->ticksPerBar, project_->bars.firstBar, !recordTrack_.has_value(), project_->importedProduction);
         const auto it = captureChannels_.find(project_->trackIds[int(*selectedTrack_)]);
         audioEditor_.channels.setSelectedId(it == captureChannels_.end() ? 1 : it->second, juce::dontSendNotification);
     }

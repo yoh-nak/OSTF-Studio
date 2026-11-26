@@ -362,14 +362,14 @@ int main(int argc, char** argv) {
     }
     // A connected open vowel carries pitch across a note boundary; a fresh attack
     // starts at the written pitch. Measure the actual Mei waveform in both cases.
-    auto vowelChange = [&](bool connected,int gapFrames=0,Phone incoming={0,vowelOnly}) {
+    auto vowelChange = [&](bool connected,int gapFrames=0,Phone incoming={0,vowelOnly},bool lateOff=false,int velocity=100) {
         singer->reset(); midi.clear();
         if (connected) {
             midi.addEvent(phoneMessage(1,60,{0,vowelOnly},.16),0);
             midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(100)),0);
             singer->processBlock(audio,midi);
             midi.clear();
-            midi.addEvent(juce::MidiMessage::noteOff(1,60),0);
+            if (!lateOff) midi.addEvent(juce::MidiMessage::noteOff(1,60),0);
             if (gapFrames) {
                 juce::AudioBuffer<float> gap(2,gapFrames);
                 singer->processBlock(gap,midi);
@@ -377,7 +377,9 @@ int main(int argc, char** argv) {
             }
         }
         midi.addEvent(phoneMessage(1,64,incoming,.16),0);
-        midi.addEvent(juce::MidiMessage::noteOn(1,64,juce::uint8(100)),0);
+        midi.addEvent(juce::MidiMessage::noteOn(1,64,juce::uint8(velocity)),0);
+        if (connected && lateOff)
+            midi.addEvent(juce::MidiMessage::noteOff(1,60),0);
         singer->processBlock(audio,midi);
         return juce::AudioBuffer<float>(audio);
     };
@@ -396,6 +398,55 @@ int main(int argc, char** argv) {
         return 48000./period;
     };
     const auto joined=vowelChange(true), detached=vowelChange(false);
+    // Some hosts send the new note before the ending note at exactly the same frame.
+    const auto reversed = vowelChange(true,0,{0,vowelOnly},true);
+    float boundaryDifference=0;
+    for (int i=0;i<joined.getNumSamples();++i)
+        boundaryDifference=std::max(boundaryDifference,std::abs(joined.getSample(0,i)-reversed.getSample(0,i)));
+    std::cout << "Same-frame MIDI ordering, peak waveform difference: " << boundaryDifference << '\n';
+    if (boundaryDifference>1.e-6f) return 69;
+    const auto quieter=vowelChange(true,0,{0,vowelOnly},false,36);
+    const double earlyGain=quieter.getRMSLevel(0,30,66)/joined.getRMSLevel(0,30,66);
+    const double settledGain=quieter.getRMSLevel(0,700,250)/joined.getRMSLevel(0,700,250);
+    std::cout << "Connected velocity 100 to 36, early / settled relative level: " << earlyGain << " / " << settledGain << '\n';
+    if (earlyGain<.65 || earlyGain>1.1 || std::abs(settledGain-.36)>.02) return 70;
+    auto tail = [&](int heldMs) {
+        singer->reset();
+        midi.clear();
+        midi.addEvent(phoneMessage(1,60,{0,vowelOnly},heldMs*.001),0);
+        midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(100)),0);
+        for (int left=heldMs*48;left>0;) {
+            const int frames=std::min(left,256);
+            juce::AudioBuffer<float> body(2,frames);
+            singer->processBlock(body,midi);
+            left-=frames;
+        }
+        midi.addEvent(juce::MidiMessage::noteOff(1,60),0);
+        juce::AudioBuffer<float> release(2,2400);
+        singer->processBlock(release,midi);
+        return release;
+    };
+    const auto clippedTail=tail(72), sungTail=tail(400);
+    const auto tailLevel=sungTail.getRMSLevel(0,1440,240);
+    std::cout << "Mei held vowel release, 30-35 ms RMS: " << tailLevel << '\n';
+    if (clippedTail.getMagnitude(0,1440,960)!=0.f || tailLevel<.0005f
+        || sungTail.getMagnitude(0,2160,240)!=0.f) return 71;
+    // Zero-length retriggers keep host order; genuinely held notes can sound together.
+    auto chordAttack=[&](bool low,bool high,bool zeroLength) {
+        singer->reset();
+        midi.clear();
+        if (low) midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(32)),0);
+        if (high) midi.addEvent(juce::MidiMessage::noteOn(1,64,juce::uint8(32)),0);
+        if (zeroLength) midi.addEvent(juce::MidiMessage::noteOff(1,64),0);
+        juce::AudioBuffer<float> result(2,2048);
+        singer->processBlock(result,midi);
+        return result;
+    };
+    const auto low=chordAttack(true,false,false), high=chordAttack(false,true,false);
+    const auto chord=chordAttack(true,true,false), empty=chordAttack(false,true,true);
+    if (empty.getMagnitude(0,0,2048)!=0 || low.getRMSLevel(0,0,2048)<.001 || high.getRMSLevel(0,0,2048)<.001) return 72;
+    for (int i=0;i<2048;++i)
+        if (std::abs(chord.getSample(0,i)-low.getSample(0,i)-high.getSample(0,i))>1.e-6f) return 73;
     const auto nasalJoin = vowelChange(true,0,{2,moraN});
     const auto nasalEarly = measuredHz(nasalJoin,50), nasalSettled = measuredHz(nasalJoin,1450);
     std::cout << "Mei connected nasal, onset / settled Hz: " << nasalEarly << " / " << nasalSettled << '\n';

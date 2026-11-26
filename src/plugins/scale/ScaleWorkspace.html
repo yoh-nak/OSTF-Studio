@@ -795,7 +795,37 @@ function context(doc,chord){const sorted=[...doc.harmony.chords].sort((a,b)=>a.s
  if(previous)reasons.push('Previous chord: '+previous.label+'.');
  if(keyBoundary.length)reasons.push('Authored key change inside this chord range. One scale for the entire chord may cross distinct tonal contexts; bulk assignment requires review.');
  return {cur,next:n?.supported?n:null,nextEvent:next,previous,key,keyBoundary,estimatedKey,blues:bluesRelevant?blues:null,cadence,sub,minorResolve,roman,reasons};}
-function melodyPCs(doc,chord){const ids=new Set(doc.song?.melodyTrackIds||[]);if(doc.song?.primaryMelodyTrackId)ids.add(doc.song.primaryMelodyTrackId);const out=new Set();let count=0;for(const t of doc.tracks||[]){if(t.enabled===false||t.trackType==='drum')continue;if(!ids.has(t.id)&&!['melody','vocal'].includes(t.role))continue;for(const cl of t.clips||[]){if(cl.enabled===false)continue;for(const n of cl.notes||[]){if(n.enabled===false||n.pitchRole==='fixedTrigger'||!Number.isFinite(n.pitch))continue;const at=cl.start+n.start;if(at<chord.start+chord.duration&&at+n.duration>chord.start){out.add(mod(n.pitch));count++;}}}}return {pcs:[...out],count};}
+function melodyTrackIds(doc) {
+ const ids = new Set(doc.song?.melodyTrackIds || []);
+ if (doc.song?.primaryMelodyTrackId) ids.add(doc.song.primaryMelodyTrackId);
+ const voices = new Map((doc.lyrics?.voices || []).map(voice => [voice.id, voice.trackId]));
+ for (const lane of doc.specialTracks?.tracks || []) {
+  const track = voices.get(lane.voiceId);
+  if (lane.kind === 'vocal' && track) ids.add(track);
+ }
+ return ids;
+}
+function melodyPCs(doc,chord) {
+ const ids = melodyTrackIds(doc), pcs = new Set();
+ let count = 0;
+ for (const track of doc.tracks || []) {
+  if (track.enabled === false || track.trackType === 'drum') continue;
+  if (!ids.has(track.id) && !['melody','vocal'].includes(track.role)) continue;
+  for (const clip of track.clips || []) {
+   if (clip.enabled === false) continue;
+   for (const note of clip.notes || []) {
+    if (note.enabled === false || note.probability === 0 || note.pitchRole === 'fixedTrigger'
+        || !Number.isInteger(note.pitch) || note.pitch < 0 || note.pitch > 127) continue;
+    const at = clip.start + note.start;
+    if (at < chord.start + chord.duration && at + note.duration > chord.start) {
+     pcs.add(mod(note.pitch));
+     count++;
+    }
+   }
+  }
+ }
+ return {pcs:[...pcs],count};
+}
 function candidates(doc,chord){const cx=context(doc,chord),c=cx.cur;if(!c.supported)return {context:cx,items:[]};
  let ids={major:['ionian','lydian','mixolydian','major_pent','bebop_major'],major7:['ionian','lydian','major_pent','bebop_major'],majAug:['lydian_augmented','lydian'],minor:['dorian','aeolian','phrygian','minor_pent','blues','melodic_minor','harmonic_minor','dorian_b2'],minorMajor:['melodic_minor','harmonic_minor'],dominant:['mixolydian','lydian_dominant','altered','half_whole','phrygian_dominant','mixolydian_b6','whole_tone','bebop_dominant','blues'],halfDim:['locrian','locrian_2'],dim:['whole_half'],dimTriad:['whole_half','locrian','locrian_2'],sus:['mixolydian','dorian','phrygian'],aug:['whole_tone','lydian_augmented'],other:['ionian','aeolian','dorian','mixolydian','phrygian','major_pent','minor_pent','blues']}[c.family]||[];
  const mel=melodyPCs(doc,chord);
@@ -1015,7 +1045,7 @@ function position(doc,tick){let bar=1,at=0,ms=[...doc.timeline.meterChanges].sor
 function voiceLeading(c,n){if(!n)return [];const guides=c.intervals.filter(x=>[3,4,9,10,11].includes(x)).slice(0,3);if(!guides.length)guides.push(0);return guides.map(i=>{const pc=mod(c.root+i),opts=n.pcs.map(x=>{let step=mod(x-pc);if(step>6)step-=12;return {pc:x,step};}).sort((a,b)=>Math.abs(a.step)-Math.abs(b.step));const d=opts[0];return {from:FL[pc],to:FL[d.pc],step:d.step};});}
 function demo(minor=false){const ppq=960,bar=3840;const labels=minor?['Bm7b5','E7b9','AmMaj7','Am6','Dm7','G7','Cmaj7','E7alt']:['Dm7','G7','Cmaj7','A7','Dm7','G7alt','Cmaj7','C6'];const chords=labels.map((label,i)=>{const c={id:'chord.'+(i+1),start:i*bar,duration:bar,label},p=parseChord(c);return {...c,root:p.tonic,intervals:p.intervals};});
 return {format:'OSTF',version:'4.1.0',ppq,song:{title:minor?'Minor colors — iiø–V–i':'Major colors — ii–V–I',genre:'Jazz',key:{state:'tonal',tonic:{step:minor?'A':'C',alter:0},mode:minor?'minor':'major'}},timeline:{duration:8*bar,sections:[{id:'section.1',name:minor?'Minor cadence':'Major cadence',role:'verse',start:0,duration:4*bar},{id:'section.2',name:'Color variation',role:'chorus',start:4*bar,duration:4*bar}],tempoChanges:[{at:0,bpm:110}],meterChanges:[{at:0,numerator:4,denominator:4}]},harmony:{chords,scales:[]},tracks:[{id:'track.solo',name:'Solo',role:'melody',trackType:'melodic',clips:[]},{id:'track.bass',name:'Bass',role:'bass',trackType:'melodic',clips:[]}],soundSlots:[],lyrics:{documents:[],phrases:[],units:[],alignments:[]},resources:[]};}
-const api={version:'0.8.0',mod,clone,PC,pitchName,spelled,spellDegree,parseChord,scales,defs,effectiveKey,labelKey,estimateKey,context,candidates,validate,parse,current,apply,autoSetSong,remove,noteInfo,voiceLeading,demo,duration,position,referencers,supportsTrackScales};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.SA=api;
+const api={version:'0.8.0',melodyTrackIds,mod,clone,PC,pitchName,spelled,spellDegree,parseChord,scales,defs,effectiveKey,labelKey,estimateKey,context,candidates,validate,parse,current,apply,autoSetSong,remove,noteInfo,voiceLeading,demo,duration,position,referencers,supportsTrackScales};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.SA=api;
 })(typeof window!=='undefined'?window:globalThis);
 
 </script>
@@ -1887,10 +1917,11 @@ function group(track){
 function index(doc){
  if(cache&&cache.has(doc))return cache.get(doc);
  const result={notes:[],tracks:[],excluded:{fixedTrigger:0,disabled:0,soundSlot:0,nonPitched:0}};
+ const melodyIds=SA.melodyTrackIds(doc);
  for(const track of (doc?.tracks||[])){
   if(track.enabled===false){result.excluded.disabled++;continue;}
   if(track.trackType==='drum'||/^(drum|drums|percussion)$/i.test(String(track.role||'')))continue;
-  const tr={id:track.id,name:track.name||track.id,group:group(track),count:0};
+  const tr={id:track.id,name:track.name||track.id,group:melodyIds.has(track.id)?'melody':group(track),count:0};
   for(const clip of (track.clips||[])){
    if(clip.enabled===false){result.excluded.disabled++;continue;}
    const prepared=[];

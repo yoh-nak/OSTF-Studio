@@ -2,6 +2,12 @@
 
 ## OSTF 5.2 studio preview
 
+In Arrangement or Live Session, **Add take** can start a take group from several non-overlapping MIDI clips inside the selected section. Take 1 keeps the original notes, clip positions and intervening silence. The new take starts empty. Selecting a take for audition leaves the adopted comp in place until you adopt the alternative.
+
+In the waveform editor, hover over a note in a 5.2 Audio Model package to see its stored source pitch in Hz and the nearest note name. The readout follows the selected region, including its source trim and warp. It can show multiple pitch observations at the same frame. Written percussion in the score view, PDF and MusicXML uses the staff positions supplied by the score.
+
+Scale Editor includes explicit 5.2 vocal lanes when evaluating scale candidates and note fit, even when several voices share an instrument track. It counts the enabled comp output once. Formant Singer joins adjacent MIDI notes consistently when a host delivers note-on before note-off at the same sample and smooths velocity changes across connected syllables. A held voiced syllable can decay for up to 44 ms at note-off.
+
 In **Scale Editor → Instruments**, select a manufacturer or search by name, select an instrument, then choose **Load and audition** to hear C4 through its audio outputs. The **Preview MIDI out** routing for comparison phrases stays available. **OSTF Formant Singer** now carries pitch into a connected sung nasal. With the Mei bank, a connected Japanese ん enters the voiced nasal directly.
 
 New songs use OSTF 5.2. Studio opens 5.2 scores and Manifest 1.2 projects and preserves 5.1 MIDI takes and comp selections at their source version. In the arrangement, **Melody / Lyrics Tracks** groups the melody and vocal lanes at their original position. Declared lyrics, vocal and chorus names appear in the heading. A shared Core track sounds once. The plug-in browser and Scale Editor's instrument picker now have a manufacturer filter that combines with text search.

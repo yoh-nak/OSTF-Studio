@@ -1,3 +1,4 @@
+#include "ui/AudioModelPitches.h"
 #include "ui/OstfpPreview.h"
 #include "ui/AudioRegionEdits.h"
 #include "StockEffects.h"
@@ -554,6 +555,77 @@ static int legacyRoundTrip(const juce::File& file) {
     return 0;
 }
 
+static bool checkMultiClipTake(juce::var score, const juce::String& version) {
+    using namespace ostfstudio;
+    auto fail=[](int line){ std::cerr<<"Multi-clip take check failed at line "<<line<<"\n"; return false; };
+    auto* root=score.getDynamicObject();
+    root->setProperty("version",version);
+    root->removeProperty("takeGroups");
+    auto track=score["tracks"][0];
+    const auto templateClip=track["clips"][0];
+    auto makeClip=[&](int start,const juce::String& id,int pitch) {
+        auto clip=templateClip.clone();
+        auto* c=clip.getDynamicObject();
+        c->setProperty("id",id);
+        c->setProperty("enabled",true);
+        c->setProperty("start",start);
+        c->setProperty("duration",480);
+        auto note=clip["notes"][0];
+        note.getDynamicObject()->setProperty("id",id+"-note");
+        note.getDynamicObject()->setProperty("pitch",pitch);
+        c->setProperty("notes",juce::Array<juce::var>{note});
+        return clip;
+    };
+    auto early=makeClip(240,"early",60), late=makeClip(1920,"late",65);
+    track.getDynamicObject()->setProperty("clips",juce::Array<juce::var>{late,early});
+    auto open=[&] (std::unique_ptr<OstfpPreview>& project) {
+        auto text=juce::JSON::toString(score);
+        juce::MemoryInputStream in(text.toRawUTF8(),text.getNumBytesAsUTF8(),false);
+        auto result=readOstfPreview(in,project);
+        if (result.failed()) std::cerr<<result.getErrorMessage()<<"\n";
+        return result.wasOk();
+    };
+    const juce::Range<juce::int64> ticks(0,3840);
+    juce::MemoryBlock before;
+    std::unique_ptr<OstfpPreview> project, preview;
+    if (!open(project)) return fail(__LINE__);
+    const auto added=project->addScoreTake(0,ticks,before);
+    if (added.failed()) std::cerr<<added.getErrorMessage()<<"\n";
+    if (added.failed() || project->compChoices.size()!=3) return fail(__LINE__);
+    const auto original=project->sourceScore;
+    auto group=juce::JSON::parse(original.toString())["takeGroups"][0];
+    auto active=group["comps"][0];
+    if (active["outputClipIds"].size()!=2 || active["outputClipIds"][0]!="early" || active["outputClipIds"][1]!="late"
+        || active["compRegions"].size()!=5 || active["compRegions"][2]["kind"]!="silence" || int(active["compRegions"][2]["durationTicks"])!=1200
+        || active["noteLinks"].size()!=2 || group["activeCompId"]!=active["id"]) return fail(__LINE__);
+    const auto choices=project->compChoices;
+    if (project->compPlayback({choices[1]},preview).failed() || !preview->pitchedNotes[0].empty() || original!=project->sourceScore) return fail(__LINE__);
+    auto notes=project->pitchedNotes[0];
+    if (notes.size()!=2) return fail(__LINE__);
+    auto changed=notes.front();
+    changed.pitch=72;
+    juce::StringArray ids;
+    if (project->editNotes(0,{{NoteEdit::change,changed}},before,ids,ticks).failed()) return fail(__LINE__);
+    auto edited=juce::JSON::parse(project->sourceScore.toString());
+    active=edited["takeGroups"][0]["comps"][0];
+    if (active["noteLinks"].size()!=2) return fail(__LINE__);
+    for (const auto& link : *active["noteLinks"].getArray()) {
+        bool matched=false;
+        for (const auto& clip : *edited["tracks"][0]["clips"].getArray()) {
+            if (bool(clip["enabled"]) || clip["notes"].size()!=1 || clip["notes"][0]["id"]!=link["sourceNoteId"]) continue;
+            const auto outputId=link["outputNoteId"].toString();
+            const auto expected=std::find_if(project->pitchedNotes[0].begin(),project->pitchedNotes[0].end(),[&](const auto& n){return n.id==outputId;});
+            matched=expected!=project->pitchedNotes[0].end() && expected->pitch==int(clip["notes"][0]["pitch"]);
+        }
+        if (!matched) return fail(__LINE__);
+    }
+    if (project->selectScoreComp(choices[1],before).failed() || !project->pitchedNotes[0].empty()
+        || project->selectScoreComp(choices[0],before).failed() || project->pitchedNotes[0].size()!=2) return fail(__LINE__);
+    late.getDynamicObject()->setProperty("start",480);
+    if (!open(project)) return fail(__LINE__);
+    const auto untouched=project->sourceScore;
+    return project->addScoreTake(0,ticks,before).failed() && project->sourceScore==untouched;
+}
 static int checkOstf52(const juce::File& fixtures) {
     using namespace ostfstudio;
     const auto files=fixtures.findChildFiles(juce::File::findFiles,false,"*.ostf");
@@ -567,6 +639,8 @@ static int checkOstf52(const juce::File& fixtures) {
         if(writeOstfPreview(*p,out).failed() || out.toString()!=file.loadFileAsString()) return 4;
         if(file.getFileName().startsWith("31-") && (p->declaredVocalTrackIds.size()!=1 || p->specialTrackNames.size()!=4)) return 5;
         if(file.getFileName().startsWith("03-")) {
+            for (const auto version : {"5.1.0","5.2.0"})
+                if (!checkMultiClipTake(juce::JSON::parse(file.loadFileAsString()),version)) { std::cerr<<"Multi-clip comp "<<version<<" failed\n"; return 23; }
             juce::MemoryOutputStream packed;
             SessionMix mix;
             mix.tracks.resize(p->trackLanes.size());
@@ -607,6 +681,21 @@ static int checkOstf52(const juce::File& fixtures) {
            || reopened->importedProduction->productionBytes!=project->importedProduction->productionBytes
            || reopened->importedProduction->members!=project->importedProduction->members) return 14;
         if (name.startsWith("11-")) {
+            AudioModelPitches pitches(juce::JSON::parse(project->importedProduction->productionBytes.toString()));
+            if (project->audio.size()!=2) return 24;
+            for (const auto& clip : project->audio) {
+                const auto expected = clip.regionId=="r-original" ? 440. : 880.;
+                if (pitches.frequenciesAt(clip,0)!=std::vector<double>{expected}
+                    || pitches.frequenciesAt(clip,47999)!=std::vector<double>{expected}
+                    || !pitches.frequenciesAt(clip,48000).empty()) return 25;
+                auto replacement=clip;
+                replacement.sha256="different-asset";
+                if (!pitches.frequenciesAt(replacement,24000).empty()) return 26;
+                auto trim=clip;
+                trim.startFrame=12000; trim.frameCount=12000;
+                if (!pitches.frequenciesAt(trim,11999).empty() || pitches.frequenciesAt(trim,12000).size()!=1
+                    || !pitches.frequenciesAt(trim,24000).empty()) return 27;
+            }
             auto info=project->songInformation();
             info.title="Edited score with original audio";
             if (project->applySongInformation(info).failed()) return 19;

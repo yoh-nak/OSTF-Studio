@@ -1,6 +1,7 @@
 #pragma once
 #include "ui/TimelinePan.h"
 #include "ui/AudioClipWaveforms.h"
+#include "ui/AudioModelPitches.h"
 #include "ui/ArrangementRuler.h"
 
 // The ruler, waveform and warp handles share the visible arrangement time range.
@@ -55,7 +56,13 @@ public:
         timelineRight = right;
         resized();
     }
-    void bind(juce::int64 resolution, juce::int64 barLength, int first, bool editable) {
+    void bind(juce::int64 resolution, juce::int64 barLength, int first, bool editable,
+              std::shared_ptr<const ostfstudio::ImportedProduction> production = {}) {
+        if (pitchProduction.owner_before(production) || production.owner_before(pitchProduction)) {
+            pitchProduction = production;
+            pitchModel = ostfstudio::AudioModelPitches(production ? juce::JSON::parse(production->productionBytes.toString()) : juce::var{});
+        }
+        setPitchLabel({});
         ticksPerBar = std::max<juce::int64>(1, barLength);
         firstBar = first;
         ppq = std::max<juce::int64>(1, resolution);
@@ -131,6 +138,41 @@ public:
             }
             if (!timing.loop) break;
         }
+    }
+    void mouseMove(const juce::MouseEvent& event) override {
+        juce::StringArray labels;
+        if (!pitchProduction.expired() && overClip(event.getPosition())) {
+            const auto& clip=*sourceClip();
+            const auto tick=tickAtX(event.x);
+            if (clip.frameCount>0 && clip.frameCount<=std::numeric_limits<int>::max()) {
+                const auto whole=static_cast<juce::int64>(std::floor(tick));
+                const auto seconds=clock().secondsAt(whole)+(tick-whole)*(clock().secondsAt(whole+1)-clock().secondsAt(whole));
+                const auto frame=timing.frameAt((seconds-clock().secondsAt(clip.sourceTick()))*clip.sampleRate,
+                                                tick-clip.sourceTick(),int(clip.frameCount));
+                for (double hz : pitchModel.frequenciesAt(clip,clip.startFrame+static_cast<juce::int64>(std::floor(frame)))) {
+                    const double midi=69.+12.*std::log2(hz/440.);
+                    auto label=juce::String(hz,1)+" Hz";
+                    if (midi>=0 && midi<=127)
+                        label=juce::MidiMessage::getMidiNoteName(juce::roundToInt(midi),true,true,4)+"  "+label;
+                    labels.add(label);
+                }
+            }
+        }
+        setPitchLabel(labels.joinIntoString("  /  "));
+    }
+    juce::String getTooltip() override {
+        return pitchLabel.isEmpty() ? juce::SettableTooltipClient::getTooltip() : pitchLabel;
+    }
+    void mouseExit(const juce::MouseEvent&) override { setPitchLabel({}); }
+    void paintOverChildren(juce::Graphics& g) override {
+        if (pitchLabel.isEmpty()) return;
+        auto area=canvas().reduced(4).removeFromTop(22);
+        const int width=juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(),pitchLabel)+14;
+        auto box=area.removeFromLeft(std::min(area.getWidth(),width));
+        g.setColour(juce::Colour(0xff13242d));
+        g.fillRoundedRectangle(box.toFloat(),3.f);
+        g.setColour(juce::Colours::white);
+        g.drawText(pitchLabel,box.reduced(5,0),juce::Justification::centredLeft,true);
     }
     void mouseDoubleClick(const juce::MouseEvent& e) override {
         if (TimelinePan::requested(e.mods)) return;
@@ -208,6 +250,14 @@ private:
         beats.setText(juce::String((timing.cycleTicks ? double(timing.cycleTicks) : nativeLength) / ppq, 3).trimCharactersAtEnd("0").trimCharactersAtEnd("."), juce::dontSendNotification);
         repaint();
     }
+    void setPitchLabel(const juce::String& text) {
+        if (pitchLabel==text) return;
+        pitchLabel=text;
+        repaint(canvas().withHeight(26));
+    }
+    std::weak_ptr<const ostfstudio::ImportedProduction> pitchProduction;
+    ostfstudio::AudioModelPitches pitchModel;
+    juce::String pitchLabel;
     AudioClipWaveforms& waves;
     ostfstudio::ClipTiming timing;
     double nativeLength = 0;

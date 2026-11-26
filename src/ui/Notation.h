@@ -13,6 +13,7 @@ struct ScoreNote {
     juce::String writtenStep;
     int writtenAlter = 0, writtenOctave = 0, writtenStaff = 0;
     bool grace = false, graceSlash = false, graceAfter = false;
+    juce::String percussionInstrument, notehead;
 };
 struct ScorePart {
     juce::String id, name;
@@ -22,6 +23,7 @@ struct ScorePart {
     std::vector<std::vector<ScoreNote>> writtenMeasures;
     int transposeDiatonic = 0, transposeOctaves = 0;
     double transposeChromatic = 0;
+    std::map<juce::String,juce::String> percussionNames;
 };
 struct SheetMark {
     juce::int64 at, end;

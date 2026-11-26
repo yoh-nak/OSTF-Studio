@@ -10,6 +10,14 @@ Production-only audio channels have local playback rows. Materialized regions de
 
 The offline pitch study measures a stable monophonic fundamental, transposes the user's selected interval using Signalsmith Stretch, compensates algorithm latency and crossfades both edges into a new WAV. A future editor can keep note candidates and voiced/unvoiced intervals in the Audio Model, audition a pitch edit, render a separate derived asset, and bind a materialized region to it. Detection on expressive vocals, ARA hosting and polyphonic source separation each need separate validation.
 
+### Take editing, observations and written percussion
+
+For a new MIDI take group in a 5.1 or 5.2 score, Studio sorts the contained ordinary clips by onset. It writes a separate disabled source and a materialized output for each clip, with a comp region for each intervening silent interval. Editing a mapped output preserves the other outputs' note links. Existing linked performances, overlapping clips and partial source intervals still need an authored comp map.
+
+The waveform editor indexes note observations from the 5.2 Audio Model by source asset ID and SHA-256. The selected region supplies the frame range. Hover uses the clip timing map to resolve the original decoded frame, including phase, looping and warp markers. The UI reads stored estimates and preserves alternative observations. Interactive pitch-edit plan authoring remains on the roadmap. The notation projection retains unpitched instrument IDs, written staff positions and normal or cross noteheads. MusicXML instrument references are scoped to the written part.
+
+Scale Editor resolves special vocal lanes through the lyrics voice's Core track ID in both adviser runtimes. Candidate analysis excludes silent probabilities, drum triggers and disabled takes. Singer groups same-sample MIDI events on the audio thread and releases outgoing pitches before allocating incoming voices on their channel. Same-key event order and positive-duration overlaps retain their MIDI semantics. A short velocity ramp carries connected notes to the authored velocity. Voiced releases scale with the held duration up to 44 ms. Short notes and unvoiced endings retain the earlier 28 ms envelope.
+
 ## OSTF 5.1 score and production session
 
 Scale Editor copies the host MIDI input before sending it to its nested instrument. The outgoing event bus merges that input with routed audition events at their sample offsets. Live keys have priority when both sources use the same note on the same channel. The merger tracks keyboard notes and pedals per channel so disabling thru releases them on the next audio block. The VST3 instance stores the thru switch. New instances enable it, and restoring state without the switch preserves the original local-only keyboard routing.

@@ -2,6 +2,7 @@
 #include "VoiceBank.h"
 #include "../../core/VocalDelivery.h"
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <bitset>
 #include <cmath>
 
 namespace {
@@ -27,7 +28,12 @@ class SyllableVoice {
         hz = targetHz;
         if (!joinPitch) nominalHz = hz;
         if (!connected) { envelope = 0; recorded = nullptr; }
-        channel = ch; key = pitch; gain = velocity;
+        channel = ch; key = pitch;
+        targetGain = velocity;
+        const auto gainMs = p.durationMs > 0 ? std::min(5., p.durationMs * .25) : 5.;
+        gainFrames = connected && gain != targetGain ? std::max(1,juce::roundToInt(sr * .001 * gainMs)) : 0;
+        if (gainFrames > 0) gainStep = (targetGain - gain) / gainFrames;
+        else gain = targetGain;
         if (!connected) phase = 0;
         released = false; noteAge = 0; releaseFrames = 0;
         articulate(p, sr, bank, connected);
@@ -125,7 +131,14 @@ class SyllableVoice {
     bool endingOn(int ch) const { return channel == ch && released && envelope > 0; }
     float sample(double sr, double bendRatio, float expression, float deliveryDepth, const juce::dsp::FFT& fft) {
         if (released) {
-            const double t = std::min(1., ++releaseFrames * 36. / sr);
+            if (releaseFrames == 0) {
+                // Let an established voiced syllable decay into the gap. A short
+                // note or an unvoiced ending keeps the original release time.
+                const bool voicedTail = waveReady && phone.onset != closure && !unvoicedEnglishConsonant && !voicedEnglishStop;
+                const auto seconds = voicedTail ? std::clamp(.12 * noteAge / sr, 1./36., .044) : 1./36.;
+                releaseLength = std::max(1,juce::roundToInt(sr * seconds));
+            }
+            const double t = std::min(1., double(++releaseFrames) / releaseLength);
             envelope = releaseLevel * (1. - t*t*(3. - 2.*t));
         } else {
             envelope = std::min(1., envelope + 110. / sr);
@@ -157,6 +170,10 @@ class SyllableVoice {
             const double u = std::clamp(time * 1000. / phone.durationMs,0.,1.);
             // A longer vowel blooms after the attack and eases into the next syllable.
             arc += .065*std::sin(juce::MathConstants<double>::pi*u) - .12*u*u*u;
+        }
+        if (gainFrames > 0) {
+            --gainFrames;
+            gain = gainFrames ? gain + gainStep : targetGain;
         }
         const auto level = gain * envelope * expression * accent * arc * (1. - sustain * (.035 + .025 * std::sin(6.3 * held)));
         if (englishSound) {
@@ -363,9 +380,11 @@ class SyllableVoice {
         return out;
     }
     Phone phone;
+    int gainFrames = 0;
+    double targetGain{}, gainStep{};
     double hz{}, phase{}, gain{}, envelope{}, position{}, transition{}, previousNoise{};
     double nominalHz{}, glideOctaves{};
-    int glideFrames{}, releaseFrames{};
+    int glideFrames{}, releaseFrames{}, releaseLength{1};
     double releaseLevel{};
     unsigned noise = 1397;
     uint64_t age = 0, noteAge = 0;
@@ -671,8 +690,10 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
                 beat += step;
             } else
                 while (ev != end && (*ev).samplePosition <= i) {
-                    handle((*ev).getMessage());
-                    ++ev;
+                    const auto first = ev;
+                    const auto at = (*ev).samplePosition;
+                    do { ++ev; } while (ev != end && (*ev).samplePosition == at);
+                    handleMidiFrame(first,ev);
                 }
             const float depth=depthRamp.getNextValue();
             float sample = 0;
@@ -690,6 +711,41 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
     }
 
   private:
+    // Hosts can put a new note-on before the previous pitch's note-off at the
+    // same sample. Release those voices first so the incoming vowel can join
+    // its predecessor. Same-key retriggers retain the host's explicit order.
+    void handleMidiFrame(juce::MidiBufferIterator first, juce::MidiBufferIterator last) {
+        auto second = first;
+        if (++second == last) {
+            handle((*first).getMessage());
+            return;
+        }
+        std::array<std::bitset<128>,16> starting{};
+        auto firstOn = last;
+        for (auto it = first; it != last; ++it) {
+            const auto m = *it;
+            const auto status = m.data[0] & 0xf0;
+            if (status == 0x90 && m.numBytes >= 3 && m.data[2] != 0) {
+                starting[m.data[0] & 15].set(m.data[1] & 127);
+                if (firstOn == last) firstOn = it;
+            } else if (status != 0x80 && status != 0x90 && m.data[0] != 0xf0) {
+                for (auto ordered = first; ordered != last; ++ordered) handle((*ordered).getMessage());
+                return;
+            }
+        }
+        for (auto it = first; it != firstOn; ++it) handle((*it).getMessage());
+        auto releaseFirst = [&](juce::MidiMessageMetadata m) {
+            if (m.numBytes < 3) return false;
+            const auto status = m.data[0] & 0xf0;
+            if (status != 0x80 && !(status == 0x90 && m.data[2] == 0)) return false;
+            const auto& keys = starting[m.data[0] & 15];
+            return keys.any() && !keys.test(m.data[1] & 127);
+        };
+        for (auto it = firstOn; it != last; ++it)
+            if (releaseFirst(*it)) handle((*it).getMessage());
+        for (auto it = firstOn; it != last; ++it)
+            if (!releaseFirst(*it)) handle((*it).getMessage());
+    }
     void handle(const juce::MidiMessage& m) {
         if (isPhone(m)) {
             const auto* p = m.getSysExData();

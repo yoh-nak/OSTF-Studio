@@ -733,12 +733,14 @@ bool syncCompNotes(const juce::var& previous, juce::var edited) {
             const auto out=clips.at(key);
             if(juce::JSON::toString(out)==juce::JSON::toString(old.at(key))) continue;
             juce::var region;
-            for(const auto& r:array(comp["compRegions"])) if (r["kind"]=="source") {
-                require(!region.isObject(),"This edited output combines multiple source intervals."); region=r;
+            for (const auto& r : array(comp["compRegions"])) {
+                if (r["kind"]!="source" || integer(r["startTick"])!=integer(out["start"])
+                    || integer(r["durationTicks"])!=integer(out["duration"])) continue;
+                require(!region.isObject(),"This output has ambiguous take sources.");
+                region=r;
             }
             const auto src=region["clipId"].toString();
-            require(group["activeCompId"]==comp["id"] && comp["outputClipIds"].size()==1 && uses[src]==1
-                && integer(region["startTick"])==integer(out["start"]) && integer(region["durationTicks"])==integer(out["duration"]),
+            require(group["activeCompId"]==comp["id"] && region.isObject() && uses[src]==1,
                 "This operation would invalidate an authored comp map.");
             auto source=clips.at(src);
             require(source["start"]==out["start"] && source["duration"]==out["duration"] && !source.hasProperty("vocalPerformances"),
@@ -746,13 +748,20 @@ bool syncCompNotes(const juce::var& previous, juce::var edited) {
             auto unedited=out.clone();
             unedited.getDynamicObject()->setProperty("notes",old.at(key)["notes"]);
             require(juce::JSON::toString(unedited)==juce::JSON::toString(old.at(key)),"Edit only the notes of this whole take.");
+            std::set<juce::String> oldOutputIds, oldSourceIds;
+            for (int i=0;i<old.at(key)["notes"].size();++i) oldOutputIds.insert(old.at(key)["notes"][i]["id"].toString());
+            for (int i=0;i<source["notes"].size();++i) oldSourceIds.insert(source["notes"][i]["id"].toString());
             std::map<juce::String,juce::String> links;
+            juce::Array<juce::var> notes,newLinks;
             for(int i=0;i<comp["noteLinks"].size();++i) {
                 const auto link=comp["noteLinks"][i];
-                links.emplace(link["outputNoteId"].toString(),link["sourceNoteId"].toString());
+                const auto outputId=link["outputNoteId"].toString(), sourceId=link["sourceNoteId"].toString();
+                if (oldOutputIds.contains(outputId)) {
+                    require(oldSourceIds.erase(sourceId)==1,"This output refers to a different source interval.");
+                    links.emplace(outputId,sourceId);
+                } else newLinks.add(link);
             }
-            require(size_t(old.at(key)["notes"].size())==links.size(),"This comp lacks a one-to-one note map.");
-            juce::Array<juce::var> notes,newLinks;
+            require(oldSourceIds.empty() && oldOutputIds.size()==links.size(),"This comp lacks a one-to-one note map.");
             for(const auto& note:array(out["notes"])) {
                 const auto outputId=note["id"].toString();
                 const auto sourceId=links.contains(outputId)?links.at(outputId):"event-"+juce::Uuid().toString();
@@ -2881,33 +2890,45 @@ void writeTrackTakes(juce::var score, juce::var track, StudioMidiTakes& takes) {
 }
 }
 namespace {
-void appendWholeTake(juce::var group, juce::var clips, juce::Range<juce::int64> ticks, juce::var output, bool active) {
-    auto source=output.clone();
-    const auto uuid=juce::Uuid().toString();
-    const auto takeId="take-"+uuid, compId="comp-"+uuid;
-    source.getDynamicObject()->setProperty("id","source-"+uuid);
-    source.getDynamicObject()->setProperty("enabled",false);
-    output.getDynamicObject()->setProperty("enabled",active);
-    juce::Array<juce::var> links;
-    for (const auto key : {"notes","midiEvents"}) if (source[key].isArray())
-        for (auto e : array(source[key])) {
-            const auto old=e["id"].toString(), fresh="event-"+juce::Uuid().toString();
-            e.getDynamicObject()->setProperty("id",fresh);
-            if (juce::String(key)=="notes") links.add(object({{"sourceNoteId",fresh},{"outputNoteId",old}}));
-        }
-    clips.getArray()->add(source);
-    const auto first=integer(output["start"]), dur=integer(output["duration"]);
-    juce::Array<juce::var> regions;
-    auto silence=[&](juce::int64 a,juce::int64 b) {if (a<b) regions.add(object({{"id","r-"+juce::Uuid().toString()},
-                    {"kind","silence"},{"startTick",a},{"durationTicks",b-a}}));};
-    silence(ticks.getStart(),first);
-    regions.add(object({{"id","r-"+uuid},{"kind","source"},{"startTick",first},{"durationTicks",dur},
-                        {"takeId",takeId},{"clipId",source["id"]}}));
-    silence(first+dur,ticks.getEnd());
+void appendWholeTake(juce::var group, juce::var clips, juce::Range<juce::int64> ticks,
+                     const std::vector<juce::var>& outputs, bool active) {
+    const auto uuid = juce::Uuid().toString();
+    const auto takeId = "take-" + uuid, compId = "comp-" + uuid;
+    juce::Array<juce::var> links, regions, sourceIds, outputIds;
+    auto cursor = ticks.getStart();
+    auto addSilence = [&](juce::int64 end) {
+        if (cursor < end)
+            regions.add(object({{"id","r-"+juce::Uuid().toString()},{"kind","silence"},
+                                {"startTick",cursor},{"durationTicks",end-cursor}}));
+    };
+    for (auto output : outputs) {
+        const auto first = integer(output["start"]), duration = integer(output["duration"]);
+        require(first >= cursor && first + duration <= ticks.getEnd(),
+                "Overlapping or crossing clips require an authored take map.");
+        addSilence(first);
+        auto source = output.clone();
+        const auto sourceId = "source-" + juce::Uuid().toString();
+        source.getDynamicObject()->setProperty("id",sourceId);
+        source.getDynamicObject()->setProperty("enabled",false);
+        output.getDynamicObject()->setProperty("enabled",active);
+        for (const auto key : {"notes","midiEvents"}) if (source[key].isArray())
+            for (auto event : array(source[key])) {
+                const auto old = event["id"].toString(), fresh = "event-" + juce::Uuid().toString();
+                event.getDynamicObject()->setProperty("id",fresh);
+                if (juce::String(key)=="notes") links.add(object({{"sourceNoteId",fresh},{"outputNoteId",old}}));
+            }
+        clips.getArray()->add(source);
+        sourceIds.add(sourceId);
+        outputIds.add(output["id"]);
+        regions.add(object({{"id","r-"+juce::Uuid().toString()},{"kind","source"},{"startTick",first},
+                            {"durationTicks",duration},{"takeId",takeId},{"clipId",sourceId}}));
+        cursor = first + duration;
+    }
+    addSilence(ticks.getEnd());
     const int ordinal=group["takes"].size();
-    arrayProperty(group,"takes").getArray()->add(object({{"id",takeId},{"kind","take"},{"laneOrder",ordinal},{"clipIds",juce::Array<juce::var>{source["id"]}}}));
+    arrayProperty(group,"takes").getArray()->add(object({{"id",takeId},{"kind","take"},{"laneOrder",ordinal},{"clipIds",sourceIds}}));
     auto comp=object({{"id",compId},{"name","Take "+juce::String(ordinal+1)},{"noteBoundary","authored"},{"compRegions",regions},
-                      {"outputClipIds",juce::Array<juce::var>{output["id"]}}});
+                      {"outputClipIds",outputIds}});
     if(!links.isEmpty()) comp.getDynamicObject()->setProperty("noteLinks",links);
     arrayProperty(group,"comps").getArray()->add(comp);
     if(active) group.getDynamicObject()->setProperty("activeCompId",compId);
@@ -2934,12 +2955,12 @@ juce::Result OstfpPreview::addScoreTake(size_t trackIndex, juce::Range<juce::int
     auto blank=[&] {return object({{"id","clip-"+juce::Uuid().toString()},{"start",ticks.getStart()},
                         {"duration",ticks.getLength()},{"notes",juce::Array<juce::var>{}}});};
     if (!group.isObject()) {
-        juce::var first;
+        std::vector<juce::var> first;
         for (const auto& clip : array(clips)) {
             const auto at=integer(clip["start"]), end=at+integer(clip["duration"]);
             if(!ticks.intersects({at,end})) continue;
-            require(!first.isObject() && at>=ticks.getStart() && end<=ticks.getEnd() && bool(clip.getProperty("enabled",true)),
-                    "Creating a group here requires one contained clip or an empty section.");
+            require(at>=ticks.getStart() && end<=ticks.getEnd() && bool(clip.getProperty("enabled",true)),
+                    "Creating a group here requires enabled clips contained in the section.");
             require(!clip.hasProperty("vocalPerformances") && !clip.hasProperty("clipChoices"),
                     "This clip has linked performances that require a dedicated comp map.");
             for (const auto& prop : clip.getDynamicObject()->getProperties())
@@ -2949,15 +2970,18 @@ juce::Result OstfpPreview::addScoreTake(size_t trackIndex, juce::Range<juce::int
                 const auto n=clip["notes"][i]; const auto onset=integer(n["start"]);
                 require(onset>=0 && onset+integer(n["duration"])<=end-at && !vocalNotes.contains(n["id"].toString()),"Linked or crossing notes require an authored take map.");
             }
-            first=clip;
+            first.push_back(clip);
         }
-        if(!first.isObject()) {first=blank(); clips.getArray()->add(first);}
+        std::sort(first.begin(),first.end(),[](const auto& left,const auto& right) {
+            return integer(left["start"]) < integer(right["start"]);
+        });
+        if(first.empty()) {first.push_back(blank()); clips.getArray()->add(first.front());}
         group=object({{"id","group-"+juce::Uuid().toString()},{"trackId",track["id"]},{"startTick",ticks.getStart()},{"durationTicks",ticks.getLength()}});
         for (const auto& s : array(score["timeline"]["sections"])) if(integer(s["start"])==ticks.getStart() && integer(s["duration"])==ticks.getLength())
             group.getDynamicObject()->setProperty("sectionId",s["id"]);
         appendWholeTake(group,clips,ticks,first,true); groups.getArray()->add(group);
     }
-    auto second=blank(); clips.getArray()->add(second); appendWholeTake(group,clips,ticks,second,false);
+    auto second=blank(); clips.getArray()->add(second); appendWholeTake(group,clips,ticks,{second},false);
     reviseDocument(score,base,"take-"+juce::Uuid().toString());
     const auto bytes=editedScoreBytes(base,score,{"takeGroups","tracks","document"});
     validateVersion(score["version"].toString(),bytes);
@@ -3245,7 +3269,7 @@ juce::Result OstfpPreview::addRecordedClip(size_t index, juce::Range<juce::int64
         const juce::Range<juce::int64> owned(start,start+integer(group["durationTicks"]));
         if(!owned.intersects(range)) continue;
         require(owned.contains(range),"Split the recording at the take-group boundary.");
-        appendWholeTake(group,trackClips,owned,clip,false);
+        appendWholeTake(group,trackClips,owned,{clip},false);
         reviseDocument(score,before,"record-"+juce::Uuid().toString());
         const auto bytes=editedScoreBytes(before,score,{"tracks","drumKits","soundSlots","takeGroups","document"});
         validateVersion(score["version"].toString(),bytes);

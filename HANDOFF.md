@@ -1,5 +1,17 @@
 # OSTF Studio development handoff
 
+## 5.1 / 5.2 take and audio follow-up
+
+On `feat/ostf-52-studio`, the first native MIDI take in a section can include multiple contained, disjoint clips. `ostf_studio_52` builds this case at both source versions, auditions the empty second take, edits the adopted first take, switches away and back, and verifies the original score survives a rejected overlap. The test also checks the asset digest, exclusive end frame and trim boundaries of the audio pitch readout.
+
+`ostf_studio_written_notation` adds the official `14-notation-tab-percussion.ostf` example from the pinned 5.2 snapshot below. It checks the kick and snare staff positions, instrument names and MusicXML references, and produces `written-drums.pdf`. It also moves the pointer over the waveform editor for the original and replacement regions in `11-audio-single-edit-render.ostfp`.
+
+With Node installed at configure time, `ostf_scale_take_context` compares the native adviser script and the embedded WebView script using the shared-vocal-track example. `ostf_scale_instrument_tests <FM8.vst3> <paper-lantern-replies.ostf> --audition` measured a 0.0717 output peak with the third-party instrument on Windows.
+
+`ostf_singing_tests <paper-lantern-replies.ostf>` measures equivalent same-frame MIDI orderings, connected velocity changes and the tail of a held versus short Mei vowel. To compare the same four demo bars through two portable builds, run each executable with `--vocal-track-smoke <paper-lantern-replies.ostf> <new-output.wav>`. The build cache and listening WAVs are machine-local.
+
+Windows x64 Release passed 30 focused CTest cases. The verified Portable build contains 38 VST3 bundles and eight demos. Its Studio, Singer and Scale Editor binaries matched the build outputs. The portable executable opened the official rendered-audio project, opened the Scale Editor window and rendered four dry lead-vocal bars of Paper Lantern Replies at 48 kHz. In the 12.31-second render, the release of the first note measured RMS 0.00793 at 30–35 ms after note-off, versus zero in the previous portable. Both were silent at 45–47 ms. In the separate short-note test the peak difference between MIDI orderings was zero. The connected 100-to-36 velocity change measured relative RMS 0.795 early and 0.360 after settling. Subjective vocal quality, a new external DAW session, CI, installers and macOS hardware remain unverified for this change. Interactive audio pitch editing and full Max for Live parity remain in progress.
+
 ## OSTF 5.2 Windows preview
 
 Branch `feat/ostf-52-studio`. The schema snapshot and test fixtures come from official commit `2be1c2ddd62708fdd4f9ffd86403c86336cc7a9f`. Build `OSTFStudio`, `OSTFSynthScaleEditor_VST3`, `ostf_studio_ostfp_tests` and `ostf_pitch_probe` in a GUI-enabled Release build. CTest includes `ostf_studio_52`, `ostf_studio_written_notation`, the native-comp tests and the pitch-probe self-test. The written-notation test renders the official grand-staff piano example to PDF and checks transposing clarinet MusicXML.
