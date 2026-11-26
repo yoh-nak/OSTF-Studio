@@ -2,6 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <cmath>
+#include <optional>
 
 namespace ostfstudio::scale {
 // The processor callback lock protects replacement and preview scheduling. The audio
@@ -12,11 +13,15 @@ public:
         formats.addFormat(std::make_unique<juce::VST3PluginFormat>());
     }
     juce::String name() const { return child ? child->getName() : "Reference tone"; }
-    juce::Result choose(const juce::File& file) {
+    std::optional<juce::PluginDescription> description() const {
+        if (child) return child->getPluginDescription();
+        return {};
+    }
+    juce::Result choose(const juce::File& file,const juce::String& className={}) {
         juce::OwnedArray<juce::PluginDescription> types;
         formats.getFormat(0)->findAllTypesForFile(types,file.getFullPathName());
         for (auto* type : types)
-            if (type->isInstrument && type->name != owner.getName()) return install(*type,{});
+            if (type->isInstrument && type->name != owner.getName() && (className.isEmpty() || type->name==className)) return install(*type,{});
         return juce::Result::fail("Select a VST3 instrument other than Scale Editor.");
     }
     juce::Result install(const juce::PluginDescription& type,const juce::MemoryBlock& state) {
@@ -29,15 +34,15 @@ public:
         if (!next) return juce::Result::fail(error);
         if (next->getName() == owner.getName() || !next->acceptsMidi())
             return juce::Result::fail("This instrument cannot receive notes here.");
+        if (state.getSize()) next->setStateInformation(state.getData(),int(state.getSize()));
         next->disableNonMainBuses();
         const auto outputs = next->getMainBusNumOutputChannels();
-        if (outputs < 1 || outputs > 2 || next->getTotalNumInputChannels() > 2)
+        if (outputs < 1 || next->getTotalNumOutputChannels() > 2 || next->getTotalNumInputChannels() > 2)
             return juce::Result::fail("Select a mono or stereo instrument.");
-        if (state.getSize()) next->setStateInformation(state.getData(),int(state.getSize()));
         closeWindow();
         {
             const juce::ScopedLock lock(owner.getCallbackLock());
-            if (prepared) next->prepareToPlay(rate,blockSize);
+            if (prepared) { next->setRateAndBufferSizeDetails(rate,blockSize); next->prepareToPlay(rate,blockSize); }
             child.swap(next);
             stopPreview();
             voices = {};
@@ -112,7 +117,7 @@ public:
     void process(juce::AudioBuffer<float>& audio,juce::MidiBuffer& midi) {
         audio.clear();
         if(flush) {
-            for(int k=0;k<128;++k) if(sounding[size_t(k)]) midi.addEvent(juce::MidiMessage::noteOff(16,k),0);
+            for(int k=0;k<128;++k) if(sounding[size_t(k)]) midi.addEvent(juce::MidiMessage::noteOff(previewChannel,k),0);
             sounding={}; flush=false;
         }
         const int count=audio.getNumSamples();
@@ -123,8 +128,8 @@ public:
             const auto offset=int(std::max<juce::int64>(0,pos));
             auto& active=sounding[size_t(e.key)];
             if(e.velocity || active==1)
-                midi.addEvent(e.velocity ? juce::MidiMessage::noteOn(16,e.key,(juce::uint8)e.velocity)
-                                         : juce::MidiMessage::noteOff(16,e.key),offset);
+                midi.addEvent(e.velocity ? juce::MidiMessage::noteOn(previewChannel,e.key,(juce::uint8)e.velocity)
+                                         : juce::MidiMessage::noteOff(previewChannel,e.key),offset);
             active=e.velocity ? active+1 : std::max(0,active-1);
             ++cursor;
         }
@@ -159,6 +164,7 @@ public:
     }
     bool hasInstrument() const {return child!=nullptr;}
 private:
+    static constexpr int previewChannel=1;
     struct Event { int ms,key,velocity; };
     struct Voice { int channel{},key{}; double phase{},step{}; float amp{}; bool releasing{}; };
     void reference(juce::AudioBuffer<float>& audio,int from,int to) {

@@ -55,5 +55,9 @@ int main(int argc, char** argv) {
     if (workspace.saveAs(copy.getFile()).failed() || copy.getFile().loadFileAsString()!=workspace.text) return 17;
     if (!other.getFile().replaceWithText("original") || workspace.saveAs(other.getFile()).wasOk()
         || other.getFile().loadFileAsString()!="original") return 18;
+    juce::File returned;
+    if (workspace.exportForStudio(copy.getFile().getParentDirectory(),returned).failed()) return 19;
+    juce::ScopeGuard cleanup([&]{returned.deleteFile();});
+    if (!returned.getFileName().startsWith("studio-scales-"+digest(input)+"-") || returned.loadFileAsString()!=workspace.text) return 20;
     return 0;
 }

@@ -91,6 +91,14 @@ juce::Result Document::saveAs(const juce::File& file) const {
         return juce::Result::fail("Unable to save the edited score.");
     return juce::Result::ok();
 }
+juce::Result Document::exportForStudio(const juce::File& directory, juce::File& written) const {
+    written = juce::File{};
+    if (auto result=directory.createDirectory(); result.failed()) return result;
+    const auto file=directory.getChildFile("studio-scales-"+baseHash+"-"+juce::Uuid().toString()+".ostf");
+    auto result=saveAs(file);
+    if (result.wasOk()) written=file;
+    return result;
+}
 juce::Result Document::assign(int chordIndex, int tonic, int mode) {
     return assign(std::vector<int>{chordIndex}, tonic, mode);
 }

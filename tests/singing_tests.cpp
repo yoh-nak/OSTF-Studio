@@ -290,10 +290,10 @@ int main(int argc, char** argv) {
     };
     // An isolated English /s/ or /t/ is borrowed from a Japanese CV. The
     // following recorded vowel must not become an extra pitched syllable.
-    auto renderPhone = [&](Phone phone, int key) {
+    auto renderPhone = [&](Phone phone, int key, double duration=.16) {
         singer->reset();
         midi.clear();
-        midi.addEvent(phoneMessage(1,key,phone,.16),0);
+        midi.addEvent(phoneMessage(1,key,phone,duration),0);
         midi.addEvent(juce::MidiMessage::noteOn(1,key,juce::uint8(105)),0);
         juce::AudioBuffer<float> rendered(2,7680);
         for (int pos=0; pos<rendered.getNumSamples(); pos+=256) {
@@ -316,6 +316,13 @@ int main(int argc, char** argv) {
     }
     const auto japaneseCV=renderPhone({0,sibilant},69);
     if (japaneseCV.getRMSLevel(0,5760,1920)<.01f) return 49;
+    // A short Japanese syllable must reach its pitched vowel while the key is held.
+    const auto shortLow=renderPhone({1,sh},55,.045), shortHigh=renderPhone({1,sh},67,.045);
+    double shortPitchDifference=0.;
+    for (int frame=1440;frame<2160;++frame) shortPitchDifference+=std::pow(shortLow.getSample(0,frame)-shortHigh.getSample(0,frame),2);
+    shortPitchDifference=std::sqrt(shortPitchDifference/720.);
+    std::cout<<"Mei 45 ms shi, final 15 ms difference between pitches: "<<shortPitchDifference<<'\n';
+    if (shortPitchDifference<.003) return 54;
     // At the end of an English nasal the mouth is still closed. Changing the
     // following vowel hint should not turn a held /m/, /n/ or /ng/ into it.
     const auto* nasalSample=factory.find({2,moraN});

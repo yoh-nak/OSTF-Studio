@@ -13,7 +13,7 @@ juce_add_plugin(OSTFSynthScaleEditor COMPANY_NAME "OSTF Studio" BUNDLE_ID "org.o
     IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE NEEDS_WEBVIEW2 TRUE NEEDS_WEB_BROWSER TRUE FORMATS VST3 VST3_CATEGORIES Instrument Synth
     VST3_COPY_DIR "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" COPY_PLUGIN_AFTER_BUILD FALSE)
 target_sources(OSTFSynthScaleEditor PRIVATE ScaleEditor.cpp)
-target_include_directories(OSTFSynthScaleEditor PRIVATE "${ostf_vst_sdk}")
+target_include_directories(OSTFSynthScaleEditor PRIVATE "${ostf_vst_sdk}" "${CMAKE_SOURCE_DIR}/src")
 target_compile_definitions(OSTFSynthScaleEditor PUBLIC JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=1 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0
     $<$<PLATFORM_ID:Windows>:JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1>)
 target_link_libraries(OSTFSynthScaleEditor PRIVATE ostf_scale_document OSTFScaleAdviser juce::juce_audio_processors

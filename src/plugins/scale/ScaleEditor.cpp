@@ -2,6 +2,7 @@
 #include "FlowView.h"
 #include "ScoreExchange.h"
 #include "InstrumentRack.h"
+#include "InstrumentPicker.h"
 #include "ScaleAssets.h"
 #include <juce_javascript/juce_javascript.h>
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -320,6 +321,11 @@ public:
         strategy.onChange=lens.onChange=genre.onChange=[this]{selectChord(false);};
         choices.setTitle("Ranked scale candidates");
         choices.onChange=[this]{selectCandidate();};
+        addAndMakeVisible(testSound);
+        testSound.onClick=[this] {
+            proc.rack.audition(juce::JSON::parse(R"([{"at":0,"note":60,"velocity":94,"ms":480}])"));
+            status.setText("Test note C4  /  "+proc.rack.name(),juce::dontSendNotification);
+        };
         loadInstrument.onClick=[this]{chooseInstrument();};
         showInstrument.onClick=[this]{proc.rack.openWindow();};
         audition.onClick=[this]{listen(false);}; compare.onClick=[this]{listen(true);};
@@ -365,6 +371,7 @@ public:
         startTimerHz(25);
     }
     ~Editor() override {
+        if (pickerBox) pickerBox->dismiss();
         stopTimer();
         proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this);
     }
@@ -389,7 +396,8 @@ public:
         flowView.setBounds(area.removeFromTop(110));
         reviewList.setBounds(flowView.getBounds());
         auto footer=area.removeFromBottom(32);
-        loadInstrument.setBounds(footer.removeFromLeft(175).reduced(1)); showInstrument.setBounds(footer.removeFromLeft(150).reduced(1)); status.setBounds(footer);
+        loadInstrument.setBounds(footer.removeFromLeft(136).reduced(1)); showInstrument.setBounds(footer.removeFromLeft(160).reduced(1));
+        testSound.setBounds(footer.removeFromLeft(89).reduced(1)); status.setBounds(footer);
         auto mapArea=area.removeFromBottom(91);
         auto scope=mapArea.removeFromTop(28); scopeMode.setBounds(scope.removeFromLeft(148)); nextUnassigned.setBounds(scope.removeFromRight(140));
         repeats.setBounds(scope.removeFromRight(185)); rangeLabel.setBounds(scope);
@@ -414,13 +422,12 @@ public:
 private:
     struct Drag final : juce::TextButton {
         Drag():TextButton("Drag OSTF to Studio"){}
-        std::function<juce::File()> exportFile;
+        std::function<void()> beginExport;
         void mouseDown(const juce::MouseEvent& e) override { started=false; juce::TextButton::mouseDown(e); }
         void mouseDrag(const juce::MouseEvent& e) override {
             if (started || !e.mouseWasDraggedSinceMouseDown()) return;
             started=true;
-            auto f=exportFile();
-            if (f.existsAsFile()) juce::DragAndDropContainer::performExternalDragDropOfFiles({f.getFullPathName()},false,this);
+            beginExport();
         }
         bool started=false;
     };
@@ -626,18 +633,35 @@ private:
         status.setText(ab?"Playing reference, then candidate.":"Playing candidate.",juce::dontSendNotification);
     }
     void chooseInstrument() {
-        chooser=std::make_unique<juce::FileChooser>("Load a VST3 instrument",juce::File{},"*.vst3");
+        if (pickerBox) { pickerBox->toFront(true); return; }
+        auto picker=std::make_unique<InstrumentPicker>(proc.rack.description());
+        const auto self=juce::Component::SafePointer<Editor>(this);
+        picker->onChoose=[self](InstrumentChoice c) {
+            if (!self) return;
+            self->pickerBox->dismiss();
+            self->instrumentChanged(c.scanned ? self->proc.rack.install(*c.scanned,{})
+                : self->proc.rack.choose(juce::File(c.path),c.needsInspection?juce::String{}:c.name));
+        };
+        picker->onReference=[self] { if(self) { self->pickerBox->dismiss(); self->instrumentChanged(self->proc.rack.restore(nullptr)); } };
+        picker->onBrowse=[self] { if(self) { self->pickerBox->dismiss(); self->browseInstrument(); } };
+        pickerBox=&juce::CallOutBox::launchAsynchronously(std::move(picker),loadInstrument.getScreenBounds(),nullptr);
+    }
+    void instrumentChanged(const juce::Result& result) {
+        if (result.failed()) { status.setText(result.getErrorMessage(),juce::dontSendNotification); return; }
+        { const juce::ScopedLock lock(proc.stateLock); proc.unavailableInstrument.reset(); proc.rackError.clear(); }
+        updateInstrument();
+        status.setText(proc.rack.name()+"  /  Ready to audition",juce::dontSendNotification);
+        proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+    }
+    void browseInstrument() {
+        const auto paths=juce::VST3PluginFormat{}.getDefaultLocationsToSearch();
+        juce::File start;
+        for(int i=0;i<paths.getNumPaths();++i) if(paths[i].isDirectory()){start=paths[i];break;}
+        chooser=std::make_unique<juce::FileChooser>("Load a VST3 instrument",start,"*.vst3",useNativeVst3Chooser);
         chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles|juce::FileBrowserComponent::canSelectDirectories,
             [self=juce::Component::SafePointer<Editor>(this)](const auto& fc){
                 if(!self || fc.getResult()==juce::File{}) return;
-                auto r=self->proc.rack.choose(fc.getResult());
-                self->status.setText(r.failed()?r.getErrorMessage():self->proc.rack.name(),juce::dontSendNotification);
-                if(r.wasOk()) {
-                    { const juce::ScopedLock lock(self->proc.stateLock);
-                      self->proc.unavailableInstrument.reset(); self->proc.rackError.clear(); }
-                    self->updateInstrument();
-                    self->proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
-                }
+                self->instrumentChanged(self->proc.rack.choose(fc.getResult()));
             });
     }
     void updateInstrument() {
@@ -682,15 +706,41 @@ private:
         updateInstrument();
         if(ready) selectChord(); else status.setText("Open an OSTF score with a chord track.",juce::dontSendNotification);
         if(proc.rackError.isNotEmpty()) status.setText(proc.rackError,juce::dontSendNotification);
-        drag.exportFile=[this] {
-            const juce::ScopedLock guard(proc.stateLock);
-            const auto dir=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("OSTF Scale Editor");
-            const auto file=dir.getChildFile("studio-scales-"+proc.document.baseHash+"-"+juce::Uuid().toString()+".ostf");
-            if (dir.createDirectory().failed() || !file.replaceWithText(proc.document.text,false,false,nullptr)) {
-                status.setText("Unable to create the drag file.",juce::dontSendNotification); return juce::File{};
-            }
-            return file;
-        };
+        drag.beginExport=[this] { beginStudioDrag(); };
+    }
+    void beginStudioDrag() {
+        if (!workspace || !workspace->isVisible()) {
+            Document snapshot;
+            { const juce::ScopedLock guard(proc.stateLock); snapshot=proc.document; }
+            dragDocument(snapshot);
+            return;
+        }
+        const auto hash=workspaceHash;
+        workspace->evaluateJavascript("({draft:window.ScaleAdviserApp.state.textDirty,score:window.ScaleAdviserApp.exportText()})",
+            [self=juce::Component::SafePointer<Editor>(this),page=workspaceGeneration,hash](auto evaluated) {
+                if (!self || page!=self->workspaceGeneration) return;
+                const auto* value=evaluated.getResult();
+                if (!value || !(*value)["score"].isString() || bool((*value)["draft"])) {
+                    self->status.setText("Import the text edits or open the visual score before dragging.",juce::dontSendNotification);
+                    return;
+                }
+                Document snapshot;
+                {
+                    const juce::ScopedLock guard(self->proc.stateLock);
+                    if (self->seenStateVersion!=self->proc.restoredStateVersion) return;
+                    snapshot=self->proc.document;
+                }
+                const auto result=snapshot.importWorkspaceScales((*value)["score"].toString(),hash);
+                if (result.failed()) self->status.setText(result.getErrorMessage(),juce::dontSendNotification);
+                else if (juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown()) self->dragDocument(snapshot);
+            });
+    }
+    void dragDocument(const Document& document) {
+        const auto dir=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("OSTF Scale Editor");
+        juce::File file;
+        const auto result=document.exportForStudio(dir,file);
+        if (result.failed()) status.setText(result.getErrorMessage(),juce::dontSendNotification);
+        else juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()},false,&drag);
     }
     void requestLoad(juce::String source) {
         if (workspace && workspace->isVisible()) {
@@ -951,7 +1001,8 @@ private:
     juce::String undoAtText;
     juce::Label song,status,notes,details;
     juce::TextButton back{"<"},forward{">"},audition{"Hear candidate"},compare{"A/B with reference"},stop{"Stop"},
-        loadInstrument{"Load VST3 instrument..."},showInstrument;
+        loadInstrument{"Instruments..."},showInstrument,testSound{"Test sound"};
+    juce::Component::SafePointer<juce::CallOutBox> pickerBox;
     juce::ComboBox choices,strategy,lens,genre;
     juce::StringArray genreIds;
     juce::ComboBox chords,roots,modes;

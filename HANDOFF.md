@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Scale Editor instrument selection and short sung morae
+
+Branch `feat/scale-instrument-browser-and-audition`. Build `OSTFStudio`, `OSTFSynthScaleEditor_VST3`, `OSTFSynthSinger_VST3`, `ostf_scale_instrument_tests`, `ostf_scale_editor_tests` and `ostf_singing_tests` in Release. The instrument picker reads the Studio scan and VST3 bundle metadata. Use Instruments → search by manufacturer/name → Enter, then Test sound. A missing score allows testing the audio path with a reference tone or nested instrument. Visual assignments can be dragged to the matching open Studio arrangement. The return file includes the digest of the opened score and unimported text is protected.
+
+Windows Release passed six focused CTests for host resizing, instrument selection and audition, the embedded workspace, state recall, Singer and the scale document. The third-party check `ostf_scale_instrument_tests <FM8.vst3> <paper-lantern-replies.ostf> --audition` rendered a peak of 0.0717. The 38-plug-in development portable passed Studio vocal-track and FX-window smoke runs. The 45 ms Japanese /shi/ regression compares the last 15 ms at MIDI 55 and 67. Their RMS difference increased from 0 to 0.208. An RMS difference measures pitch sensitivity, not perceived vocal quality. Speaker listening and macOS are unverified.
+
 ## Sustained nasals and Scale Editor project recall
 
 Branch `feat/singer-nasals-scale-resume`. With Mei at fixed pitch, switching the following vowel between A and I changed the last 40 ms of isolated English M, N and NG. The previous RMS differences were 0.084, 0.134 and 0.111. All three differences now measure zero and all three sustains have a nonzero RMS of 0.116. Run `ostf_singing_tests` for this comparison and for Japanese length marks on successive notes after ん. For a listening comparison render the same `bilingual-mei` excerpt of Paper Lantern Replies with each binary and match RMS.

@@ -2500,7 +2500,7 @@ function renderListenLab(){
  $('listenContext').textContent=(pre?'Previous + ':'')+'Selected'+(next?' + Next':'')+' · '+m.plans.a.style+' · Illustrative A/B, not original OSTF MIDI';
  $('autoListen').textContent='▶ Audition on card select: '+(state.autoListen?'ON':'OFF');
  $('autoListen').classList.toggle('active',state.autoListen);$('autoListen').setAttribute('aria-pressed',String(state.autoListen));
- if(!$('listenStatus').dataset.playing)$('listenStatus').textContent=native?'MIDI audition → following Instrument':'Browser audition';
+ if(!$('listenStatus').dataset.playing)$('listenStatus').textContent=native?'MIDI audition → following Instrument':window.__JUCE__?.backend?'Scale Editor instrument · MIDI channel 1':'Browser audition';
 }
 function renderDecisionEvidence(){
  const a=getAnalysis(),s=getScale(),ch=getChord(),flow=getFlowPlan();if(!s||!a||!ch){$('decisionEvidence').innerHTML='';return;}

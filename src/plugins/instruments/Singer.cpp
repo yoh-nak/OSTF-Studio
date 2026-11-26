@@ -58,9 +58,26 @@ class SyllableVoice {
             }
         }
         // A connected vowel enters after the initial breath of the recording.
-        // Consonant-led syllables still play the complete attack.
         position = legato && recorded && p.onset == vowelOnly && p.durationMs > 0
             ? std::min(.014 * recorded->rate, .5 * recorded->consonantFrames) : 0.;
+        attackSeconds = 0.;
+        if (recorded) {
+            attackStep = recorded->rate / sr;
+            const double frames = p.onset == vowelOnly || vowelSample ? 0. : recorded->voicedStart;
+            if (frames > 0 && p.durationMs > 0) {
+                const double samples = sr * .001 * p.durationMs;
+                if (arpabet > 15) {
+                    attackStep = std::clamp(frames / samples, .55 * attackStep, 1.75 * attackStep);
+                } else if (arpabet == 0 && recorded->pitchMarks.size() >= 3) {
+                    // A short mora needs time for its sung vowel. Consume leading
+                    // silence first, then shorten only the remaining consonant.
+                    const double budget = .5 * samples;
+                    position = std::clamp(frames - budget * attackStep, 0., double(recorded->attackFirst));
+                    attackStep = std::max(attackStep, (frames - position) / budget);
+                }
+            }
+            attackSeconds = std::max(0., frames - position) / (sr * attackStep);
+        }
         const int onset = p.onset;
         nasal = onset == m || onset == n || onset == moraN;
         stop = onset == velar || onset == g || onset == t || onset == d || onset == pStop || onset == b;
@@ -148,16 +165,13 @@ class SyllableVoice {
             return float(level * unvoicedAttack(time,sr));
         float recording = 0;
         if (recorded) {
-            const double attackFrames = phone.onset == vowelOnly || vowelSample ? 0. : recorded->voicedStart;
-            double attackStep = recorded->rate / sr;
-            if ((accentPhone & 63)>15 && phone.durationMs>0 && attackFrames>0)
-                attackStep=std::clamp(attackFrames/(sr*phone.durationMs*.001),.55*attackStep,1.75*attackStep);
-            // Keep the frication at its source rate all the way to the detected
-            // voicing boundary, even when it follows the bank's nominal split.
-            const double onset = attackFrames / (sr * attackStep);
-            if (recorded->pitchMarks.size() < 3 || time < onset) {
-                const double step = time<onset ? attackStep : pitch*recorded->period/sr;
-                recording = recorded->read(position,step);
+            const double onset = attackSeconds;
+            if (recorded->pitchMarks.size() < 3) {
+                recording = recorded->read(position,time < onset ? attackStep : pitch*recorded->period/sr);
+                lastAttack = recording;
+            } else if (time < onset) {
+                recording = recorded->cycleSample(position,attackStep);
+                position += attackStep;
                 lastAttack = recording;
             } else {
                 // Pitch analysis found a contiguous voiced region here. Marks in the
@@ -251,6 +265,7 @@ class SyllableVoice {
         return float(.085*hiss*env*(stop ? std::exp(-time/.012) : 1.));
     }
     bool waveReady = false, morphFromPrevious = false, joinedRecording = false;
+    double attackSeconds = 0., attackStep = 1.;
     float lastAttack = 0.f, joinDelta = 0.f;
     RecordedMora::Wave previousWave{}, nextWave{};
     int frameAge = 0, frameLength = 1;

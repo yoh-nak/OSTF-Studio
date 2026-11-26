@@ -114,12 +114,18 @@ int main(int argc,char** argv) {
     juce::VST3PluginFormat format;
     juce::OwnedArray<juce::PluginDescription> types;
     format.findAllTypesForFile(types,file.getFullPathName());
-    if(types.size()!=1 || !types[0]->isInstrument) return 2;
+    juce::PluginDescription* instrument=nullptr;
+    for (auto* type:types) if (type->isInstrument) {instrument=type; break;}
+    if (!instrument || !instrument->isInstrument) {
+        std::cerr<<"No instrument in "<<file.getFullPathName()<<" ("<<types.size()<<" classes)\n";
+        return 2;
+    }
+    const bool auditionOnly=argc==4 && juce::String(argv[3])=="--audition";
     juce::XmlElement state("ScaleEditor");
     state.createNewChildElement("Score")->addTextElement(juce::File(juce::String::fromUTF8(argv[2])).loadFileAsString());
     auto* nested=state.createNewChildElement("Instrument");
     nested->setAttribute("state",juce::MemoryBlock{}.toBase64Encoding());
-    nested->addChildElement(types[0]->createXml().release());
+    nested->addChildElement(instrument->createXml().release());
     juce::MemoryBlock bytes;
     juce::AudioProcessor::copyXmlToBinary(state,bytes);
     if (argc==4 && juce::String(argv[3])=="--recall") return testWorkspaceRecall(bytes);
@@ -132,16 +138,49 @@ int main(int argc,char** argv) {
     auto saved=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
     if(!saved || !saved->getChildByName("Instrument")) return 4;
     juce::PluginDescription actual;
-    if(!actual.loadFromXml(*saved->getChildByName("Instrument")->getFirstChildElement()) || actual.name!=types[0]->name) return 5;
+    if(!actual.loadFromXml(*saved->getChildByName("Instrument")->getFirstChildElement()) || actual.name!=instrument->name) return 5;
     juce::AudioBuffer<float> block(2,256);
     juce::MidiBuffer midi;
     midi.addEvent(juce::MidiMessage::noteOn(1,64,(juce::uint8)110),48);
     processor->processBlock(block,midi);
-    if(block.getMagnitude(0,0,48)>1.e-6f || block.getMagnitude(0,48,208)<.00001f) return 6;
+    if(!auditionOnly && (block.getMagnitude(0,0,48)>1.e-6f || block.getMagnitude(0,48,208)<.00001f)) return 6;
     processor->releaseResources();
     processor->setStateInformation(bytes.getData(),int(bytes.getSize()));
     processor->prepareToPlay(48000,256);
     std::unique_ptr<juce::AudioProcessorEditor> editor(processor->createEditorAndMakeActive());
+    if (argc==3 || auditionOnly) {
+        juce::TextButton *instruments=nullptr, *testSound=nullptr;
+        for (auto* child:editor->getChildren()) if (auto* b=dynamic_cast<juce::TextButton*>(child)) {
+            if (b->getButtonText()=="Instruments...") instruments=b;
+            if (b->getButtonText()=="Test sound") testSound=b;
+        }
+        if (!instruments || !testSound) return 55;
+        instruments->onClick();
+        juce::Component* picker=nullptr;
+        auto& desktop=juce::Desktop::getInstance();
+        for (int i=0;i<desktop.getNumComponents();++i)
+            if (auto* box=dynamic_cast<juce::CallOutBox*>(desktop.getComponent(i)))
+                for (auto* child:box->getChildren()) if (child->findChildWithID("matching-instruments")) picker=child;
+        if (!picker) return 56;
+        auto* list=dynamic_cast<juce::ListBox*>(picker->findChildWithID("matching-instruments"));
+        juce::TextEditor* search=nullptr;
+        for (auto* c:picker->getChildren()) if (c->getTitle()=="Search instruments") search=dynamic_cast<juce::TextEditor*>(c);
+        if (!search || !list) return 57;
+        search->setText("__missing_instrument__",false); search->onTextChange();
+        if (list->getModel()->getNumRows()!=0) return 58;
+        search->setText(instrument->name+" "+instrument->manufacturerName,false); search->onTextChange();
+        if (list->getModel()->getNumRows()<1) return 59;
+        search->onReturnKey();
+        testSound->onClick();
+        float peak=0;
+        for (int i=0;i<80;++i) {
+            midi.clear(); processor->processBlock(block,midi);
+            peak=std::max(peak,block.getMagnitude(0,block.getNumSamples()));
+        }
+        std::cout<<"Instrument picker / test note: "<<instrument->name<<" peak "<<peak<<"\n";
+        if (peak<.001f) return 60;
+        if (auditionOnly) { editor.reset(); processor->releaseResources(); return 0; }
+    }
     if (argc == 4) {
         auto* browser = dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
         juce::TextButton* applyScales = nullptr;

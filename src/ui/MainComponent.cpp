@@ -2696,7 +2696,7 @@ void MainComponent::restartInputMonitor() {
     const bool playing = transportActive_;
     if (playing || monitorActive_) stopTransport();
     if (playing) startTransport(false);
-    else if (armedId_.isNotEmpty()) { monitorPending_ = true; startTimerHz(24); }
+    else if (armedId_.isNotEmpty() || scaleEditorMonitoring()) { monitorPending_ = true; startTimerHz(24); }
 }
 
 void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool monitorOnly) {
