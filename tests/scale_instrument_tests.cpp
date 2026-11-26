@@ -10,6 +10,81 @@ static const juce::File& testLanguageFile() {
 }
 static juce::AudioProcessor* createTestFilter(){return createScaleEditorWithPreferences(testLanguageFile());}
 
+static bool sameMidi(const juce::MidiBuffer& actual,const juce::MidiBuffer& expected) {
+    if (actual.getNumEvents()!=expected.getNumEvents()) return false;
+    auto match=expected.begin();
+    for (const auto event:actual) {
+        const auto other=*match++;
+        if (event.samplePosition!=other.samplePosition || event.numBytes!=other.numBytes
+            || !std::equal(event.data,event.data+event.numBytes,other.data)) return false;
+    }
+    return true;
+}
+
+static bool testMidiThruBus(juce::AudioProcessor& plugin,juce::AudioProcessor& receiver) {
+    plugin.setRateAndBufferSizeDetails(48000,256);
+    plugin.prepareToPlay(48000,256);
+    juce::AudioBuffer<float> block(2,256);
+    juce::MidiBuffer expected;
+    expected.addEvent(juce::MidiMessage::noteOn(3,67,juce::uint8(96)),35);
+    expected.addEvent(juce::MidiMessage::noteOn(8,60,juce::uint8(85)),79);
+    expected.addEvent(juce::MidiMessage::noteOff(3,67),141);
+    expected.addEvent(juce::MidiMessage::noteOff(8,60),224);
+    auto midi=expected;
+    plugin.processBlock(block,midi);
+    const bool passed=sameMidi(midi,expected) && block.getMagnitude(0,35)==0.f && block.getMagnitude(35,189)>.001f;
+    plugin.releaseResources();
+    // Discard Scale Editor's own audio so only the downstream synth can sound.
+    block.clear();
+    receiver.setRateAndBufferSizeDetails(48000,256);
+    receiver.prepareToPlay(48000,256);
+    receiver.processBlock(block,midi);
+    const auto peak=block.getMagnitude(35,189);
+    std::cout<<"Downstream FM Synth peak: "<<peak<<'\n';
+    const bool downstreamPlayed=block.getMagnitude(0,35)==0.f && peak>.001f;
+    receiver.releaseResources();
+    return passed && downstreamPlayed;
+}
+
+static bool testKeyboardAndPreview(juce::AudioProcessor& processor,juce::AudioProcessorEditor& editor,
+                                   juce::TextButton& testSound,juce::ToggleButton& preview) {
+    auto* thru=dynamic_cast<juce::ToggleButton*>(editor.findChildWithID("scale-midi-thru"));
+    if (!thru || thru->getToggleState()) return false; // Legacy state had no MIDI thru.
+    auto enable=[](juce::ToggleButton& button,bool on){
+        button.setToggleState(on,juce::dontSendNotification); button.onClick();
+    };
+    enable(*thru,true); enable(preview,true);
+    juce::MemoryBlock bytes;
+    processor.getStateInformation(bytes);
+    const auto saved=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
+    if (!saved || !saved->getBoolAttribute("midiThru")) return false;
+    const auto key=juce::MidiMessage::noteOn(1,60,juce::uint8(88)),off=juce::MidiMessage::noteOff(1,60);
+    const auto pedal=juce::MidiMessage::controllerEvent(3,64,127);
+    const auto bend=juce::MidiMessage::pitchWheel(8,13000);
+    juce::AudioBuffer<float> block(2,256);
+    juce::MidiBuffer midi,expected;
+    testSound.onClick();
+    midi.addEvent(key,63); midi.addEvent(pedal,90); midi.addEvent(bend,201);
+    expected.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(94)),0);
+    expected.addEvent(off,63); expected.addEvents(midi,0,-1,0);
+    processor.processBlock(block,midi);
+    if (!sameMidi(midi,expected)) return false;
+    // Restart and then cancel the audition while the live player holds C4.
+    testSound.onClick(); midi.clear(); processor.processBlock(block,midi);
+    if (!midi.isEmpty()) return false;
+    enable(preview,false); processor.processBlock(block,midi);
+    if (!midi.isEmpty()) return false;
+    enable(*thru,false);
+    expected.clear(); expected.addEvent(off,0);
+    expected.addEvent(juce::MidiMessage::controllerEvent(3,64,0),0);
+    processor.processBlock(block,midi);
+    if (!sameMidi(midi,expected)) return false;
+    midi.clear(); midi.addEvent(key,33); processor.processBlock(block,midi);
+    if (!midi.isEmpty()) return false;
+    midi.addEvent(off,0); processor.processBlock(block,midi);
+    return midi.isEmpty();
+}
+
 static int testLinkedSave(const juce::File& source) {
     juce::TemporaryFile copy(".ostf");
     const auto file=copy.getFile();
@@ -214,6 +289,13 @@ int main(int argc,char** argv) {
         if (!plugin || !plugin->acceptsMidi() || !plugin->producesMidi()) {
             std::cerr<<"Scale Editor VST3 MIDI buses unavailable: "<<error<<'\n'; return 74;
         }
+        juce::OwnedArray<juce::PluginDescription> receivers;
+        format.findAllTypesForFile(receivers,file.getSiblingFile("OSTF FM Synth.vst3").getFullPathName());
+        if (receivers.isEmpty()) {std::cerr<<"FM Synth VST3 unavailable\n";return 77;}
+        auto receiver=format.createInstanceFromDescription(*receivers[0],48000,256,error);
+        if (!receiver || !testMidiThruBus(*plugin,*receiver)) {
+            std::cerr<<"Packaged VST3 MIDI thru to FM Synth failed: "<<error<<'\n';return 77;
+        }
         return testLinkedSave(juce::File(juce::String::fromUTF8(argv[2])));
     }
     const bool auditionOnly=argc==4 && juce::String(argv[3])=="--audition";
@@ -314,6 +396,7 @@ int main(int argc,char** argv) {
                 || (*midi.begin()).samplePosition!=0) return 66;
         midi.clear(); processor->processBlock(block,midi);
         if (!midi.isEmpty()) return 67;
+        if (!testKeyboardAndPreview(*processor,*editor,*testSound,*route)) return 78;
     }
     if (argc == 4) {
         auto* browser = dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));

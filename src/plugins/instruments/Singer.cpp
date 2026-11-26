@@ -301,18 +301,23 @@ class SyllableVoice {
             const int frames=recorded->voicedStart-recorded->attackFirst;
             const double natural=frames/recorded->rate;
             const double duration=stop ? std::min(allotted,natural) : allotted;
-            if (time>=duration) return 0;
+            // A stop closes first and then releases into the vowel. Keep the
+            // recorded burst at its natural rate when the score allows space.
+            const double elapsed=time-(stop && phone.durationMs>0 ? allotted-duration : 0.);
+            if (elapsed<0 || elapsed>=duration) return 0;
             const double step=frames/(duration*sr);
-            const double taper=std::clamp((duration-time)/.003,0.,1.);
-            return float(taper)*recorded->cycleSample(recorded->attackFirst+time*frames/duration,step);
+            const double taper=std::clamp((duration-elapsed)/.003,0.,1.);
+            return float(taper)*recorded->cycleSample(recorded->attackFirst+elapsed*frames/duration,step);
         }
         // A vowel-only custom bank has no recorded hiss or release burst.
-        if (time>=allotted) return 0;
+        const double duration=stop && phone.durationMs>0 ? std::min(allotted,.015) : allotted;
+        time-=allotted-duration;
+        if (time<0 || time>=duration) return 0;
         noise=noise*1664525u+1013904223u;
         const double white=double(noise)/2147483648.0-1.;
         const double hiss=white-previousNoise;
         previousNoise=white;
-        const double env=std::min(1.,time/.002)*std::clamp((allotted-time)/.004,0.,1.);
+        const double env=std::min(1.,time/.002)*std::clamp((duration-time)/.004,0.,1.);
         return float(.085*hiss*env*(stop ? std::exp(-time/.012) : 1.));
     }
     bool waveReady = false, morphFromPrevious = false, joinedRecording = false;

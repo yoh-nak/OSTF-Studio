@@ -2,6 +2,10 @@
 
 ## OSTF 5.1 score and production session
 
+Scale Editor copies the host MIDI input before sending it to its nested instrument. The outgoing event bus merges that input with routed audition events at their sample offsets. Live keys have priority when both sources use the same note on the same channel. The merger tracks keyboard notes and pedals per channel so disabling thru releases them on the next audio block. The VST3 instance stores the thru switch. New instances enable it, and restoring state without the switch preserves the original local-only keyboard routing.
+
+When the English phoneme renderer uses a Japanese voice bank, it measures the attack before the recorded vowel. A scored unvoiced stop uses the last part of its allocated duration for this release, leaving the closure at the beginning. A shorter allocation compresses the attack. Live MIDI without a duration starts the attack immediately. Vowel-only banks use a short noise release when no recorded stop is available.
+
 Scale Editor uses Studio's display-language resolver and keeps its own per-user preference under the OSTF Studio application settings directory. An absent preference selects the OS display language. Choosing a language updates the JUCE controls and sends the resolved locale to the embedded workspace. The resource provider also supplies the locale in the initial HTML. Labels from the original UI template are registered before loading a score, and dynamic controls localize their own labels. Song data and unsaved JSON text retain their original content.
 
 Formant Singer treats up to 12 ms between voiced vowels as a connected pitch change when the incoming phone has a scored duration of at most 150 ms. Other durations retain the 3 ms join window. A scored scoop takes precedence. A smooth release reaches silence within 28 ms. A short connected Japanese consonant-vowel sample begins at its detected attack before the pitched sustain. The regression covers the rendered onset pitch, settled pitch, nasal onset level and final silence.

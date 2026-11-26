@@ -325,6 +325,41 @@ int main(int argc, char** argv) {
     }
     const auto japaneseCV=renderPhone({0,sibilant},69);
     if (japaneseCV.getRMSLevel(0,5760,1920)<.01f) return 49;
+    // English /pa ta ka/ with Mei. Give each stop 35 ms before its vowel.
+    juce::AudioBuffer<float> stopPhrase(2, 3*5280+2400);
+    juce::MidiBuffer stopEvents;
+    const int stopKeys[]{60,62,64}, consonants[]{29,33,24};
+    for (int i=0;i<3;++i) {
+        const int at=i*5280,key=stopKeys[i];
+        Phone consonant{0}; consonant.english=consonants[i];
+        Phone vowel{0}; vowel.english=1;
+        stopEvents.addEvent(phoneMessage(1,key,consonant,.035),at);
+        stopEvents.addEvent(juce::MidiMessage::noteOn(1,key,juce::uint8(100)),at);
+        stopEvents.addEvent(phoneMessage(1,key,vowel,.065),at+1680);
+        stopEvents.addEvent(juce::MidiMessage::noteOff(1,key),at+4800);
+    }
+    singer->reset();
+    for (int pos=0;pos<stopPhrase.getNumSamples();pos+=256) {
+        const int count=std::min(256,stopPhrase.getNumSamples()-pos);
+        juce::AudioBuffer<float> slice(stopPhrase.getArrayOfWritePointers(),2,pos,count);
+        juce::MidiBuffer events;
+        events.addEvents(stopEvents,pos,count,-pos);
+        singer->processBlock(slice,events);
+    }
+    for (int i=0;i<3;++i) {
+        const auto* cv=factory.find({0,i==0?pStop:i==1?t:velar});
+        std::cout<<"Stop "<<consonants[i]<<" source attack ms "<<(cv?(cv->voicedStart-cv->attackFirst)*1000./cv->rate:0)
+            <<" RMS at start / before vowel: "<<stopPhrase.getRMSLevel(0,i*5280,480)<<" / "<<stopPhrase.getRMSLevel(0,i*5280+1200,480)<<'\n';
+        if (stopPhrase.getRMSLevel(0,i*5280+1200,480)<.003f) return 64;
+    }
+    if (stopPhrase.getMagnitude(0,5280+336,384)!=0.f
+        || stopPhrase.getMagnitude(0,stopPhrase.getNumSamples()-960,960)!=0.f) return 65;
+    if (argc==4 && juce::String(argv[3])=="stops-mei") {
+        juce::File output(juce::String::fromUTF8(argv[2]));
+        if (output.exists()) return 11;
+        auto writer=wavWriter(output,48000);
+        return writer && writer->writeFromAudioSampleBuffer(stopPhrase,0,stopPhrase.getNumSamples()) ? 0 : 13;
+    }
     // A connected open vowel carries pitch across a note boundary; a fresh attack
     // starts at the written pitch. Measure the actual Mei waveform in both cases.
     auto vowelChange = [&](bool connected,int gapFrames=0,Phone incoming={0,vowelOnly}) {

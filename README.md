@@ -2,6 +2,10 @@
 
 ## OSTF 5.1 studio preview
 
+In **OSTF Scale Editor**, turn on **MIDI thru** to send played notes to another instrument through the host's MIDI routing. The receiving instrument gets the original channel, velocity and timing. **Preview MIDI out** separately routes the scale audition. On the shared output, a held keyboard note takes priority over an audition of the same pitch and channel. MIDI thru starts on for a new instance. Projects saved before this option was added start with it off.
+
+**OSTF Formant Singer** places the release of a scored English /p/, /t/ or /k/ immediately before its vowel when using the Mei voice. This closes an audible gap in short syllables such as /ta/.
+
 Scale Editor starts in the operating system's display language. The upper-right language menu offers **System**, **English** and **日本語**. System uses Japanese for Japanese locales and English for other locales. The choice is stored on this computer and also works when the VST3 runs in another DAW. Switching language keeps the selected chord and unfinished OSTF text. The native controls, instrument picker and main visual editing workflow support both languages. Some detailed theory explanations and diagnostics are still in English.
 
 Formant Singer now carries the pitch between short recorded vowels across brief MIDI gate gaps and trims the lead-in when a short sung consonant follows another note. The regression phrase uses four 72 ms notes with 8 ms gaps and a final rest.

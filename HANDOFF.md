@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## Scale Editor keyboard MIDI thru and Mei stop releases
+
+Branch `feat/scale-midi-thru-and-vocal-stops`. New Scale Editor instances enable **MIDI thru**. Existing host state without that option starts with it off. For external playback, route the plug-in's outgoing MIDI to an instrument track in the host. **Preview MIDI out** controls the comparison phrases independently. The packaged Windows VST3 test sends notes on channels 3 and 8 and compares their velocities and sample offsets. Processor tests cover a live key interrupting an audition, cancellation while the key is held, pedal release, and saved settings.
+
+The Singer regression renders /pa ta ka/ using Mei, with a 35 ms consonant followed by a 65 ms vowel. The final 10 ms of /t/ before its vowel previously had zero RMS and now measure 0.00928. The test also checks closure and silence after the phrase. Reproduce with `ostf_singing_tests <paper-lantern-replies.ostf> <output.wav> stops-mei`.
+
 ## Scale Editor language and short sung phrases
 
 Branch `feat/scale-language-short-phrase`. Scale Editor's upper-right menu starts on System and allows English and Japanese overrides. Its per-user setting works across host launches. The embedded editor changes language in place. Some detailed musical analysis, tooltips and diagnostic messages remain in English. Windows tests exercise a real WebView2 page with an unfinished JSON draft and a song titled “Save” to check that changing the UI language preserves both.

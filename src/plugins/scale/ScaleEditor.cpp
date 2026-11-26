@@ -35,7 +35,7 @@ public:
     void setCurrentProgram(int) override {}
     const juce::String getProgramName(int) override { return {}; }
     void changeProgramName(int,const juce::String&) override {}
-    void reset() override {heldChannels.fill(0); inputPitchClasses.store(0); rack.stopPreview();}
+    void reset() override {heldChannels.fill(0); inputPitchClasses.store(0); rack.stopPreview(); rack.resetInput();}
     void prepareToPlay(double rate,int block) override {reset(); rack.prepare(rate,block);}
     void releaseResources() override {rack.release(); reset();}
     bool isBusesLayoutSupported(const BusesLayout& layout) const override {
@@ -113,6 +113,7 @@ public:
         juce::XmlElement xml("ScaleEditor");
         xml.setAttribute("baseHash",document.baseHash);
         xml.setAttribute("previewMidiOut",rack.previewMidiOut());
+        xml.setAttribute("midiThru",rack.midiThruEnabled());
         xml.setAttribute("editorWidth",lastEditorSize.x);
         xml.setAttribute("editorHeight",lastEditorSize.y);
         xml.createNewChildElement("Score")->addTextElement(document.text);
@@ -132,6 +133,7 @@ public:
                             juce::jlimit(550,8192,xml->getIntAttribute("editorHeight",800))};
             const auto* score=xml->getChildByName("Score");
             rack.setPreviewMidiOut(xml->getBoolAttribute("previewMidiOut",false));
+            rack.setMidiThru(xml->getBoolAttribute("midiThru",false));
             const auto restored=rack.restore(xml->getChildByName("Instrument"));
             rackError=restored.getErrorMessage();
             unavailableInstrument.reset();
@@ -344,6 +346,12 @@ public:
         choices.onChange=[this]{selectCandidate();};
         addAndMakeVisible(testSound);
         addAndMakeVisible(previewMidiOut);
+        addAndMakeVisible(midiThru);
+        midiThru.setComponentID("scale-midi-thru");
+        midiThru.onClick=[this] {
+            proc.rack.setMidiThru(midiThru.getToggleState());
+            proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+        };
         previewMidiOut.setTooltip("Send audition notes to the host on MIDI channel 1. Route the plug-in MIDI output to an instrument track.");
         previewMidiOut.onClick=[this] {
             proc.rack.setPreviewMidiOut(previewMidiOut.getToggleState());
@@ -432,7 +440,8 @@ public:
         auto footer=area.removeFromBottom(32);
         loadInstrument.setBounds(footer.removeFromLeft(136).reduced(1)); showInstrument.setBounds(footer.removeFromLeft(160).reduced(1));
         testSound.setBounds(footer.removeFromLeft(89).reduced(1));
-        previewMidiOut.setBounds(footer.removeFromLeft(145).reduced(1)); status.setBounds(footer);
+        previewMidiOut.setBounds(footer.removeFromLeft(145).reduced(1));
+        midiThru.setBounds(footer.removeFromLeft(108).reduced(1)); status.setBounds(footer);
         auto mapArea=area.removeFromBottom(91);
         auto scope=mapArea.removeFromTop(28); scopeMode.setBounds(scope.removeFromLeft(148)); nextUnassigned.setBounds(scope.removeFromRight(140));
         repeats.setBounds(scope.removeFromRight(185)); rangeLabel.setBounds(scope);
@@ -473,6 +482,8 @@ private:
         caption(autoSet,"Auto-set song","曲全体に自動設定"); caption(undo,"Undo apply","適用を取り消す"); caption(redo,"Redo","やり直す");
         caption(apply,"Assign scale","スケールを設定"); caption(nextUnassigned,"Next unassigned","次の未設定コード");
         caption(loadInstrument,"Instruments...","音源を選択…"); caption(testSound,"Test sound","テスト発音"); caption(previewMidiOut,"Preview MIDI out","試聴をMIDI出力");
+        caption(midiThru,"MIDI thru","MIDIスルー");
+        midiThru.setTooltip(words("Also send incoming MIDI to the host output, on its original channel.","鍵盤などの入力MIDIを、元のチャンネルのままホストにも送ります。"));
         caption(audition,"Hear candidate","候補を試聴"); caption(compare,"A/B with reference","基準音と比較"); caption(stop,"Stop","停止");
         caption(flowTab,"Scale Flow","スケールの流れ"); caption(connectionsTab,"Connections","つながり"); caption(reviewTab,"Review","確認");
         caption(pin,"Pin A","Aを固定"); caption(resetA,"Reset A","Aをリセット"); caption(repeats,"Include matching progressions","同じ進行を含める");
@@ -745,6 +756,7 @@ private:
     void sync() {
         const juce::ScopedLock lock(proc.stateLock);
         previewMidiOut.setToggleState(proc.rack.previewMidiOut(),juce::dontSendNotification);
+        midiThru.setToggleState(proc.rack.midiThruEnabled(),juce::dontSendNotification);
         if (previousDocument && undoAtText != proc.document.text) {
             previousDocument.reset();
             undo.setEnabled(false);
@@ -1119,6 +1131,7 @@ private:
     juce::String undoAtText;
     juce::Label song,status,notes,details;
     juce::ToggleButton previewMidiOut{"Preview MIDI out"};
+    juce::ToggleButton midiThru{"MIDI thru"};
     juce::TextButton back{"<"},forward{">"},audition{"Hear candidate"},compare{"A/B with reference"},stop{"Stop"},
         loadInstrument{"Instruments..."},showInstrument,testSound{"Test sound"};
     juce::Component::SafePointer<juce::CallOutBox> pickerBox;

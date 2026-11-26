@@ -1,4 +1,5 @@
 #pragma once
+#include "MidiThru.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <cmath>
@@ -53,6 +54,7 @@ public:
     void prepare(double sr,int size) {
         rate=sr; blockSize=size; prepared=true; voices={}; stopPreview();
         previewOut.ensureSize(32768);
+        keyboardIn.ensureSize(32768);
         if (child) { child->setRateAndBufferSizeDetails(sr,size); child->prepareToPlay(sr,size); }
     }
     void release() {
@@ -122,8 +124,19 @@ public:
         external.store(enabled);
     }
     bool previewMidiOut() const {return external.load();}
+    bool midiThruEnabled() const {return thruEnabled.load();}
+    void setMidiThru(bool enabled) {
+        const juce::ScopedLock lock(owner.getCallbackLock());
+        if (thruEnabled.exchange(enabled) && !enabled) releaseKeys=true;
+    }
+    void resetInput() {
+        const juce::ScopedLock lock(owner.getCallbackLock());
+        releaseKeys=true;
+    }
     void process(juce::AudioBuffer<float>& audio,juce::MidiBuffer& midi) {
         audio.clear();
+        keyboardIn.clear();
+        if (thruEnabled.load()) keyboardIn.addEvents(midi,0,-1,0);
         previewOut.clear();
         if(flush) {
             auto& previous = lastExternal ? previewOut : midi;
@@ -172,11 +185,12 @@ public:
             reference(audio,pos,count);
             audio.copyFrom(1,0,audio,0,0,count);
         }
-        midi.swapWith(previewOut);
+        thru.write(midi,keyboardIn,previewOut,releaseKeys);
+        releaseKeys=false;
     }
     bool hasInstrument() const {return child!=nullptr;}
 private:
-    static constexpr int previewChannel=1;
+    static constexpr int previewChannel=MidiThru::auditionChannel;
     struct Event { int ms,key,velocity; };
     struct Voice { int channel{},key{}; double phase{},step{}; float amp{}; bool releasing{}; };
     void reference(juce::AudioBuffer<float>& audio,int from,int to) {
@@ -194,7 +208,10 @@ private:
     std::unique_ptr<Window> window;
     std::array<Voice,32> voices{};
     std::array<int,128> sounding{};
-    juce::MidiBuffer previewOut;
+    juce::MidiBuffer previewOut,keyboardIn;
+    MidiThru thru;
+    std::atomic<bool> thruEnabled{true};
+    bool releaseKeys=false;
     std::atomic<bool> external{false};
     bool lastExternal=false;
     std::vector<Event> sequence;
