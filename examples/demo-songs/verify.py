@@ -10,6 +10,7 @@ import sys
 from zipfile import ZipFile
 
 from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 
 def verify(path, spec, schemas, catalog):
@@ -164,7 +165,12 @@ if __name__ == "__main__":
                for key, file in {"score": "ostf-5.1.0.schema.json", "manifest": "ostf-package-manifest-1.1.schema.json",
                                  "production": "ostf-production-session-0.4.schema.json"}.items()}
     blank = json.loads((directory.parents[1] / "assets/NewProject.ostf").read_text(encoding="utf-8"))
-    schemas["score"].validate(blank)
+    # The application creates 5.2 scores. The published demo packages still target 5.1.
+    bundled = directory.parents[1] / "third_party/ostf-schemas"
+    documents = [json.loads(path.read_text(encoding="utf-8")) for path in bundled.glob("*.schema.json")]
+    registry = Registry().with_resources((doc["$id"], Resource.from_contents(doc)) for doc in documents if "$id" in doc)
+    startup_schema = json.loads((bundled / "ostf-5.2.0.schema.json").read_text(encoding="utf-8"))
+    Draft202012Validator(startup_schema, registry=registry).validate(blank)
     assert not (blank["tracks"] or blank["soundSlots"] or blank["harmony"]["chords"] or blank["timeline"]["sections"])
     covered = set()
     for path in sorted(directory.glob("*.ostfp")):

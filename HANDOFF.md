@@ -8,6 +8,10 @@ Toolbar and text-view buttons use compact English and Japanese labels with vecto
 
 The Singer's English syllable matcher handles the final /ndz/ written as n-zu in “hands” and still honours a separately transcribed stop. The regression uses the reading from Paper Lantern Replies. The next candidate is `v1.0.0-alpha.4`; publication requires a separate authorization.
 
+The image is on public main through [PR 6](https://github.com/yoh-nak/OSTF-Studio/pull/6). [Draft PR 7](https://github.com/yoh-nak/OSTF-Studio/pull/7) builds the candidate for Windows x64 and macOS arm64. Its first macOS run caught the demo verifier applying the 5.1 version constraint to the empty 5.2 score. The verifier now checks the startup document against the pinned 5.2 schema bundled with Studio, resolves companion schemas offline, and still uses the official 5.1 validator for all eight existing demo packages. All eight passed locally. Build, test and installer results for the candidate are recorded in the PR checks.
+
+The offline English/Japanese A/B from the Pre-Chorus first differs at 9.811 s, on the “hands” onset at 9.808 s. Both renders have the same duration. Real-device listening remains open. The local Windows Release build completed; the first full test run passed 43 of 44 and a subsequent three-run check of the asynchronous waveform test passed.
+
 ## 2026-11-27 — Scale Editor score exchange, text workflow and sung ノット
 
 Branch `feat/ostf-52-studio`. The header exposes the audition instrument, test note, language choices, Studio score input, clipboard and a separate drag grip. Studio score input is enabled only after the hosting instance supplies a score through the VST3 score interface. A recalled document or an OSTF file opened in another host does not enable it. Dragging captures the current assignments when the pointer crosses the threshold, even when the browser releases pointer capture during the gesture. The receiving Studio instance still checks the original score revision and supports Undo.
