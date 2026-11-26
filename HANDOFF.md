@@ -8,6 +8,8 @@ Track instruments, track and output inserts, and individual rack devices can be 
 
 The Windows x64 Release build passed all 45 CTest cases, including audio rendering, rack state recall, Scale Editor audition and the hosted workstation. Both installer-choice tests passed and all 39 display names matched the audio classes in the built Windows VST3 metadata. macOS execution, installation on a clean PC and subjective listening to the revised singing remain unverified.
 
+The local Windows Setup executable and portable ZIP were generated with `packaging/windows/Package.ps1`. The application and all 39 VST3 binaries extracted from the ZIP matched the tested binaries by SHA-256. The extracted application opened Paper Lantern Replies with `--startup-smoke`. Running `ostf_hosted_studio_tests` against the extracted `OSTF Studio.vst3` also passed.
+
 ## 2026-11-27 — host the workstation as a VST3
 
 Branch `feat/hosted-studio` adds a stereo VST3 instrument with the standalone arrangement, live session, mixers and editors. Open a score or project inside the editor. The editor may close while the DAW continues playing. The host saves an OSTFP snapshot with instrument and effect state. Host MIDI is routed to the active Studio input. DAW transport follow is enabled by default and can be switched off. The workstation keeps the OSTF tempo map.
