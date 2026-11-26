@@ -5,6 +5,10 @@ namespace ostfstudio {
 struct StockEffect {
     const char* name;
     const char* code;
+    juce::String displayName() const {
+        const juce::String bundle(name);
+        return bundle == "OSTF Formant Singer" || bundle == "OSTF Scale Editor" ? bundle : bundle.fromFirstOccurrenceOf("OSTF ", false, false);
+    }
     juce::String classId() const {
         juce::String id = "ABCDEF019182FAEB4F737466";
         for (const char* c = code; *c; ++c) id += juce::String::toHexString(static_cast<int>(*c)).paddedLeft('0', 2);
@@ -19,4 +23,6 @@ struct StockEffect {
 };
 inline constexpr StockEffect stockEffects[] {
 @stock_names@};
+inline constexpr StockEffect stockInstruments[] {
+@instrument_names@};
 }

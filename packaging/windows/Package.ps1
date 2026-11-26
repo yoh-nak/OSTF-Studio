@@ -5,8 +5,8 @@ param(
     [string] $OutputDir = 'dist',
     [string] $InnoCompiler = "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe",
     [string] $GmBundle = 'build/OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3',
-    [string] $ArrangerBundle = 'build/OSTFArranger_artefacts/Release/VST3/OSTF Arranger.vst3',
-    [string] $EffectsDir = 'build/StudioEffects/Release'
+    [string] $EffectsDir = 'build/StudioEffects/Release',
+    [string] $Python = 'python'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,48 +15,49 @@ $InnoCompiler = (Get-Command $InnoCompiler -CommandType Application -ErrorAction
 $OutputDir = (New-Item -Path $OutputDir -ItemType Directory -Force).FullName
 $installer = Join-Path $PSScriptRoot 'OSTFStudio.iss'
 $GmBundle = (Get-Item -LiteralPath $GmBundle -ErrorAction Stop).FullName
-$ArrangerBundle = (Get-Item -LiteralPath $ArrangerBundle -ErrorAction Stop).FullName
 $EffectsDir = (Get-Item -LiteralPath $EffectsDir -ErrorAction Stop).FullName
-$catalog = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../src/plugins/effects/catalog.json') -Raw | ConvertFrom-Json
-$fxBundles = @(foreach ($effect in $catalog) {
-    $bundle = Join-Path $EffectsDir ($effect.name + '.vst3')
-    $null = Get-Item -LiteralPath (Join-Path $bundle ("Contents/x86_64-win/" + $effect.name + ".vst3")) -ErrorAction Stop
-    $null = Get-Item -LiteralPath (Join-Path $bundle 'Contents/Resources/Licenses/GPL-3.0.txt') -ErrorAction Stop
-    $bundle
-})
-if (@(Get-ChildItem -LiteralPath $EffectsDir -Force).Count -ne $fxBundles.Count) { throw "Unexpected entries in $EffectsDir" }
 $GmLicense = (Get-Item -LiteralPath (Join-Path $PSScriptRoot '../../third_party/tinysoundfont/LICENSE.txt')).FullName
 $Licenses = (Get-Item -LiteralPath (Join-Path (Split-Path -Parent $AppExe) 'Licenses') -ErrorAction Stop).FullName
 if (!(Test-Path -LiteralPath (Join-Path $GmBundle 'Contents/x86_64-win/OSTF GM Sound Module.vst3') -PathType Leaf)) {
     throw "Missing Windows x64 GM Sound Module binary in $GmBundle"
 }
 
-if (!(Test-Path -LiteralPath (Join-Path $ArrangerBundle 'Contents/x86_64-win/OSTF Arranger.vst3') -PathType Leaf)) {
-    throw "Missing Windows x64 OSTF Arranger binary in $ArrangerBundle"
-}
 $stage = (New-Item -ItemType Directory -Path (Join-Path ([IO.Path]::GetTempPath()) ('ostf-vst3-' + [guid]::NewGuid()))).FullName
 $pluginSetup = Join-Path $stage 'OSTF-Studio-VST3-Setup.exe'
 $migrationList = Join-Path $stage 'migrate.iss'
 try {
-    $migration = foreach ($bundle in (@($GmBundle, $ArrangerBundle) + $fxBundles)) {
+    & $Python (Join-Path $PSScriptRoot '../plugin_choices.py') $stage
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot generate plug-in choices' }
+    $catalog = Get-Content -LiteralPath (Join-Path $stage 'plugins.json') -Raw | ConvertFrom-Json
+    $fxBundles = @(foreach ($effect in $catalog) {
+        if ($effect.code -eq 'Ogm1') { continue }
+        $bundle = Join-Path $EffectsDir ($effect.name + '.vst3')
+        $null = Get-Item -LiteralPath (Join-Path $bundle ("Contents/x86_64-win/" + $effect.name + ".vst3"))
+        $null = Get-Item -LiteralPath (Join-Path $bundle 'Contents/Resources/Licenses/GPL-3.0.txt')
+        $bundle
+    })
+    $extra = Get-ChildItem -LiteralPath $EffectsDir -Force | Where-Object { $_.FullName -notin $fxBundles -and $_.FullName -ne $GmBundle }
+    if ($extra) { throw "Unexpected entries in ${EffectsDir}: $($extra.Name -join ', ')" }
+    $migration = foreach ($plugin in $catalog) {
+        $bundle = if ($plugin.code -eq 'Ogm1') { $GmBundle } else { Join-Path $EffectsDir ($plugin.name + '.vst3') }
         $name = Split-Path -Leaf $bundle
         $info = Get-Content -LiteralPath (Join-Path $bundle 'Contents/Resources/moduleinfo.json') -Raw
         if ($info -notmatch '"CID"\s*:\s*"([A-Fa-f0-9]{32})"') { throw "Missing VST3 class ID in $name" }
         $cid = $Matches[1]
         $legacy = if ($bundle -in $fxBundles) { 'OSTF Studio Effects\' } else { '' }
-        "MigrateBundle('$legacy', '$name', '$cid');"
+        "if Pos(',$($plugin.code),', ',' + InstalledSelection + ',') > 0 then MigrateBundle('$legacy', '$name', '$cid');"
     }
     Set-Content -LiteralPath $migrationList -Value $migration -Encoding ascii
-    & $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DOutputDir=$stage" "/DGmBundle=$GmBundle" "/DArrangerBundle=$ArrangerBundle" "/DEffectsDir=$EffectsDir" (Join-Path $PSScriptRoot 'StudioVST3.iss')
+    & $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DOutputDir=$stage" "/DGmBundle=$GmBundle" "/DEffectsDir=$EffectsDir" "/DHelperComponents=$stage/helper.iss" "/DPluginFiles=$stage/files.iss" (Join-Path $PSScriptRoot 'StudioVST3.iss')
     if ($LASTEXITCODE -ne 0) { throw "VST3 installer build failed: $LASTEXITCODE" }
-    & $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DAppExe=$AppExe" "/DOutputDir=$OutputDir" "/DPluginSetup=$pluginSetup" "/DMigrationList=$migrationList" "/DGmLicense=$GmLicense" "/DLicenses=$Licenses" $installer
+    & $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DAppExe=$AppExe" "/DOutputDir=$OutputDir" "/DPluginSetup=$pluginSetup" "/DMigrationList=$migrationList" "/DGmLicense=$GmLicense" "/DLicenses=$Licenses" "/DPluginComponents=$stage/components.iss" "/DPluginSelection=$stage/selection.iss" "/DGroupLabels=$stage/groups.iss" $installer
     if ($LASTEXITCODE -ne 0) { throw "Application installer build failed: $LASTEXITCODE" }
 } finally {
-    foreach ($temporary in @($migrationList, $pluginSetup)) {
+    foreach ($temporary in @($migrationList, $pluginSetup) + @('components.iss','helper.iss','files.iss','selection.iss','groups.iss','plugins.json' | ForEach-Object { Join-Path $stage $_ })) {
         if (Test-Path -LiteralPath $temporary -PathType Leaf) { Remove-Item -LiteralPath $temporary }
     }
     [IO.Directory]::Delete($stage)
 }
 
 $portableZip = Join-Path $OutputDir 'OSTF_Studio_Windows_x64_Portable.zip'
-Compress-Archive -LiteralPath (@($AppExe, $GmBundle, $ArrangerBundle, $GmLicense, $Licenses) + $fxBundles) -DestinationPath $portableZip -Force
+Compress-Archive -LiteralPath (@($AppExe, $GmBundle, $GmLicense, $Licenses) + $fxBundles) -DestinationPath $portableZip -Force

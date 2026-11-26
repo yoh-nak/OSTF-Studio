@@ -57,7 +57,7 @@ void addTrack(juce::MidiFile& file, Events& events, Tick end) {
 }
 
 juce::Result writeSongMidi(const OstfpPreview& project, SmfFormat format, const std::vector<int>& channels,
-                           juce::OutputStream& output) {
+                           juce::OutputStream& output, std::optional<std::size_t> onlyTrack) {
     juce::MemoryOutputStream snapshot;
     if (auto saved = writeOstfPreview(project, snapshot); saved.failed()) return saved;
     const auto score = juce::JSON::parse(snapshot.toUTF8());
@@ -86,14 +86,16 @@ juce::Result writeSongMidi(const OstfpPreview& project, SmfFormat format, const 
             conductor.push_back({tempo["at"], meta, Message::tempoMetaEvent(static_cast<int>(micros))});
         }
         const bool separate = format == SmfFormat::multitrack;
-        if (separate) addTrack(file, conductor, end);
+        if (separate && !onlyTrack) addTrack(file, conductor, end);
         std::map<juce::String, int> percussion;
         for (const auto& slot : entries(score["soundSlots"])) {
             const auto mapping = slot["midiMapping"];
-            if (mapping["standard"] == "gm1") percussion.emplace(slot["id"].toString(), midiValue(mapping["note"]));
+            if (mapping["standard"] == "gm1" || mapping["standard"] == "custom")
+                percussion.emplace(slot["id"].toString(), midiValue(mapping["note"]));
         }
         const auto tracks = score["tracks"];
         for (int i = 0; i < tracks.size(); ++i) {
+            if (onlyTrack && *onlyTrack != std::size_t(i)) continue;
             const auto track = tracks[i];
             const int ch = static_cast<size_t>(i) < channels.size() ? channels[i] : project.sourceMidiChannels.at(i);
             Events part;

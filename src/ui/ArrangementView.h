@@ -4,7 +4,7 @@
 #include <span>
 
 namespace ostfstudio {
-enum class TimelineLane { none, section, chord, voicing, key, scale, meter, tempo };
+enum class TimelineLane { none, section, chord, voicing, key, scale, meter, tempo, displayLyrics, pronunciation };
 // Presentation data. The source owns all labels and regions while the view is in use.
 struct ArrangementRegion {
     BarSpan bars;
@@ -13,6 +13,10 @@ struct ArrangementRegion {
     // Exact source positions in one-based, fractional bars when the event falls inside a measure.
     std::optional<TimelineExtent> exactBars;
     bool isScoped = false;
+    const char* clipId = nullptr;
+    std::int64_t loopTicks = 0;
+    const char* fitId = nullptr; // Harmony event ID for a derived voicing region.
+    std::uint32_t colour = 0;
 };
 
 struct ArrangementLane {

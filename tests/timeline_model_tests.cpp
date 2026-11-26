@@ -88,5 +88,27 @@ int main() {
     routing.cueDb = -20.0;
     const auto cue = mixGains({&routed, 1}, 0, routing);
     check(cue.master == 0.0f && std::abs(cue.cue - 0.1f) < 0.0001f, "pre-fader cue is independent of track mute and Master");
+    routing.busCount = 4;
+    routing.busDb[3] = -12;
+    routing.outputMuted[busOutput(3)] = true;
+    mix[0].outputBus = 1;
+    mix[1].outputBus = 3;
+    routing.removeOutput(busOutput(1), mix);
+    check(routing.busCount == 3 && mix[0].outputBus == -1 && mix[1].outputBus == 2
+          && routing.busDb[2] == -12 && routing.outputMuted[busOutput(2)], "removed bus falls back to Master, later buses keep their routes");
+    mix[0].returnSends[1] = 0.25f;
+    routing.removeOutput(returnOutput(0), mix);
+    check(routing.returnCount == 1 && mix[0].returnSends[0] == 0.25f && mix[0].returnSends[1] == 0
+          && routing.returnDb[0] == -20, "deleting a return preserves the other send");
+    routing.removeOutput(0, mix);
+    check(routing.outputCount() == 5 && routing.outputAt(3) == busOutput(2) && routing.outputAt(4) == returnOutput(0),
+          "master and output order survive removal");
+    routing.removeOutput(returnOutput(0), mix);
+    check(routing.returnCount == 1 && mix[0].returnSends[0] == .25f, "last return and its send survive deletion");
+    routing.removeOutput(busOutput(2), mix);
+    routing.removeOutput(busOutput(1), mix);
+    mix[0].outputBus = 0;
+    routing.removeOutput(busOutput(0), mix);
+    check(routing.busCount == 1 && mix[0].outputBus == 0, "last bus and its route survive deletion");
     std::cout << "All timeline and mixer model tests passed.\n";
 }

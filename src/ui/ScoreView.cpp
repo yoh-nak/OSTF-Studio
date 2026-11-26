@@ -1,4 +1,5 @@
 #include "ui/ScoreView.h"
+#include "ui/NativePrint.h"
 #include "ui/MediaImport.h"
 
 using namespace ostfstudio;
@@ -44,7 +45,7 @@ class ScoreView::Panel final : public juce::Component {
         wording.setSelectedId(1, juce::dontSendNotification);
         wording.onChange = [this] {
             options.lyricDisplay = static_cast<LyricDisplay>(wording.getSelectedId() - 1);
-            grid.repaint();
+            updatePage();
         };
         for (int i = 1; i <= 7; ++i)
             staff.addItem(juce::translate(staffName(static_cast<StaffStyle>(i))), i);
@@ -61,7 +62,7 @@ class ScoreView::Panel final : public juce::Component {
         voices.setTitle(TRANS("Lyric voice"));
         voices.onChange = [this] {
             options.lyricVoice = voices.getSelectedId() > 1 ? voices.getText() : juce::String{};
-            grid.repaint();
+            updatePage();
         };
         follow.setToggleState(true, juce::dontSendNotification);
         follow.onClick = [this] { updatePage(); };
@@ -73,9 +74,99 @@ class ScoreView::Panel final : public juce::Component {
         };
         previous.onClick = [this] { step(-1); };
         next.onClick = [this] { step(1); };
-        pdf.onClick = [this] { save(true); };
+        pdf.setComponentID("sheet-print"); leavePreview.setComponentID("sheet-print-back");
+        breaks.setComponentID("sheet-page-breaks");
+        for (auto* control : std::array<juce::Component*, 8>{&paperSize, &orientation, &margin, &breaks, &breakLabel, &sections, &barNumbers, &leavePreview})
+            addChildComponent(control);
+        for (int mm : {5, 8, 12, 16, 20, 25, 30, 35})
+            margin.addItem(TRANS("Margin") + "  " + juce::String(mm) + " mm", mm);
+        paperSize.setComponentID("sheet-paper-size");
+        orientation.setComponentID("sheet-orientation");
+        paperSize.addItem("A4", 1); paperSize.addItem("US Letter", 2);
+        orientation.addItem(TRANS("Portrait"), 1); orientation.addItem(TRANS("Landscape"), 2);
+        paperSize.setSelectedId(1, juce::dontSendNotification);
+        orientation.setSelectedId(1, juce::dontSendNotification);
+        paperSize.onChange = orientation.onChange = [this] {
+            options.usLetter = paperSize.getSelectedId() == 2;
+            options.landscape = orientation.getSelectedId() == 2;
+            updatePage();
+        };
+        margin.setSelectedId(options.marginMm, juce::dontSendNotification);
+        margin.onChange = [this] { options.marginMm = margin.getSelectedId(); updatePage(); };
+        breaks.setTextToShowWhenEmpty("9, 17, 33", juce::Colours::grey);
+        breaks.setTitle(TRANS("Start new pages at bars"));
+        breakLabel.setText(TRANS("Start new pages at bars"), juce::dontSendNotification);
+        breaks.onTextChange = [this] {
+            std::vector<int> parsed;
+            validBreaks = true;
+            for (const auto& token : juce::StringArray::fromTokens(breaks.getText(), ", ", "")) {
+                if (token.isEmpty()) continue;
+                const auto bar = token.getIntValue();
+                if (!token.containsOnly("0123456789") || bar < 2 || bar > score.bars) { validBreaks = false; break; }
+                parsed.push_back(bar);
+            }
+            if (validBreaks) options.pageBreakBars = std::move(parsed);
+            status.setText(validBreaks ? juce::String{} : TRANS("Enter bar numbers between 2 and the final bar."), juce::dontSendNotification);
+            pdf.setEnabled(validBreaks && !busy);
+            resized();
+        };
+        sections.setToggleState(true, juce::dontSendNotification);
+        barNumbers.setToggleState(true, juce::dontSendNotification);
+        sections.onClick = barNumbers.onClick = [this] {
+            options.showSections = sections.getToggleState();
+            options.showBarNumbers = barNumbers.getToggleState();
+            updatePage();
+        };
+        addChildComponent(printer);
+        addChildComponent(credits);
+        credits.setTitle(TRANS("Print credits"));
+        credits.onClick = [this] {
+            if (creditLines.isEmpty()) return;
+            juce::PopupMenu menu;
+            menu.addItem(1,TRANS("Select all"),true,score.printCredits.size()==creditLines.size());
+            menu.addItem(2,TRANS("Clear selection"));
+            menu.addSeparator();
+            for (int i=0;i<creditLines.size();++i) menu.addItem(10+i,creditLines[i],true,!excluded.contains(creditLines[i]));
+            menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&credits),
+                [safe=juce::Component::SafePointer<Panel>(this),lines=creditLines](int id){
+                    if (!safe || !id || safe->creditLines!=lines) return;
+                    if (id==1) safe->excluded.clear();
+                    else if (id==2) safe->excluded=lines;
+                    else if(juce::isPositiveAndBelow(id-10,lines.size())) {
+                        const auto& line=lines[id-10];
+                        if(safe->excluded.contains(line)) safe->excluded.removeString(line); else safe->excluded.add(line);
+                    }
+                    safe->filterCredits(); safe->page=0; safe->updatePage();
+                });
+        };
+        printer.onClick = [this] {
+#if JUCE_WINDOWS || JUCE_MAC
+            const auto result=printSheet(*this,score,index(),style(),notes,lead,options);
+            if (result.failed()) status.setText(result.getErrorMessage(),juce::dontSendNotification);
+            resized();
+#endif
+        };
+        leavePreview.onClick = [this]{ preview = false; update(); };
+        pdf.onClick = [this] {
+            if (preview) save(true);
+            else { preview = true; page = 0; update(); }
+        };
         xml.onClick = [this] { save(false); };
         grid.draw = [this](juce::Graphics& g) {
+            if (preview) {
+                if (paper.isNull()) {
+                    paper = juce::Image(juce::Image::RGB, options.paperPoints().x * 2, options.paperPoints().y * 2, true, juce::SoftwareImageType{});
+                    {
+                        juce::Graphics pg(paper);
+                        pg.addTransform(juce::AffineTransform::scale(2.f));
+                        drawSheetPage(pg, score, index(), style(), notes, lead, page, options);
+                    }
+                    paper.desaturate();
+                }
+                g.setColour(juce::Colours::white);
+                g.drawImageWithin(paper, 0, 0, grid.getWidth(), grid.getHeight(), juce::RectanglePlacement::centred);
+                return;
+            }
             if (!lead && index() < 0)
                 return;
             drawReadingGrid(g, grid.getLocalBounds(), score, style(), notes, lead, firstBar, columns, rows, options,
@@ -83,23 +174,37 @@ class ScoreView::Panel final : public juce::Component {
         };
         counter.setJustificationType(juce::Justification::centred);
     }
+    void filterCredits() {
+        score.printCredits=selectedCreditLines(creditLines,excluded);
+        credits.setEnabled(!creditLines.isEmpty());
+        credits.setButtonText(creditLines.isEmpty() ? TRANS("No song credits") :
+            TRANS("Credits") + "  " + juce::String(score.printCredits.size()) + "/" + juce::String(creditLines.size()));
+    }
+    void openPrintPreview() { preview=true; page=0; update(); }
+    bool showsLeadSheet() const { return lead; }
     void setSong(const OstfpPreview& project, std::optional<std::size_t> preferred, std::optional<bool> switchMode) {
         auto selected =
             index() >= 0 && index() < static_cast<int>(score.parts.size()) ? score.parts[index()].id : juce::String{};
+        if (songKey!=project.documentId+project.title) excluded.clear();
+        songKey=project.documentId+project.title;
         score = notationScore(project);
+        creditLines=score.printCredits;
+        filterCredits();
         title.setText(score.title, juce::dontSendNotification);
         juce::StringArray names;
         for (const auto& mark : score.lyrics)
             if (mark.voice.isNotEmpty())
                 names.addIfNotAlreadyThere(mark.voice);
         voices.clear(juce::dontSendNotification);
-        voices.addItem(TRANS("All lyric voices"), 1);
+        voices.addItem(TRANS("Primary lyrics"), 1);
         for (int i = 0; i < names.size(); ++i)
             voices.addItem(names[i], i + 2);
         if (!names.contains(options.lyricVoice))
             options.lyricVoice = juce::String{};
         voices.setSelectedId(names.indexOf(options.lyricVoice) + 2, juce::dontSendNotification);
         if (switchMode) {
+            preview = false; page = 0; validBreaks = true;
+            options.pageBreakBars.clear(); breaks.clear();
             lead = *switchMode;
         }
         track.clear(juce::dontSendNotification);
@@ -127,6 +232,7 @@ class ScoreView::Panel final : public juce::Component {
         if (value == tick)
             return;
         tick = value;
+        if (preview) return;
         if (tick >= 0 && follow.getToggleState() && score.barTicks > 0 &&
             (tick < firstBar * score.barTicks || tick >= (firstBar + columns * rows) * score.barTicks))
             updatePage();
@@ -150,6 +256,14 @@ class ScoreView::Panel final : public juce::Component {
                 line = area.removeFromTop(32);
             c.setBounds(line.removeFromLeft(width).reduced(2, 2));
         };
+        place(paperSize, 100);
+        place(orientation, 106);
+        place(margin, 144);
+        place(breakLabel, 150);
+        place(breaks, 125);
+        place(sections, 110);
+        place(credits, 155);
+        place(barNumbers, 136);
         place(density, 112);
         place(chords, 85);
         place(scales, 85);
@@ -160,7 +274,11 @@ class ScoreView::Panel final : public juce::Component {
         place(staff, 170);
         auto bottom = area.removeFromBottom(33);
         pdf.setBounds(bottom.removeFromRight(131).reduced(2));
-        if (!lead)
+        printer.setVisible(preview);
+        printer.setEnabled(validBreaks && !busy && (lead || index()>=0));
+        if (printer.isVisible()) printer.setBounds(bottom.removeFromRight(105).reduced(2));
+        if (preview) leavePreview.setBounds(bottom.removeFromRight(130).reduced(2));
+        if (!preview && !lead)
             xml.setBounds(bottom.removeFromRight(105).reduced(2));
         previous.setBounds(bottom.removeFromLeft(32).reduced(1));
         counter.setBounds(bottom.removeFromLeft(std::min(155, std::max(0, bottom.getWidth() - 32))));
@@ -168,8 +286,8 @@ class ScoreView::Panel final : public juce::Component {
         status.setBounds(area.removeFromBottom(status.getText().isNotEmpty() ? 22 : 0));
         grid.setBounds(area.reduced(0, 4));
         columns = lead ? options.barsPerLine : std::clamp(grid.getWidth() / 330, 1, 4);
-        const int rowHeight =
-            lead ? (options.showLyrics && options.showScales ? 128 : 106) : (style() == StaffStyle::grand ? 192 : 132);
+        const int rowHeight = lead ? (options.showLyrics && options.showScales ? 128 : 106)
+            : (style() == StaffStyle::grand ? 192 : 132) + (options.showLyrics ? 24 : 0);
         rows = std::max(1, grid.getHeight() / rowHeight);
         updatePage();
     }
@@ -185,19 +303,25 @@ class ScoreView::Panel final : public juce::Component {
     }
     void update() {
         const bool has = index() >= 0;
+        for (auto* c : std::array<juce::Component*, 6>{&paperSize,&orientation,&margin,&breakLabel,&breaks,&leavePreview}) c->setVisible(preview);
+        sections.setVisible(lead || preview); barNumbers.setVisible(lead || preview);
+        credits.setVisible(preview);
+        follow.setVisible(!preview); position.setVisible(!preview);
+        pdf.setButtonText(preview ? TRANS("Save PDF...") : TRANS("Print preview..."));
+        title.setText(preview ? TRANS("Print preview") + "  /  " + score.title : score.title, juce::dontSendNotification);
         track.setVisible(!lead);
         staff.setVisible(!lead);
-        for (auto* c : std::array<juce::Component*, 4>{&density, &chords, &scales, &lyrics})
-            c->setVisible(lead);
-        voices.setVisible(lead && options.showLyrics && !score.lyrics.empty());
-        wording.setVisible(voices.isVisible());
-        lyrics.setEnabled(!score.lyrics.empty());
+        density.setVisible(lead);
+        scales.setVisible(lead);
+        voices.setVisible(options.showLyrics && !score.lyrics.empty());
+        wording.setVisible(options.showLyrics && (!score.lyrics.empty() || !score.displayPhrases.empty()));
+        lyrics.setEnabled(!score.lyrics.empty() || !score.displayPhrases.empty());
         chords.setEnabled(!score.chords.empty());
         scales.setEnabled(!score.scales.empty());
         staff.setEnabled(has);
         staff.setSelectedId(static_cast<int>(style()), juce::dontSendNotification);
-        pdf.setEnabled(!busy && (lead || has));
-        xml.setVisible(!lead);
+        pdf.setEnabled(!busy && (!preview || validBreaks) && (lead || has));
+        xml.setVisible(!lead && !preview);
         xml.setEnabled(!busy && has);
         notes = lead ? MeasureNotes{} : partMeasures(score, index(), style());
         status.setText(!lead && !has ? TRANS("No note tracks in this project.") : juce::String{},
@@ -205,12 +329,21 @@ class ScoreView::Panel final : public juce::Component {
         resized();
     }
     void step(int direction) {
+        if (preview) { page += direction; updatePage(); return; }
         if (tick >= 0)
             follow.setToggleState(false, juce::dontSendNotification);
         firstBar += direction * columns * rows;
         updatePage();
     }
     void updatePage() {
+        paper = {};
+        if (preview) {
+            const int total = sheetPages(score, lead, style(), options);
+            page = std::clamp(page, 0, total-1);
+            counter.setText(TRANS("Page") + " " + juce::String(page+1) + " / " + juce::String(total), juce::dontSendNotification);
+            previous.setEnabled(page > 0); next.setEnabled(page+1 < total); grid.repaint();
+            return;
+        }
         const int count = columns * rows;
         const int anchor =
             tick >= 0 && follow.getToggleState() && score.barTicks > 0 ? int(tick / score.barTicks) : firstBar;
@@ -310,6 +443,18 @@ class ScoreView::Panel final : public juce::Component {
     int firstBar = 0, columns = 4, rows = 1;
     juce::int64 tick = -1;
     SheetOptions options;
+    bool preview = false, validBreaks = true;
+    int page = 0;
+    juce::Image paper;
+    juce::ComboBox margin, paperSize, orientation;
+    juce::Label breakLabel;
+    juce::TextEditor breaks;
+    juce::ToggleButton sections{TRANS("Sections")}, barNumbers{TRANS("Bar numbers")};
+    juce::StringArray creditLines,excluded;
+    juce::String songKey;
+    juce::TextButton credits;
+    juce::TextButton printer{TRANS("Print...")};
+    juce::TextButton leavePreview{TRANS("Back to score")};
     juce::ComboBox track, staff, density, voices, wording;
     juce::ToggleButton chords{TRANS("Chords")}, scales{TRANS("Scales")}, lyrics{TRANS("Lyrics")};
     juce::ToggleButton follow{TRANS("Follow playback")};
@@ -324,113 +469,199 @@ ScoreView::ScoreView() : panel_(std::make_unique<Panel>()) {
     addAndMakeVisible(*panel_);
 }
 ScoreView::~ScoreView() = default;
+void ScoreView::openPrintPreview() { panel_->openPrintPreview(); }
 void ScoreView::resized() { panel_->setBounds(getLocalBounds()); }
 void ScoreView::showScore(const OstfpPreview& p, bool lead, std::optional<std::size_t> track) {
     panel_->setSong(p, track, lead);
 }
 void ScoreView::refresh(const OstfpPreview& p) { panel_->setSong(p, {}, {}); }
+bool ScoreView::showsLeadSheet() const { return panel_->showsLeadSheet(); }
 void ScoreView::playbackPosition(juce::int64 t) { panel_->playbackPosition(t); }
 
 namespace {
-class ImportPanel final : public juce::Component {
+class ImportPanel final : public juce::Component, public juce::DragAndDropContainer {
   public:
-    explicit ImportPanel(std::function<void(const juce::File&)> callback) : open(std::move(callback)) {
-        for (auto* c : std::array<juce::Component*, 6>{&midi, &wav, &melody, &save, &openSong, &summary})
+    explicit ImportPanel(OpenImportedSong callback) : open(std::move(callback)) {
+        for (juce::Component* c : std::array<juce::Component*, 5>{&chooseFile, &heading, &summary, &viewport, &openSong})
             addAndMakeVisible(c);
-        summary.setText(TRANS("Choose a MIDI performance or a WAV recording to prepare a new OSTF project."),
-                        juce::dontSendNotification);
-        save.setEnabled(false);
+        addAndMakeVisible(mode);
+        addAndMakeVisible(disclosure);
+        addChildComponent(installOmr);
+        addChildComponent(retryPdf);
+        installOmr.onClick = [] { juce::URL("https://audiveris.github.io/audiveris/_pages/tutorials/install/binaries/").launchInDefaultBrowser(); };
+        retryPdf.onClick = [this] { analyse(lastFile); };
+        addChildComponent(cancel);
+        cancel.onClick = [this] {
+            ++analysisId;
+            worker.removeAllJobs(true, 0);
+            showResult({}, juce::Result::fail(TRANS("Analysis cancelled.")), {});
+        };
+        mode.onChange = [this] {
+            disclosure.setText(mode.getSelectedId() > 1 ? TRANS("AI receives note measurements or rendered score pages.")
+                                                        : TRANS("Analysis runs on this computer."), juce::dontSendNotification);
+        };
+        connections({});
+        viewport.setViewedComponent(&rows, false);
+        heading.setFont(juce::FontOptions(19.f, juce::Font::bold));
+        heading.setText(TRANS("Score analysis"), juce::dontSendNotification);
+        summary.setText(TRANS("Select an audio, MIDI, PDF or MusicXML file."), juce::dontSendNotification);
         openSong.setEnabled(false);
-        midi.onClick = [this] { choose(false, false); };
-        wav.onClick = [this] { choose(true, false); };
-        melody.onClick = [this] { choose(true, true); };
-        save.onClick = [this] { saveAs(); };
-        openSong.onClick = [this] { open(saved); };
+        chooseFile.onClick = [this] { choose(); };
+        openSong.onClick = [this] {
+            if (!project) return;
+            juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, TRANS("Open in this window"),
+                TRANS("Replace the current song with this score? Save any changes to the current song first."),
+                TRANS("Open score"), TRANS("Cancel"), this,
+                juce::ModalCallbackFunction::create([safe = juce::Component::SafePointer<ImportPanel>(this)](int answer) {
+                    if (answer && safe && safe->project) {
+                        safe->items.clear();
+                        safe->openSong.setEnabled(false);
+                        safe->open(std::move(safe->project));
+                        safe->heading.setText(TRANS("Score analysis"), juce::dontSendNotification);
+                        safe->summary.setText(TRANS("Select an audio, MIDI, PDF or MusicXML file."), juce::dontSendNotification);
+                    }
+                }));
+        };
     }
+    void connections(std::vector<AnalysisConnection> active) {
+        const auto previous = mode.getText();
+        providers = std::move(active);
+        mode.clear(juce::dontSendNotification);
+        mode.addItem(TRANS("Local analysis"), 1);
+        int selected = 1;
+        for (size_t i = 0; i < providers.size(); ++i) {
+            const auto label = TRANS("AI analysis") + " / " + providers[i]->name();
+            mode.addItem(label, int(i) + 2);
+            if (previous == label) selected = int(i) + 2;
+        }
+        mode.setSelectedId(selected, juce::dontSendNotification);
+        mode.onChange();
+    }
+    ~ImportPanel() override { worker.removeAllJobs(true, -1); }
     void resized() override {
-        auto a = getLocalBounds().reduced(16);
-        auto top = a.removeFromTop(34);
-        midi.setBounds(top.removeFromLeft(top.getWidth() / 3).reduced(2));
-        wav.setBounds(top.removeFromLeft(top.getWidth() / 2).reduced(2));
-        melody.setBounds(top.reduced(2));
-        auto bottom = a.removeFromBottom(35);
-        save.setBounds(bottom.removeFromLeft(bottom.getWidth() / 2).reduced(2));
-        openSong.setBounds(bottom.reduced(2));
-        summary.setBounds(a);
+        auto area = getLocalBounds().reduced(18);
+        auto top = area.removeFromTop(36);
+        chooseFile.setBounds(top.removeFromRight(std::min(218, top.getWidth() / 2)));
+        heading.setBounds(top);
+        auto controls = area.removeFromTop(34).reduced(0, 3);
+        mode.setBounds(controls.removeFromLeft(std::min(210, controls.getWidth() / 2)));
+        if (cancel.isVisible()) cancel.setBounds(controls.removeFromRight(92));
+        disclosure.setBounds(controls);
+        summary.setBounds(area.removeFromTop(52));
+        if (retryPdf.isVisible()) {
+            auto actions = area.removeFromTop(32);
+            installOmr.setBounds(actions.removeFromLeft(165).reduced(2));
+            retryPdf.setBounds(actions.removeFromLeft(135).reduced(2));
+        }
+        openSong.setBounds(area.removeFromBottom(38));
+        area.reduce(0, 6);
+        viewport.setBounds(area);
+        const int width = std::max(1, area.getWidth() - 16);
+        int y = 0;
+        for (auto& item : items) {
+            item->setBounds(0, y, width, 52);
+            y += 55;
+        }
+        rows.setSize(width, y);
     }
-
   private:
-    void choose(bool audio, bool transcribe) {
-        chooser = std::make_unique<juce::FileChooser>(audio ? TRANS("Choose WAV") : TRANS("Choose MIDI"), juce::File{},
-                                                      audio ? "*.wav;*.wave" : "*.mid;*.midi");
-        chooser->launchAsync(
-            juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-            [safe = juce::Component::SafePointer<ImportPanel>(this), transcribe](const juce::FileChooser& fc) {
-                if (!safe || fc.getResult() == juce::File{})
-                    return;
-                safe->source = fc.getResult();
-                safe->project.reset();
-                safe->openSong.setEnabled(false);
-                safe->save.setEnabled(false);
-                for (auto* button : {&safe->midi, &safe->wav, &safe->melody})
-                    button->setEnabled(false);
-                safe->summary.setText(TRANS("Analysing source..."), juce::dontSendNotification);
-                safe->worker.addJob([safe, source = safe->source, transcribe] {
-                    std::unique_ptr<OstfpPreview> draft;
-                    juce::String info;
-                    auto r = prepareMediaImport(source, draft, info, transcribe);
-                    juce::MessageManager::callAsync([safe, source, draft = std::move(draft), r, info]() mutable {
-                        if (!safe)
-                            return;
-                        safe->project = std::move(draft);
-                        safe->summary.setText(source.getFileName() + "\n\n" + (r.wasOk() ? info : r.getErrorMessage()),
-                                              juce::dontSendNotification);
-                        for (auto* button : {&safe->midi, &safe->wav, &safe->melody})
-                            button->setEnabled(true);
-                        safe->save.setEnabled(r.wasOk());
-                    });
-                });
+    void showResult(std::unique_ptr<OstfpPreview> parsed, const juce::Result& result, const juce::String& info) {
+        chooseFile.setEnabled(true);
+        mode.setEnabled(true);
+        cancel.setVisible(false);
+        const bool missingOmr = result.getErrorMessage() == TRANS("Install Audiveris for local PDF recognition, then retry this PDF.");
+        installOmr.setVisible(missingOmr);
+        retryPdf.setVisible(missingOmr);
+        resized();
+        if (result.failed() || !parsed) {
+            summary.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
+            return;
+        }
+        project = std::move(parsed);
+        heading.setText(project->title, juce::dontSendNotification);
+        summary.setText(info + "\n" + TRANS("Drop a part on a matching track or elsewhere in the arrangement to add a track. Drop chords on the chord lane."),
+                        juce::dontSendNotification);
+        auto add = [this](int index, const juce::String& name) {
+            auto row = std::make_unique<ImportResultRow>(name, *project, index);
+            rows.addAndMakeVisible(*row);
+            items.push_back(std::move(row));
+        };
+        for (const auto& lane : project->globalLanes)
+            if (lane.kind == TimelineLane::chord && !lane.regions.empty())
+                add(-1, TRANS("Chord progression"));
+        for (int i = 0; i < int(project->sourceTrackCount()); ++i)
+            add(i, juce::String::fromUTF8(project->trackLanes[i].label));
+        openSong.setEnabled(true);
+        resized();
+    }
+    void choose() {
+        chooser = std::make_unique<juce::FileChooser>(TRANS("Import audio, MIDI, PDF or MusicXML"), juce::File{}, scoreImportFileFilter());
+        chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [safe = juce::Component::SafePointer<ImportPanel>(this)](const auto& fc) {
+                const auto source = fc.getResult();
+                if (!safe || source == juce::File{}) return;
+                safe->analyse(source);
             });
     }
-    void saveAs() {
-        chooser = std::make_unique<juce::FileChooser>(
-            TRANS("Save new OSTF project"), source.withFileExtension(".ostf").getNonexistentSibling(), "*.ostf");
-        chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
-                                 juce::FileBrowserComponent::warnAboutOverwriting,
-                             [safe = juce::Component::SafePointer<ImportPanel>(this)](const juce::FileChooser& fc) {
-                                 if (!safe || !safe->project || fc.getResult() == juce::File{})
-                                     return;
-                                 auto dest = fc.getResult();
-                                 auto r = dest.hasFileExtension("ostf")
-                                              ? saveMediaImport(*safe->project, dest)
-                                              : juce::Result::fail(TRANS("Choose a .ostf filename."));
-                                 if (r.wasOk())
-                                     safe->saved = dest;
-                                 safe->openSong.setEnabled(r.wasOk());
-                                 safe->summary.setText(r.wasOk() ? dest.getFullPathName() : r.getErrorMessage(),
-                                                       juce::dontSendNotification);
-                             });
+    void analyse(juce::File source) {
+        lastFile = source;
+        installOmr.setVisible(false);
+        retryPdf.setVisible(false);
+        items.clear();
+        project.reset();
+        chooseFile.setEnabled(false);
+        mode.setEnabled(false);
+        cancel.setVisible(true);
+        openSong.setEnabled(false);
+        heading.setText(source.getFileName(), juce::dontSendNotification);
+        summary.setText(TRANS("Analysing source..."), juce::dontSendNotification);
+        resized();
+        const int index = mode.getSelectedId() - 2;
+        AnalysisConnection ai = index >= 0 && index < int(providers.size()) ? providers[size_t(index)] : nullptr;
+        const int id = ++analysisId;
+        worker.addJob([safe = juce::Component::SafePointer<ImportPanel>(this), source, ai, id] {
+            std::unique_ptr<OstfpPreview> score;
+            juce::String info;
+            auto result = analyseScoreImport(source, score, info, ai);
+            juce::MessageManager::callAsync([safe, result, info, id, score = std::move(score)]() mutable {
+                if (safe && safe->analysisId == id) safe->showResult(std::move(score), result, info);
+            });
+        });
     }
-    std::function<void(const juce::File&)> open;
-    juce::TextButton midi{TRANS("Import MIDI...")}, wav{TRANS("Prepare WAV...")}, melody{TRANS("Transcribe melody...")},
-        save{TRANS("Save new OSTF project")}, openSong{TRANS("Open in Studio")};
-    juce::Label summary;
-    juce::File source, saved;
+    juce::File lastFile;
+    juce::TextButton installOmr{TRANS("Get Audiveris")}, retryPdf{TRANS("Retry PDF")};
+    int analysisId = 0;
+    std::vector<AnalysisConnection> providers;
+    juce::ComboBox mode;
+    juce::TextButton cancel{TRANS("Cancel")};
+    juce::Label disclosure;
+    OpenImportedSong open;
+    juce::TextButton chooseFile{TRANS("Import audio, MIDI, PDF or MusicXML")}, openSong{TRANS("Open score here as a new unsaved song")};
+    juce::Label summary, heading;
+    juce::Component rows;
+    juce::Viewport viewport;
     std::unique_ptr<OstfpPreview> project;
+    std::vector<std::unique_ptr<ImportResultRow>> items;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::ThreadPool worker{1};
 };
 class ImportWindow final : public juce::DocumentWindow {
   public:
-    explicit ImportWindow(std::function<void(const juce::File&)> open)
+    explicit ImportWindow(OpenImportedSong open)
         : DocumentWindow(TRANS("Import and transcription"), juce::Colour(dark), closeButton) {
         setUsingNativeTitleBar(true);
         setContentOwned(new ImportPanel(std::move(open)), false);
-        centreWithSize(540, 240);
+        setResizable(true, true);
+        setResizeLimits(520, 340, 2400, 1500);
+        centreWithSize(820, 494);
     }
     void closeButtonPressed() override { setVisible(false); }
 };
 } // namespace
-std::unique_ptr<juce::DocumentWindow> makeMediaImportWindow(std::function<void(const juce::File&)> open) {
+std::unique_ptr<juce::DocumentWindow> makeMediaImportWindow(OpenImportedSong open) {
     return std::make_unique<ImportWindow>(std::move(open));
+}
+
+void setImportConnections(juce::DocumentWindow& window, std::vector<AnalysisConnection> providers) {
+    if (auto* panel = dynamic_cast<ImportPanel*>(window.getContentComponent())) panel->connections(std::move(providers));
 }

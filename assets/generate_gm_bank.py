@@ -1,4 +1,5 @@
 """Build the original OSTF Studio preview SoundFont. No external audio assets."""
+from json import loads
 from math import exp, pi, sin, tanh
 from pathlib import Path
 from random import Random
@@ -6,24 +7,7 @@ from struct import pack
 
 RATE = 44000
 # Harmonic balance, attack, decay, sustain, release and shaped harmonics for 16 GM families.
-FAMILIES = (
-    ("Piano", (1,.48,.33,.18,.11,.05), -8500, -1000, 280, -3500),
-    ("Chromatic", (1,.21,.04,.30,.06,.18), -9000, -1500, 360, -2700),
-    ("Organ", (1,.60,.34,.14,.14), -5000, -3000, 20, -4200),
-    ("Guitar", (1,.43,.22,.11,.035,.025), -8800, -1200, 290, -4400),
-    ("Bass", (1,.40,.09,.025), -7800, -2400, 95, -4600),
-    ("Strings", (1,.50,.25,.21,.12,.085), -2100, -1000, 30, -2000),
-    ("Ensemble", (1,.12,.47,.035,.10), -2400, -1700, 75, -2100),
-    ("Brass", (1,.65,.42,.33,.25,.15,.10), -4700, -2800, 65, -3900),
-    ("Reed", (1,.14,.52,.075,.22,.06), -5250, -2500, 45, -4400),
-    ("Pipe", (1,.13,.04,.01), -4400, -2900, 55, -4500),
-    ("Synth Lead", (1,.60,.36,.28,.18,.14,.11,.08), -6500, -2200, 75, -3100),
-    ("Synth Pad", (1,.40,.13,.04,.11), -1650, -1450, 50, -1300),
-    ("Effects", (1,.14,.04,.24,.08,.18,.05,.10), -1800, -1100, 135, -1250),
-    ("Ethnic", (1,.29,.42,.11,.25,.08), -8000, -1200, 275, -3000),
-    ("Percussive", (1,.36,.11,.16,.04,.07), -9200, -2200, 480, -4500),
-    ("Sound FX", (1,.09,.12,.40,.18,.24), -8500, -1550, 390, -3300),
-)
+FAMILIES = loads(Path(__file__).with_name("GMFamilies.json").read_text(encoding="utf-8"))
 
 
 def chunk(name, data):

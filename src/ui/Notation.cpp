@@ -1,6 +1,8 @@
 #include "ui/Notation.h"
+#include "ui/MusicXmlKey.h"
 #include <algorithm>
 #include <map>
+#include <set>
 
 namespace ostfstudio {
 using Tick = juce::int64;
@@ -73,13 +75,107 @@ const char* staffName(StaffStyle s) {
     }
     return "";
 }
+// Read written events independently of performed Core notes. Keep the original
+// rational values in the score and round only endpoints for the tick-based view.
+static void readWrittenParts(const juce::var& notation, NotationScore& score) {
+    std::map<juce::String,juce::String> instrumentNames;
+    for (const auto& instrument : items(notation["instruments"]))
+        instrumentNames.emplace(instrument["id"].toString(), instrument["name"].toString());
+    std::map<juce::String, size_t> partIds;
+    auto parts = items(notation["parts"]);
+    std::stable_sort(parts.begin(), parts.end(), [](const auto& a, const auto& b) { return int(a["order"]) < int(b["order"]); });
+    for (const auto& item : parts) {
+        partIds.emplace(item["id"].toString(), score.parts.size());
+        auto& part = score.parts.emplace_back();
+        part.id = item["id"].toString(); part.name = item["name"].toString();
+    }
+    std::map<juce::String, int> staffCounts, staffNumber, voiceCounts, voices;
+    for (const auto& staff : items(notation["staves"])) {
+        const auto id = staff["partId"].toString();
+        const auto it = partIds.find(id); if (it == partIds.end()) continue;
+        auto& part = score.parts[it->second];
+        const auto attrs = staff["initialAttributes"];
+        staffNumber[staff["id"].toString()] = int(staff["number"]);
+        if (staffNumber[staff["id"].toString()] == 1) {
+            const auto trans = attrs["transpose"], chromatic = trans["chromatic"];
+            part.transposeDiatonic = int(trans["diatonic"]);
+            part.transposeOctaves = int(trans["octaveChange"]);
+            part.transposeChromatic = double(chromatic["numerator"]) / std::max(1., double(chromatic["denominator"]));
+        }
+        const auto sign = attrs["clef"]["sign"].toString();
+        if (staff["kind"] == "tablature") part.preferred = StaffStyle::guitarTab;
+        else if (staff["kind"] == "percussion") part.preferred = StaffStyle::percussion;
+        else if (++staffCounts[id] > 1) part.preferred = StaffStyle::grand;
+        else if (sign == "F") part.preferred = StaffStyle::bass;
+        else if (sign == "C") part.preferred = StaffStyle::alto;
+    }
+    for (const auto& voice : items(notation["voices"]))
+        voices[voice["id"].toString()] = ++voiceCounts[voice["partId"].toString()];
+    auto measures = items(notation["measures"]);
+    std::stable_sort(measures.begin(), measures.end(), [](const auto& a, const auto& b) { return int(a["order"]) < int(b["order"]); });
+    std::map<juce::String,std::pair<size_t,size_t>> locations;
+    for (const auto& m : measures) {
+        const auto it = partIds.find(m["partId"].toString()); if (it == partIds.end()) continue;
+        auto& bars = score.parts[it->second].writtenMeasures;
+        locations.emplace(m["id"].toString(), std::pair{it->second, bars.size()});
+        bars.emplace_back(); score.bars = std::max(score.bars, int(bars.size()));
+    }
+    std::set<juce::String> tiedFrom, tiedTo;
+    for (const auto& span : items(notation["spans"])) if (span["kind"] == "tie" && span["status"] != "unresolved") {
+        tiedTo.insert(span["start"]["eventId"].toString()); tiedFrom.insert(span["end"]["eventId"].toString());
+    }
+    auto quarter = [](const juce::var& r) { return double(r["numerator"]) / std::max(1., double(r["denominator"])); };
+    for (const auto& e : items(notation["events"])) {
+        const bool unpitched = e["kind"] == "unpitched";
+        if ((!unpitched && e["kind"] != "note") || !bool(e.getProperty("visible",true))) continue;
+        const auto position = locations.find(e["measureId"].toString()); if (position == locations.end()) continue;
+        const auto [part, bar] = position->second;
+        const auto p = e[unpitched ? "unpitched" : "writtenPitch"];
+        const auto step = p[unpitched ? "displayStep" : "step"].toString();
+        const auto letter = juce::String("CDEFGAB").indexOf(step);
+        if (step.length() != 1 || letter < 0) continue;
+        constexpr int semitones[]{0,2,4,5,7,9,11};
+        const auto accidental = juce::roundToInt(quarter(p["alter"]));
+        const int octave = int(p[unpitched ? "displayOctave" : "octave"]), pitch = 12*(octave+1) + semitones[letter] + accidental;
+        const auto at = quarter(e["offsetQuarter"]) * score.ppq;
+        const auto end = at + quarter(e["durationQuarter"]) * score.ppq;
+        if (pitch < 0 || pitch > 127 || at < 0 || end > double(std::numeric_limits<Tick>::max())/2) continue;
+        const auto start = std::llround(at), duration = std::llround(end)-start;
+        const auto grace = e["grace"];
+        if (duration < 0 || (duration == 0 && !grace.isObject())) continue;
+        const auto id = e["id"].toString(); const auto tech = e["technical"];
+        const auto instrument = p["instrumentId"].toString();
+        if (unpitched && instrument.isNotEmpty())
+            score.parts[part].percussionNames[instrument] = instrumentNames.contains(instrument) ? instrumentNames.at(instrument) : instrument;
+        score.parts[part].writtenMeasures[bar].push_back({start, duration, pitch, std::max(1,voices[e["voiceId"].toString()]),
+            int(tech["stringNumber"]), int(tech.getProperty("fret",-1)), tiedFrom.contains(id), tiedTo.contains(id), id, step, accidental, octave,
+            staffNumber[e["staffId"].toString()], grace.isObject(), bool(grace["slash"]), grace["placement"] == "after", instrument, e["notehead"].toString()});
+        auto& fingerings=score.parts[part].writtenMeasures[bar].back().fingerings;
+        for (const auto& finger:items(tech["fingerings"])) fingerings.add(finger.toString());
+    }
+    for (auto& part : score.parts) for (auto& bar : part.writtenMeasures)
+        std::stable_sort(bar.begin(), bar.end(), [](const auto& a, const auto& b) { if (a.at != b.at) return a.at < b.at;
+            const auto order = [](const auto& note) { return note.grace ? (note.graceAfter ? 2 : 0) : 1; };
+            return order(a) < order(b);
+        });
+}
+
 NotationScore notationScore(const OstfpPreview& project) {
     NotationScore s;
     s.title = project.title;
+    const auto info = project.songInformation();
+    if (info.subtitle.isNotEmpty()) s.printCredits.add(info.subtitle);
+    for (const auto& credit : info.credits) s.printCredits.add(juce::translate(credit.role) + "   " + credit.name);
+    if (info.description.isNotEmpty()) s.printCredits.addLines(info.description);
     s.ppq = project.ppq;
+    s.meters = project.meters;
     s.barTicks = project.ticksPerBar;
     s.bars = project.bars.endBar - project.bars.firstBar;
     const auto doc = juce::JSON::parse(project.sourceScore.toString());
+    s.displayPhrases = project.displayPhrases;
+    s.primaryDocument = project.displayDocument;
+    for (const auto& voice : items(doc["lyrics"]["voices"]))
+        s.voiceDocuments[voice["id"].toString()] = voice["documentId"].toString();
     const auto timeline = doc["timeline"];
     const auto meter = timeline["meterChanges"][0];
     s.beats = static_cast<int>(meter["numerator"]);
@@ -105,11 +201,13 @@ NotationScore notationScore(const OstfpPreview& project) {
         if (scale.isNotEmpty())
             s.scales.push_back({0, s.bars * s.barTicks, scale});
     }
+    std::map<juce::String, juce::String> noteTracks;
     std::map<juce::String, std::pair<Tick, Tick>> noteTimes;
     for (const auto& track : items(doc["tracks"]))
         for (const auto& clip : items(track["clips"]))
             for (const auto& n : items(clip["notes"])) {
                 const Tick start = static_cast<Tick>(clip["start"]) + static_cast<Tick>(n["start"]);
+                noteTracks[n["id"].toString()] = track["id"].toString();
                 noteTimes[n["id"].toString()] = {start, start + static_cast<Tick>(n["duration"])};
             }
     std::map<juce::String, SheetMark> alignments;
@@ -121,6 +219,10 @@ NotationScore notationScore(const OstfpPreview& project) {
                 const auto it = noteTimes.find(note.toString());
                 if (it == noteTimes.end())
                     continue;
+                if (value.at < 0 || it->second.first < value.at) {
+                    value.trackId = noteTracks[note.toString()];
+                    value.noteId = note.toString();
+                }
                 value.at = value.at < 0 ? it->second.first : std::min(value.at, it->second.first);
                 value.end = std::max(value.end, it->second.second);
             }
@@ -137,6 +239,9 @@ NotationScore notationScore(const OstfpPreview& project) {
         if (mark.at >= 0 && mark.text.isNotEmpty())
             s.lyrics.push_back(std::move(mark));
     }
+    if (s.lyrics.empty() && s.displayPhrases.empty())
+        for (const auto& phrase : items(doc["lyrics"]["phrases"]))
+            if (auto text = phrase["text"].toString().trim(); text.isNotEmpty()) s.unalignedPhrases.add(text);
     std::stable_sort(s.lyrics.begin(), s.lyrics.end(), [](const auto& a, const auto& b) { return a.at < b.at; });
     for (const auto& tempo : items(timeline["tempoChanges"]))
         s.tempos.push_back({static_cast<Tick>(tempo["at"]), 0, tempo["bpm"].toString()});
@@ -145,6 +250,8 @@ NotationScore notationScore(const OstfpPreview& project) {
         if (label.isNotEmpty())
             s.keys.push_back({static_cast<Tick>(change["at"]), 0, label});
     }
+    readWrittenParts(doc["notation"], s);
+    if (!s.parts.empty()) return s;
     for (std::size_t i = 0; i < project.trackLanes.size(); ++i) {
         if (project.trackKinds[i] == TrackKind::audio)
             continue;
@@ -158,6 +265,7 @@ NotationScore notationScore(const OstfpPreview& project) {
             p.preferred = StaffStyle::bass;
         else if (p.name.containsIgnoreCase("piano") || i == project.chordVoicingTrack)
             p.preferred = StaffStyle::grand;
+        if (i < project.sourceMidiChannels.size()) p.midiChannel = project.sourceMidiChannels[i];
         p.notes = project.pitchedNotes[i];
         const auto& drums = project.drumNotes[i];
         p.notes.insert(p.notes.end(), drums.begin(), drums.end());
@@ -170,10 +278,15 @@ NotationScore notationScore(const OstfpPreview& project) {
     return s;
 }
 
-MeasureNotes partMeasures(const NotationScore& s, int index, StaffStyle style) {
-    MeasureNotes result(s.bars);
+static MeasureNotes splitMeasures(const NotationScore& s, int index, StaffStyle style, const std::vector<Tick>& starts) {
+    MeasureNotes result(starts.size() - 1);
     if (index < 0 || index >= static_cast<int>(s.parts.size()) || s.barTicks <= 0)
         return result;
+    const auto& written = s.parts[index].writtenMeasures;
+    if (!written.empty()) {
+        std::copy_n(written.begin(), std::min(result.size(), written.size()), result.begin());
+        return result;
+    }
     std::vector<Tick> voices;
     const auto& strings = tuning(style);
     std::vector<Tick> busy(strings.size(), 0);
@@ -194,88 +307,123 @@ MeasureNotes partMeasures(const NotationScore& s, int index, StaffStyle style) {
                 break;
             }
         }
-        for (auto pos = n.startTick; pos < n.endTick && pos < s.barTicks * s.bars;) {
-            const int bar = static_cast<int>(pos / s.barTicks);
-            const auto end = std::min(n.endTick, (bar + 1) * s.barTicks);
+        for (auto pos = n.startTick; pos < n.endTick && pos < starts.back();) {
+            const auto bar = std::upper_bound(starts.begin(), starts.end(), pos) - starts.begin() - 1;
+            const auto end = std::min(n.endTick, starts[bar + 1]);
             result[bar].push_back(
-                {pos % s.barTicks, end - pos, n.pitch, voice, string, fret, pos != n.startTick, end != n.endTick});
+                {pos - starts[bar], end - pos, n.pitch, voice, string, fret, pos != n.startTick, end != n.endTick, n.id});
             pos = end;
         }
     }
     return result;
 }
 
+MeasureNotes partMeasures(const NotationScore &s, int index, StaffStyle style) {
+    std::vector<Tick> starts;
+    for (int i = 0; i <= s.bars; ++i)
+        starts.push_back(i * s.barTicks);
+    return splitMeasures(s, index, style, starts);
+}
+
 namespace {
-juce::XmlElement* field(juce::XmlElement& e, const char* tag, const juce::String& value) {
-    auto* child = e.createNewChildElement(tag);
+juce::XmlElement *field(juce::XmlElement &e, const char *tag, const juce::String &value) {
+    auto *child = e.createNewChildElement(tag);
     child->addTextElement(value);
     return child;
 }
-void clef(juce::XmlElement& attr, const char* sign, int line, int number = 0) {
-    auto* el = attr.createNewChildElement("clef");
+void clef(juce::XmlElement &attr, const char *sign, int line, int number = 0) {
+    auto *el = attr.createNewChildElement("clef");
     if (number)
         el->setAttribute("number", number);
     field(*el, "sign", sign);
     field(*el, "line", juce::String(line));
 }
-void rest(juce::XmlElement& measure, Tick ticks, int voice) {
+void rest(juce::XmlElement &measure, Tick ticks, int voice) {
     if (ticks <= 0)
         return;
-    auto* n = measure.createNewChildElement("note");
+    auto *n = measure.createNewChildElement("note");
     n->createNewChildElement("rest");
     field(*n, "duration", juce::String(ticks));
     field(*n, "voice", juce::String(voice));
 }
-} // namespace
-juce::Result writePartXml(juce::OutputStream& stream, const NotationScore& s, int index, StaffStyle style,
-                          const MeasureNotes& bars) {
-    if (index < 0 || index >= static_cast<int>(s.parts.size()))
-        return juce::Result::fail("Select a note track");
-    juce::XmlElement root("score-partwise");
-    root.setAttribute("version", "4.0");
-    field(*root.createNewChildElement("work"), "work-title", s.title);
-    auto* desc = root.createNewChildElement("part-list")->createNewChildElement("score-part");
-    desc->setAttribute("id", "P1");
+void addPart(juce::XmlElement &root, juce::XmlElement &list, const NotationScore &s, int index, StaffStyle style,
+             const MeasureNotes &bars, const std::vector<Tick> &starts, bool conductor, const juce::String &id) {
+    auto *desc = list.createNewChildElement("score-part");
+    desc->setAttribute("id", id);
     field(*desc, "part-name", s.parts[index].name);
     const bool drum = style == StaffStyle::percussion;
+    std::map<juce::String,juce::String> writtenIds;
+    for (const auto& [key,name] : s.parts[index].percussionNames) {
+        const auto xmlId = id + "-U" + juce::String(int(writtenIds.size()) + 1);
+        writtenIds.emplace(key,xmlId);
+        auto* inst = desc->createNewChildElement("score-instrument");
+        inst->setAttribute("id",xmlId);
+        field(*inst,"instrument-name",name);
+    }
     std::map<int, juce::String> ids;
     if (drum) {
-        for (const auto& n : s.parts[index].notes)
-            ids[n.pitch] = "I" + juce::String(n.pitch);
-        for (const auto& [pitch, id] : ids) {
-            auto* inst = desc->createNewChildElement("score-instrument");
+        for (const auto &n : s.parts[index].notes)
+            ids[n.pitch] = id + "-I" + juce::String(n.pitch);
+        for (const auto &[pitch, id] : ids) {
+            auto *inst = desc->createNewChildElement("score-instrument");
             inst->setAttribute("id", id);
             field(*inst, "instrument-name", "GM " + juce::String(pitch));
         }
-        for (const auto& [pitch, id] : ids) {
-            auto* midi = desc->createNewChildElement("midi-instrument");
+        for (const auto &[pitch, id] : ids) {
+            auto *midi = desc->createNewChildElement("midi-instrument");
             midi->setAttribute("id", id);
             field(*midi, "midi-channel", "10");
             field(*midi, "midi-unpitched", juce::String(pitch + 1));
         }
     }
-    auto* part = root.createNewChildElement("part");
-    part->setAttribute("id", "P1");
+    if (!drum && s.parts[index].midiChannel > 0 && s.parts[index].midiChannel <= 16) {
+        const auto instrument = id + "-instrument";
+        auto *definition = desc->createNewChildElement("score-instrument");
+        definition->setAttribute("id", instrument);
+        field(*definition, "instrument-name", s.parts[index].name);
+        auto *midi = desc->createNewChildElement("midi-instrument");
+        midi->setAttribute("id", instrument);
+        field(*midi, "midi-channel", juce::String(s.parts[index].midiChannel));
+    }
+    auto *part = root.createNewChildElement("part");
+    part->setAttribute("id", id);
+    std::set<Tick> lyricTimes;
     for (int b = 0; b < static_cast<int>(bars.size()); ++b) {
-        auto* m = part->createNewChildElement("measure");
+        auto *m = part->createNewChildElement("measure");
         m->setAttribute("number", b + 1);
-        if (b == 0) {
-            auto* a = m->createNewChildElement("attributes");
+        const Tick measureStart = starts[b], length = starts[b + 1] - measureStart;
+        const auto meter = activeMeter(s.meters, double(measureStart), {0, s.beats, s.beatType});
+        auto key = b == 0 ? s.key : juce::String{};
+        for (const auto &mark : s.keys)
+            if (mark.at == measureStart)
+                key = mark.text;
+        if (b == 0 || meter.tick == measureStart || key.isNotEmpty()) {
+            auto *a = m->createNewChildElement("attributes");
             field(*a, "divisions", juce::String(s.ppq));
-            auto* time = a->createNewChildElement("time");
-            field(*time, "beats", juce::String(s.beats));
-            field(*time, "beat-type", juce::String(s.beatType));
-            const auto& strings = tuning(style);
+            const auto mode = key.fromLastOccurrenceOf(" ", false, false);
+            if (mode == "major" || mode == "minor") {
+                const auto tonic = key.upToFirstOccurrenceOf(" ", false, false);
+                const auto &names = musicxml::tonics(mode == "minor");
+                if (auto it = std::find_if(names.begin(), names.end(), [&](const char* name) { return tonic == name; }); it != names.end()) {
+                    auto *signature = a->createNewChildElement("key");
+                    field(*signature, "fifths", juce::String(static_cast<int>(it - names.begin()) - 7));
+                    field(*signature, "mode", mode);
+                }
+            }
+            auto *time = a->createNewChildElement("time");
+            field(*time, "beats", juce::String(meter.numerator));
+            field(*time, "beat-type", juce::String(meter.denominator));
+            const auto &strings = tuning(style);
             if (style == StaffStyle::grand) {
                 field(*a, "staves", "2");
                 clef(*a, "G", 2, 1);
                 clef(*a, "F", 4, 2);
             } else if (!strings.empty()) {
                 clef(*a, "TAB", static_cast<int>(strings.size()) - 1);
-                auto* details = a->createNewChildElement("staff-details");
+                auto *details = a->createNewChildElement("staff-details");
                 field(*details, "staff-lines", juce::String(static_cast<int>(strings.size())));
                 for (int i = 0; i < static_cast<int>(strings.size()); ++i) {
-                    auto* t = details->createNewChildElement("staff-tuning");
+                    auto *t = details->createNewChildElement("staff-tuning");
                     t->setAttribute("line", i + 1);
                     const int p = strings[strings.size() - 1 - i];
                     field(*t, "tuning-step", steps[p % 12]);
@@ -289,77 +437,238 @@ juce::Result writePartXml(juce::OutputStream& stream, const NotationScore& s, in
                 clef(*a, "F", 4);
             else
                 clef(*a, "G", 2);
+            const auto& source = s.parts[index];
+            if (b == 0 && (source.transposeDiatonic || source.transposeChromatic || source.transposeOctaves)) {
+                auto* transpose = a->createNewChildElement("transpose");
+                field(*transpose, "diatonic", juce::String(source.transposeDiatonic));
+                field(*transpose, "chromatic", juce::String(source.transposeChromatic));
+                if (source.transposeOctaves) field(*transpose, "octave-change", juce::String(source.transposeOctaves));
+            }
         }
         std::map<int, std::vector<ScoreNote>> voices;
-        const Tick measureStart = b * s.barTicks;
-        for (const auto& tempo : s.tempos)
-            if (tempo.at >= measureStart && tempo.at < measureStart + s.barTicks) {
-                auto* direction = m->createNewChildElement("direction");
-                auto* mark = direction->createNewChildElement("direction-type")->createNewChildElement("metronome");
+        if (conductor) {
+            for (const auto &chord : s.chords) {
+                if (chord.at < measureStart || chord.at >= starts[b + 1])
+                    continue;
+                auto label = chord.text.trim();
+                if (!juce::String("ABCDEFG").contains(label.substring(0, 1)) || label.isEmpty())
+                    continue;
+                auto *harmony = m->createNewChildElement("harmony");
+                auto pitchName = [](juce::XmlElement &parent, const juce::String &name, const juce::String &note) {
+                    auto *pitch = parent.createNewChildElement(name);
+                    field(*pitch, (name + "-step").toRawUTF8(), note.substring(0, 1));
+                    const auto accidental = note.substring(1).initialSectionContainingOnly("#b");
+                    int alteration = 0;
+                    for (auto c : accidental)
+                        alteration += c == '#' ? 1 : -1;
+                    if (alteration)
+                        field(*pitch, (name + "-alter").toRawUTF8(), juce::String(alteration));
+                    return 1 + accidental.length();
+                };
+                const auto used = pitchName(*harmony, "root", label);
+                const auto suffix = label.substring(used).upToFirstOccurrenceOf("/", false, false);
+                static const std::map<juce::String, juce::String> kinds{{"", "major"},
+                                                                        {"m", "minor"},
+                                                                        {"7", "dominant"},
+                                                                        {"maj7", "major-seventh"},
+                                                                        {"m7", "minor-seventh"},
+                                                                        {"dim", "diminished"},
+                                                                        {"dim7", "diminished-seventh"},
+                                                                        {"m7b5", "half-diminished"},
+                                                                        {"aug", "augmented"},
+                                                                        {"sus4", "suspended-fourth"},
+                                                                        {"sus2", "suspended-second"},
+                                                                        {"6", "major-sixth"},
+                                                                        {"m6", "minor-sixth"},
+                                                                        {"9", "dominant-ninth"},
+                                                                        {"maj9", "major-ninth"},
+                                                                        {"m9", "minor-ninth"}};
+                auto it = kinds.find(suffix);
+                auto *kind = field(*harmony, "kind", it == kinds.end() ? "other" : it->second);
+                if (suffix.isNotEmpty())
+                    kind->setAttribute("text", suffix);
+                if (label.containsChar('/'))
+                    pitchName(*harmony, "bass", label.fromLastOccurrenceOf("/", false, false));
+                if (chord.at > measureStart)
+                    field(*harmony, "offset", juce::String(chord.at - measureStart));
+            }
+        }
+        for (const auto &tempo : s.tempos)
+            if (tempo.at >= measureStart && tempo.at < measureStart + length) {
+                auto *direction = m->createNewChildElement("direction");
+                auto *mark = direction->createNewChildElement("direction-type")->createNewChildElement("metronome");
                 field(*mark, "beat-unit", "quarter");
                 field(*mark, "per-minute", tempo.text);
                 if (tempo.at != measureStart)
                     field(*direction, "offset", juce::String(tempo.at - measureStart));
                 direction->createNewChildElement("sound")->setAttribute("tempo", tempo.text);
             }
-        for (const auto& section : s.sections)
+        for (const auto &section : s.sections)
             if (section.at == measureStart) {
-                auto* direction = m->createNewChildElement("direction");
+                auto *direction = m->createNewChildElement("direction");
                 field(*direction->createNewChildElement("direction-type"), "rehearsal", section.text);
             }
-        for (const auto& n : bars[b])
+        for (const auto &n : bars[b])
             voices[n.voice].push_back(n);
         if (voices.empty())
-            rest(*m, s.barTicks, 1);
+            rest(*m, length, 1);
         bool rewind = false;
-        for (const auto& [voice, events] : voices) {
+        for (const auto &[voice, events] : voices) {
             if (rewind)
-                field(*m->createNewChildElement("backup"), "duration", juce::String(s.barTicks));
-            Tick at = 0;
-            for (const auto& e : events) {
+                field(*m->createNewChildElement("backup"), "duration", juce::String(length));
+            Tick at = 0, previousOnset = -1;
+            for (const auto &e : events) {
                 rest(*m, e.at - at, voice);
-                auto* n = m->createNewChildElement("note");
-                const int p = drum ? drumPosition(e.pitch) : e.pitch;
-                auto* tone = n->createNewChildElement(drum ? "unpitched" : "pitch");
-                field(*tone, drum ? "display-step" : "step", steps[p % 12]);
-                if (!drum && alter[p % 12])
-                    field(*tone, "alter", "1");
-                field(*tone, drum ? "display-octave" : "octave", juce::String(octave(p)));
-                field(*n, "duration", juce::String(e.length));
-                auto ties = [&](juce::XmlElement& parent, const char* tag) {
+                auto *n = m->createNewChildElement("note");
+                if (e.grace) {
+                    auto* ornament = n->createNewChildElement("grace");
+                    if (e.graceSlash) ornament->setAttribute("slash", "yes");
+                } else if (previousOnset == e.at) n->createNewChildElement("chord");
+                const bool writtenPercussion = e.percussionInstrument.isNotEmpty();
+                const bool percussion = writtenPercussion || drum;
+                const int p = drum && !writtenPercussion ? drumPosition(e.pitch) : e.pitch;
+                auto *tone = n->createNewChildElement(percussion ? "unpitched" : "pitch");
+                const bool written = (writtenPercussion || !drum) && e.writtenStep.isNotEmpty();
+                field(*tone, percussion ? "display-step" : "step", written ? e.writtenStep : juce::String(steps[p % 12]));
+                const int alteration = written ? e.writtenAlter : alter[p % 12];
+                if (!percussion && alteration) field(*tone, "alter", juce::String(alteration));
+                field(*tone, percussion ? "display-octave" : "octave", juce::String(written ? e.writtenOctave : octave(p)));
+                if (!e.grace) field(*n, "duration", juce::String(e.length));
+                auto ties = [&](juce::XmlElement &parent, const char *tag) {
                     if (e.tiedFrom)
                         parent.createNewChildElement(tag)->setAttribute("type", "stop");
                     if (e.tiedTo)
                         parent.createNewChildElement(tag)->setAttribute("type", "start");
                 };
                 ties(*n, "tie");
-                if (drum)
-                    n->createNewChildElement("instrument")->setAttribute("id", ids[e.pitch]);
+                if (writtenPercussion)
+                    n->createNewChildElement("instrument")->setAttribute("id", writtenIds.at(e.percussionInstrument));
+                else if (drum && ids.contains(e.pitch))
+                    n->createNewChildElement("instrument")->setAttribute("id", ids.at(e.pitch));
                 field(*n, "voice", juce::String(voice));
-                if (drum && crossHead(e.pitch))
+                if (writtenPercussion ? e.notehead == "x" : drum && crossHead(e.pitch))
                     field(*n, "notehead", "x");
                 if (style == StaffStyle::grand)
-                    field(*n, "staff", e.pitch < 60 ? "2" : "1");
-                if (e.tiedFrom || e.tiedTo || e.string) {
-                    auto* notation = n->createNewChildElement("notations");
+                    field(*n, "staff", juce::String(e.writtenStaff > 0 ? e.writtenStaff : (e.pitch < 60 ? 2 : 1)));
+                if (e.tiedFrom || e.tiedTo || e.string || !e.fingerings.isEmpty()) {
+                    auto *notation = n->createNewChildElement("notations");
                     ties(*notation, "tied");
-                    if (e.string) {
-                        auto* tech = notation->createNewChildElement("technical");
-                        field(*tech, "string", juce::String(e.string));
-                        field(*tech, "fret", juce::String(e.fret));
+                    if (e.string || !e.fingerings.isEmpty()) {
+                        auto *tech = notation->createNewChildElement("technical");
+                        for (const auto& finger:e.fingerings) field(*tech,"fingering",finger);
+                        if (e.string) {
+                            field(*tech, "string", juce::String(e.string));
+                            field(*tech, "fret", juce::String(e.fret));
+                        }
                     }
                 }
-                at = e.at + e.length;
+                if (!e.tiedFrom && !e.grace) {
+                    const bool firstAtOnset = lyricTimes.insert(measureStart + e.at).second;
+                    for (const auto &lyric : s.lyrics) {
+                        if (lyric.at == measureStart + e.at &&
+                            (lyric.noteId.isEmpty() ? firstAtOnset : lyric.noteId == e.noteId) &&
+                            (lyric.trackId.isEmpty() ? conductor : lyric.trackId == s.parts[index].id))
+                            field(*n->createNewChildElement("lyric"), "text", lyric.text);
+                    }
+                }
+                at = std::max(at, e.at + e.length);
+                if (!e.grace) previousOnset = e.at;
             }
-            rest(*m, s.barTicks - at, voice);
+            rest(*m, length - at, voice);
             rewind = true;
         }
+    }
+}
+
+juce::Result exportXml(juce::OutputStream &stream, const NotationScore &s, int single, StaffStyle style,
+                       const MeasureNotes *prepared) {
+    if (s.parts.empty() || s.ppq <= 0 || s.barTicks <= 0 || s.bars < 1)
+        return juce::Result::fail("Select a note track");
+    juce::XmlElement root("score-partwise");
+    root.setAttribute("version", "4.0");
+    field(*root.createNewChildElement("work"), "work-title", s.title);
+    auto *list = root.createNewChildElement("part-list");
+    std::vector<Tick> starts{0};
+    const Tick end = s.barTicks * s.bars;
+    while (starts.back() < end) {
+        const auto at = starts.back();
+        const auto meter = activeMeter(s.meters, double(at), {0, s.beats, s.beatType});
+        auto next = at + (prepared ? s.barTicks
+                                   : std::max<Tick>(1, 4 * s.ppq * meter.numerator / std::max(1, meter.denominator)));
+        if (!prepared) {
+            const auto it = std::upper_bound(s.meters.begin(), s.meters.end(), at,
+                                             [](Tick t, const MeterPoint &m) { return t < m.tick; });
+            if (it != s.meters.end())
+                next = std::min(next, it->tick);
+        }
+        starts.push_back(std::min(next, end));
+    }
+    int count = 0;
+    for (int i = 0; i < static_cast<int>(s.parts.size()); ++i) {
+        if (single >= 0 && i != single)
+            continue;
+        if (single < 0 && s.parts[i].id == "/chord-voicing" && s.parts.size() > 1)
+            continue;
+        const auto staff = prepared ? style : s.parts[i].preferred;
+        const auto id = "P" + juce::String(++count);
+        if (prepared)
+            addPart(root, *list, s, i, staff, *prepared, starts, true, id);
+        else
+            addPart(root, *list, s, i, staff, splitMeasures(s, i, staff, starts), starts, count == 1, id);
     }
     const auto xml = root.toString();
     return stream.write(xml.toRawUTF8(), xml.getNumBytesAsUTF8()) ? juce::Result::ok()
                                                                   : juce::Result::fail("MusicXML write failed");
 }
 
+} // namespace
+
+juce::Result writePartXml(juce::OutputStream &out, const NotationScore &s, int part, StaffStyle style,
+                          const MeasureNotes &bars) {
+    if (part < 0 || part >= static_cast<int>(s.parts.size()) || bars.size() != static_cast<size_t>(s.bars))
+        return juce::Result::fail("Select a note track");
+    return exportXml(out, s, part, style, &bars);
+}
+
+juce::Result writeSongXml(juce::OutputStream &out, const NotationScore &s) {
+    return exportXml(out, s, -1, StaffStyle::treble, nullptr);
+}
+
+juce::Result writeChordPro(juce::OutputStream &out, const NotationScore &s) {
+    if (s.chords.empty() && s.lyrics.empty() && s.displayPhrases.empty() && s.unalignedPhrases.isEmpty())
+        return juce::Result::fail("The song has no chords or lyrics to export.");
+    auto clean = [](juce::String text) { return text.replaceCharacters("\r\n{}[]", "      ").trim(); };
+    juce::String text = "{title: " + clean(s.title) + "}\n";
+    if (s.key.isNotEmpty())
+        text += "{key: " + clean(s.key).replace(" major", "").replace(" minor", "m") + "}\n";
+    text += "{time: " + juce::String(s.beats) + "/" + juce::String(s.beatType) + "}\n";
+    if (!s.tempos.empty())
+        text += "{tempo: " + clean(s.tempos.front().text) + "}\n";
+    std::map<Tick, juce::String> lines, sections;
+    for (const auto &chord : s.chords)
+        lines[chord.at] += "[" + clean(chord.text) + "]";
+    if (s.displayPhrases.empty()) {
+        for (const auto &lyric : s.lyrics) lines[lyric.at] += clean(lyric.text) + " ";
+    } else {
+        for (const auto& phrase : s.displayPhrases)
+            if (phrase.document == s.primaryDocument) lines[phrase.start] += clean(phrase.text) + " ";
+    }
+    for (const auto &section : s.sections) {
+        sections[section.at] = clean(section.text);
+        lines.try_emplace(section.at);
+    }
+    Tick previousBar = -1;
+    for (const auto& [at, value] : lines) {
+        auto bar = at / std::max<Tick>(1,s.barTicks);
+        if (bar != previousBar || sections.count(at)) text += "\n";
+        if (auto it = sections.find(at); it != sections.end()) text += "{comment: " + it->second + "}\n";
+        text += value;
+        previousBar = bar;
+    }
+    text += "\n";
+    for (const auto& phrase : s.unalignedPhrases) text += clean(phrase) + "\n";
+    return out.write(text.toRawUTF8(),text.getNumBytesAsUTF8()) ? juce::Result::ok() : juce::Result::fail("ChordPro write failed");
+}
 namespace {
 constexpr float paperWidth = 595, paperHeight = 842;
 const juce::Colour ink(0xff192728), soft(0xff50625f), accent(0xff276356);
@@ -417,7 +726,8 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
     }
     std::map<int, int> accidentals;
     for (const auto& n : events) {
-        const float x = left + 8 + static_cast<float>(double(n.at) / s.barTicks) * (right - left - 16);
+        const float x = left + 8 + static_cast<float>(double(n.at) / s.barTicks) * (right - left - 16)
+                      + (n.grace ? (n.graceAfter ? 6.f : -6.f) : 0.f);
         g.setColour(ink);
         if (tab) {
             const float y = top + 5 * (n.string ? n.string - 1 : static_cast<int>(tuning(style).size()) + 1);
@@ -425,14 +735,16 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
             g.fillRect(x - 2, y - 4, 12.f, 8.f);
             g.setColour(ink);
             text(g, n.string ? juce::String(n.fret) : "?", x - 1, y - 5, 12, 10, 9, true);
+            if (!n.fingerings.isEmpty()) text(g,n.fingerings.joinIntoString("/"),x-1,top-13,25,10,8);
             continue;
         }
-        const auto clefStyle =
-            style == StaffStyle::grand ? (n.pitch < 60 ? StaffStyle::bass : StaffStyle::treble) : style;
-        const float staffTop = top + (style == StaffStyle::grand && n.pitch < 60 ? 51 : 0);
+        const bool lowerStaff = n.writtenStaff > 0 ? n.writtenStaff == 2 : n.pitch < 60;
+        const auto clefStyle = style == StaffStyle::grand ? (lowerStaff ? StaffStyle::bass : StaffStyle::treble) : style;
+        const float staffTop = top + (style == StaffStyle::grand && lowerStaff ? 51 : 0);
         const int bottomPitch = clefStyle == StaffStyle::bass ? 43 : clefStyle == StaffStyle::alto ? 53 : 64;
         const int p = style == StaffStyle::percussion ? drumPosition(n.pitch) : n.pitch;
-        const int offset = diatonic(p) - diatonic(bottomPitch);
+        const int staffPitch = n.writtenStep.isEmpty() ? diatonic(p) : 7*n.writtenOctave + juce::String("CDEFGAB").indexOf(n.writtenStep);
+        const int offset = staffPitch - diatonic(bottomPitch);
         const float trueY = staffTop + 20 - offset * 2.5f;
         // Keep extreme pitches legible on paper by showing their explicit octave displacement.
         float y = trueY;
@@ -452,6 +764,12 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
             g.drawLine(x - 4, line, x + 5, line, .7f);
         for (float line = staffTop + 25; line <= y + .2f; line += 5)
             g.drawLine(x - 4, line, x + 5, line, .7f);
+        if (n.grace) {
+            g.fillEllipse(x-2, y-1.3f, 4, 2.6f);
+            g.drawLine(x+1.5f,y,x+1.5f,y-9,.7f);
+            if (n.graceSlash) g.drawLine(x-1,y-3,x+4,y-7,.7f);
+            continue;
+        }
         const double quarters = static_cast<double>(n.length) / s.ppq;
         double closest = 10000, base = 1;
         bool dotted = false;
@@ -464,7 +782,7 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
                     dotted = dot;
                 }
             }
-        if (style == StaffStyle::percussion && crossHead(n.pitch)) {
+        if (n.percussionInstrument.isNotEmpty() ? n.notehead == "x" : style == StaffStyle::percussion && crossHead(n.pitch)) {
             g.drawLine(x - 2.5f, y - 2.5f, x + 2.5f, y + 2.5f, 1);
             g.drawLine(x - 2.5f, y + 2.5f, x + 2.5f, y - 2.5f, 1);
         } else if (base >= 2)
@@ -474,10 +792,11 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
         if (dotted)
             g.fillEllipse(x + 4.f, y - 2, 1.6f, 1.6f);
         if (style != StaffStyle::percussion) {
-            auto& prior = accidentals[diatonic(p)];
-            if (prior != alter[p % 12] && !n.tiedFrom) {
-                if (alter[p % 12])
-                    text(g, "#", x - 9, y - 5, 6, 10, 9);
+            auto& prior = accidentals[staffPitch];
+            const int alteration = n.writtenStep.isEmpty() ? alter[p % 12] : n.writtenAlter;
+            if (prior != alteration && !n.tiedFrom) {
+                if (alteration)
+                    text(g, juce::String::repeatedString(alteration < 0 ? "b" : "#", std::min(2,std::abs(alteration))), x - 9, y - 5, 6, 10, 9);
                 else {
                     g.drawLine(x - 8, y - 5, x - 8, y + 2, .7f);
                     g.drawLine(x - 5, y - 2, x - 5, y + 5, .7f);
@@ -485,7 +804,7 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
                     g.drawLine(x - 8, y + 2, x - 5, y + 1, .8f);
                 }
             }
-            prior = alter[p % 12];
+            prior = alteration;
         }
         if (base < 4) {
             const bool down = y < staffTop + 10;
@@ -538,13 +857,31 @@ void drawLeadContents(juce::Graphics& g, const NotationScore& song, Tick from, j
                  live ? 15.f : 10.f, false);
     if (!options.showLyrics || area.isEmpty())
         return;
+    if (options.lyricDisplay != LyricDisplay::pronunciation && !song.displayPhrases.empty()) {
+        const auto voice = song.voiceDocuments.find(options.lyricVoice);
+        const auto& document = voice == song.voiceDocuments.end() ? song.primaryDocument : voice->second;
+        for (const auto& phrase : song.displayPhrases) {
+            if (phrase.start >= to) break;
+            if (phrase.start < from || phrase.document != document) continue;
+            const float x = area.getX() + area.getWidth() * float(double(phrase.start-from)/song.barTicks);
+            const float w = area.getWidth() * float(double(std::min(to,phrase.end)-phrase.start)/song.barTicks);
+            auto wording = phrase.text;
+            if (options.lyricDisplay == LyricDisplay::both && phrase.reading.isNotEmpty() && phrase.reading != wording)
+                wording += " (" + phrase.reading + ")";
+            g.setColour(live ? juce::Colours::white : ink);
+            text(g,wording,x+2,area.getY(),std::max(1.f,w-3),area.getHeight(),live ? 16.f : 10.f,false);
+        }
+        return;
+    }
     juce::AttributedString line;
     const auto normal = live ? juce::Colour(0xffced9e3) : soft;
     const juce::Font font(juce::FontOptions(live ? 16.f : 10.f));
     for (const auto& unit : song.lyrics) {
         if (unit.at >= to)
             break;
-        if (unit.end <= from || (!options.lyricVoice.isEmpty() && unit.voice != options.lyricVoice))
+        const auto docForVoice = song.voiceDocuments.find(unit.voice);
+        if (unit.end <= from || (!options.lyricVoice.isEmpty() ? unit.voice != options.lyricVoice
+            : docForVoice != song.voiceDocuments.end() && docForVoice->second != song.primaryDocument))
             continue;
         auto wording = unit.text;
         if (options.lyricDisplay != LyricDisplay::text && unit.pronunciation.isNotEmpty()) {
@@ -562,6 +899,60 @@ void drawLeadContents(juce::Graphics& g, const NotationScore& song, Tick from, j
     g.reduceClipRegion(area.toNearestInt());
     line.setWordWrap(juce::AttributedString::byWord);
     line.draw(g, area.reduced(3, 0));
+}
+
+void staffChords(juce::Graphics& g, const NotationScore& song, Tick from, juce::Rectangle<float> row) {
+    const auto to = from + song.barTicks;
+    g.setColour(ink);
+    for (const auto& chord : song.chords) {
+        if (chord.at >= to) break;
+        if (chord.end <= from) continue;
+        const float x = row.getX() + row.getWidth() * float(std::max(from,chord.at)-from)/song.barTicks;
+        const float end = row.getX() + row.getWidth() * float(std::min(to,chord.end)-from)/song.barTicks;
+        text(g,chord.text,x+2,row.getY(),std::max(1.f,end-x-3),row.getHeight(),13,true);
+    }
+}
+
+void staffLyrics(juce::Graphics& g, const NotationScore& song, Tick from, juce::Rectangle<float> row,
+                 const SheetOptions& options) {
+    const auto to = from + song.barTicks;
+    const auto voice = song.voiceDocuments.find(options.lyricVoice);
+    const auto& document = voice == song.voiceDocuments.end() ? song.primaryDocument : voice->second;
+    const auto put = [&](const juce::String& label, Tick start, Tick end, juce::Rectangle<float> lane) {
+        const float x = lane.getX() + lane.getWidth() * float(start-from)/song.barTicks;
+        const float right = lane.getX() + lane.getWidth() * float(std::min(to,end)-from)/song.barTicks;
+        g.setFont(juce::FontOptions(10.f));
+        g.drawFittedText(label, juce::Rectangle<float>(x+1,lane.getY(),std::max(1.f,right-x-2),lane.getHeight()).toNearestInt(),
+                         juce::Justification::centredLeft,lane.getHeight() >= 20.f ? 2 : 1,0.45f);
+    };
+    const auto written = options.lyricDisplay == LyricDisplay::both ? row.removeFromTop(row.getHeight()*.5f) : row;
+    bool hasPhrase = false;
+    g.setColour(ink);
+    if (options.lyricDisplay != LyricDisplay::pronunciation) {
+        for (const auto& phrase : song.displayPhrases) {
+            if (phrase.start >= to) break;
+            if (phrase.document != document || phrase.end <= from) continue;
+            hasPhrase = true;
+            if (phrase.start >= from) put(phrase.text,phrase.start,phrase.end,written);
+        }
+    }
+    const auto visible = [&](const auto& unit) {
+        if (options.lyricVoice.isNotEmpty()) return unit.voice == options.lyricVoice;
+        const auto source = song.voiceDocuments.find(unit.voice);
+        return source == song.voiceDocuments.end() || source->second == document;
+    };
+    for (auto it = std::lower_bound(song.lyrics.begin(),song.lyrics.end(),from,
+             [](const auto& unit, Tick tick) { return unit.at < tick; }); it != song.lyrics.end(); ++it) {
+        const auto& unit = *it;
+        if (unit.at >= to) break;
+        if (!visible(unit)) continue;
+        const auto next = std::find_if(std::next(it),song.lyrics.end(),[&](const auto& later) {
+            return later.at >= to || (later.at > unit.at && visible(later));
+        });
+        const Tick limit = next == song.lyrics.end() ? to : std::min(to,next->at);
+        if (!hasPhrase && options.lyricDisplay != LyricDisplay::pronunciation) put(unit.text,unit.at,limit,written);
+        if (options.lyricDisplay != LyricDisplay::text) put(unit.pronunciation.isEmpty() ? unit.text : unit.pronunciation,unit.at,limit,row);
+    }
 }
 } // namespace
 
@@ -589,9 +980,9 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
             g.fillRect(cell);
         auto body = cell.reduced(6, 3);
         auto heading = body.removeFromTop(22);
-        juce::String label(bar + 1);
+        juce::String label = options.showBarNumbers ? juce::String(bar + 1) : juce::String{};
         for (const auto& section : song.sections)
-            if (section.at >= from && section.at < to)
+            if (options.showSections && section.at >= from && section.at < to)
                 label += "    " + section.text;
         g.setColour(lead ? juce::Colour(0xff9bc8c5) : accent);
         text(g, label, heading.getX(), heading.getY(), heading.getWidth(), heading.getHeight(), 13, true);
@@ -600,6 +991,8 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
             drawLeadContents(g, song, from, body, options, true, tick);
         } else if (bar < static_cast<int>(notes.size())) {
             body = body.withX(cell.getX()).withWidth(cell.getWidth());
+            auto harmony = options.showChords ? body.removeFromTop(19.f) : juce::Rectangle<float>{};
+            auto words = options.showLyrics ? body.removeFromBottom(options.lyricDisplay == LyricDisplay::both ? 32.f : 18.f) : juce::Rectangle<float>{};
             left = body.getX();
             right = body.getRight();
             const bool beginsLine = i % columns == 0;
@@ -627,6 +1020,8 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
             }
             left += (noteStart + 8) * scale;
             right -= 8 * scale;
+            if (!harmony.isEmpty()) staffChords(g,song,from,harmony.withX(left).withWidth(std::max(1.f,right-left)));
+            if (!words.isEmpty()) staffLyrics(g,song,from,words.withX(left).withWidth(std::max(1.f,right-left)),options);
         }
         if (current) {
             const float x = left + (right - left) * float(double(tick - from) / song.barTicks);
@@ -637,21 +1032,61 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
     }
 }
 
-int barsPerPage(bool lead, StaffStyle style, const SheetOptions& options) {
-    return lead ? 8 * juce::jlimit(1, 16, options.barsPerLine) : style == StaffStyle::grand ? 8 : 10;
+static int pageCapacity(bool lead, StaffStyle style,const SheetOptions& options, float header) {
+    const float usableHeight = options.paperPoints().y - 2.f * std::clamp(options.marginMm, 5, 35) * 72.f / 25.4f - header;
+    const float rowHeight = lead ? 80.f : (style == StaffStyle::grand ? 153.f : 122.f);
+    const int rows = std::max(1, int(std::floor((usableHeight + 1.f) / rowHeight)));
+    return rows * (lead ? juce::jlimit(1, 16, options.barsPerLine) : 2);
+}
+int barsPerPage(bool lead, StaffStyle style,const SheetOptions& options) { return pageCapacity(lead,style,options,134.f); }
+// Reserve at least one system on each music page. Large credit lists continue on
+// opening pages in order before the music begins.
+static int creditLinesPerPage(const SheetOptions& o) {
+    return std::max(1,int((o.paperPoints().y - 2.f*std::clamp(o.marginMm,5,35)*72.f/25.4f - 300.f)/15.f));
+}
+static int creditPages(const NotationScore& s,const SheetOptions& o) {
+    return !o.showCredits || s.printCredits.isEmpty() ? 0 : (s.printCredits.size()-1)/creditLinesPerPage(o);
+}
+static float musicTop(const NotationScore& s,const SheetOptions& o,int page) {
+    if (!o.showCredits) return page == 0 ? 134.f : 68.f;
+    const int offset=page*creditLinesPerPage(o);
+    if (offset>=s.printCredits.size() && page>0) return 68.f;
+    return 134.f + 15.f*std::clamp(s.printCredits.size()-offset,0,creditLinesPerPage(o));
+}
+std::vector<int> sheetPageStarts(const NotationScore& score, bool lead, StaffStyle style, const SheetOptions& options) {
+    std::vector<int> forced;
+    for (int bar : options.pageBreakBars)
+        if (bar > 1 && bar <= score.bars) forced.push_back(bar - 1);
+    std::sort(forced.begin(), forced.end());
+    std::vector<int> starts(size_t(creditPages(score,options))+1,0);
+    while (true) {
+        const auto capacity = pageCapacity(lead,style,options,musicTop(score,options,int(starts.size())-1));
+        if (starts.back()+capacity >= score.bars && (forced.empty() || starts.back()>=forced.back())) break;
+        const auto next = std::upper_bound(forced.begin(), forced.end(), starts.back());
+        starts.push_back(std::min(starts.back() + capacity, next == forced.end() ? score.bars : *next));
+    }
+    return starts;
 }
 int sheetPages(const NotationScore& s, bool lead, StaffStyle style, const SheetOptions& options) {
-    const int count = barsPerPage(lead, style, options);
-    return std::max(1, (s.bars + count - 1) / count);
+    return int(sheetPageStarts(s, lead, style, options).size());
 }
 void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffStyle style, const MeasureNotes& notes,
                    bool lead, int page, const SheetOptions& options) {
     g.fillAll(juce::Colours::white);
+    juce::Graphics::ScopedSaveState pageState(g);
+    const float margin = std::clamp(options.marginMm, 5, 35) * 72.f / 25.4f;
+    const auto size = options.paperPoints();
+    const float width = size.x - 2 * margin, rightEdge = 32.f + width;
+    const float footer = 25.f + size.y - 2 * margin - 23.f;
+    g.addTransform(juce::AffineTransform::translation(margin-32.f, margin-25.f));
     g.setColour(accent);
     const auto heading = lead ? TRANS("Lead sheet") : (part >= 0 ? s.parts[part].name : TRANS("Score"));
-    text(g, heading, 33, 27, 530, 17, 13, true);
+    const bool front = page <= creditPages(s,options);
+    if (front) text(g, heading, 33, 27, width-1, 17, 13, true);
     g.setColour(ink);
-    text(g, s.title, 32, 50, 531, 37, 29, true);
+    const float musicY = musicTop(s,options,page);
+    if (front) text(g,s.title,32,50,width,37,29,true);
+    else text(g,heading + "   /   " + s.title,32,26,width,22,15,true);
     juce::StringArray meta;
     meta.add(juce::String(s.beats) + "/" + juce::String(s.beatType));
     if (s.key.isNotEmpty())
@@ -661,17 +1096,25 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
     if (!lead)
         meta.add(juce::translate(staffName(style)));
     g.setColour(soft);
-    text(g, meta.joinIntoString("    /    "), 34, 89, 527, 19, 12);
-    g.drawLine(33, 117, 562, 117, 1);
-    const int cols = lead ? juce::jlimit(1, 16, options.barsPerLine) : 2, per = barsPerPage(lead, style, options),
-              first = page * per;
-    const float rowH = 640.f / (per / cols);
-    for (int r = 0; r < per / cols && first + r * cols < s.bars; ++r) {
-        const float y = 134 + r * rowH, startX = lead ? 33.f : 58.f, width = (562 - startX) / cols;
+    if (front) {
+        text(g, meta.joinIntoString("    /    "), 34, 89, width-2, 19, 12);
+        const int base=page*creditLinesPerPage(options);
+        for (int i=0;options.showCredits && i<creditLinesPerPage(options) && base+i<s.printCredits.size();++i)
+            text(g,s.printCredits[base+i],34,111.f+15.f*i,width-3,15.f,11.f);
+    }
+    g.drawLine(33,musicY-9,rightEdge,musicY-9,1);
+    const int cols = lead ? juce::jlimit(1, 16, options.barsPerLine) : 2, per = pageCapacity(lead,style,options,musicY);
+    const auto starts = sheetPageStarts(s, lead, style, options);
+    const int pageCount = int(starts.size());
+    if (page < 0 || page >= pageCount) return;
+    const int first = starts[page], endBar = page + 1 < pageCount ? starts[page+1] : s.bars;
+    const float rowH = (footer - musicY - 16.f) / (per / cols);
+    for (int r = 0; r < per / cols && first + r * cols < endBar; ++r) {
+        const float y = musicY + r * rowH, startX = lead ? 33.f : 58.f, width = (rightEdge - startX) / cols;
         const float top = y + (style == StaffStyle::grand ? 40 : 51);
         const int lines = tuning(style).empty() ? 5 : static_cast<int>(tuning(style).size());
         if (!lead) {
-            const float right = startX + std::min(cols, s.bars - first - r * cols) * width;
+            const float right = startX + std::min(cols, endBar - first - r * cols) * width;
             staffLines(g, 33, right, top, lines);
             drawClef(g, style == StaffStyle::grand ? StaffStyle::treble : style, 34, top);
             if (style == StaffStyle::grand) {
@@ -681,25 +1124,29 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
         }
         for (int c = 0; c < cols; ++c) {
             const int bar = first + r * cols + c;
-            if (bar >= s.bars)
+            if (bar >= endBar)
                 break;
             const float x = startX + c * width;
             const Tick from = bar * s.barTicks, to = from + s.barTicks;
             juce::StringArray labels;
             for (const auto& section : s.sections)
-                if (section.at >= from && section.at < to)
+                if (options.showSections && section.at >= from && section.at < to)
                     labels.add(section.text);
             for (const auto& tempo : s.tempos)
                 if (tempo.at > 0 && tempo.at >= from && tempo.at < to)
                     labels.add(tempo.text + " BPM");
             g.setColour(accent);
-            text(g, juce::String(bar + 1) + "   " + labels.joinIntoString(" / "), x + 4, y, width - 8, 16, 10, true);
+            text(g, (options.showBarNumbers ? juce::String(bar + 1) + "   " : juce::String{}) + labels.joinIntoString(" / "), x + 4, y, width - 8, 16, 10, true);
             if (lead) {
                 g.setColour(juce::Colour(0xffcad4d1));
                 g.drawLine(x, y + 20, x, y + rowH - 7, .7f);
                 g.drawLine(x, y + 19, x + width, y + 19, .7f);
                 drawLeadContents(g, s, from, {x, y + 21, width, rowH - 28}, options, false, -1);
             } else {
+                if (options.showChords) staffChords(g,s,from,{x+8,y+16,width-16,16});
+                const float bottom = top + (style == StaffStyle::grand ? 71.f : 5.f*(lines-1));
+                if (options.showLyrics) staffLyrics(g,s,from,{x+8,bottom+12,width-16,
+                    std::max(12.f,y+rowH-bottom-14)},options);
                 g.setColour(ink);
                 g.drawLine(x + width, top, x + width, top + (style == StaffStyle::grand ? 71 : 5 * (lines - 1)), .8f);
                 if (bar < static_cast<int>(notes.size()))
@@ -708,14 +1155,14 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
         }
     }
     g.setColour(soft);
-    g.drawLine(33, 790, 562, 790, .8f);
-    text(g, "OSTF Studio", 34, 796, 200, 17, 10);
-    text(g, juce::String(page + 1) + " / " + juce::String(sheetPages(s, lead, style, options)), 510, 796, 55, 17, 11);
+    g.drawLine(33, footer, rightEdge, footer, .8f);
+    text(g, "OSTF Studio", 34, footer + 5, 200, 17, 10);
+    text(g, juce::String(page + 1) + " / " + juce::String(pageCount), rightEdge - 55, footer + 5, 55, 17, 11);
 }
 
 juce::Result writeSheetPdf(juce::OutputStream& out, const NotationScore& s, int part, StaffStyle style,
                            const MeasureNotes& notes, bool lead, const SheetOptions& options) {
-    // Each A4 page embeds a lossless grayscale rendering of the selected musical content.
+    // Each page embeds a lossless grayscale rendering of the selected musical content.
     // This includes local font fallback for Japanese, without requiring a PDF viewer font.
     bool ok = true;
     auto ascii = [&](const juce::String& str) { ok &= out.write(str.toRawUTF8(), str.getNumBytesAsUTF8()); };
@@ -734,7 +1181,9 @@ juce::Result writeSheetPdf(juce::OutputStream& out, const NotationScore& s, int 
     object();
     ascii("<< /Type /Pages /Count " + juce::String(pages) + " /Kids [" + kids + "] >>\nendobj\n");
     for (int page = 0; page < pages && ok; ++page) {
-        constexpr int scale = 3, w = 595 * scale, h = 842 * scale;
+        constexpr int scale = 3;
+        const auto size = options.paperPoints();
+        const int w = size.x * scale, h = size.y * scale;
         juce::Image image(juce::Image::RGB, w, h, true, juce::SoftwareImageType{});
         {
             juce::Graphics g(image);
@@ -759,9 +1208,9 @@ juce::Result writeSheetPdf(juce::OutputStream& out, const NotationScore& s, int 
         }
         const int id = 3 + page * 3;
         object();
-        ascii("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im " +
+        ascii("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + juce::String(size.x) + " " + juce::String(size.y) + "] /Resources << /XObject << /Im " +
               juce::String(id + 2) + " 0 R >> >> /Contents " + juce::String(id + 1) + " 0 R >>\nendobj\n");
-        const juce::String paint = "q 595 0 0 842 0 0 cm /Im Do Q\n";
+        const juce::String paint = "q " + juce::String(size.x) + " 0 0 " + juce::String(size.y) + " 0 0 cm /Im Do Q\n";
         object();
         ascii("<< /Length " + juce::String(paint.length()) + " >>\nstream\n" + paint + "endstream\nendobj\n");
         object();

@@ -1,0 +1,2788 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yoh-nak.github.io/ostf/schema/ostf-notation-1.0.schema.json",
+  "title": "OSTF Notation Profile 1.0.0",
+  "type": "object",
+  "description": "Native notation for OSTF 5.2. Optional alongside Core performance data. Structural validity does not prove MusicXML/engraving interoperability.",
+  "properties": {
+    "profileVersion": {
+      "const": "1.0.0",
+      "description": "Version of the independent Notation Profile."
+    },
+    "id": {
+      "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+      "description": "Stable identifier, unique across all notation entities in this document."
+    },
+    "title": {
+      "type": "string",
+      "description": "Notation document title."
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Part"
+      },
+      "description": "Written parts.",
+      "minItems": 1
+    },
+    "partGroups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PartGroup"
+      },
+      "description": "Displayed groups of parts."
+    },
+    "instruments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Instrument"
+      },
+      "description": "Notation instrument identities."
+    },
+    "staves": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Staff"
+      },
+      "description": "Staff registry.",
+      "minItems": 1
+    },
+    "voices": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Voice"
+      },
+      "description": "Voice registry.",
+      "minItems": 1
+    },
+    "measures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Measure"
+      },
+      "description": "Part-local measures.",
+      "minItems": 1
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Event"
+      },
+      "description": "Written notes, rests and spacers; may be empty."
+    },
+    "attributeChanges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AttributeChange"
+      },
+      "description": "Explicit notated state changes."
+    },
+    "marks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Mark"
+      },
+      "description": "Point marks and textual directions."
+    },
+    "spans": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Span"
+      },
+      "description": "Anchored notational spans."
+    },
+    "lyrics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Lyric"
+      },
+      "description": "Written lyrics and vocal text."
+    },
+    "navigation": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Navigation"
+      },
+      "description": "Written repeats and jumps."
+    },
+    "layouts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Layout"
+      },
+      "description": "Optional engraving/layout hints."
+    },
+    "performancePlanRefs": {
+      "type": "array",
+      "items": {
+        "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+      },
+      "description": "Explicit related Core performance plans; no automatic synchronization."
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "ostf-common-1.0.schema.json#/$defs/CapabilityRequirement"
+      },
+      "description": "Action-specific feature requirements."
+    },
+    "extensions": {
+      "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+      "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "profileVersion",
+    "id",
+    "parts",
+    "staves",
+    "voices",
+    "measures",
+    "events"
+  ],
+  "$defs": {
+    "WrittenPitch": {
+      "type": "object",
+      "description": "Pitch spelling in the notation. Alteration is independent of a displayed accidental.",
+      "properties": {
+        "step": {
+          "type": "string",
+          "description": "Diatonic letter name.",
+          "enum": [
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "A",
+            "B"
+          ]
+        },
+        "alter": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Rational",
+          "description": "Signed alteration in semitones relative to the natural letter."
+        },
+        "octave": {
+          "type": "integer",
+          "description": "Scientific pitch octave; middle C is C4.",
+          "minimum": -10,
+          "maximum": 20
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "alter",
+        "octave"
+      ]
+    },
+    "SpelledClass": {
+      "type": "object",
+      "description": "A spelled pitch class without an invented octave, for printed harmony symbols.",
+      "properties": {
+        "step": {
+          "type": "string",
+          "description": "Diatonic letter name.",
+          "enum": [
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "A",
+            "B"
+          ]
+        },
+        "alter": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Rational",
+          "description": "Signed alteration in semitones."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "alter"
+      ]
+    },
+    "Transpose": {
+      "type": "object",
+      "description": "Add this interval to written pitch to obtain sounding pitch. The chromatic component excludes octaveChange.",
+      "properties": {
+        "diatonic": {
+          "type": "integer",
+          "description": "Signed diatonic steps excluding octaveChange."
+        },
+        "chromatic": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Rational",
+          "description": "Signed semitones excluding octaveChange."
+        },
+        "octaveChange": {
+          "type": "integer",
+          "description": "Signed octaves added independently; total chromatic displacement = chromatic + 12 * octaveChange."
+        },
+        "doubling": {
+          "type": "string",
+          "description": "Whether an octave doubling accompanies the primary pitch.",
+          "enum": [
+            "none",
+            "above",
+            "below"
+          ]
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "diatonic",
+        "chromatic",
+        "octaveChange"
+      ]
+    },
+    "Accidental": {
+      "type": "object",
+      "description": "Appearance of an accidental; not the source of pitch alteration.",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Standard MusicXML accidental token or a namespaced extension token."
+        },
+        "cautionary": {
+          "type": "boolean",
+          "description": "Courtesy/cautionary accidental."
+        },
+        "editorial": {
+          "type": "boolean",
+          "description": "Editorial accidental."
+        },
+        "parentheses": {
+          "type": "boolean",
+          "description": "Enclose in parentheses."
+        },
+        "bracket": {
+          "type": "boolean",
+          "description": "Enclose in brackets."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Whether this accidental is printed."
+        },
+        "smufl": {
+          "type": "string",
+          "description": "Optional SMuFL glyph name; availability is not guaranteed."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "code"
+      ]
+    },
+    "MeterGroup": {
+      "type": "object",
+      "description": "One additive component of a time signature.",
+      "properties": {
+        "beats": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "description": "Beat count in an additive group.",
+            "minimum": 1
+          },
+          "description": "Ordered beat groups; [3,2] renders an additive 3+2 numerator.",
+          "minItems": 1
+        },
+        "beatType": {
+          "type": "integer",
+          "description": "Denominator note value: 4 is quarter, 8 is eighth.",
+          "minimum": 1
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "beats",
+        "beatType"
+      ]
+    },
+    "Meter": {
+      "type": "object",
+      "description": "Displayed meter; it does not determine the actual length of every measure.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Measured or senza-misura notation.",
+          "enum": [
+            "measured",
+            "unmeasured"
+          ]
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MeterGroup"
+          },
+          "description": "Ordered groups for simple, additive or mixed meters.",
+          "minItems": 1
+        },
+        "symbol": {
+          "type": "string",
+          "description": "Printed time-signature style.",
+          "enum": [
+            "normal",
+            "common",
+            "cut",
+            "single-number",
+            "note",
+            "dotted-note",
+            "none"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "description": "Original display text if explicitly authored."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Whether the time signature is printed."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "measured"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "groups"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "groups"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "KeyAlteration": {
+      "type": "object",
+      "description": "Explicit nontraditional key-signature alteration.",
+      "properties": {
+        "step": {
+          "type": "string",
+          "description": "Diatonic letter.",
+          "enum": [
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "A",
+            "B"
+          ]
+        },
+        "alter": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Rational",
+          "description": "Alteration in semitones."
+        },
+        "octave": {
+          "type": "integer",
+          "description": "Optional register-specific accidental octave."
+        },
+        "accidental": {
+          "$ref": "#/$defs/Accidental"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "alter"
+      ]
+    },
+    "Key": {
+      "type": "object",
+      "description": "Traditional or nontraditional printed key signature, separate from harmonic analysis.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Key-signature encoding.",
+          "enum": [
+            "traditional",
+            "nontraditional",
+            "none"
+          ]
+        },
+        "fifths": {
+          "type": "integer",
+          "description": "Signed circle-of-fifths count; negative is flats, positive is sharps."
+        },
+        "mode": {
+          "type": "string",
+          "description": "Source mode name; this is not an inferred scale."
+        },
+        "alterations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KeyAlteration"
+          },
+          "description": "Ordered explicit alterations.",
+          "minItems": 1
+        },
+        "cancelFifths": {
+          "type": "integer",
+          "description": "Previous traditional signature to cancel."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Whether the signature is printed."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "traditional"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "fifths"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "nontraditional"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "alterations"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "none"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "fifths"
+                  ]
+                },
+                {
+                  "required": [
+                    "alterations"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Clef": {
+      "type": "object",
+      "description": "A clef and any octave modification explicitly indicated by the clef.",
+      "properties": {
+        "sign": {
+          "type": "string",
+          "description": "Clef sign.",
+          "enum": [
+            "G",
+            "F",
+            "C",
+            "percussion",
+            "TAB",
+            "jianpu",
+            "none",
+            "other"
+          ]
+        },
+        "line": {
+          "type": "integer",
+          "description": "Staff line counted from the bottom, starting at 1.",
+          "minimum": 1
+        },
+        "octaveChange": {
+          "type": "integer",
+          "description": "Octave change represented by the clef sign."
+        },
+        "text": {
+          "type": "string",
+          "description": "Printed replacement text for an other clef."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Whether the clef is printed."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sign"
+      ]
+    },
+    "StringTuning": {
+      "type": "object",
+      "description": "An open string and optional string-specific capo.",
+      "properties": {
+        "stringNumber": {
+          "type": "integer",
+          "description": "1 is the highest-pitched string in the declared instrument convention.",
+          "minimum": 1
+        },
+        "openPitch": {
+          "$ref": "#/$defs/WrittenPitch",
+          "description": "Open string sounding pitch before capo."
+        },
+        "capoFret": {
+          "type": "integer",
+          "description": "Capo fret for this string; 0 means no capo.",
+          "minimum": 0
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "stringNumber",
+        "openPitch"
+      ]
+    },
+    "Tuning": {
+      "type": "object",
+      "description": "Fretted-instrument tuning; not inferred from a TAB clef.",
+      "properties": {
+        "strings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StringTuning"
+          },
+          "description": "Unique string numbers and their pitches.",
+          "minItems": 1
+        },
+        "capoFret": {
+          "type": "integer",
+          "description": "Default capo fret where no string-specific capo is stated.",
+          "minimum": 0
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "strings"
+      ]
+    },
+    "StaffAttributes": {
+      "type": "object",
+      "description": "Staff state. Absent fields are unspecified or inherited from preceding explicit changes.",
+      "properties": {
+        "clef": {
+          "$ref": "#/$defs/Clef"
+        },
+        "key": {
+          "$ref": "#/$defs/Key"
+        },
+        "meter": {
+          "$ref": "#/$defs/Meter"
+        },
+        "transpose": {
+          "$ref": "#/$defs/Transpose"
+        },
+        "staffLines": {
+          "type": "integer",
+          "description": "Number of drawn staff lines; 0 permits line-less notation.",
+          "minimum": 0
+        },
+        "tuning": {
+          "$ref": "#/$defs/Tuning"
+        },
+        "instrumentId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Notation instrument identity in this document."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "clef"
+          ]
+        },
+        {
+          "required": [
+            "key"
+          ]
+        },
+        {
+          "required": [
+            "meter"
+          ]
+        },
+        {
+          "required": [
+            "transpose"
+          ]
+        },
+        {
+          "required": [
+            "staffLines"
+          ]
+        },
+        {
+          "required": [
+            "tuning"
+          ]
+        },
+        {
+          "required": [
+            "instrumentId"
+          ]
+        }
+      ]
+    },
+    "Instrument": {
+      "type": "object",
+      "description": "A notation instrument identity; its audio renderer is not defined here.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "name": {
+          "type": "string",
+          "description": "Full printed instrument name."
+        },
+        "abbreviation": {
+          "type": "string",
+          "description": "Printed abbreviation."
+        },
+        "family": {
+          "type": "string",
+          "description": "Instrument family as supplied by the producer."
+        },
+        "soundRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+          },
+          "description": "Explicit related Core or Production sound-setup references."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "Part": {
+      "type": "object",
+      "description": "A written musical part independent of a MIDI track or sound source.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "name": {
+          "type": "string",
+          "description": "Part name."
+        },
+        "abbreviation": {
+          "type": "string",
+          "description": "Part abbreviation."
+        },
+        "order": {
+          "type": "integer",
+          "description": "Zero-based score display order.",
+          "minimum": 0
+        },
+        "instrumentIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "description": "Notation instrument identities used by this part."
+        },
+        "musicalObjectId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Related musicalModel object; links do not trigger edits."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "order"
+      ]
+    },
+    "PartGroup": {
+      "type": "object",
+      "description": "A displayed grouping of parts.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "partIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "description": "Ordered member part IDs.",
+          "minItems": 1
+        },
+        "name": {
+          "type": "string",
+          "description": "Group name."
+        },
+        "abbreviation": {
+          "type": "string",
+          "description": "Group abbreviation."
+        },
+        "symbol": {
+          "type": "string",
+          "description": "Displayed brace/bracket symbol.",
+          "enum": [
+            "brace",
+            "bracket",
+            "square",
+            "line",
+            "none"
+          ]
+        },
+        "barlineMode": {
+          "type": "string",
+          "description": "Whether grouped part barlines join.",
+          "enum": [
+            "joined",
+            "separate",
+            "mensurstrich"
+          ]
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "partIds"
+      ]
+    },
+    "Staff": {
+      "type": "object",
+      "description": "A staff belongs to one part; its ID survives display reorder.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "partId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Owning notation part."
+        },
+        "number": {
+          "type": "integer",
+          "description": "Positive displayed staff order within the part.",
+          "minimum": 1
+        },
+        "kind": {
+          "type": "string",
+          "description": "Principal notation style.",
+          "enum": [
+            "standard",
+            "tablature",
+            "percussion",
+            "other"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "description": "Staff label."
+        },
+        "initialAttributes": {
+          "$ref": "#/$defs/StaffAttributes"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "partId",
+        "number",
+        "kind"
+      ]
+    },
+    "Voice": {
+      "type": "object",
+      "description": "Logical rhythmic voice; staff, hand, MIDI channel and instrument are independent.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "partId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Owning notation part."
+        },
+        "label": {
+          "type": "string",
+          "description": "Original voice label."
+        },
+        "defaultStaffId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Preferred display staff; events still carry explicit staffId."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "partId"
+      ]
+    },
+    "Measure": {
+      "type": "object",
+      "description": "Part-local written measure. Its displayed label is not its identity.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "partId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Owning notation part."
+        },
+        "order": {
+          "type": "integer",
+          "description": "Zero-based source/score order within the part.",
+          "minimum": 0
+        },
+        "label": {
+          "type": "string",
+          "description": "Printed measure number or arbitrary source label."
+        },
+        "durationQuarter": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/NonnegativeRational",
+          "description": "Actual notated measure extent in quarter-note units; independent of meter."
+        },
+        "implicit": {
+          "type": "boolean",
+          "description": "Source identifies this as an implicit or pickup measure."
+        },
+        "nonControlling": {
+          "type": "boolean",
+          "description": "Source marks this barline as non-controlling for other parts."
+        },
+        "leftBarline": {
+          "type": "string",
+          "description": "Left barline style.",
+          "enum": [
+            "none",
+            "regular",
+            "dotted",
+            "dashed",
+            "heavy",
+            "light-light",
+            "light-heavy",
+            "heavy-light",
+            "heavy-heavy",
+            "tick",
+            "short"
+          ]
+        },
+        "rightBarline": {
+          "type": "string",
+          "description": "Right barline style.",
+          "enum": [
+            "none",
+            "regular",
+            "dotted",
+            "dashed",
+            "heavy",
+            "light-light",
+            "light-heavy",
+            "heavy-light",
+            "heavy-heavy",
+            "tick",
+            "short"
+          ]
+        },
+        "alignedMeasureIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "description": "Explicit notation measures associated at this bar boundary; this is not an elapsed-time map."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "partId",
+        "order",
+        "label",
+        "durationQuarter"
+      ]
+    },
+    "AttributeChange": {
+      "type": "object",
+      "description": "An explicit change at a notated location; applies in score order, not serialized array order.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "partId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "staffId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "If omitted, apply to all current staves in the part."
+        },
+        "measureId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "offsetQuarter": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/NonnegativeRational",
+          "description": "Exact onset in quarter notes from the referenced measure start."
+        },
+        "attributes": {
+          "$ref": "#/$defs/StaffAttributes"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "partId",
+        "measureId",
+        "offsetQuarter",
+        "attributes"
+      ]
+    },
+    "TimeModification": {
+      "type": "object",
+      "description": "Cumulative ratio between the drawn value and effective duration. Nested local ratios remain on tuplet spans.",
+      "properties": {
+        "actual": {
+          "type": "integer",
+          "description": "Number of actual notes in the ratio.",
+          "minimum": 1
+        },
+        "normal": {
+          "type": "integer",
+          "description": "Number of normal notes in the ratio.",
+          "minimum": 1
+        },
+        "normalType": {
+          "type": "string",
+          "description": "Normal-unit printed note type.",
+          "enum": [
+            "maxima",
+            "long",
+            "breve",
+            "whole",
+            "half",
+            "quarter",
+            "eighth",
+            "16th",
+            "32nd",
+            "64th",
+            "128th",
+            "256th",
+            "512th",
+            "1024th"
+          ]
+        },
+        "normalDots": {
+          "type": "integer",
+          "description": "Normal-unit augmentation-dot count.",
+          "minimum": 0
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "actual",
+        "normal"
+      ]
+    },
+    "NotatedValue": {
+      "type": "object",
+      "description": "Written note value, independent of exact effective duration.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Drawn base note value.",
+          "enum": [
+            "maxima",
+            "long",
+            "breve",
+            "whole",
+            "half",
+            "quarter",
+            "eighth",
+            "16th",
+            "32nd",
+            "64th",
+            "128th",
+            "256th",
+            "512th",
+            "1024th"
+          ]
+        },
+        "dots": {
+          "type": "integer",
+          "description": "Augmentation dots.",
+          "minimum": 0
+        },
+        "timeModification": {
+          "$ref": "#/$defs/TimeModification"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "dots"
+      ]
+    },
+    "Grace": {
+      "type": "object",
+      "description": "Ordered zero-duration notation around a principal event; no performance duration is invented.",
+      "properties": {
+        "anchorEventId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Principal notation event."
+        },
+        "placement": {
+          "type": "string",
+          "description": "Relative placement.",
+          "enum": [
+            "before",
+            "after"
+          ]
+        },
+        "order": {
+          "type": "integer",
+          "description": "Zero-based order among grace events at this anchor and placement.",
+          "minimum": 0
+        },
+        "slash": {
+          "type": "boolean",
+          "description": "Draw a slash through the grace stem/beam."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "anchorEventId",
+        "placement",
+        "order"
+      ]
+    },
+    "Unpitched": {
+      "type": "object",
+      "description": "Unpitched instrument and display position; no implied MIDI pitch.",
+      "properties": {
+        "instrumentId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Notation instrument."
+        },
+        "displayStep": {
+          "type": "string",
+          "description": "Displayed letter-position proxy.",
+          "enum": [
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "A",
+            "B"
+          ]
+        },
+        "displayOctave": {
+          "type": "integer",
+          "description": "Displayed octave-position proxy."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "instrumentId",
+        "displayStep",
+        "displayOctave"
+      ]
+    },
+    "BendPoint": {
+      "type": "object",
+      "description": "A bend curve point independent of the base written pitch.",
+      "properties": {
+        "position": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/NonnegativeRational",
+          "description": "Fraction of the event duration, from 0 through 1 inclusive."
+        },
+        "semitones": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Rational",
+          "description": "Pitch displacement in semitones."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "position",
+        "semitones"
+      ]
+    },
+    "Technical": {
+      "type": "object",
+      "description": "Common fretted/performance notation data; further technical marks use typed marks or preserved source features.",
+      "properties": {
+        "stringNumber": {
+          "type": "integer",
+          "description": "String number, highest string = 1.",
+          "minimum": 1
+        },
+        "fret": {
+          "type": "integer",
+          "description": "Fret index, open string = 0.",
+          "minimum": 0
+        },
+        "fingerings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "Authored fingering text."
+          },
+          "description": "Ordered fingering indications."
+        },
+        "bend": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BendPoint"
+          },
+          "description": "Ordered points with positions in [0,1]; distinct positions strictly increase.",
+          "minItems": 1
+        },
+        "harmonic": {
+          "type": "string",
+          "description": "Harmonic technique.",
+          "enum": [
+            "natural",
+            "artificial",
+            "pinch",
+            "tap",
+            "other"
+          ]
+        },
+        "touchPitch": {
+          "$ref": "#/$defs/WrittenPitch"
+        },
+        "soundingPitch": {
+          "$ref": "#/$defs/WrittenPitch"
+        },
+        "mute": {
+          "type": "string",
+          "description": "Explicit muting technique.",
+          "enum": [
+            "none",
+            "palm",
+            "dead",
+            "other"
+          ]
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Event": {
+      "type": "object",
+      "description": "One written note, unpitched note, rest or spacer. It is not automatically a performed Core Note.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Written event category.",
+          "enum": [
+            "note",
+            "unpitched",
+            "rest",
+            "spacer"
+          ]
+        },
+        "partId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "staffId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "voiceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "measureId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "offsetQuarter": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/NonnegativeRational",
+          "description": "Exact onset from this measure start in quarter-note units."
+        },
+        "durationQuarter": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/NonnegativeRational",
+          "description": "Exact effective notated duration in quarter-note units. Grace events alone have zero duration."
+        },
+        "value": {
+          "$ref": "#/$defs/NotatedValue"
+        },
+        "writtenPitch": {
+          "$ref": "#/$defs/WrittenPitch"
+        },
+        "soundingPitch": {
+          "$ref": "#/$defs/WrittenPitch",
+          "description": "Optional explicitly authored/resolved sounding spelling; must agree with applicable transposition when both are authoritative."
+        },
+        "unpitched": {
+          "$ref": "#/$defs/Unpitched"
+        },
+        "accidental": {
+          "$ref": "#/$defs/Accidental"
+        },
+        "grace": {
+          "$ref": "#/$defs/Grace"
+        },
+        "cue": {
+          "type": "boolean",
+          "description": "This is a cue-sized/cue-purpose event."
+        },
+        "playback": {
+          "type": "string",
+          "description": "Performance inclusion policy; absent is unspecified.",
+          "enum": [
+            "include",
+            "exclude",
+            "unspecified"
+          ]
+        },
+        "fullMeasureRest": {
+          "type": "boolean",
+          "description": "Rest fills the actual referenced measure duration."
+        },
+        "chordGroup": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Grouping token for simultaneous chord members; not an entity reference."
+        },
+        "stem": {
+          "type": "string",
+          "description": "Explicit stem choice.",
+          "enum": [
+            "up",
+            "down",
+            "double",
+            "none"
+          ]
+        },
+        "notehead": {
+          "type": "string",
+          "description": "Source notehead token or namespaced extension token."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Whether this event is printed; hidden does not imply inaudible."
+        },
+        "technical": {
+          "$ref": "#/$defs/Technical"
+        },
+        "instrumentIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "description": "Explicit instrument assignments for this event."
+        },
+        "musicalObjectId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Related musicalModel object; absent is permitted for pure notation import."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "partId",
+        "staffId",
+        "voiceId",
+        "measureId",
+        "offsetQuarter",
+        "durationQuarter"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "note"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "writtenPitch"
+            ],
+            "not": {
+              "required": [
+                "unpitched"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "unpitched"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "unpitched"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "writtenPitch"
+                  ]
+                },
+                {
+                  "required": [
+                    "soundingPitch"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "rest",
+                  "spacer"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "writtenPitch"
+                  ]
+                },
+                {
+                  "required": [
+                    "soundingPitch"
+                  ]
+                },
+                {
+                  "required": [
+                    "unpitched"
+                  ]
+                },
+                {
+                  "required": [
+                    "grace"
+                  ]
+                },
+                {
+                  "required": [
+                    "accidental"
+                  ]
+                },
+                {
+                  "required": [
+                    "technical"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "grace"
+            ]
+          },
+          "then": {
+            "properties": {
+              "durationQuarter": {
+                "properties": {
+                  "numerator": {
+                    "const": 0
+                  },
+                  "denominator": {
+                    "const": 1
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "durationQuarter": {
+                "$ref": "ostf-common-1.0.schema.json#/$defs/PositiveRational"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "fullMeasureRest"
+            ],
+            "properties": {
+              "fullMeasureRest": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "rest"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Anchor": {
+      "type": "object",
+      "description": "A stable event edge or exact measure-local position. Neither implies playback time.",
+      "properties": {
+        "eventId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "edge": {
+          "type": "string",
+          "description": "Boundary of the referenced written event.",
+          "enum": [
+            "start",
+            "end"
+          ]
+        },
+        "measureId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "offsetQuarter": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/NonnegativeRational",
+          "description": "Quarter-note offset from measure start."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "eventId",
+            "edge"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "measureId"
+                ]
+              },
+              {
+                "required": [
+                  "offsetQuarter"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "measureId",
+            "offsetQuarter"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "eventId"
+                ]
+              },
+              {
+                "required": [
+                  "edge"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "Tuplet": {
+      "type": "object",
+      "description": "Local tuplet ratio and bracket notation; cumulative ratios also remain on affected events.",
+      "properties": {
+        "actual": {
+          "type": "integer",
+          "description": "Local actual-note count.",
+          "minimum": 1
+        },
+        "normal": {
+          "type": "integer",
+          "description": "Local normal-note count.",
+          "minimum": 1
+        },
+        "actualType": {
+          "type": "string",
+          "description": "Displayed actual unit.",
+          "enum": [
+            "maxima",
+            "long",
+            "breve",
+            "whole",
+            "half",
+            "quarter",
+            "eighth",
+            "16th",
+            "32nd",
+            "64th",
+            "128th",
+            "256th",
+            "512th",
+            "1024th"
+          ]
+        },
+        "normalType": {
+          "type": "string",
+          "description": "Displayed normal unit.",
+          "enum": [
+            "maxima",
+            "long",
+            "breve",
+            "whole",
+            "half",
+            "quarter",
+            "eighth",
+            "16th",
+            "32nd",
+            "64th",
+            "128th",
+            "256th",
+            "512th",
+            "1024th"
+          ]
+        },
+        "actualDots": {
+          "type": "integer",
+          "description": "Actual display dots.",
+          "minimum": 0
+        },
+        "normalDots": {
+          "type": "integer",
+          "description": "Normal display dots.",
+          "minimum": 0
+        },
+        "bracket": {
+          "type": "boolean",
+          "description": "Show a tuplet bracket."
+        },
+        "showNumber": {
+          "type": "string",
+          "description": "Number display.",
+          "enum": [
+            "actual",
+            "both",
+            "none"
+          ]
+        },
+        "showType": {
+          "type": "string",
+          "description": "Unit display.",
+          "enum": [
+            "actual",
+            "both",
+            "none"
+          ]
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "actual",
+        "normal"
+      ]
+    },
+    "Span": {
+      "type": "object",
+      "description": "An explicitly anchored notational relationship. Playback semantics depend on kind and supported mapping.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Span category.",
+          "enum": [
+            "tie",
+            "slur",
+            "tuplet",
+            "beam",
+            "hairpin",
+            "trill",
+            "glissando",
+            "slide",
+            "octave-shift",
+            "pedal",
+            "hammer-on",
+            "pull-off",
+            "lyric-extension",
+            "tremolo",
+            "bracket",
+            "other"
+          ]
+        },
+        "start": {
+          "$ref": "#/$defs/Anchor"
+        },
+        "end": {
+          "$ref": "#/$defs/Anchor"
+        },
+        "eventIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "description": "Ordered member events when needed, notably tuplets and beams."
+        },
+        "parentSpanId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Containing tuplet/group span. Containment must be acyclic."
+        },
+        "status": {
+          "type": "string",
+          "description": "Semantic resolution state; unresolved/conflicted relations must not be applied to playback.",
+          "enum": [
+            "resolved",
+            "unresolved",
+            "conflicted"
+          ]
+        },
+        "tieRole": {
+          "type": "string",
+          "description": "MusicXML sound tie, notation tied, or both; applies only to a tie span.",
+          "enum": [
+            "sound",
+            "notation",
+            "both"
+          ]
+        },
+        "tuplet": {
+          "$ref": "#/$defs/Tuplet"
+        },
+        "beamLevel": {
+          "type": "integer",
+          "description": "Beam level; 1 is the eighth-note beam.",
+          "minimum": 1
+        },
+        "beamHook": {
+          "type": "string",
+          "description": "One-sided hook, if present.",
+          "enum": [
+            "forward",
+            "backward"
+          ]
+        },
+        "hairpinType": {
+          "type": "string",
+          "description": "Hairpin musical direction.",
+          "enum": [
+            "crescendo",
+            "diminuendo"
+          ]
+        },
+        "octaves": {
+          "type": "integer",
+          "description": "Signed octave displacement for an octave-shift span; zero is invalid semantically."
+        },
+        "pedalKind": {
+          "type": "string",
+          "description": "Pedal type.",
+          "enum": [
+            "sustain",
+            "sostenuto",
+            "soft",
+            "other"
+          ]
+        },
+        "tremoloStrokes": {
+          "type": "integer",
+          "description": "Number of tremolo strokes.",
+          "minimum": 0
+        },
+        "lyricId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Lyric record whose extension this represents."
+        },
+        "label": {
+          "type": "string",
+          "description": "Authored span label."
+        },
+        "lineType": {
+          "type": "string",
+          "description": "Line style.",
+          "enum": [
+            "solid",
+            "dashed",
+            "dotted",
+            "wavy"
+          ]
+        },
+        "placement": {
+          "type": "string",
+          "description": "Preferred placement.",
+          "enum": [
+            "above",
+            "below",
+            "auto"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "description": "Namespaced meaning for an other span."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Print visibility."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "start",
+        "end"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "tie"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tieRole"
+            ],
+            "properties": {
+              "start": {
+                "required": [
+                  "eventId"
+                ]
+              },
+              "end": {
+                "required": [
+                  "eventId"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "tuplet"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tuplet",
+              "eventIds"
+            ],
+            "properties": {
+              "eventIds": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "beam"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "beamLevel",
+              "eventIds"
+            ],
+            "properties": {
+              "eventIds": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "hairpin"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "hairpinType"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "octave-shift"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "octaves"
+            ],
+            "properties": {
+              "octaves": {
+                "not": {
+                  "const": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "other"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "code"
+            ]
+          }
+        }
+      ]
+    },
+    "TempoMark": {
+      "type": "object",
+      "description": "Printed metronome indication; separate from performance tempo realization.",
+      "properties": {
+        "perMinute": {
+          "type": "number",
+          "description": "Number of displayed beat units per minute.",
+          "exclusiveMinimum": 0
+        },
+        "beatType": {
+          "type": "string",
+          "description": "Displayed beat unit.",
+          "enum": [
+            "maxima",
+            "long",
+            "breve",
+            "whole",
+            "half",
+            "quarter",
+            "eighth",
+            "16th",
+            "32nd",
+            "64th",
+            "128th",
+            "256th",
+            "512th",
+            "1024th"
+          ]
+        },
+        "dots": {
+          "type": "integer",
+          "description": "Dots on displayed beat unit.",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string",
+          "description": "Exact authored text when supplied."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "perMinute",
+        "beatType",
+        "dots"
+      ]
+    },
+    "HarmonyDegree": {
+      "type": "object",
+      "description": "An addition, alteration or subtraction in a printed chord symbol.",
+      "properties": {
+        "value": {
+          "type": "integer",
+          "description": "Chord degree number.",
+          "minimum": 1
+        },
+        "alter": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Rational",
+          "description": "Semitone alteration."
+        },
+        "operation": {
+          "type": "string",
+          "description": "Degree operation.",
+          "enum": [
+            "add",
+            "alter",
+            "subtract"
+          ]
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "alter",
+        "operation"
+      ]
+    },
+    "HarmonyMark": {
+      "type": "object",
+      "description": "Written chord symbol, associated with but not a replacement for the Core harmony event.",
+      "properties": {
+        "root": {
+          "$ref": "#/$defs/SpelledClass",
+          "description": "Spelled root without octave."
+        },
+        "function": {
+          "type": "string",
+          "description": "Authored functional/roman-numeral text when no root is provided."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Namespaced chord-kind token, e.g. musicxml:major."
+        },
+        "bass": {
+          "$ref": "#/$defs/SpelledClass"
+        },
+        "inversion": {
+          "type": "integer",
+          "description": "Inversion number, root position = 0.",
+          "minimum": 0
+        },
+        "degrees": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HarmonyDegree"
+          },
+          "description": "Ordered chord-degree modifications."
+        },
+        "text": {
+          "type": "string",
+          "description": "Exact printed chord text."
+        },
+        "coreRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+          },
+          "description": "Related Core harmony event(s)."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "root"
+          ],
+          "not": {
+            "required": [
+              "function"
+            ]
+          }
+        },
+        {
+          "required": [
+            "function"
+          ],
+          "not": {
+            "required": [
+              "root"
+            ]
+          }
+        }
+      ]
+    },
+    "Figure": {
+      "type": "object",
+      "description": "One figured-bass figure.",
+      "properties": {
+        "number": {
+          "type": "string",
+          "description": "Figure number or source text."
+        },
+        "prefix": {
+          "type": "string",
+          "description": "Prefix accidental/text."
+        },
+        "suffix": {
+          "type": "string",
+          "description": "Suffix accidental/text."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Mark": {
+      "type": "object",
+      "description": "A point direction or symbol with explicit semantic category and stable anchor.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Mark category.",
+          "enum": [
+            "dynamic",
+            "articulation",
+            "ornament",
+            "technique",
+            "fermata",
+            "breath",
+            "caesura",
+            "rehearsal",
+            "words",
+            "tempo",
+            "harmony",
+            "figured-bass",
+            "other"
+          ]
+        },
+        "anchor": {
+          "$ref": "#/$defs/Anchor"
+        },
+        "partId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "staffId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "voiceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "code": {
+          "type": "string",
+          "description": "Namespaced semantic token, e.g. ostf:staccato. Unknown codes are opaque."
+        },
+        "text": {
+          "type": "string",
+          "description": "Exact authored Unicode text; not a numeric playback instruction."
+        },
+        "number": {
+          "type": "number",
+          "description": "Code-defined scalar, only when its unit is supplied."
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit for number; interpretation requires the semantic code."
+        },
+        "tempo": {
+          "$ref": "#/$defs/TempoMark"
+        },
+        "harmony": {
+          "$ref": "#/$defs/HarmonyMark"
+        },
+        "figures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Figure"
+          },
+          "description": "Ordered figures."
+        },
+        "placement": {
+          "type": "string",
+          "description": "Preferred placement.",
+          "enum": [
+            "above",
+            "below",
+            "auto"
+          ]
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Print visibility."
+        },
+        "smufl": {
+          "type": "string",
+          "description": "Optional SMuFL glyph name."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "anchor",
+        "code"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "number"
+            ]
+          },
+          "then": {
+            "required": [
+              "unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "tempo"
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "tempo"
+                ]
+              },
+              {
+                "required": [
+                  "text"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "harmony"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "harmony"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "figured-bass"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "figures"
+            ],
+            "properties": {
+              "figures": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "LyricComponent": {
+      "type": "object",
+      "description": "Ordered text and elision components, preserving written syllabification.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Component kind.",
+          "enum": [
+            "text",
+            "elision"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "description": "Exact Unicode component text."
+        },
+        "syllabic": {
+          "type": "string",
+          "description": "Syllable relationship within a word.",
+          "enum": [
+            "single",
+            "begin",
+            "middle",
+            "end"
+          ]
+        },
+        "language": {
+          "type": "string",
+          "description": "BCP 47 language tag if supplied."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "text"
+      ]
+    },
+    "Lyric": {
+      "type": "object",
+      "description": "One written lyric line at one event; melisma is represented by a lyric-extension span.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "eventId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "verse": {
+          "type": "string",
+          "description": "Source verse identifier; not restricted to integers."
+        },
+        "name": {
+          "type": "string",
+          "description": "Lyric line name."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Vocal notation category.",
+          "enum": [
+            "text",
+            "humming",
+            "laughing",
+            "extension"
+          ]
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LyricComponent"
+          },
+          "description": "Ordered written text and elisions.",
+          "minItems": 1
+        },
+        "language": {
+          "type": "string",
+          "description": "BCP 47 language tag if supplied."
+        },
+        "placement": {
+          "type": "string",
+          "description": "Preferred placement.",
+          "enum": [
+            "above",
+            "below",
+            "auto"
+          ]
+        },
+        "endLine": {
+          "type": "boolean",
+          "description": "Authored lyric line boundary."
+        },
+        "endParagraph": {
+          "type": "boolean",
+          "description": "Authored paragraph boundary."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Print visibility."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "eventId",
+        "verse",
+        "kind"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "text"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "components"
+            ]
+          }
+        }
+      ]
+    },
+    "Navigation": {
+      "type": "object",
+      "description": "Written navigation marker/range; playback unfolding is a separate Performance Plan.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Navigation instruction.",
+          "enum": [
+            "repeat-start",
+            "repeat-end",
+            "ending",
+            "segno",
+            "coda",
+            "to-coda",
+            "fine",
+            "da-capo",
+            "dal-segno"
+          ]
+        },
+        "anchor": {
+          "$ref": "#/$defs/Anchor"
+        },
+        "end": {
+          "$ref": "#/$defs/Anchor",
+          "description": "End of a volta/ending range."
+        },
+        "targetId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Explicit target navigation identity; absent can remain unresolved."
+        },
+        "passes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "description": "One-based pass number.",
+            "minimum": 1
+          },
+          "description": "Pass selector; no silent default is invented.",
+          "minItems": 1
+        },
+        "repeatCount": {
+          "type": "integer",
+          "description": "Total number of traversals, not the number of extra repeats.",
+          "minimum": 1
+        },
+        "text": {
+          "type": "string",
+          "description": "Exact displayed label, including ending numbers."
+        },
+        "endingType": {
+          "type": "string",
+          "description": "Ending bracket closure.",
+          "enum": [
+            "closed",
+            "open"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "description": "Whether navigation target/interpretation is resolved.",
+          "enum": [
+            "resolved",
+            "unresolved",
+            "conflicted"
+          ]
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "anchor",
+        "status"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ending"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "end"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ending"
+              },
+              "status": {
+                "const": "resolved"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "passes"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "repeat-end",
+                  "dal-segno",
+                  "to-coda"
+                ]
+              },
+              "status": {
+                "const": "resolved"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "targetId"
+            ]
+          }
+        }
+      ]
+    },
+    "LayoutStyle": {
+      "type": "object",
+      "description": "Optional engraving style; renderer resources and metrics may differ.",
+      "properties": {
+        "fontFamily": {
+          "type": "string",
+          "description": "Requested font family."
+        },
+        "fontSizePt": {
+          "type": "number",
+          "description": "Font size in typographic points.",
+          "exclusiveMinimum": 0
+        },
+        "fontStyle": {
+          "type": "string",
+          "description": "Font style.",
+          "enum": [
+            "normal",
+            "italic"
+          ]
+        },
+        "fontWeight": {
+          "type": "string",
+          "description": "Font weight name or numeric text."
+        },
+        "color": {
+          "type": "string",
+          "description": "CSS-style color string."
+        },
+        "textAlign": {
+          "type": "string",
+          "description": "Text alignment.",
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ]
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Print visibility."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Layout": {
+      "type": "object",
+      "description": "Explicit layout box/hint. It never changes musical semantics.",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Stable identifier, unique across all notation entities in this document."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Layout object kind.",
+          "enum": [
+            "page",
+            "system",
+            "staff",
+            "element"
+          ]
+        },
+        "parentLayoutId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id",
+          "description": "Containing layout object; graph must be acyclic."
+        },
+        "targetRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+          },
+          "description": "Semantic objects represented by this layout box."
+        },
+        "unit": {
+          "type": "string",
+          "description": "Units for x/y/width/height.",
+          "enum": [
+            "mm",
+            "staff-space"
+          ]
+        },
+        "x": {
+          "type": "number",
+          "description": "Horizontal offset, positive to the right, relative to parent origin or page origin."
+        },
+        "y": {
+          "type": "number",
+          "description": "Vertical offset in the declared yAxis convention."
+        },
+        "yAxis": {
+          "type": "string",
+          "description": "Positive direction of y.",
+          "enum": [
+            "up",
+            "down"
+          ]
+        },
+        "width": {
+          "type": "number",
+          "description": "Box width in unit.",
+          "minimum": 0
+        },
+        "height": {
+          "type": "number",
+          "description": "Box height in unit.",
+          "minimum": 0
+        },
+        "staffSpaceMm": {
+          "type": "number",
+          "description": "Physical staff-space size when a physical conversion is known.",
+          "exclusiveMinimum": 0
+        },
+        "pageIndex": {
+          "type": "integer",
+          "description": "Zero-based page index.",
+          "minimum": 0
+        },
+        "newSystem": {
+          "type": "boolean",
+          "description": "Author requests a system break here."
+        },
+        "newPage": {
+          "type": "boolean",
+          "description": "Author requests a page break here."
+        },
+        "style": {
+          "$ref": "#/$defs/LayoutStyle"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions",
+          "description": "Namespaced opaque extension data. Unknown extensions are preserved and never executed."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "unit",
+        "x",
+        "y",
+        "yAxis"
+      ]
+    }
+  }
+}

@@ -79,9 +79,34 @@ PluginBrowser::PluginBrowser() {
     cache_ = directory.getChildFile("vst3-cache.xml");
     if (const auto xml = juce::XmlDocument::parse(cache_)) plugins_.recreateFromXml(*xml);
     registerBundledPlugins();
+    pluginTab_.setComponentID("browser-plugins");
+    sampleTab_.setComponentID("browser-samples");
+    addAndMakeVisible(pluginTab_);
+    addAndMakeVisible(sampleTab_);
+    addChildComponent(folder_);
+    pluginTab_.onClick = [this] { showSamples(false); };
+    sampleTab_.onClick = [this] { showSamples(true); };
+    pluginTab_.setToggleState(true, juce::dontSendNotification);
+    folder_.onClick = [this] {
+        folderChooser_ = std::make_unique<juce::FileChooser>(TRANS("Select media folder..."), samples_->getRoot());
+        folderChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+            [safe = juce::Component::SafePointer<PluginBrowser>(this)](const juce::FileChooser& chooser) {
+                if (safe && chooser.getResult().isDirectory()) safe->samples_->setRoot(chooser.getResult());
+            });
+    };
     addAndMakeVisible(scanButton_);
     addAndMakeVisible(scanOneButton_);
     addAndMakeVisible(filter_);
+    addAndMakeVisible(manufacturer_);
+    manufacturer_.setComponentID("plugin-manufacturer");
+    manufacturer_.setTitle(TRANS("Manufacturer"));
+    manufacturer_.onChange = [this] { refreshTree(); };
+    addAndMakeVisible(search_);
+    search_.setComponentID("plugin-search");
+    search_.setTitle(TRANS("Search plug-ins"));
+    search_.setTextToShowWhenEmpty(TRANS("Search by name or manufacturer"),juce::Colours::lightgrey);
+    search_.onTextChange = [this] { refreshTree(); };
+    search_.onEscapeKey = [this] { search_.clear(); };
     filter_.addItem(TRANS("All plug-ins"), 1);
     filter_.addItem(TRANS("Instruments"), 2);
     filter_.addItem(TRANS("Effects"), 3);
@@ -103,25 +128,67 @@ PluginBrowser::PluginBrowser() {
 
 PluginBrowser::~PluginBrowser() {
     stopTimer();
+    if (samples_) samples_->removeListener(this);
     tree_.setRootItem(nullptr);
     if (scanProcess_ && scanProcess_->isRunning()) scanProcess_->kill();
     if (scanStatus_ != juce::File{}) scanStatus_.deleteFile();
 }
 
+void PluginBrowser::showSamples(bool show) {
+    if (show && !samples_) {
+        using Browser = juce::FileBrowserComponent;
+        samples_ = std::make_unique<Browser>(Browser::openMode | Browser::canSelectFiles | Browser::useTreeView
+            | Browser::filenameBoxIsReadOnly, juce::File::getSpecialLocation(juce::File::userMusicDirectory), &sampleFilter_, nullptr);
+        addChildComponent(*samples_);
+        samples_->addListener(this);
+        selectionChanged();
+    }
+    showingSamples_ = show;
+    if (onTabChanged) onTabChanged(show);
+    sampleTab_.setToggleState(show, juce::dontSendNotification);
+    pluginTab_.setToggleState(!show, juce::dontSendNotification);
+    resized();
+}
+
+void PluginBrowser::selectionChanged() {
+    const auto file = samples_->getHighlightedFile();
+    if (auto* tree = dynamic_cast<juce::FileTreeComponent*>(samples_->getDisplayComponent()))
+        tree->setDragAndDropDescription(file.existsAsFile() && supportsSample(file)
+            ? "ostf-media:" + file.getFullPathName() : juce::String{});
+}
+
 void PluginBrowser::resized() {
     auto area = getLocalBounds().reduced(6);
+    auto tabs = area.removeFromTop(28);
+    pluginTab_.setBounds(tabs.removeFromLeft(tabs.getWidth()/2).reduced(1,2));
+    sampleTab_.setBounds(tabs.reduced(1,2));
+    for (juce::Component* control : std::array<juce::Component*,7>{&scanButton_, &scanOneButton_, &filter_, &manufacturer_, &search_, &status_, &tree_})
+        control->setVisible(!showingSamples_);
+    progress_.setVisible(!showingSamples_ && scanProcess_ != nullptr);
+    folder_.setVisible(showingSamples_);
+    if (samples_) samples_->setVisible(showingSamples_);
+    if (showingSamples_) {
+        folder_.setBounds(area.removeFromTop(28).reduced(1,2));
+        samples_->setBounds(area);
+        return;
+    }
     auto buttons = area.removeFromTop(24);
     scanOneButton_.setBounds(buttons.removeFromRight(buttons.getWidth() / 2).reduced(2, 0));
     scanButton_.setBounds(buttons.reduced(2, 0));
     filter_.setBounds(area.removeFromTop(28).reduced(2, 2));
+    manufacturer_.setBounds(area.removeFromTop(28).reduced(2, 2));
+    search_.setBounds(area.removeFromTop(27).reduced(2,1));
     status_.setBounds(area.removeFromTop(28));
     if (progress_.isVisible()) progress_.setBounds(area.removeFromTop(14).reduced(0, 2));
     tree_.setBounds(area);
 }
 
 std::optional<juce::PluginDescription> PluginBrowser::find(const juce::String& identifier) const {
-    for (const auto& plugin : plugins_.getTypes())
+    for (const auto& plugin : catalog_)
         if (plugin.createIdentifierString() == identifier) return plugin;
+    if (const auto saved = plugins_.getTypeForIdentifierString(identifier))
+        for (const auto& plugin : catalog_)
+            if (sameVst3Class(*saved, plugin)) return plugin;
     return std::nullopt;
 }
 
@@ -290,17 +357,34 @@ int PluginBrowser::runScanWorker(const juce::String& token, const juce::String& 
 }
 
 void PluginBrowser::registerBundledPlugins() {
-    for (const auto* file : {"OSTF Arranger.vst3", "OSTF GM Sound Module.vst3"})
-        registerBundledVst3(plugins_, file);
+    registerBundledVst3(plugins_, "OSTF GM Sound Module.vst3");
+    for (const auto& instrument : ostfstudio::stockInstruments) registerBundledVst3(plugins_, juce::String(instrument.name) + ".vst3");
     for (const auto& fx : ostfstudio::stockEffects) registerBundledVst3(plugins_, juce::String(fx.name) + ".vst3");
+    catalog_ = pluginCatalog(plugins_.getTypes(),
+        juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory());
 }
 
 void PluginBrowser::refreshTree() {
-    auto types = plugins_.getTypes();
+    juce::StringArray allMakers;
+    for (const auto& type : catalog_) allMakers.addIfNotAlreadyThere(displayManufacturer(type), true);
+    allMakers.sort(true);
+    const auto selected = manufacturer_.getSelectedId() > 1 ? manufacturer_.getText() : juce::String{};
+    manufacturer_.clear(juce::dontSendNotification);
+    manufacturer_.addItem(TRANS("All manufacturers"), 1);
+    manufacturer_.addItemList(allMakers, 2);
+    const auto index = allMakers.indexOf(selected, true);
+    manufacturer_.setSelectedId(index + 2, juce::dontSendNotification);
+    auto types = catalog_;
     const auto filter = filter_.getSelectedId();
-    for (int i = types.size(); --i >= 0;)
-        if (isOstfGenerator(types.getReference(i)) || (filter != 1 && browserCategory(types.getReference(i)) != filter))
+    const auto words = juce::StringArray::fromTokens(search_.getText().trim()," \t",{});
+    for (int i = types.size(); --i >= 0;) {
+        const auto& plugin = types.getReference(i);
+        const auto text = plugin.name + " " + displayManufacturer(plugin) + " " + plugin.category;
+        if ((index >= 0 && !displayManufacturer(plugin).equalsIgnoreCase(selected))
+            || (filter != 1 && browserCategory(plugin) != filter)
+            || std::any_of(words.begin(),words.end(),[&](const auto& word){return !text.containsIgnoreCase(word);}))
             types.remove(i);
+    }
     auto next = std::make_unique<Item>("VST3");
     juce::StringArray manufacturers;
     for (const auto& plugin : types)

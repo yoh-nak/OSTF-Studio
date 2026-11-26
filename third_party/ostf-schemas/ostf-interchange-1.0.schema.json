@@ -1,0 +1,488 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yoh-nak.github.io/ostf/schema/ostf-interchange-1.0.schema.json",
+  "title": "OSTF Interchange Profile 1.0.0",
+  "type": "object",
+  "properties": {
+    "profileVersion": {
+      "const": "1.0.0"
+    },
+    "id": {
+      "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "minItems": 0
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Binding"
+      },
+      "minItems": 0
+    },
+    "fragments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Fragment"
+      },
+      "minItems": 0
+    },
+    "conversions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Conversion"
+      },
+      "minItems": 0
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "ostf-common-1.0.schema.json#/$defs/CapabilityRequirement"
+      },
+      "minItems": 0
+    },
+    "extensions": {
+      "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+    }
+  },
+  "required": [
+    "profileVersion",
+    "id",
+    "sources",
+    "bindings",
+    "fragments",
+    "conversions"
+  ],
+  "additionalProperties": false,
+  "description": "OSTF source preservation, alignment and conversion accountability profile; format adapters and recognition engines remain independent implementations.",
+  "$defs": {
+    "Source": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "resourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "format": {
+          "enum": [
+            "musicxml",
+            "mxl",
+            "mei",
+            "midi",
+            "pdf",
+            "svg",
+            "image",
+            "abc",
+            "lilypond",
+            "guitarPro",
+            "audio",
+            "other"
+          ]
+        },
+        "formatVersion": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Sha256"
+        },
+        "mediaType": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 3
+        },
+        "importMethod": {
+          "enum": [
+            "parsed",
+            "recognized",
+            "transcribed",
+            "attached"
+          ]
+        },
+        "originalPreserved": {
+          "type": "boolean"
+        },
+        "parentSourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "resourceId",
+        "format",
+        "sha256",
+        "mediaType",
+        "importMethod",
+        "originalPreserved"
+      ],
+      "additionalProperties": false,
+      "description": "Imported exact source bytes declared by Core resources. Unsupported formats can be attached without claiming parsing. OMR and transcription are estimated, separate from symbolic parsing."
+    },
+    "Locator": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "xmlId",
+            "xpath",
+            "byteRange",
+            "midiEvent",
+            "pageRegion",
+            "opaque"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 1
+        },
+        "namespaces": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "pageIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Exact integer."
+        },
+        "region": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "Normalized left coordinate.",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "y": {
+              "type": "number",
+              "description": "Normalized top coordinate.",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "width": {
+              "type": "number",
+              "description": "Normalized width.",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "height": {
+              "type": "number",
+              "description": "Normalized height.",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "additionalProperties": false,
+      "description": "Source-only location. XML XPath is an inert selector bound to exact source bytes, not executable script. pageIndex is zero-based, region uses top-left normalized page coordinates."
+    },
+    "Binding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "sourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "locator": {
+          "$ref": "#/$defs/Locator"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "status": {
+          "enum": [
+            "mapped",
+            "estimated",
+            "stale",
+            "unresolved"
+          ]
+        },
+        "confidence": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Confidence"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "sourceId",
+        "locator",
+        "targets",
+        "status"
+      ],
+      "additionalProperties": false,
+      "description": "Many-to-many alignment from original source notation/recognized pixels/MIDI events to native entities."
+    },
+    "Fragment": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "sourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "locator": {
+          "$ref": "#/$defs/Locator"
+        },
+        "resourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "sha256": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Sha256"
+        },
+        "mediaType": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 3
+        },
+        "anchor": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Exact integer."
+        },
+        "reinsertion": {
+          "enum": [
+            "unchangedOnly",
+            "contextValidated",
+            "never"
+          ]
+        },
+        "status": {
+          "enum": [
+            "valid",
+            "stale",
+            "conflicted"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 1
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "sourceId",
+        "resourceId",
+        "sha256",
+        "mediaType",
+        "reinsertion",
+        "status",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "description": "Opaque source fragment with exact bytes and original source context. Reinsertion after edits must be validated; preservation is not semantic understanding."
+    },
+    "Loss": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 1
+        },
+        "feature": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 1
+        },
+        "disposition": {
+          "enum": [
+            "mapped",
+            "preservedOpaque",
+            "approximated",
+            "omitted",
+            "conflicted",
+            "unsupported"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "sourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "message": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 1
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "code",
+        "feature",
+        "disposition",
+        "severity",
+        "message"
+      ],
+      "additionalProperties": false,
+      "description": "Explicit feature-by-feature conversion result. Silent omission is nonconforming."
+    },
+    "Conversion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "direction": {
+          "enum": [
+            "import",
+            "export",
+            "downgrade"
+          ]
+        },
+        "sourceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "targetFormat": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 1
+        },
+        "targetVersion": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "complete",
+            "partial",
+            "failed"
+          ]
+        },
+        "fidelity": {
+          "enum": [
+            "byteIdentical",
+            "semanticSubset",
+            "appearanceApproximation",
+            "performanceApproximation",
+            "opaqueOnly",
+            "none"
+          ]
+        },
+        "implementation": {
+          "type": "string",
+          "description": "Name and version of converter, recognizer or manual author.",
+          "minLength": 1
+        },
+        "outputResourceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Loss"
+          },
+          "minItems": 0
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        },
+        "featureScope": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Explicit semantic features covered by a semanticSubset claim; each needs a matching decisions[].feature record."
+        }
+      },
+      "required": [
+        "id",
+        "direction",
+        "sourceIds",
+        "targetFormat",
+        "status",
+        "fidelity",
+        "implementation",
+        "decisions"
+      ],
+      "additionalProperties": false,
+      "description": "Fidelity scope is explicit. byteIdentical is only for byte-for-byte retained original export, not an edited semantic conversion. A package example is not proof of a converter implementation.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "fidelity": {
+                "const": "semanticSubset"
+              }
+            },
+            "required": [
+              "fidelity"
+            ]
+          },
+          "then": {
+            "required": [
+              "featureScope"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

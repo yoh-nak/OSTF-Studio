@@ -1,37 +1,106 @@
 #pragma once
+#include "ui/ControlTargetButton.h"
+#include "ui/ConsoleLookAndFeel.h"
+#include "ui/EditorClipLane.h"
+#include "ui/ChordReview.h"
+#include "ui/SystemUsageMeter.h"
+#include <juce_audio_utils/juce_audio_utils.h>
 #include <JuceHeader.h>
 #include "ui/DeviceSettingsWindow.h"
-#include "ui/MixerPanel.h"
+#include "ui/TrackSendKnobs.h"
 #include "ui/MidiDragButton.h"
+#include "ui/MidiPerformanceBuffer.h"
 #include "ui/OstfpPreview.h"
 #include "ui/PluginBrowser.h"
 #include "ui/PreviewTransport.h"
 #include "ui/ViewButton.h"
+#include "ui/ArrangementRuler.h"
+#include "ui/AudioClipEditor.h"
+#include "ui/TempoEditor.h"
+#include "ui/PianoInspector.h"
+#include "ui/VocalLane.h"
+#include "ui/PromptGuide.h"
+#include "ui/SongLoadingOverlay.h"
+#include "ui/PerformanceEditor.h"
+#include "ui/DrumSteps.h"
+#include "ui/DrumPads.h"
+#include "ui/ControllerSurface.h"
+#include "ui/MidiActivityLamp.h"
+#include "ui/LiveSections.h"
+#include "ui/LiveTrackSelector.h"
+#include "ui/LiveSectionMatrix.h"
+#include "ui/LiveChordGuide.h"
 #include "ui/TrackRowSize.h"
 #include "ui/ScoreView.h"
 #include "ui/TransportPanel.h"
+#include "ui/SongBasicsPanel.h"
+#include "ui/TheoryGuide.h"
 
-class MainComponent final : public juce::Component, public juce::DragAndDropContainer,
-                            public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::Timer, private juce::ScrollBar::Listener {
+
+class MainComponent final : public juce::Component, public juce::TooltipClient, public juce::DragAndDropContainer,
+                            public juce::FileDragAndDropTarget, public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::MidiInputCallback, private juce::Timer, private juce::ScrollBar::Listener {
 public:
     MainComponent();
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
-    void displayTransportPosition(juce::int64 tick, double seconds = -1);
+    void openSongFile(const juce::File& file, std::function<void(bool)> finished = {});
+    void openImportedSong(std::unique_ptr<ostfstudio::OstfpPreview>);
+    void displayTransportPosition(juce::int64 tick, double seconds = -1, const juce::ScrollBar* anchoredView = nullptr);
     void paint(juce::Graphics& g) override;
     void resized() override;
+    juce::String getTooltip() override;
+    bool keyPressed(const juce::KeyPress&) override;
+    bool keyStateChanged(bool) override;
+    void focusOfChildComponentChanged(FocusChangeType) override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseUp(const juce::MouseEvent& event) override;
+    bool isInterestedInFileDrag(const juce::StringArray&) override;
+    bool shouldDropFilesWhenDraggedExternally(const juce::DragAndDropTarget::SourceDetails&, juce::StringArray&, bool&) override;
+    void filesDropped(const juce::StringArray&, int x, int y) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 private:
+    ostfstudio::console::LookAndFeel consoleStyle_;
+    const ostfstudio::console::Finish& finish() const { return ostfstudio::console::finishFor(pianoInspector_.theme); }
     bool isInterestedInDragSource(const SourceDetails& details) override;
     void itemDragMove(const SourceDetails& details) override;
     void itemDragExit(const SourceDetails& details) override;
     void itemDropped(const SourceDetails& details) override;
     std::optional<std::size_t> pluginDropTrack(juce::Point<int> position) const;
     void timerCallback() override;
+    void handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage&) override;
+    struct PadUpdate final : juce::AsyncUpdater {
+        explicit PadUpdate(MainComponent& owner) : editor(owner) {}
+        MainComponent& editor;
+        void handleAsyncUpdate() override { editor.showPadInput(); }
+    } padUpdate_{*this};
+    void showPadInput();
+    void attachPadInput(bool);
+    void openController(bool show);
+    void connectController(juce::MidiDeviceInfo);
+    void applySurfaceAction(ostfstudio::SurfaceAction);
+    int mackieBank_ = 0;
+    void connectMackieOutput(const juce::String&);
+    void updateMackieFeedback();
+    std::unique_ptr<juce::MidiOutput> mackieOutput_;
+    std::array<int, 8 * 6 + 3> mackieFeedback_{};
+    std::unique_ptr<juce::DocumentWindow> surfaceWindow_;
+    ControllerSurface* surfacePanel_ = nullptr;
+    juce::MidiDeviceListConnection surfaceDevices_;
+    juce::SpinLock surfaceLock_;
+    juce::String mackiePort_;
+    std::array<ostfstudio::SurfaceAction, 128> surfaceEvents_{};
+    size_t surfaceCount_ = 0;
+    bool openedSurfacePort_ = false;
+    void flashPad(int pitch);
+    void cancelPadLearn();
+    std::array<int, 128> padMapping_{};
+    std::array<std::atomic<bool>, 128> padPressed_{};
+    std::atomic<int> learnTarget_{-1}, learnedPair_{-1};
+    bool padListening_ = false;
     void scrollBarMoved(juce::ScrollBar*, double) override;
-    void updateHorizontalRange(bool piano, bool reset = false);
+    void updateHorizontalRange(bool reset = false);
     enum class HeightGroup { all = 1, global, lanes, voicing, melody, vocal, arrangement, pitched, drums, audio,
                              outputs, master, bus, returns, count };
     HeightGroup trackHeightGroup(std::size_t index) const;
@@ -39,44 +108,152 @@ private:
     static bool includesHeightGroup(HeightGroup scope, HeightGroup group);
     void applyGroupHeight();
     void refreshGroupHeight();
-    ostfstudio::TimelineExtent horizontalRange(bool piano) const;
-    void startTransport(bool recording);
+    ostfstudio::TimelineExtent horizontalRange() const;
+    void startTransport(bool recording, bool replaceConfirmed = false, bool monitorOnly = false);
+    void restartInputMonitor();
+    bool monitorActive_ = false, monitorPending_ = false;
+    std::map<juce::String, juce::MidiDeviceInfo> midiOutputs_;
+    juce::Range<juce::int64> editorCycle_;
+    juce::TextButton editorRecord_{TRANS("Record")}, cycleButton_{TRANS("Loop range")};
+    std::map<juce::String, int> captureChannels_;
+    std::map<juce::String, ostfstudio::AudioTrackInput> audioInputs_;
+    void showAudioInput(std::size_t track, juce::Component* anchor);
+    void updateInputMeters();
+    bool hasAudioInputs_ = false;
     void restoreInstrumentAssignments(const ostfstudio::SessionMix& mix);
+    void restoreLocalInstrument(std::size_t index, const juce::Array<juce::PluginDescription>& types);
     void stopTransport();
     void navigateTransport(TransportKey::Action);
+    void locateTransport(juce::int64 tick, const juce::ScrollBar* anchoredView = nullptr);
+    TimelinePan viewportPan_;
+    void panArrangement(double fraction);
+    void panTimeline(juce::ScrollBar&, double fraction);
+    void showShortcutList();
     void updateTransportMix();
-    void togglePluginBrowser();
+    void togglePluginBrowser(bool samples = false);
     juce::Rectangle<int> getWorkspace() const;
     int getArrangementHeight(int workspaceHeight) const;
     void refreshTimelineLanes();
+    std::optional<ostfstudio::TimelineLane> globalLaneAt(juce::Point<int>) const;
+    juce::int64 arrangementTickAt(int x, bool endBoundary = false) const;
+    void globalCommand(int command);
+    void editGlobalBoundary(bool split);
+    ChordReviewLane chordReview_;
+    ostfstudio::ChordDecisions pendingReview_;
+    void updateChordReviewLane();
+    void refreshChordReview();
+    bool chordReviewBlocksSwitch();
+    void resolveChordReview(bool all, ostfstudio::ChordReviewAction);
+    void reviewDroppedChords(const ostfstudio::OstfpPreview&, int index, juce::int64 tick);
+    int chordReviewHeight() const { return chordReview_.isVisible() ? chordReview_.preferredHeight(getWorkspace().getHeight()) : 0; }
+    enum class ClipTool { select, split, join };
+    ClipTool clipTool_ = ClipTool::select;
+    bool joinKeepsRight_ = false;
+    ViewButton splitTool_{ViewButton::Icon::scissors}, joinTool_{ViewButton::Icon::join};
+    void placeResult(ImportResultRow&, std::optional<std::size_t> track, juce::int64 tick, bool replace,
+                     std::shared_ptr<const ostfstudio::OstfpPreview> dropped = {}, bool review = false);
+    void applyGlobalChange(ostfstudio::TimelineLane, juce::Array<juce::var> remove, juce::Array<juce::var> insert);
+    std::optional<ostfstudio::TimelineLane> selectedGlobal_, copiedLane_;
+    juce::int64 selectedGlobalTick_ = 0, copiedPpq_ = 0;
+    juce::var copiedEvent_;
     ostfstudio::ArrangementView currentArrangement() const;
+    juce::StringArray arrangementOrder_;
     std::vector<std::size_t> displayedTrackOrder() const;
+    bool canReorderTrack(size_t) const;
+    bool canReorderTogether(size_t, size_t) const;
+    juce::Rectangle<int> trackOrderHandle(size_t) const;
+    int partLyricHeight(size_t) const;
+    juce::Rectangle<int> trackGroupBounds(size_t) const;
+    std::optional<size_t> reorderTargetAt(juce::Point<int>) const;
+    void placeTrackRow(size_t source, size_t target, bool after);
+    std::optional<size_t> reorderSource_, reorderTarget_;
+    bool reorderAfter_ = false;
+    std::optional<size_t> adjacentMovableTrack(size_t, int) const;
+    void moveTrackRow(size_t, int);
+    juce::String instrumentWindowTitle(size_t) const;
     juce::StringArray getMenuBarNames() override;
     juce::PopupMenu getMenuForIndex(int index, const juce::String&) override;
     void menuItemSelected(int item, int topLevelMenuIndex) override;
     void inspectOSTF();
     void newProject();
+    void adoptProject(std::unique_ptr<ostfstudio::OstfpPreview>, const juce::String&, bool, const juce::File&);
     bool openPreview(juce::InputStream& input, const juce::String& filename, bool plainScore = false, const juce::File& sourceFolder = {});
     void editSongInformation();
     void updateDocumentLabel();
-    enum class SaveFormat { score, package, midi0, midi1 };
+    enum class SaveFormat { score, package, midi0, midi1, musicXml, chordPro };
     void saveDocument(SaveFormat);
     juce::PopupMenu timelineMenu() const;
-    void selectTrack(std::size_t index);
+    void selectTrack(std::size_t index, bool keepMixer = false);
     void rebuildTrackControls();
-    void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {});
+    void showTrackInput(std::size_t, juce::Component* anchor = nullptr);
+    void captureArmedMidi(size_t);
+    void rememberMidiInput(const juce::String& portId, const juce::MidiMessage&, double seconds);
+    void chooseHardwareOutput(bool cue, juce::Component*);
+    void refreshHardwareOutputs();
+    void setRecordArm(std::size_t, bool);
+    bool isArmed(const juce::String& id) const { return id==armedId_ || audioArms_.contains(id); }
+    std::set<juce::String> audioArms_;
+    void updateLiveAudioInput(size_t track);
+    void refreshMidiRoutes();
+    void saveMidiRoutes();
+    juce::String armedId_, midiDocument_;
+    std::map<juce::String, ostfstudio::MidiInputRoute> midiRoutes_;
+    struct InputMonitor { ostfstudio::MidiInputRoute route; bool received = false; };
+    std::vector<InputMonitor> inputMonitors_;
+    ostfstudio::MidiPerformanceBuffer midiPerformance_;
+    std::optional<size_t> captureMonitor_;
+    juce::String captureTrackId_;
+    ostfstudio::MidiInputRoute captureRoute_;
+    std::array<int,128> capturePitchMap_{};
+    std::atomic<bool> capturingTake_{false};
+    std::optional<std::size_t> drumInputMonitor_;
+    void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
+                    std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched,
+                    const ImportResultRow* import = nullptr, juce::int64 tick = 0,
+                    std::optional<ostfstudio::SessionMix::MidiRoute> sharedPart = {});
+    juce::TextEditor renameEditor_{TRANS("Track name")};
+    std::size_t renameRow_{};
+    bool renameOutput_{};
+    void renameTrack(std::size_t index, bool output = false);
+    void showPatch(std::size_t track, juce::int64 tick);
+    void showRowMenu(bool output, std::size_t index);
+    void confirmRemoval(bool output, std::size_t index);
+    void editOutput(bool isReturn, std::optional<std::size_t> source = {}, bool remove = false);
+    void refreshTrackActions();
+    void changeInterfaceScale(int step);
+    void revealRow(juce::Rectangle<int> row);
+    void copyEffectChain(bool output, std::size_t from, std::size_t to);
     bool canEditTracks() const;
     void chooseTrackPlugin(std::size_t index, bool bundleDirectory);
+    void applyTrackColour(size_t track,int choice);
+    void showTrackColourMenu(size_t track, juce::Component* anchor);
     void showTrackPluginMenu(std::size_t index);
+    int nextSharedChannel(std::size_t owner) const;
+    bool hasSharedParts(std::size_t owner) const;
+    void detachSharedPart(std::size_t);
+    void offerInstrumentProgram(std::size_t owner, int channel, int program);
+    void reviewEmptyMidiTracks();
+    bool isEmptyMidiTrack(std::size_t) const;
+    void addSharedPart(std::size_t index);
+    void routeMidiPart(std::size_t track, std::optional<std::size_t> owner, int channel);
+    friend int checkSamplePlacement(const juce::File&);
+    friend int checkLiveSession(const juce::File&);
+    friend class PluginFocusProbe;
+    friend class VocalTrackProbe;
+    friend int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>, std::unique_ptr<juce::AudioPluginInstance>);
     void scanTrackPlugin(std::size_t index);
     void discoverTrackPlugin(std::size_t index);
-    void loadTrackPlugin(std::size_t index, const juce::PluginDescription& description, bool restoring = false);
+    void loadTrackPlugin(std::size_t index, const juce::PluginDescription& description, bool restoring = false, juce::MemoryBlock state = {});
     void openTrackPluginEditor(std::size_t index);
+    void useTrackSinger(size_t index, bool automatic);
+    void editVocalNote(const ostfstudio::PitchedNote&);
     void linkAudio(std::size_t index);
     void setupOutputTracks();
     struct EffectSlot {
         juce::String id;
         juce::String savedState;
+        ostfstudio::SessionMix::ParameterValues initialParameters;
+        juce::String keyTrackId;
         std::unique_ptr<juce::AudioPluginInstance> effect;
         std::unique_ptr<juce::DocumentWindow> editor;
     };
@@ -87,28 +264,115 @@ private:
     };
     EffectChain& effectChain(bool output, std::size_t index);
     void updateEffectButton(EffectChain& chain);
+    void refreshScaleEditors();
+    bool scaleEditorMonitoring() const;
+    void queueMixerPluginRefresh();
+    void refreshMixerPlugins();
+    bool mixerPluginRefreshQueued_ = false;
     void showEffects(bool output, std::size_t index);
     void appendEffect(bool output, std::size_t index, const juce::PluginDescription& description);
-    void loadEffect(bool output, std::size_t index, std::size_t slot, const juce::PluginDescription& description);
+    void loadEffect(bool output, std::size_t index, std::size_t slot, const juce::PluginDescription& description, bool openEditor = false);
     void restoreEffects(bool output, std::size_t index, const juce::StringArray& ids);
     PluginBrowser& ensurePluginBrowser();
+    DeviceSettingsWindow& ensureDeviceSettings();
+    void refreshTrackSends();
     void showTrackMix(std::size_t index);
     void updatePresetLabel(std::size_t index);
     void refreshEditor();
-    enum class WorkspaceMode { arrangement, leadSheet, score };
+    enum class WorkspaceMode { arrangement, leadSheet, score, live };
     void setWorkspaceMode(WorkspaceMode);
     WorkspaceMode workspaceMode_ = WorkspaceMode::arrangement;
     bool canExportTrack(std::size_t track) const;
     bool writeTrackMidi(std::size_t track, juce::OutputStream& stream) const;
     void drawArrangement(juce::Graphics& g, juce::Rectangle<int> area, const ostfstudio::ArrangementView& view);
     void drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) const;
+    void refreshPianoNotes();
+    juce::PopupMenu theoryMenu() const;
+    juce::PopupMenu musicMenu() const;
+    void editSongMusic(ostfstudio::SongMusicEdit::Mode mode);
+    void rememberScoreEdit(juce::MemoryBlock before, const char* label);
+    void previewNoteFit(const std::vector<ostfstudio::NoteEdit>&);
+    juce::String noteFitReading() const;
+    std::vector<ostfstudio::TheoryGuide::TrackCell> previewFits_;
+    std::optional<ostfstudio::PitchedNote> inspectedNote_, draggedNote_;
+    int auditionShift_ = 0;
+    double auditionRate_ = 1;
+    std::optional<ostfstudio::TempoMap> auditionClock_;
+    void refreshTheory();
+    void refreshTrackTheory(std::size_t track);
+    std::vector<ostfstudio::TheoryGuide::ClipFits> clipFits_;
+    ostfstudio::TheoryGuide::ClipFits previewClipFits_;
+    std::vector<ostfstudio::TheoryGuide::RegionFits> regionFits_;
+    ostfstudio::TheoryGuide::RegionFits previewRegionFits_;
+    ostfstudio::TheoryGuide::Fit globalFit(ostfstudio::TimelineLane, size_t region) const;
+    const ostfstudio::TheoryGuide::ClipFit& clipFit(size_t, const char*, size_t chordBegin) const;
+    juce::Rectangle<int> drawFitBadges(juce::Graphics&,juce::Rectangle<int>,const ostfstudio::TheoryGuide::ClipFit&,
+                                       ostfstudio::TimelineLane lane = ostfstudio::TimelineLane::none) const;
+    bool pitchedSelection() const;
+    void drawTheoryRows(juce::Graphics&, juce::Rectangle<int>, int labelWidth) const;
+    bool theoryVisible_ = false, chordFitVisible_ = true, scaleFitVisible_ = true;
+    int scaleReference_ = -1;
+    std::unique_ptr<ostfstudio::TheoryGuide> theory_;
+    std::vector<std::vector<ostfstudio::TheoryGuide::TrackCell>> theoryTracks_;
+    std::vector<juce::int64> pianoMaxEnds_;
+    void applyNoteGesture(const std::vector<ostfstudio::NoteEdit>&);
+    void undoPianoEdit(bool redo);
+    void pasteScaleChanges(const juce::String&);
+    void receiveScaleReturn(const juce::String& baseHash, juce::InputStream&);
+    void finishNoteEdit(bool playing);
+    PianoNoteGrid pianoGrid_;
+    VocalLane vocalLane_{pianoGrid_};
+    PianoInspector pianoInspector_ {pianoGrid_};
+    bool blueTheme() const { return pianoInspector_.theme == pianoHarmony::Theme::studioBlue; }
+    juce::Viewport pianoInspectorView_;
+    EditorDivider pianoDivider_, columnDivider_{true}, arrangementColumnDivider_{true}, browserDivider_{true}, parameterDivider_;
+    juce::ComboBox pitchZoom_;
+    double parameterFraction_ = 0;
+    int parameterBottom_ = 0, parameterHeight_ = 0;
+    int preferredHeaderWidth_ = 487, trackHeaderWidth = 487, trackNameWidth = 172;
+    int preferredBrowserWidth_ = 230;
+    double arrangementFraction_ = 0.6, mixerSplitFraction_ = 0.5;
+    PianoVelocityLane pianoVelocity_ {pianoGrid_};
+    juce::ComboBox pianoSnap_, pianoColours_, drumMode_;
+    DrumSteps drumSteps_;
+    DrumPads drumPads_;
+    juce::String padTrack_;
+    PerformanceEditor controllerEditor_{pianoGrid_};
+    std::map<juce::String,ostfstudio::MidiControl> controllerKeys_;
+    void refreshControllerLane();
+    void enterPerformanceValue();
+    void editPerformancePoint(juce::String,juce::int64,std::optional<double>);
+    void updateDrumLoop();
+    juce::Range<juce::int64> activeLoop_;
+
+    juce::Rectangle<int> functionRow_;
+    std::optional<std::size_t> pianoTrack_;
+    std::size_t pianoGeneration_ = 0;
+    struct NoteRevision { juce::MemoryBlock before, after; juce::String panTrack; ostfstudio::PanEnvelope oldPan, newPan;
+        std::optional<std::vector<ostfstudio::ProjectAudio>> beforeAudio, afterAudio;
+        std::optional<ostfstudio::ChordDecisions> reviewBefore, reviewAfter;
+        std::optional<size_t> reviewTrack;
+        juce::String label;
+    };
+    std::deque<NoteRevision> noteHistory_;
+    std::size_t noteHistoryCursor_ = 0;
+    int historyLimit_ = 64, historyMemoryMiB_ = 32, meterRefreshHz_ = 24;
+    double nextMeterUpdate_ = 0;
+    void trimHistory();
+    uint64_t historyRevision_ = 0;
     struct TrackControls {
-        LevelMeter meter;
+        LevelMeter meter, recordingMeter;
+        ViewButton cue{ViewButton::Icon::headphones};
+        juce::Slider inputGain;
+        MidiActivityLamp inputLamp;
+        juce::TextButton arm{"R"}, input{"IN"};
         TrackRowSize size;
         juce::TextButton mute {"M"};
         juce::TextButton solo {"S"};
         juce::Slider volume, pan;
+        TrackSendKnobs sends;
         juce::TextButton plugin {TRANS("Instrument")};
+        juce::TextButton routingMenu {juce::String::charToString(0x25be)};
         juce::TextButton mix {TRANS("Mix")};
         EffectChain effects;
         juce::Label preset;
@@ -120,28 +384,210 @@ private:
         std::optional<std::size_t> outputTrack;
         int midiChannel = 1;
         juce::var instrumentAssignment;
+        std::optional<juce::PluginDescription> inactiveInstrument;
+        juce::MemoryBlock inactiveInstrumentState;
     };
     juce::MenuBarComponent menuBar_;
     ViewButton pianoButton_ {ViewButton::Icon::piano}, mixerButton_ {ViewButton::Icon::mixer},
-               pluginBrowserButton_ {ViewButton::Icon::plugins}, outputButton_ {ViewButton::Icon::outputs},
-               lanesButton_ {ViewButton::Icon::lanes}, arrangementButton_ {ViewButton::Icon::arrangement},
+               pluginBrowserButton_ {ViewButton::Icon::plugins}, sampleBrowserButton_ {ViewButton::Icon::samples}, outputButton_ {ViewButton::Icon::outputs},
+               songInfoButton_ {ViewButton::Icon::information}, lanesButton_ {ViewButton::Icon::lanes}, arrangementButton_ {ViewButton::Icon::arrangement},
+               liveButton_{ViewButton::Icon::liveSession}, printLeadButton_{ViewButton::Icon::printLead}, printScoreButton_{ViewButton::Icon::printScore},
                leadButton_ {ViewButton::Icon::leadSheet}, scoreButton_ {ViewButton::Icon::score};
-    juce::TooltipWindow tooltips_ {this};
-    bool editorVisible_ = true, mixerSelected_ = false;
+    ViewButton melodyAdd_ {ViewButton::Icon::melody}, chorusAdd_ {ViewButton::Icon::chorus},
+               pitchedAdd_ {ViewButton::Icon::pitched}, drumsAdd_ {ViewButton::Icon::drums},
+               audioAdd_ {ViewButton::Icon::audio}, busAdd_ {ViewButton::Icon::bus}, returnAdd_ {ViewButton::Icon::send},
+               uiSmaller_ {ViewButton::Icon::zoomOut}, uiLarger_ {ViewButton::Icon::zoomIn};
+    int interfaceScale_ = 100;
+    std::vector<juce::Rectangle<int>> toolbarDividers_;
+    ViewButton chordFitButton_{ViewButton::Icon::chordFit}, scaleFitButton_{ViewButton::Icon::scaleFit};
+    ViewButton theoryButton_ {ViewButton::Icon::theory}, musicButton_ {ViewButton::Icon::songMusic};
+    juce::TooltipWindow tooltips_ {nullptr, 350};
+    bool trackEditorOpen_ = true, mixerSelected_ = false;
+    bool lowerPaneOpen() const { return trackEditorOpen_ || mixerSelected_; }
+    LiveSections live_;
+    LiveTrackSelector liveTracks_;
+    LiveSectionMatrix liveMatrix_;
+    LiveChordGuide liveGuide_;
+    juce::TextButton performer_{TRANS("Performer display")}, cueList_{TRANS("Queue")};
+    bool performerOnly_=false;
+    std::vector<PreviewTransport::Cue> stagedCues_;
+    unsigned nextCueId_=0;
+    void addLiveCue(int row);
+    void refreshStagedCues();
+    void showLiveQueue();
+    void updateLiveGuide();
+    using CellKey=std::pair<juce::String,juce::String>;
+    std::map<juce::String,juce::String> auditionComps_;
+    std::vector<ostfstudio::ScoreCompChoice> cueCompChoices(juce::Range<juce::int64>, int track = -1) const;
+    struct CellPlayer {
+        std::unique_ptr<ostfstudio::OstfpPreview> score;
+        std::vector<std::unique_ptr<juce::AudioPluginInstance>> plugins;
+        PreviewTransport transport;
+    };
+    std::map<CellKey,std::unique_ptr<CellPlayer>> cellPlayers_;
+    std::set<CellKey> loopingCells_;
+    void toggleCellPlayer(size_t track,int row,bool restart=false);
+    juce::TextButton takeButton_{TRANS("Takes")};
+    juce::Range<juce::int64> takeRange() const;
+    int editingTake(size_t,juce::Range<juce::int64>) const;
+    void showTakes(size_t,juce::Range<juce::int64>,juce::Component*);
+    void adoptTakes(const std::vector<ostfstudio::TakeSelection>&);
+    juce::Result publishLiveNotes();
+    unsigned takeRevision_=0;
+    std::map<std::pair<juce::String,juce::int64>,int> editTakes_;
+    int recordingTake_=0;
+    juce::TextButton livePiano_{TRANS("Piano Roll")}, liveMixer_{TRANS("Mixer")}, liveAddTrack_{TRANS("Tracks...")}, liveSectionsMenu_{TRANS("Sections...")};
+    bool liveShowsMixer_ = false;
+    double liveSplit_ = .43;
+    void liveSectionAction(bool duplicate);
+    juce::Label fitLegend_;
+    juce::ScrollBar livePianoScroll_{false};
+    juce::Range<juce::int64> liveScrollSection_;
+    juce::Rectangle<int> livePianoPanel_;
+    juce::Range<double> pianoBars() const;
+    void layoutPianoPanel(juce::Rectangle<int> editor, int inlineReview);
+    std::optional<std::size_t> liveGeneration_;
     TransportPanel deck_;
-    juce::Label documentLabel_;
+    SongBasicsPanel basics_;
+    int topBasicsHeight() const;
+    int timelineRowHeight() const;
+    void editSongField(SongBasicsPanel::Field, const juce::String&, int);
+    void markSessionEdited();
+    void refreshWindowTitle();
+    void parentHierarchyChanged() override;
+    // Plug-ins may notify on the audio thread. Update the document caption on the message thread.
+    struct StockEffectChanges final : private juce::AudioProcessorListener, private juce::Timer {
+        void observe(juce::AudioProcessor& processor) {
+            processor.addListener(this);
+            if (!isTimerRunning()) startTimerHz(5);
+        }
+        void reset() { pending.store(false); }
+        std::function<void()> changed;
+    private:
+        void audioProcessorParameterChanged(juce::AudioProcessor*, int, float) override { pending.store(true); }
+        void audioProcessorChanged(juce::AudioProcessor*, const ChangeDetails& details) override {
+            if (details.nonParameterStateChanged) pending.store(true);
+        }
+        void timerCallback() override { if (pending.exchange(false) && changed) changed(); }
+        std::atomic<bool> pending{false};
+    } stockEffectChanges_;
+    juce::MemoryBlock savedScore_;
+    bool sessionEdited_ = false;
     juce::String currentFilename_;
     juce::File legacySourceFile_;
     juce::int64 cursorTick_ = -1;
     juce::ComboBox trackPicker_;
     juce::ComboBox performanceLane_;
-    juce::Slider arrangementZoom_, pianoZoom_, groupHeight_;
+    juce::TextButton enterPerformance_ {TRANS("Enter value...")};
+    juce::Slider arrangementZoom_, groupHeight_;
+    struct HeightMenuStyle : juce::LookAndFeel_V4 {
+        juce::Font getComboBoxFont(juce::ComboBox&) override { return juce::FontOptions(16.f); }
+        juce::Font getPopupMenuFont() override { return juce::FontOptions(16.f); }
+        juce::PopupMenu::Options getOptionsForComboBoxPopupMenu(juce::ComboBox& box, juce::Label& label) override {
+            return LookAndFeel_V4::getOptionsForComboBoxPopupMenu(box, label).withStandardItemHeight(30).withMinimumWidth(210);
+        }
+    } heightMenuStyle_;
     juce::ComboBox heightScope_;
-    juce::Label heightLabel_, arrangementZoomLabel_, pianoZoomLabel_;
+    juce::Label heightLabel_, arrangementZoomLabel_;
     std::array<int, static_cast<std::size_t>(HeightGroup::count)> groupDefaults_ {};
     bool mixedHeights_ = false;
-    juce::ScrollBar arrangementScroll_ {false}, pianoScroll_ {false};
+    juce::ScrollBar arrangementScroll_ {false};
     juce::Component rowOverlay_;
+    ArrangementRuler ruler_, pianoRuler_;
+    ostfstudio::ProjectAudio* clipOn(std::size_t track) const;
+    void placeWav(const juce::File&, std::size_t track, juce::int64 tick, bool replace);
+    void openSplice();
+    void updateSplicePlayback();
+    void toggleLink();
+    void pollLink();
+    void editLinkTempo();
+    double linkQuantum() const;
+    std::unique_ptr<ostfstudio::LinkSession> link_;
+    int lastLinkPeers_ = -1;
+    double lastLinkTempo_ = 0;
+    bool lastLinkPlaying_ = false, followingLink_ = false;
+    void aiConnectionMenu();
+    void displayAiState(const juce::String&, juce::uint32);
+    juce::String aiModel_;
+    PromptGuide promptGuide_;
+    void updatePromptGuide();
+    int studioModeIndex_ = 0;
+    juce::ComboBox modelPicker_;
+    juce::TextButton fetchModels_{TRANS("Refresh models")};
+    void showModelChoices();
+    ostfstudio::AiStudioMode aiMode() const {
+        return static_cast<ostfstudio::AiStudioMode>(studioModeIndex_);
+    }
+    void applyAiSelection();
+    void refreshAiModels();
+    bool refreshingModels_ = false;
+    juce::StringArray aiModels_, aiModelNames_;
+    enum class AccountAction { restore, login, logout };
+    void updateAiConnection(AccountAction);
+    juce::URL signInUrl_;
+    bool signInPending_ = false;
+    ostfstudio::AnalysisConnection activeAi_;
+    struct ConnectionButton final : juce::TextButton {
+        void paintButton(juce::Graphics& g, bool hover, bool down) override {
+            auto b = getLocalBounds().toFloat().reduced(1);
+            auto colour = findColour(buttonColourId);
+            g.setColour(down ? colour.darker(.15f) : hover ? colour.brighter(.10f) : colour);
+            g.fillRoundedRectangle(b, 7);
+            g.setColour(colour.brighter(.48f));
+            g.drawRoundedRectangle(b, 7, 1.5f);
+            auto light = b.removeFromLeft(26).withSizeKeepingCentre(8, 8);
+            g.setColour(juce::Colours::white);
+            g.fillEllipse(light);
+            g.setFont(juce::FontOptions(15.f, juce::Font::bold));
+            g.drawFittedText(getButtonText(), b.toNearestInt().withTrimmedRight(6), juce::Justification::centredLeft, 2);
+        }
+    } aiButton_;
+    juce::ThreadPool aiConnectionWorker_{1};
+    bool spliceLoading_ = false;
+    std::unique_ptr<juce::AudioPluginInstance> spliceInstance_;
+    juce::AudioProcessorPlayer splicePlayer_;
+    std::unique_ptr<juce::DocumentWindow> spliceWindow_;
+    bool spliceAuditionActive_ = false;
+    EditorClipLane clipLane_;
+    void refreshClipLane();
+    struct ClipHit { size_t track; juce::String id; juce::int64 start, end; bool audio; };
+    enum class ClipOp { copy = 10, paste, duplicate, move, split, join };
+    std::vector<ClipHit> clipsOn(size_t track) const;
+    std::optional<ClipHit> clipAt(size_t track, juce::int64 tick) const;
+    void clipCommand(ClipOp, std::optional<ClipHit>, size_t destination, juce::int64 tick);
+    void rememberAudioEdit(std::vector<ostfstudio::ProjectAudio> before, juce::MemoryBlock beforeScore = {},
+                           const char* label = "Edit audio clip");
+    juce::String selectedAudioId_;
+    std::optional<ClipHit> draggingMidi_, dragPreview_;
+    juce::int64 midiGrabOffset_ = 0, clipInsertionTick_ = 0;
+    bool arrangementClipFocus_ = false;
+    std::optional<ostfstudio::ProjectAudio> copiedAudio_;
+    ostfstudio::OstfpPreview::MidiClipCopy copiedMidi_;
+    void midiClipMenu(std::size_t track, double bar);
+    bool beginMidiResize(std::size_t track, double bar, double tolerance);
+    void dragMidiResize(double bar, bool finish);
+    void editMidiClip(std::size_t track, const juce::String& id, ostfstudio::OstfpPreview::MidiClipEdit, juce::int64 tick);
+    struct MidiResize { std::size_t track; juce::String id; juce::int64 firstEnd, end, minEnd, maxEnd; };
+    std::optional<MidiResize> resizingMidi_;
+    void selectEditorClip(std::optional<double> bar, bool locate);
+    void editMelodyneCopy();
+    void applyMelodyneCopy();
+    struct MelodyneCopy {
+        juce::File wav;
+        juce::String originalHash, workingHash;
+        juce::int64 startFrame, frames, startTick, durationTicks;
+    };
+    std::map<juce::String, MelodyneCopy> melodyneCopies_;
+    void openEffectEditor(bool output, std::size_t index, std::size_t slot);
+    AudioClipWaveforms waveforms_;
+    AudioClipEditor audioEditor_{waveforms_};
+    TempoEditor tempoEditor_;
+    std::optional<std::size_t> resizingAudio_;
+    bool resizingAudioStart_ = false, movingAudio_ = false;
+    juce::int64 audioGrabOffset_ = 0;
+    juce::int64 previewAudioStart_ = 0;
+    juce::int64 previewAudioLength_ = 0;
+    bool spaceHeld_ = false;
     juce::ScrollBar verticalScroll_ {true};
     juce::StringArray performanceLaneNames_;
     MidiDragButton midiDrag_;
@@ -153,13 +599,18 @@ private:
     std::unique_ptr<juce::DocumentWindow> importWindow_;
     PreviewTransport transport_;
     bool transportActive_ = false;
+    bool livePerformanceActive_ = false;
     std::optional<std::size_t> recordTrack_;
     juce::Label statusLabel_;
+    SystemUsageMeter systemUsage_;
+    ViewButton undoButton_{ViewButton::Icon::undo}, redoButton_{ViewButton::Icon::redo}, historyButton_{ViewButton::Icon::history};
+    juce::PopupMenu editHistoryMenu();
+    void refreshHistoryControls();
     std::unique_ptr<juce::FileChooser> chooser_;
     std::unique_ptr<juce::FileChooser> pluginChooser_;
     std::unique_ptr<ostfstudio::OstfpPreview> project_;
     juce::ApplicationProperties viewPreferences_;
-    unsigned timelineLaneMask_ = 0xff;
+    unsigned timelineLaneMask_ = 0x3ff;
     std::vector<ostfstudio::ArrangementLane> displayedGlobalLanes_;
     std::vector<juce::Rectangle<int>> trackRows_;
     juce::AudioPluginFormatManager pluginFormats_;
@@ -178,8 +629,14 @@ private:
     std::optional<std::size_t> outputDropHighlight_;
     std::array<OutputControl, PreviewTransport::outputCount> outputControls_;
     bool showOutputTracks_ = true;
+    void loadSong(std::function<std::unique_ptr<juce::InputStream>()> openStream, juce::String filename,
+                  bool plainScore, juce::File sourceFolder, std::function<void(bool)> finished = {});
+    SongLoadingOverlay loadingOverlay_;
+    juce::ThreadPool songReader_{1};
+    unsigned songRequest_ = 0;
     std::size_t projectGeneration_ = 0;
     std::optional<std::size_t> selectedTrack_;
+    juce::Label importTrackDrop_;
     std::optional<std::size_t> pluginDropHighlight_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

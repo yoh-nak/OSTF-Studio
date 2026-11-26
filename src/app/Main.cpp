@@ -2,16 +2,47 @@
 #include <BinaryData.h>
 #include "ui/MainComponent.h"
 #include "ui/StudioLanguage.h"
-#include "ui/PluginRoles.h"
+#include "ui/PluginLibrary.h"
 #include <cmath>
+#include <iostream>
+
+int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>, std::unique_ptr<juce::AudioPluginInstance>);
 
 namespace {
-int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const juce::String& arrangerPath) {
+int checkGmPlugin(const juce::String& plugin, const juce::String& bank) {
     juce::AudioPluginFormatManager formats;
     formats.addFormat(std::make_unique<juce::VST3PluginFormat>());
     juce::OwnedArray<juce::PluginDescription> descriptions;
     formats.getFormat(0)->findAllTypesForFile(descriptions, juce::File(plugin).getFullPathName());
     if (descriptions.size() != 1) return 1;
+    // A scanned system copy and its portable copy have distinct JUCE path identifiers.
+    auto installed = *descriptions[0], portable = installed, otherClass = installed, retired = installed;
+    juce::TemporaryFile portableFile(".vst3");
+    if (!portableFile.getFile().create().wasOk()) return 71;
+    portable.fileOrIdentifier = portableFile.getFile().getFullPathName();
+    otherClass.uniqueId ^= 1;
+    retired.name = "OSTF Arranger";
+    retired.uniqueId ^= 2;
+    for (bool reverse : {false, true}) {
+        const auto catalog = pluginCatalog({reverse ? portable : installed, reverse ? installed : portable, otherClass, retired},
+                                           portableFile.getFile().getParentDirectory());
+        if (catalog.size() != 2 || catalog[0].fileOrIdentifier != portable.fileOrIdentifier
+            || catalog[1].uniqueId != otherClass.uniqueId) return 72;
+    }
+    // Exercise the actual browser (including an existing system cache) in a portable distribution.
+    const auto appDirectory = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory();
+    if (appDirectory.getChildFile("OSTF Chorus.vst3").isDirectory()) {
+        PluginBrowser browser;
+        for (const auto& bundle : appDirectory.findChildFiles(juce::File::findDirectories, false, "OSTF *.vst3")) {
+            const auto matches = std::count_if(browser.types().begin(), browser.types().end(), [&](const auto& type) {
+                return type.manufacturerName == "OSTF Studio" && type.name == bundle.getFileNameWithoutExtension();
+            });
+            if (matches != 1 || std::none_of(browser.types().begin(), browser.types().end(), [&](const auto& type) {
+                return type.fileOrIdentifier == bundle.getFullPathName();
+            })) return 73;
+        }
+        if (std::any_of(browser.types().begin(), browser.types().end(), isOstfArranger)) return 74;
+    }
     juce::MemoryInputStream demo(BinaryData::neonplatforms_ostfp, BinaryData::neonplatforms_ostfpSize, false);
     std::unique_ptr<ostfstudio::OstfpPreview> score;
     if (ostfstudio::readOstfpPreview(demo, score).failed() || !score->savedMix || score->savedMix->instruments.empty()
@@ -20,6 +51,11 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const ju
     auto instance = formats.createPluginInstance(*descriptions[0], 44100, 256, error);
     if (!instance || !PreviewTransport::supportsInstrument(*instance)) return 2;
     const auto fluid = juce::File(plugin).getChildFile("Contents/Resources/FluidR3_GM.sf2");
+    auto second = formats.createPluginInstance(*descriptions[0], 44100, 256, error);
+    if (!second) return 2;
+    if (const auto result = checkSharedPartEditing(std::move(instance), std::move(second))) return result;
+    instance = formats.createPluginInstance(*descriptions[0], 44100, 256, error);
+    if (!instance) return 2;
     if (fluid.existsAsFile()) {
         juce::MemoryBlock state, component;
         instance->getStateInformation(state);
@@ -28,6 +64,27 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const ju
         if (!child || !component.fromBase64Encoding(child->getAllSubText())) return 40;
         const auto xml = juce::AudioProcessor::getXmlFromBinary(component.getData(), static_cast<int>(component.getSize()));
         if (!xml || xml->getStringAttribute("bankName") != "FluidR3 GM") return 41;
+    }
+    {
+        const auto pitched = std::find(score->trackKinds.begin(), score->trackKinds.end(), ostfstudio::TrackKind::pitched);
+        if (pitched == score->trackKinds.end()) return 51;
+        const auto track = size_t(pitched - score->trackKinds.begin());
+        std::vector<PreviewTransport::TrackSetup> routes(score->trackKinds.size());
+        routes[track].instrument = instance.get();
+        PreviewTransport monitor;
+        if (monitor.preparePlayback(*score, routes, {}, 44100, 512, 0, 1, true).failed()) return 52;
+        monitor.prepareRecording(*score, routes, track, false);
+        monitor.setChannelMix(track, {}, true, 0);
+        monitor.setOutputMix({});
+        juce::AudioBuffer<float> block(2,512);
+        monitor.renderBlock(block.getArrayOfWritePointers(),2,512);
+        if (block.getMagnitude(0,512) > .0001f) return 53;
+        monitor.inputFromDevice(juce::MidiMessage::noteOn(1,60,juce::uint8(118)), "test-keys");
+        monitor.renderBlock(block.getArrayOfWritePointers(),2,512);
+        if (block.getMagnitude(0,512) < .0001f || monitor.takeMeters().tracks[track][0] < .0001f || monitor.positionTick() != 0) return 54;
+        monitor.inputFromDevice(juce::MidiMessage::noteOff(1,60), "test-keys");
+        monitor.renderBlock(block.getArrayOfWritePointers(),2,512);
+        if (!monitor.stop().empty()) return 55;
     }
     instance->prepareToPlay(44100, 2048);
     const auto renderPreview = [&](int channel, int program, int pitch) {
@@ -56,6 +113,26 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const ju
     if (piano.getMagnitude(0, 2048) < 0.003f || bass.getMagnitude(0, 2048) < 0.003f || !differs(piano, bass)
         || kick.getMagnitude(0, 2048) < 0.003f || snare.getMagnitude(0, 2048) < 0.003f || !differs(kick, snare))
         return 38;
+    // Verify bank latching and the optional second percussion channel through the VST3 host.
+    instance->prepareToPlay(44100, 2048);
+    const auto bankEvents = [&](int channel, int msb, int lsb) {
+        juce::AudioBuffer<float> empty(2, 16);
+        juce::MidiBuffer messages;
+        messages.addEvent(juce::MidiMessage::controllerEvent(channel, 0, msb), 0);
+        messages.addEvent(juce::MidiMessage::controllerEvent(channel, 32, lsb), 1);
+        instance->processBlock(empty, messages);
+    };
+    bankEvents(11, 120, 0);
+    const auto secondKick = renderPreview(11, 0, 36);
+    if (secondKick.getMagnitude(0, 2048) < .003f || differs(secondKick, kick)) return 56;
+    bankEvents(10, 121, 0);
+    if (differs(renderPreview(10, 0, 60), piano)) return 57;
+    if (fluid.existsAsFile()) {
+        const auto electric = renderPreview(2, 4, 60);
+        bankEvents(2, 121, 1);
+        if (!differs(electric, renderPreview(2, 4, 60))) return 58;
+    }
+    instance->releaseResources();
     juce::XmlElement state("OSTF_GM");
     state.setAttribute("bank", bank);
     state.setAttribute("p1", 1); // The test bank contains program 0 only.
@@ -93,43 +170,7 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank, const ju
     if (noteSounds(1) || !noteSounds(3)) return 42;
     part->setAttribute("c6", 0);
     applyState(state);
-    juce::XmlElement arrangerState("OSTFArranger");
-    arrangerState.addChildElement(descriptions[0]->createXml().release());
-    juce::MemoryBlock hostedState;
-    instance->getStateInformation(hostedState);
-    arrangerState.setAttribute("instrument", hostedState.toBase64Encoding());
-    class PlayingHead final : public juce::AudioPlayHead {
-        juce::Optional<PositionInfo> getPosition() const override {
-            PositionInfo position;
-            position.setTimeInSamples(0);
-            position.setPpqPosition(0);
-            position.setIsPlaying(true);
-            position.setBpm(120);
-            return position;
-        }
-    } playhead;
-    juce::AudioBuffer<float> audio(2, 256);
-    juce::MidiBuffer destination;
     instance->releaseResources();
-    descriptions.clear();
-    formats.getFormat(0)->findAllTypesForFile(descriptions, juce::File(arrangerPath).getFullPathName());
-    if (descriptions.size() != 1 || !isOstfArranger(*descriptions[0])) return 35;
-    auto arranger = formats.createPluginInstance(*descriptions[0], 44100, 256, error);
-    if (!arranger || !PreviewTransport::supportsInstrument(*arranger)) return 36;
-    juce::AudioProcessor::copyXmlToBinary(arrangerState, component);
-    vst3State.getChildByName("IComponent")->deleteAllChildElements();
-    vst3State.getChildByName("IComponent")->addTextElement(component.toBase64Encoding());
-    juce::AudioProcessor::copyXmlToBinary(vst3State, binary);
-    arranger->setStateInformation(binary.getData(), static_cast<int>(binary.getSize()));
-    arranger->prepareToPlay(44100, 256);
-    arranger->setPlayHead(&playhead);
-    audio.clear();
-    destination.clear();
-    arranger->processBlock(audio, destination);
-    const bool hostedSounds = audio.getMagnitude(0, 256) > 0.001f;
-    arranger->releaseResources();
-    arranger->setPlayHead(nullptr);
-    if (!hostedSounds) return 37;
     const int failures = (!channel1 ? 1 : 0) | (channel2 ? 2 : 0) | (!channel3 ? 4 : 0) | (drums ? 8 : 0);
     return failures == 0 ? 0 : 16 + failures;
 }
@@ -178,7 +219,15 @@ private:
 }
 
 int checkStockEffects(const juce::StringArray&);
+int checkStudioInstruments(const juce::StringArray&);
 int checkTrackView(const juce::File&);
+int checkLiveSession(const juce::File&);
+std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)>);
+std::unique_ptr<juce::Timer> startPluginFocusCheck(const juce::File&, std::function<void(int)>);
+std::unique_ptr<juce::Timer> startVocalTrackCheck(const juce::File&, const juce::File&, std::function<void(int)>);
+int checkPianoEdits(const juce::File&);
+int checkNativeComps(const juce::File&);
+int checkTheoryGuide(const juce::File&);
 int checkNotation(const juce::File&, const juce::File&);
 int checkTransport(const juce::File&, const juce::File&);
 
@@ -190,6 +239,27 @@ public:
 
     void initialise(const juce::String&) override {
         const auto args = getCommandLineParameterArray();
+        if ((args.size() == 2 || args.size() == 3) && args[0] == "--vocal-track-smoke") {
+            windowCheck_ = startVocalTrackCheck(juce::File(args[1]),args.size()==3 ? juce::File(args[2]) : juce::File{},
+                [this](int result) { setApplicationReturnValue(result); quit(); });
+            return;
+        }
+        const bool spliceCheck = args.size() == 1 && (args[0] == "--splice-window-smoke" || args[0] == "--splice-pane-smoke");
+        if (spliceCheck || (args.size() == 2 && args[0] == "--plugin-focus-smoke")) {
+            auto finished = [this](int result) {
+                setApplicationReturnValue(result);
+                quit();
+            };
+            windowCheck_ = spliceCheck ? startSpliceWindowCheck(finished) : startPluginFocusCheck(juce::File(args[1]), finished);
+            return;
+        }
+#if JUCE_WINDOWS && defined(_MSC_VER)
+        if (args.size() == 4 && args[0] == "--render-score-page") {
+            ostfstudio::runWindowsScorePageRenderer(juce::File(args[1]), juce::File(args[2]), args[3].getIntValue());
+            quit();
+            return;
+        }
+#endif
         if (args.size() == 3 && args[0] == "--transport-smoke") {
             juce::MessageManager::callAsync([this, args] {
                 setApplicationReturnValue(checkTransport(juce::File(args[1]), juce::File(args[2])));
@@ -204,9 +274,20 @@ public:
             });
             return;
         }
-        if (args.size() == 2 && args[0] == "--track-view-smoke") {
+        if (args.size() == 2 && (args[0] == "--native-comp-smoke" || args[0] == "--live-session-smoke" || args[0] == "--track-view-smoke" || args[0] == "--piano-edit-smoke" || args[0] == "--theory-guide-smoke")) {
             juce::MessageManager::callAsync([this, args] {
-                setApplicationReturnValue(checkTrackView(juce::File(args[1])));
+                const juce::File fixture(args[1]);
+                if (args[0] == "--native-comp-smoke") setApplicationReturnValue(checkNativeComps(fixture));
+                else if (args[0] == "--live-session-smoke") setApplicationReturnValue(checkLiveSession(fixture));
+                else if (args[0] == "--theory-guide-smoke") setApplicationReturnValue(checkTheoryGuide(fixture));
+                else setApplicationReturnValue(args[0] == "--track-view-smoke" ? checkTrackView(fixture) : checkPianoEdits(fixture));
+                quit();
+            });
+            return;
+        }
+        if (args.size() == 3 && args[0] == "--studio-instruments-smoke") {
+            juce::MessageManager::callAsync([this,args] {
+                setApplicationReturnValue(checkStudioInstruments(args));
                 quit();
             });
             return;
@@ -224,9 +305,9 @@ public:
             quit();
             return;
         }
-        if (args.size() == 4 && args[0] == "--gm-plugin-smoke") {
+        if (args.size() == 3 && args[0] == "--gm-plugin-smoke") {
             juce::MessageManager::callAsync([this, args] {
-                setApplicationReturnValue(checkGmPlugin(args[1], args[2], args[3]));
+                setApplicationReturnValue(checkGmPlugin(args[1], args[2]));
                 quit();
             });
             return;
@@ -248,12 +329,13 @@ public:
             startup_->setStage(TRANS("Preparing workspace..."), 0.65f);
             juce::Timer::callAfterDelay(45, [this, startupSmoke] {
                 if (!startup_) return;
-                mainWindow_ = std::make_unique<MainWindow>(getApplicationName());
+                mainWindow_ = createStudioWindow();
                 startup_.reset();
-                const bool opened = openQueuedDocument();
-                if (startupSmoke) juce::Timer::callAfterDelay(500, [this, opened] {
-                    setApplicationReturnValue(mainWindow_ && mainWindow_->isShowing() && opened ? 0 : 1);
-                    quit();
+                openQueuedDocument([this, startupSmoke](bool opened) {
+                    if (startupSmoke) {
+                        setApplicationReturnValue(mainWindow_ && mainWindow_->isShowing() && opened ? 0 : 1);
+                        quit();
+                    }
                 });
             });
         });
@@ -265,7 +347,13 @@ public:
             if (mainWindow_) openQueuedDocument();
         }
     }
-    void shutdown() override { startup_.reset(); mainWindow_.reset(); }
+    void shutdown() override {
+        if (getApplicationReturnValue() != 0 && getCommandLineParameterArray()[0].endsWith("-smoke"))
+            std::cerr << getCommandLineParameterArray()[0] << " failed at check " << getApplicationReturnValue() << '\n';
+        windowCheck_.reset();
+        startup_.reset();
+        mainWindow_.reset();
+    }
     void systemRequestedQuit() override { quit(); }
 
 private:
@@ -275,10 +363,10 @@ private:
         if (file.hasFileExtension("ostf;ostfp")) queuedDocument_ = file;
     }
 
-    bool openQueuedDocument() {
-        if (queuedDocument_ == juce::File{}) return true;
+    void openQueuedDocument(std::function<void(bool)> finished = {}) {
+        if (queuedDocument_ == juce::File{}) { if (finished) finished(true); return; }
         const auto file = std::exchange(queuedDocument_, juce::File{});
-        return static_cast<MainComponent*>(mainWindow_->getContentComponent())->openDocument(file);
+        static_cast<MainComponent*>(mainWindow_->getContentComponent())->openSongFile(file, std::move(finished));
     }
 
     class MainWindow final : public juce::DocumentWindow {
@@ -298,12 +386,21 @@ private:
             }
 #endif
         }
+        std::function<void()> close;
         void closeButtonPressed() override {
-            juce::JUCEApplication::getInstance()->systemRequestedQuit();
+            if (close)
+                close();
         }
     };
+
+    std::unique_ptr<MainWindow> createStudioWindow() {
+        auto window = std::make_unique<MainWindow>(getApplicationName());
+        window->close = [this] { systemRequestedQuit(); };
+        return window;
+    }
     std::unique_ptr<MainWindow> mainWindow_;
     std::unique_ptr<StartupScreen> startup_;
+    std::unique_ptr<juce::Timer> windowCheck_;
     juce::File queuedDocument_;
 };
 

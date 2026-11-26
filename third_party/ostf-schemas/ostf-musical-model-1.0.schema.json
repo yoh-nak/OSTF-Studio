@@ -1,0 +1,471 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yoh-nak.github.io/ostf/schema/ostf-musical-model-1.0.schema.json",
+  "title": "OSTF Musical Model Profile 1.0.0",
+  "type": "object",
+  "properties": {
+    "profileVersion": {
+      "const": "1.0.0"
+    },
+    "id": {
+      "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Object"
+      },
+      "minItems": 0
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Relation"
+      },
+      "minItems": 0
+    },
+    "clocks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Clock"
+      },
+      "minItems": 0
+    },
+    "timeMaps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TimeMap"
+      },
+      "minItems": 0
+    },
+    "occurrences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Occurrence"
+      },
+      "minItems": 0
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "ostf-common-1.0.schema.json#/$defs/CapabilityRequirement"
+      },
+      "minItems": 0
+    },
+    "extensions": {
+      "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+    }
+  },
+  "required": [
+    "profileVersion",
+    "id",
+    "objects",
+    "relations",
+    "clocks",
+    "timeMaps",
+    "occurrences"
+  ],
+  "additionalProperties": false,
+  "description": "OSTF unified musical model: optional native representation links, precise coordinate maps and explicit field authority.",
+  "$defs": {
+    "Clock": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "unit": {
+          "enum": [
+            "quarter",
+            "tick",
+            "second",
+            "sampleFrame"
+          ]
+        },
+        "role": {
+          "enum": [
+            "sourceScore",
+            "performance",
+            "audioAsset",
+            "notationMeasure"
+          ]
+        },
+        "owner": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+        },
+        "sampleRateHz": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 768000,
+          "description": "Exact integer."
+        },
+        "ppq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 960000,
+          "description": "Exact integer."
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "unit",
+        "role"
+      ],
+      "additionalProperties": false,
+      "description": "A coordinate system, separate from UI bar numbers. Source-score ticks use the containing Score ppq; audio clocks reference one exact Production asset.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "unit": {
+                "const": "sampleFrame"
+              }
+            },
+            "required": [
+              "unit"
+            ]
+          },
+          "then": {
+            "required": [
+              "sampleRateHz",
+              "owner"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "unit": {
+                "const": "tick"
+              }
+            },
+            "required": [
+              "unit"
+            ]
+          },
+          "then": {
+            "required": [
+              "ppq"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "enum": [
+                  "audioAsset",
+                  "notationMeasure"
+                ]
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "then": {
+            "required": [
+              "owner"
+            ]
+          }
+        }
+      ]
+    },
+    "Anchor": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Rational"
+        },
+        "target": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Rational"
+        }
+      },
+      "required": [
+        "source",
+        "target"
+      ],
+      "additionalProperties": false
+    },
+    "TimeMap": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "fromClockId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "toClockId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "kind": {
+          "enum": [
+            "notationToScore",
+            "scoreToAudio",
+            "sourceToPerformance",
+            "warp",
+            "alignment"
+          ]
+        },
+        "anchors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Anchor"
+          },
+          "minItems": 2
+        },
+        "interpolation": {
+          "const": "linear"
+        },
+        "accuracy": {
+          "enum": [
+            "exact",
+            "estimated",
+            "approximated"
+          ]
+        },
+        "maxError": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/NonnegativeRational"
+        },
+        "occurrenceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "status": {
+          "enum": [
+            "valid",
+            "stale",
+            "conflicted"
+          ]
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "fromClockId",
+        "toClockId",
+        "kind",
+        "anchors",
+        "interpolation",
+        "accuracy",
+        "status"
+      ],
+      "additionalProperties": false,
+      "description": "Finite piecewise-linear map. Both coordinates strictly increase. Separate maps identify repeated occurrences. No extrapolation outside anchors. Reverse/slice editing uses segments, not decreasing warp anchors."
+    },
+    "Occurrence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "performancePlanId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "visitId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "source": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "performancePlanId",
+        "visitId"
+      ],
+      "additionalProperties": false,
+      "description": "A particular finite Core Performance Plan Visit; source note identity alone does not identify a repeated performance."
+    },
+    "Authority": {
+      "type": "object",
+      "properties": {
+        "aspect": {
+          "enum": [
+            "pitch",
+            "timing",
+            "articulation",
+            "lyrics",
+            "timbre",
+            "notation",
+            "routing"
+          ]
+        },
+        "source": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+        },
+        "policy": {
+          "enum": [
+            "manual",
+            "derive",
+            "locked"
+          ]
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "aspect",
+        "source",
+        "policy"
+      ],
+      "additionalProperties": false,
+      "description": "Authority is explicit and local to the aspect. derive expresses an authored dependency; it does not silently modify another document."
+    },
+    "Object": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "kind": {
+          "enum": [
+            "note",
+            "chord",
+            "phrase",
+            "part",
+            "percussion",
+            "noise",
+            "ambience",
+            "unresolved",
+            "other"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "description": "Text; no executable interpretation."
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "state": {
+          "enum": [
+            "authored",
+            "imported",
+            "estimated",
+            "confirmed",
+            "generated",
+            "unresolved"
+          ]
+        },
+        "authorities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Authority"
+          },
+          "minItems": 0
+        },
+        "confidence": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Confidence"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "members",
+        "state"
+      ],
+      "additionalProperties": false,
+      "description": "Semantic grouping of representations. Does not replace a Core Note, Notation Event or Acoustic Object, and does not itself sound. Empty members allow unresolved or not-yet-realized intent."
+    },
+    "Relation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "type": {
+          "enum": [
+            "alignedWith",
+            "realizes",
+            "derivedFrom",
+            "belongsTo",
+            "contributesTo",
+            "alternativeOf",
+            "splitFrom",
+            "mergedFrom",
+            "replaces"
+          ]
+        },
+        "from": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "to": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/EntityRef"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "confirmed",
+            "rejected",
+            "stale",
+            "conflicted"
+          ]
+        },
+        "coverage": {
+          "enum": [
+            "full",
+            "partial",
+            "unknown"
+          ]
+        },
+        "occurrenceId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "timeMapIds": {
+          "type": "array",
+          "items": {
+            "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "confidence": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Confidence"
+        },
+        "revisionId": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Id"
+        },
+        "extensions": {
+          "$ref": "ostf-common-1.0.schema.json#/$defs/Extensions"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "from",
+        "to",
+        "status"
+      ],
+      "additionalProperties": false,
+      "description": "Many-to-many correspondence or provenance. A relation is not a command; alternatives and rejected/stale relations never auto-select or auto-update music."
+    }
+  }
+}

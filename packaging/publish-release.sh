@@ -2,8 +2,8 @@
 set -euo pipefail
 
 case "$RELEASE_TYPE" in
-  stable) release_flags=() ;;
-  prerelease) release_flags=(--prerelease --latest=false) ;;
+  stable) release_flags=(); release_title="OSTF Studio $RELEASE_TAG" ;;
+  prerelease) release_flags=(--prerelease --latest=false); release_title="OSTF Studio Public Alpha ${RELEASE_TAG##*.}" ;;
   *) echo 'Select stable or prerelease to publish.' >&2; exit 1 ;;
 esac
 "$BASH" packaging/release-version.sh
@@ -35,5 +35,5 @@ fi
 # Creating a ref fails if another process creates the same tag concurrently.
 gh api --method POST "$repo_api/git/refs" -f "ref=$tag_ref" -f "sha=$GITHUB_SHA" --silent
 gh release create "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" \
-  --verify-tag "${release_flags[@]}" --title "OSTF Studio $RELEASE_TAG" --generate-notes \
+  --verify-tag "${release_flags[@]}" --title "$release_title" --generate-notes \
   --notes-file "$notes"

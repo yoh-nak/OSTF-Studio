@@ -11,7 +11,7 @@ on:
         options: [none, stable, prerelease]
         default: none
       release_tag:
-        description: New release tag (for example v1.0.0-alpha.1)
+        description: New release tag (for example v1.0.0-public-alpha.1)
         type: string
 
 permissions:
@@ -46,6 +46,8 @@ jobs:
       - name: Test alpha release version policy
         shell: bash
         run: bash tests/release-version.sh
+      - name: Check installer catalogue and choices
+        run: python tests/installer_choices.py
       - name: Configure standalone core
         run: cmake -S . -B build-core ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=OFF
       - name: Build standalone core
@@ -56,8 +58,8 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/checkout@v4
         with:
-          repository: yoh-nak/Open-Song-Timeline-Format-5.0
-          ref: d8ce48ca6c873a5a24a94bcc80d847bf33135b46
+          repository: yoh-nak/Open-Song-Timeline-Format-5.1
+          ref: 957bd071cecc58a12f417ad212c40723ba9812ca
           path: build-tools/ostf-reference
           persist-credentials: false
       - name: Verify demo scores, production sessions and routing
@@ -77,7 +79,22 @@ jobs:
           test "$(git -C build/_deps/juce-src rev-parse HEAD)" = d60b7a78030661574a615b586d9325ba7a7fa7dd
           cmake --build build --config Release --parallel 2
       - name: Run tests
+        id: tests
         run: ctest --test-dir build -C Release --output-on-failure --no-tests=error
+      - name: Diagnose an aborted macOS smoke test
+        if: failure() && steps.tests.outcome == 'failure' && runner.os == 'macOS'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          build = pathlib.Path("build")
+          failed = {s.split(":", 1)[1] for s in (build / "Testing/Temporary/LastTestsFailed.log").read_text().splitlines()}
+          catalog = json.loads(subprocess.check_output(["ctest", "--test-dir", str(build), "-C", "Release", "--show-only=json-v1"]))
+          for test in catalog["tests"]:
+              if test["name"] in failed & {"ostf_studio_plugin_focus", "ostf_scale_instrument_tests"}:
+                  print("Debugger trace for", test["name"], flush=True)
+                  subprocess.run(["xcrun", "lldb", "--batch", "-o", "run", "-k", "thread backtrace", "--", *test["command"]], timeout=120)
+          PY
       - name: Package Windows installer and Portable ZIP
         if: runner.os == 'Windows'
         shell: pwsh
@@ -92,32 +109,39 @@ jobs:
         run: |
           $oldRoot = Join-Path $env:LOCALAPPDATA 'Programs/Common/VST3'
           $null = New-Item -ItemType Directory -Force -Path $oldRoot
-          Copy-Item -Recurse -LiteralPath 'build/OSTFArranger_artefacts/Release/VST3/OSTF Arranger.vst3' -Destination $oldRoot
+          Copy-Item -Recurse -LiteralPath 'build/OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3' -Destination $oldRoot
           $other = New-Item -ItemType Directory -Path (Join-Path $oldRoot 'Third Party Test.vst3')
           $setup = (Resolve-Path 'dist/OSTF_Studio_Windows_x64_Setup.exe').Path
           function Install-Studio([string] $tasks) {
             $install = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- $tasks" -WindowStyle Hidden -PassThru
             if (-not $install.WaitForExit(240000) -or $install.ExitCode -ne 0) { throw "Setup failed with $tasks" }
           }
-          $shared = Join-Path $env:CommonProgramFiles 'VST3/OSTF Studio/OSTF Arranger.vst3/Contents'
+          $shared = Join-Path $env:CommonProgramFiles 'VST3/OSTF Studio/OSTF GM Sound Module.vst3/Contents'
           $dir = New-Item -ItemType Directory -Force -Path (Join-Path $shared 'x86_64-win')
-          $dll = Join-Path $dir.FullName 'OSTF Arranger.vst3'
-          Copy-Item -LiteralPath (Join-Path $oldRoot 'OSTF Arranger.vst3/Contents/x86_64-win/OSTF Arranger.vst3') -Destination $dll
+          $dll = Join-Path $dir.FullName 'OSTF GM Sound Module.vst3'
+          Copy-Item -LiteralPath (Join-Path $oldRoot 'OSTF GM Sound Module.vst3/Contents/x86_64-win/OSTF GM Sound Module.vst3') -Destination $dll
           $metadata = Join-Path $shared 'Resources/moduleinfo.json'
           $lock = [IO.File]::Open($dll, 'Open', 'Read', 'Read')
           try {
             Install-Studio '/MERGETASKS=!sharedvst3'
             if (!(Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs/OSTF Studio/OSTF Studio.exe')) -or
-                (Test-Path -LiteralPath $metadata) -or !(Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF Arranger.vst3'))) {
+                (Test-Path -LiteralPath $metadata) -or !(Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF GM Sound Module.vst3'))) {
               throw 'App-only setup touched plug-ins or failed to install Studio'
             }
-            Install-Studio '/TASKS=sharedvst3'
+            Install-Studio '/TYPE=custom /COMPONENTS="studio,composition\Ose1" /TASKS=sharedvst3'
+            $selected = Join-Path $env:CommonProgramFiles 'VST3/OSTF Studio/OSTF Scale Editor.vst3/Contents/x86_64-win/OSTF Scale Editor.vst3'
+            $omitted = Join-Path $env:CommonProgramFiles 'VST3/OSTF Studio/OSTF Reverb.vst3'
+            if (!(Test-Path -LiteralPath $selected -PathType Leaf) -or (Test-Path -LiteralPath $omitted) -or
+                (Test-Path -LiteralPath $metadata) -or !(Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF GM Sound Module.vst3'))) {
+              throw 'Custom selection installed or migrated unexpected plug-ins'
+            }
+            Install-Studio '/TYPE=full /TASKS=sharedvst3'
             if (!(Test-Path -LiteralPath $metadata)) { throw 'Setup did not repair the incomplete locked bundle' }
           } finally { $lock.Dispose() }
-          if ((Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF Arranger.vst3')) -or
-              -not (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'OSTF Studio/Previous VST3/OSTF Arranger.vst3')) -or
+          if ((Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF GM Sound Module.vst3')) -or
+              -not (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'OSTF Studio/Previous VST3/OSTF GM Sound Module.vst3')) -or
               -not (Test-Path -LiteralPath $other.FullName)) { throw 'Unexpected legacy VST3 migration' }
-          $names = @('OSTF Arranger', 'OSTF GM Sound Module') + @((Get-Content src/plugins/effects/catalog.json -Raw | ConvertFrom-Json).name)
+          $names = @('OSTF GM Sound Module') + @((Get-Content src/plugins/effects/catalog.json -Raw | ConvertFrom-Json).name) + @((Get-Content src/plugins/instruments/catalog.json -Raw | ConvertFrom-Json).name)
           foreach ($name in $names) {
             $path = Join-Path $env:CommonProgramFiles "VST3/OSTF Studio/$name.vst3/Contents/x86_64-win/$name.vst3"
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Shared VST3 is missing: $path" }
@@ -126,53 +150,27 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          mkdir -p dist
-          app='build/OSTFStudio_artefacts/Release/OSTF Studio.app'
-          test -d "$app"
-          lipo "$app/Contents/MacOS/OSTF Studio" -verify_arch arm64
-          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist"
-          dmg='dist/OSTF_Studio_macOS_arm64.dmg'
-          staging=$(mktemp -d)
-          ditto "$app" "$staging/OSTF Studio.app"
-          ln -s /Applications "$staging/Applications"
-          gm='build/OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3'
-          lipo "$gm/Contents/MacOS/OSTF GM Sound Module" -verify_arch arm64
-          arranger='build/OSTFArranger_artefacts/Release/VST3/OSTF Arranger.vst3'
-          lipo "$arranger/Contents/MacOS/OSTF Arranger" -verify_arch arm64
-          pkgroot=$(mktemp -d)
-          mkdir -p "$pkgroot/Applications" "$pkgroot/Library/Audio/Plug-Ins/VST3"
-          ditto "$app" "$pkgroot/Applications/OSTF Studio.app"
-          ditto "$gm" "$pkgroot/Library/Audio/Plug-Ins/VST3/OSTF GM Sound Module.vst3"
-          ditto "$arranger" "$pkgroot/Library/Audio/Plug-Ins/VST3/OSTF Arranger.vst3"
+          python3 packaging/macos_package.py '${{ steps.version.outputs.binary }}' --display-version '${{ steps.version.outputs.display }}'
+      - name: Verify macOS plug-in selection and full install
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          volume=$(mktemp -d)
+          hdiutil attach -readonly -nobrowse -mountpoint "$volume" dist/OSTF_Studio_macOS_arm64.dmg
+          trap 'hdiutil detach "$volume"' EXIT
+          pkg="$volume/Install OSTF Studio and VST3.pkg"
+          changes="$RUNNER_TEMP/studio-choices.plist"
+          python3 tests/installer_choices.py --mac-selection "$changes"
+          sudo installer -pkg "$pkg" -target / -applyChoiceChangesXML "$changes"
+          test -x '/Applications/OSTF Studio.app/Contents/MacOS/OSTF Studio'
+          plugins='/Library/Audio/Plug-Ins/VST3'
+          test -d "$plugins/OSTF Scale Editor.vst3"
+          test ! -e "$plugins/OSTF GM Sound Module.vst3"
+          test ! -e "$plugins/OSTF Reverb.vst3"
+          sudo installer -pkg "$pkg" -target /
           while IFS= read -r name; do
-            bundle="build/StudioEffects/Release/$name.vst3"
-            lipo "$bundle/Contents/MacOS/$name" -verify_arch arm64
-            test -s "$bundle/Contents/Resources/Licenses/GPL-3.0.txt"
-            ditto "$bundle" "$pkgroot/Library/Audio/Plug-Ins/VST3/$name.vst3"
-          done < <(jq -r '.[].name' src/plugins/effects/catalog.json)
-          cp third_party/tinysoundfont/LICENSE.txt "$staging/TinySoundFont-License.txt"
-          components=$(mktemp -d)/components.plist
-          pkgbuild --analyze --root "$pkgroot" "$components"
-          python3 - "$components" <<'PY'
-          import plistlib, sys
-          from pathlib import Path
-          path = Path(sys.argv[1])
-          components = plistlib.loads(path.read_bytes())
-          def fix_locations(bundles):
-              for bundle in bundles:
-                  bundle["BundleIsRelocatable"] = False
-                  fix_locations(bundle.get("ChildBundles", []))
-          fix_locations(components)
-          path.write_bytes(plistlib.dumps(components))
-          PY
-          pkgbuild --root "$pkgroot" --component-plist "$components" --install-location / --identifier org.ostf.studio.installer \
-            --version '${{ steps.version.outputs.binary }}' "$staging/Install OSTF Studio and VST3.pkg"
-          sudo installer -pkg "$staging/Install OSTF Studio and VST3.pkg" -target /
-          while IFS= read -r name; do
-            lipo "/Library/Audio/Plug-Ins/VST3/$name.vst3/Contents/MacOS/$name" -verify_arch arm64
-          done < <(jq -r '["OSTF Arranger", "OSTF GM Sound Module", .[].name][]' src/plugins/effects/catalog.json)
-          hdiutil create -volname 'OSTF Studio' -srcfolder "$staging" -format UDZO "$dmg"
-          hdiutil verify "$dmg"
+            lipo "$plugins/$name.vst3/Contents/MacOS/$name" -verify_arch arm64
+          done < <(jq -sr '["OSTF GM Sound Module", (.[][] | .name)][]' src/plugins/effects/catalog.json src/plugins/instruments/catalog.json)
       - name: Package corresponding source and build inputs
         if: runner.os == 'macOS'
         shell: bash

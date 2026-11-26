@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yoh-nak.github.io/ostf/schema/ostf-common-1.0.schema.json",
+  "title": "OSTF shared primitives 1.0.0",
+  "description": "Reference-only primitive library. This schema alone is not a document validator.",
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      "description": "Typed stable identifier. Identity is never inferred from a label or array position.",
+      "not": {
+        "pattern": "[\\r\\n\\u2028\\u2029]"
+      }
+    },
+    "Sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of exact original bytes; not JSON-normalized and not authentication."
+    },
+    "Rational": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "Exact integer."
+        },
+        "denominator": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Exact integer."
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "additionalProperties": false,
+      "description": "Exact rational, reduced by gcd; zero MUST be 0/1. Use arbitrary precision arithmetic for intermediate operations."
+    },
+    "NonnegativeRational": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Exact integer."
+        },
+        "denominator": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Exact integer."
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "additionalProperties": false,
+      "description": "Exact rational, reduced by gcd; zero MUST be 0/1. Use arbitrary precision arithmetic for intermediate operations."
+    },
+    "PositiveRational": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Exact integer."
+        },
+        "denominator": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Exact integer."
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "additionalProperties": false,
+      "description": "Exact rational, reduced by gcd; zero MUST be 0/1. Use arbitrary precision arithmetic for intermediate operations."
+    },
+    "EntityRef": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "enum": [
+            "core",
+            "model",
+            "notation",
+            "production",
+            "audio"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "description": "Entity type in the domain registry.",
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,63}$"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "ownerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "domain",
+        "type",
+        "id"
+      ],
+      "additionalProperties": false,
+      "description": "Typed reference in the currently bound Score/Production pair. ownerId disambiguates locally scoped IDs; never authorizes network lookup."
+    },
+    "Extensions": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z0-9-]+)+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "Text; no executable interpretation.",
+            "minLength": 1
+          },
+          "data": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "version",
+          "data"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Opaque reverse-DNS vendor namespace map. Unknown data is preserved or a destructive save is refused."
+    },
+    "Confidence": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "number",
+          "description": "Method-specific score; not assumed to be a calibrated probability.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "method": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 1
+        },
+        "calibration": {
+          "type": "string",
+          "description": "Optional declared calibration description/identifier."
+        }
+      },
+      "required": [
+        "value",
+        "method"
+      ],
+      "additionalProperties": false
+    },
+    "CapabilityRequirement": {
+      "type": "object",
+      "properties": {
+        "feature": {
+          "type": "string",
+          "description": "Versioned feature code from registry or a namespaced vendor capability.",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "description": "Text; no executable interpretation.",
+          "minLength": 1
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "read",
+              "preserve",
+              "edit",
+              "render",
+              "export"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "onUnsupported": {
+          "enum": [
+            "reject",
+            "preserve",
+            "renderedFallback"
+          ]
+        }
+      },
+      "required": [
+        "feature",
+        "version",
+        "actions",
+        "onUnsupported"
+      ],
+      "additionalProperties": false,
+      "description": "Content-level requirement, not an implementation capability claim. Fallback does not confer editing support."
+    },
+    "TimePoint": {
+      "type": "object",
+      "properties": {
+        "clockId": {
+          "$ref": "#/$defs/Id"
+        },
+        "position": {
+          "$ref": "#/$defs/Rational"
+        }
+      },
+      "required": [
+        "clockId",
+        "position"
+      ],
+      "additionalProperties": false
+    },
+    "TimeRange": {
+      "type": "object",
+      "properties": {
+        "clockId": {
+          "$ref": "#/$defs/Id"
+        },
+        "start": {
+          "$ref": "#/$defs/Rational"
+        },
+        "duration": {
+          "$ref": "#/$defs/PositiveRational"
+        }
+      },
+      "required": [
+        "clockId",
+        "start",
+        "duration"
+      ],
+      "additionalProperties": false,
+      "description": "Half-open interval in the named clock. No implicit unit or coordinate conversion."
+    }
+  }
+}

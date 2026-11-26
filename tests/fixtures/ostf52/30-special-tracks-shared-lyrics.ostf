@@ -1,0 +1,584 @@
+{
+  "format": "OSTF",
+  "version": "5.2.0",
+  "ppq": 960,
+  "song": {
+    "title": "Shared lyrics with lead, harmony and backing special tracks",
+    "primaryMelodyTrackId": "track-lead",
+    "melodyTrackIds": [
+      "track-lead",
+      "track-harmony",
+      "track-backing"
+    ],
+    "primaryLyricDocumentId": "lyric-main"
+  },
+  "timeline": {
+    "sections": [
+      {
+        "id": "section-song",
+        "name": "Song",
+        "start": 0,
+        "duration": 3840
+      }
+    ],
+    "tempoChanges": [
+      {
+        "at": 0,
+        "bpm": 120
+      }
+    ],
+    "meterChanges": [
+      {
+        "at": 0,
+        "numerator": 4,
+        "denominator": 4
+      }
+    ],
+    "duration": 3840
+  },
+  "harmony": {
+    "chords": [],
+    "scales": []
+  },
+  "tracks": [
+    {
+      "id": "track-lead",
+      "name": "Lead",
+      "role": "lead",
+      "trackType": "melodic",
+      "clips": [
+        {
+          "id": "clip-lead",
+          "start": 0,
+          "duration": 1920,
+          "notes": [
+            {
+              "id": "note-lead-1",
+              "start": 0,
+              "duration": 960,
+              "pitch": 60,
+              "velocity": 90
+            },
+            {
+              "id": "note-lead-2",
+              "start": 960,
+              "duration": 960,
+              "pitch": 62,
+              "velocity": 90
+            }
+          ],
+          "vocalPerformances": [
+            {
+              "id": "performance-lead",
+              "voiceId": "voice-lead",
+              "noteIds": [
+                "note-lead-1",
+                "note-lead-2"
+              ],
+              "phonemeEvents": [
+                {
+                  "id": "phoneme-lead-1-1",
+                  "unitId": "unit-so",
+                  "noteId": "note-lead-1",
+                  "alphabet": "ipa",
+                  "symbol": "s",
+                  "start": 0,
+                  "duration": 120
+                },
+                {
+                  "id": "phoneme-lead-1-2",
+                  "unitId": "unit-so",
+                  "noteId": "note-lead-1",
+                  "alphabet": "ipa",
+                  "symbol": "o",
+                  "start": 120,
+                  "duration": 840
+                },
+                {
+                  "id": "phoneme-lead-2-1",
+                  "unitId": "unit-ra",
+                  "noteId": "note-lead-2",
+                  "alphabet": "ipa",
+                  "symbol": "ɾ",
+                  "start": 960,
+                  "duration": 120
+                },
+                {
+                  "id": "phoneme-lead-2-2",
+                  "unitId": "unit-ra",
+                  "noteId": "note-lead-2",
+                  "alphabet": "ipa",
+                  "symbol": "a",
+                  "start": 1080,
+                  "duration": 840
+                }
+              ],
+              "pitchCurves": [
+                {
+                  "id": "pitch-lead",
+                  "targetNoteId": "note-lead-1",
+                  "unit": "cents",
+                  "interpolation": "linear",
+                  "points": [
+                    {
+                      "at": 0,
+                      "value": -8
+                    },
+                    {
+                      "at": 120,
+                      "value": 0
+                    },
+                    {
+                      "at": 900,
+                      "value": 0
+                    }
+                  ]
+                }
+              ],
+              "expressionCurves": [
+                {
+                  "id": "dynamics-lead",
+                  "parameter": "dynamics",
+                  "interpolation": "step",
+                  "points": [
+                    {
+                      "at": 0,
+                      "value": 0.78
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "track-harmony",
+      "name": "Harmony",
+      "role": "harmony",
+      "trackType": "melodic",
+      "clips": [
+        {
+          "id": "clip-harmony",
+          "start": 240,
+          "duration": 1920,
+          "notes": [
+            {
+              "id": "note-harmony-1",
+              "start": 0,
+              "duration": 960,
+              "pitch": 64,
+              "velocity": 90
+            },
+            {
+              "id": "note-harmony-2",
+              "start": 960,
+              "duration": 960,
+              "pitch": 65,
+              "velocity": 90
+            }
+          ],
+          "vocalPerformances": [
+            {
+              "id": "performance-harmony",
+              "voiceId": "voice-harmony",
+              "noteIds": [
+                "note-harmony-1",
+                "note-harmony-2"
+              ],
+              "phonemeEvents": [
+                {
+                  "id": "phoneme-harmony-1-1",
+                  "unitId": "unit-so",
+                  "noteId": "note-harmony-1",
+                  "alphabet": "ipa",
+                  "symbol": "s",
+                  "start": 0,
+                  "duration": 120
+                },
+                {
+                  "id": "phoneme-harmony-1-2",
+                  "unitId": "unit-so",
+                  "noteId": "note-harmony-1",
+                  "alphabet": "ipa",
+                  "symbol": "o",
+                  "start": 120,
+                  "duration": 840
+                },
+                {
+                  "id": "phoneme-harmony-2-1",
+                  "unitId": "unit-ra",
+                  "noteId": "note-harmony-2",
+                  "alphabet": "ipa",
+                  "symbol": "ɾ",
+                  "start": 960,
+                  "duration": 120
+                },
+                {
+                  "id": "phoneme-harmony-2-2",
+                  "unitId": "unit-ra",
+                  "noteId": "note-harmony-2",
+                  "alphabet": "ipa",
+                  "symbol": "a",
+                  "start": 1080,
+                  "duration": 840
+                }
+              ],
+              "pitchCurves": [
+                {
+                  "id": "pitch-harmony",
+                  "targetNoteId": "note-harmony-1",
+                  "unit": "cents",
+                  "interpolation": "linear",
+                  "points": [
+                    {
+                      "at": 0,
+                      "value": -8
+                    },
+                    {
+                      "at": 120,
+                      "value": 0
+                    },
+                    {
+                      "at": 900,
+                      "value": 0
+                    }
+                  ]
+                }
+              ],
+              "expressionCurves": [
+                {
+                  "id": "dynamics-harmony",
+                  "parameter": "dynamics",
+                  "interpolation": "step",
+                  "points": [
+                    {
+                      "at": 0,
+                      "value": 0.62
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "track-backing",
+      "name": "Backing",
+      "role": "backing",
+      "trackType": "melodic",
+      "clips": [
+        {
+          "id": "clip-backing",
+          "start": 480,
+          "duration": 1920,
+          "notes": [
+            {
+              "id": "note-backing-1",
+              "start": 0,
+              "duration": 960,
+              "pitch": 55,
+              "velocity": 90
+            },
+            {
+              "id": "note-backing-2",
+              "start": 960,
+              "duration": 960,
+              "pitch": 57,
+              "velocity": 90
+            }
+          ],
+          "vocalPerformances": [
+            {
+              "id": "performance-backing",
+              "voiceId": "voice-backing",
+              "noteIds": [
+                "note-backing-1",
+                "note-backing-2"
+              ],
+              "phonemeEvents": [
+                {
+                  "id": "phoneme-backing-1-1",
+                  "unitId": "unit-so",
+                  "noteId": "note-backing-1",
+                  "alphabet": "ipa",
+                  "symbol": "s",
+                  "start": 0,
+                  "duration": 120
+                },
+                {
+                  "id": "phoneme-backing-1-2",
+                  "unitId": "unit-so",
+                  "noteId": "note-backing-1",
+                  "alphabet": "ipa",
+                  "symbol": "o",
+                  "start": 120,
+                  "duration": 840
+                },
+                {
+                  "id": "phoneme-backing-2-1",
+                  "unitId": "unit-ra",
+                  "noteId": "note-backing-2",
+                  "alphabet": "ipa",
+                  "symbol": "ɾ",
+                  "start": 960,
+                  "duration": 120
+                },
+                {
+                  "id": "phoneme-backing-2-2",
+                  "unitId": "unit-ra",
+                  "noteId": "note-backing-2",
+                  "alphabet": "ipa",
+                  "symbol": "a",
+                  "start": 1080,
+                  "duration": 840
+                }
+              ],
+              "pitchCurves": [
+                {
+                  "id": "pitch-backing",
+                  "targetNoteId": "note-backing-1",
+                  "unit": "cents",
+                  "interpolation": "linear",
+                  "points": [
+                    {
+                      "at": 0,
+                      "value": -8
+                    },
+                    {
+                      "at": 120,
+                      "value": 0
+                    },
+                    {
+                      "at": 900,
+                      "value": 0
+                    }
+                  ]
+                }
+              ],
+              "expressionCurves": [
+                {
+                  "id": "dynamics-backing",
+                  "parameter": "dynamics",
+                  "interpolation": "step",
+                  "points": [
+                    {
+                      "at": 0,
+                      "value": 0.55
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "soundSlots": [],
+  "lyrics": {
+    "documents": [
+      {
+        "id": "lyric-main",
+        "title": "そら",
+        "language": "ja"
+      }
+    ],
+    "phrases": [
+      {
+        "id": "phrase-main",
+        "documentId": "lyric-main",
+        "text": "そら",
+        "pronunciation": "そら"
+      }
+    ],
+    "units": [
+      {
+        "id": "unit-so",
+        "phraseId": "phrase-main",
+        "text": "そ",
+        "pronunciation": "そ",
+        "phonetics": [
+          {
+            "alphabet": "ipa",
+            "language": "ja",
+            "symbols": [
+              "s",
+              "o"
+            ],
+            "preferred": true
+          }
+        ]
+      },
+      {
+        "id": "unit-ra",
+        "phraseId": "phrase-main",
+        "text": "ら",
+        "pronunciation": "ら",
+        "phonetics": [
+          {
+            "alphabet": "ipa",
+            "language": "ja",
+            "symbols": [
+              "ɾ",
+              "a"
+            ],
+            "preferred": true
+          }
+        ]
+      }
+    ],
+    "alignments": [
+      {
+        "id": "alignment-lead-1",
+        "unitIds": [
+          "unit-so"
+        ],
+        "noteIds": [
+          "note-lead-1"
+        ],
+        "voiceId": "voice-lead"
+      },
+      {
+        "id": "alignment-lead-2",
+        "unitIds": [
+          "unit-ra"
+        ],
+        "noteIds": [
+          "note-lead-2"
+        ],
+        "voiceId": "voice-lead"
+      },
+      {
+        "id": "alignment-harmony-1",
+        "unitIds": [
+          "unit-so"
+        ],
+        "noteIds": [
+          "note-harmony-1"
+        ],
+        "voiceId": "voice-harmony"
+      },
+      {
+        "id": "alignment-harmony-2",
+        "unitIds": [
+          "unit-ra"
+        ],
+        "noteIds": [
+          "note-harmony-2"
+        ],
+        "voiceId": "voice-harmony"
+      },
+      {
+        "id": "alignment-backing-1",
+        "unitIds": [
+          "unit-so"
+        ],
+        "noteIds": [
+          "note-backing-1"
+        ],
+        "voiceId": "voice-backing"
+      },
+      {
+        "id": "alignment-backing-2",
+        "unitIds": [
+          "unit-ra"
+        ],
+        "noteIds": [
+          "note-backing-2"
+        ],
+        "voiceId": "voice-backing"
+      }
+    ],
+    "voices": [
+      {
+        "id": "voice-lead",
+        "name": "Lead",
+        "role": "lead",
+        "trackId": "track-lead",
+        "documentId": "lyric-main",
+        "vocalProfile": {
+          "language": "ja",
+          "deliveryMode": "sing"
+        }
+      },
+      {
+        "id": "voice-harmony",
+        "name": "Harmony",
+        "role": "harmony",
+        "trackId": "track-harmony",
+        "documentId": "lyric-main",
+        "vocalProfile": {
+          "language": "ja",
+          "deliveryMode": "sing"
+        }
+      },
+      {
+        "id": "voice-backing",
+        "name": "Backing",
+        "role": "backing",
+        "trackId": "track-backing",
+        "documentId": "lyric-main",
+        "vocalProfile": {
+          "language": "ja",
+          "deliveryMode": "sing"
+        }
+      }
+    ]
+  },
+  "resources": [],
+  "specialTracks": {
+    "profileVersion": "1.0.0",
+    "id": "special-tracks-shared-text",
+    "tracks": [
+      {
+        "id": "special-lyrics",
+        "name": "Shared lyrics",
+        "kind": "lyrics",
+        "documentId": "lyric-main",
+        "voiceIds": [
+          "voice-lead",
+          "voice-harmony",
+          "voice-backing"
+        ],
+        "presentation": {
+          "visible": true
+        }
+      },
+      {
+        "id": "special-lead",
+        "name": "Lead vocal",
+        "kind": "vocal",
+        "voiceId": "voice-lead"
+      },
+      {
+        "id": "special-harmony",
+        "name": "Harmony vocal",
+        "kind": "vocal",
+        "voiceId": "voice-harmony"
+      },
+      {
+        "id": "special-backing",
+        "name": "Backing vocal",
+        "kind": "vocal",
+        "voiceId": "voice-backing"
+      },
+      {
+        "id": "special-chorus",
+        "name": "Chorus voices",
+        "kind": "chorus",
+        "memberTrackIds": [
+          "special-harmony",
+          "special-backing"
+        ],
+        "presentation": {
+          "visible": true,
+          "collapsed": false
+        }
+      }
+    ]
+  }
+}

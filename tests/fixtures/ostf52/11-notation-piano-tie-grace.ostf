@@ -1,0 +1,304 @@
+{
+  "format": "OSTF",
+  "version": "5.2.0",
+  "ppq": 960,
+  "song": {
+    "title": "Piano grand staff, independent voices, grace and tied notation"
+  },
+  "timeline": {
+    "sections": [
+      {
+        "id": "A",
+        "name": "A",
+        "start": 0,
+        "duration": 3840
+      }
+    ],
+    "tempoChanges": [
+      {
+        "at": 0,
+        "bpm": 120
+      }
+    ],
+    "meterChanges": [
+      {
+        "at": 0,
+        "numerator": 4,
+        "denominator": 4
+      }
+    ]
+  },
+  "harmony": {
+    "chords": [],
+    "scales": []
+  },
+  "tracks": [],
+  "soundSlots": [],
+  "lyrics": {
+    "documents": [],
+    "phrases": [],
+    "units": [],
+    "alignments": []
+  },
+  "resources": [],
+  "notation": {
+    "profileVersion": "1.0.0",
+    "id": "notation-piano",
+    "title": "Piano notation example",
+    "parts": [
+      {
+        "id": "p1",
+        "name": "Piano",
+        "order": 0
+      }
+    ],
+    "staves": [
+      {
+        "id": "s1",
+        "partId": "p1",
+        "number": 1,
+        "kind": "standard",
+        "initialAttributes": {
+          "clef": {
+            "sign": "G",
+            "line": 2
+          },
+          "meter": {
+            "kind": "measured",
+            "groups": [
+              {
+                "beats": [
+                  4
+                ],
+                "beatType": 4
+              }
+            ]
+          },
+          "key": {
+            "kind": "traditional",
+            "fifths": 0
+          }
+        }
+      },
+      {
+        "id": "s2",
+        "partId": "p1",
+        "number": 2,
+        "kind": "standard",
+        "initialAttributes": {
+          "clef": {
+            "sign": "F",
+            "line": 4
+          }
+        }
+      }
+    ],
+    "voices": [
+      {
+        "id": "v1",
+        "partId": "p1",
+        "label": "1",
+        "defaultStaffId": "s1"
+      },
+      {
+        "id": "v2",
+        "partId": "p1",
+        "label": "2",
+        "defaultStaffId": "s2"
+      }
+    ],
+    "measures": [
+      {
+        "id": "m1",
+        "partId": "p1",
+        "order": 0,
+        "label": "1",
+        "durationQuarter": {
+          "numerator": 4,
+          "denominator": 1
+        }
+      }
+    ],
+    "events": [
+      {
+        "id": "n1",
+        "kind": "note",
+        "partId": "p1",
+        "staffId": "s1",
+        "voiceId": "v1",
+        "measureId": "m1",
+        "offsetQuarter": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 2,
+          "denominator": 1
+        },
+        "value": {
+          "type": "half",
+          "dots": 0
+        },
+        "writtenPitch": {
+          "step": "C",
+          "alter": {
+            "numerator": 0,
+            "denominator": 1
+          },
+          "octave": 4
+        }
+      },
+      {
+        "id": "n2",
+        "kind": "note",
+        "partId": "p1",
+        "staffId": "s1",
+        "voiceId": "v1",
+        "measureId": "m1",
+        "offsetQuarter": {
+          "numerator": 2,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 2,
+          "denominator": 1
+        },
+        "value": {
+          "type": "half",
+          "dots": 0
+        },
+        "writtenPitch": {
+          "step": "C",
+          "alter": {
+            "numerator": 0,
+            "denominator": 1
+          },
+          "octave": 4
+        }
+      },
+      {
+        "id": "b1",
+        "kind": "note",
+        "partId": "p1",
+        "staffId": "s2",
+        "voiceId": "v2",
+        "measureId": "m1",
+        "offsetQuarter": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "value": {
+          "type": "quarter",
+          "dots": 0
+        },
+        "writtenPitch": {
+          "step": "C",
+          "alter": {
+            "numerator": 0,
+            "denominator": 1
+          },
+          "octave": 3
+        }
+      },
+      {
+        "id": "r1",
+        "kind": "rest",
+        "partId": "p1",
+        "staffId": "s2",
+        "voiceId": "v2",
+        "measureId": "m1",
+        "offsetQuarter": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 3,
+          "denominator": 1
+        },
+        "value": {
+          "type": "half",
+          "dots": 1
+        }
+      },
+      {
+        "id": "g1",
+        "kind": "note",
+        "partId": "p1",
+        "staffId": "s1",
+        "voiceId": "v1",
+        "measureId": "m1",
+        "offsetQuarter": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "value": {
+          "type": "eighth",
+          "dots": 0
+        },
+        "writtenPitch": {
+          "step": "B",
+          "alter": {
+            "numerator": 0,
+            "denominator": 1
+          },
+          "octave": 3
+        },
+        "grace": {
+          "anchorEventId": "n1",
+          "placement": "before",
+          "order": 0,
+          "slash": true
+        }
+      }
+    ],
+    "spans": [
+      {
+        "id": "tie1",
+        "kind": "tie",
+        "tieRole": "both",
+        "status": "resolved",
+        "start": {
+          "eventId": "n1",
+          "edge": "start"
+        },
+        "end": {
+          "eventId": "n2",
+          "edge": "start"
+        }
+      },
+      {
+        "id": "slur1",
+        "kind": "slur",
+        "start": {
+          "eventId": "g1",
+          "edge": "start"
+        },
+        "end": {
+          "eventId": "n2",
+          "edge": "end"
+        },
+        "placement": "above"
+      }
+    ],
+    "marks": [
+      {
+        "id": "dyn1",
+        "kind": "dynamic",
+        "code": "ostf:mp",
+        "anchor": {
+          "eventId": "n1",
+          "edge": "start"
+        },
+        "partId": "p1"
+      }
+    ]
+  }
+}

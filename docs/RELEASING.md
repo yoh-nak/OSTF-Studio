@@ -4,7 +4,7 @@
 
 - A push to `main` or a pull request stores the platform packages in **Actions → run → Artifacts**. A manual run defaults to `none` and also produces Artifacts only. GitHub automatically expires new Artifacts after seven days. This setting applies to workflow artifacts and leaves Git history and Release assets independent of that expiration. Artifacts uploaded before this change retain their original expiry.
 - Publish the 1.0.0 alpha series as GitHub pre-releases. Set `OSTF_STUDIO_ALPHA_NUMBER` in `CMakeLists.txt` to the next unused number (1, then 2, then 3). Include the matching notes under `docs/releases/`, verify the pull request on both platforms and merge into `main`.
-- For each authorized publication, open **Actions → OSTF Studio cross-platform build → Run workflow**, select `main`, choose `prerelease` and enter the matching tag, starting with `v1.0.0-alpha.1`. The workflow creates the tag on the exact commit it built. Select `stable` and a plain numeric tag only when a stable release is explicitly requested.
+- For each authorized publication, open **Actions → OSTF Studio cross-platform build → Run workflow**, select `main`, choose `prerelease` and enter the matching tag, starting with `v1.0.0-public-alpha.1` for **OSTF Studio Public Alpha 1**. The earlier experimental Release entries and downloads were withdrawn. Their three Git tags identify the original source revisions. The workflow creates a fresh tag on the exact commit it built. Select `stable` and a plain numeric tag only when a stable release is explicitly requested.
 - After both platform jobs succeed, the Release job verifies the three binary packages and their corresponding-source archive, claims a new tag, and publishes the assets and release notes together.
 - If an upload fails after the tag is created, the tag and any unpublished draft are retained for inspection. Use a new approved version tag for a fresh automated attempt. To use a new stable version tag, first update the numeric version in `CMakeLists.txt`.
 
@@ -19,11 +19,13 @@ The CMake project version is the numeric product version. The Git tag identifies
 
 ## Windows install and upgrade
 
-Setup updates the current user's application in its previous directory using the existing Inno Setup `AppId`. The shared VST3 task starts a second, administrator-approved installer for the two instruments and nine effects in `%CommonProgramFiles%\VST3\OSTF Studio`. Its separate Windows uninstall entry is **OSTF Studio VST3 Plug-ins**. Shared setup compares same-version plug-in binaries by content, installs missing files and leaves running DAWs open. Save and close a DAW before updating a changed binary it has loaded. Interactive setup offers to continue with the application alone if elevation or shared installation fails. In silent installs, use `/TASKS=sharedvst3` to require shared installation or `/MERGETASKS=!sharedvst3` for the application alone. Both installers write setup logs to the installing account's temporary directory.
+Setup updates the current user's application in its previous directory using the existing Inno Setup `AppId`. Select the desired categories or individual VST3s on the components page. An administrator-approved helper installs the selection in `%CommonProgramFiles%\VST3\OSTF Studio`. Its uninstall entry is **OSTF Studio VST3 Plug-ins**. To add plug-ins later, rerun Setup. Previously installed plug-ins are retained when unchecked. Save and close a DAW before updating a changed binary it has loaded. Interactive Setup offers to continue with the application alone if elevation or shared installation fails.
+
+For unattended Setup, use `/TYPE=full`, `/TYPE=apponly`, or a selection such as `/TYPE=custom /COMPONENTS="studio,composition\Ose1"` for Studio and Scale Editor. Existing scripts can continue using `/TASKS=sharedvst3` or `/MERGETASKS=!sharedvst3`. Both installers write logs to the installing account's temporary directory.
 
 After a successful shared install, Setup checks the class IDs of previous per-user bundles and moves recognized copies to `%LOCALAPPDATA%\OSTF Studio\Previous VST3`. User settings, score files and third-party plug-ins remain outside the installers' inventories. The Portable ZIP keeps the plug-ins beside the application. Windows may need the Microsoft Visual C++ x64 Redistributable for binaries built with MSVC.
 
-To build the packages on Windows after the Release GUI build, install Inno Setup 6 and run this from the repository root. Use `-InnoCompiler` to give the script an alternate path to `ISCC.exe`.
+To package the Windows Release build, use Python 3 and Inno Setup 6. Run the command below from the repository root. Use `-Python` and `-InnoCompiler` to select alternate executables.
 
 ```powershell
 ./packaging/windows/Package.ps1 -AppVersion 0.1.0-preview -BinaryVersion 0.1.0
@@ -37,7 +39,9 @@ Windows packages currently have no Authenticode signing configured or verified. 
 
 ## macOS signing and notarization
 
-Run **Install OSTF Studio and VST3.pkg** in the DMG to install the application in `/Applications` and all eleven bundles in `/Library/Audio/Plug-Ins/VST3`. The packaging job installs the PKG on its runner and verifies each arm64 binary at its destination.
+Run **Install OSTF Studio and VST3.pkg** in the DMG. The customization page lets the user choose which VST3s to install in `/Library/Audio/Plug-Ins/VST3`. The application goes in `/Applications`. Dragging the app to Applications is also available. To build the DMG from an arm64 Release build, run `python3 packaging/macos_package.py <numeric-version>`. The packaging workflow checks a Scale Editor-only selection and then installs all plug-ins and verifies their arm64 binaries.
+
+Both installers read the effect and instrument catalogues under `src/plugins`. Set a plug-in's optional `installerGroup` to `effects`, `instruments`, `composition`, `learning`, `utilities`, or `games` when its user-facing category differs from its catalogue. Categories appear when they contain at least one plug-in.
 
 The current DMG contains a preview `.app` with no Developer ID signature or Apple notarization. For signed distribution:
 

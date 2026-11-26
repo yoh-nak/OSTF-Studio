@@ -1,0 +1,363 @@
+{
+  "format": "OSTF",
+  "version": "5.2.0",
+  "ppq": 960,
+  "song": {
+    "title": "TAB tuning and bends alongside unpitched percussion"
+  },
+  "timeline": {
+    "sections": [
+      {
+        "id": "A",
+        "name": "A",
+        "start": 0,
+        "duration": 7680
+      }
+    ],
+    "tempoChanges": [
+      {
+        "at": 0,
+        "bpm": 120
+      }
+    ],
+    "meterChanges": [
+      {
+        "at": 0,
+        "numerator": 4,
+        "denominator": 4
+      }
+    ]
+  },
+  "harmony": {
+    "chords": [],
+    "scales": []
+  },
+  "tracks": [],
+  "soundSlots": [],
+  "lyrics": {
+    "documents": [],
+    "phrases": [],
+    "units": [],
+    "alignments": []
+  },
+  "resources": [],
+  "notation": {
+    "profileVersion": "1.0.0",
+    "id": "notation-tab-drums",
+    "title": "Guitar TAB notation example",
+    "parts": [
+      {
+        "id": "p1",
+        "name": "Guitar TAB",
+        "order": 0,
+        "instrumentIds": [
+          "guitar"
+        ]
+      },
+      {
+        "id": "p2",
+        "name": "Drum kit",
+        "order": 1,
+        "instrumentIds": [
+          "kick",
+          "snare"
+        ]
+      }
+    ],
+    "staves": [
+      {
+        "id": "s1",
+        "partId": "p1",
+        "number": 1,
+        "kind": "tablature",
+        "initialAttributes": {
+          "clef": {
+            "sign": "TAB"
+          },
+          "staffLines": 6,
+          "tuning": {
+            "strings": [
+              {
+                "stringNumber": 1,
+                "openPitch": {
+                  "step": "E",
+                  "alter": {
+                    "numerator": 0,
+                    "denominator": 1
+                  },
+                  "octave": 4
+                }
+              },
+              {
+                "stringNumber": 2,
+                "openPitch": {
+                  "step": "B",
+                  "alter": {
+                    "numerator": 0,
+                    "denominator": 1
+                  },
+                  "octave": 3
+                }
+              },
+              {
+                "stringNumber": 3,
+                "openPitch": {
+                  "step": "G",
+                  "alter": {
+                    "numerator": 0,
+                    "denominator": 1
+                  },
+                  "octave": 3
+                }
+              },
+              {
+                "stringNumber": 4,
+                "openPitch": {
+                  "step": "D",
+                  "alter": {
+                    "numerator": 0,
+                    "denominator": 1
+                  },
+                  "octave": 3
+                }
+              },
+              {
+                "stringNumber": 5,
+                "openPitch": {
+                  "step": "A",
+                  "alter": {
+                    "numerator": 0,
+                    "denominator": 1
+                  },
+                  "octave": 2
+                }
+              },
+              {
+                "stringNumber": 6,
+                "openPitch": {
+                  "step": "E",
+                  "alter": {
+                    "numerator": 0,
+                    "denominator": 1
+                  },
+                  "octave": 2
+                }
+              }
+            ],
+            "capoFret": 0
+          },
+          "instrumentId": "guitar"
+        }
+      },
+      {
+        "id": "s2",
+        "partId": "p2",
+        "number": 1,
+        "kind": "percussion",
+        "initialAttributes": {
+          "clef": {
+            "sign": "percussion"
+          },
+          "staffLines": 5
+        }
+      }
+    ],
+    "voices": [
+      {
+        "id": "v1",
+        "partId": "p1",
+        "label": "1",
+        "defaultStaffId": "s1"
+      },
+      {
+        "id": "v2",
+        "partId": "p2",
+        "label": "1",
+        "defaultStaffId": "s2"
+      }
+    ],
+    "measures": [
+      {
+        "id": "m1",
+        "partId": "p1",
+        "order": 0,
+        "label": "1",
+        "durationQuarter": {
+          "numerator": 4,
+          "denominator": 1
+        },
+        "alignedMeasureIds": [
+          "m2"
+        ]
+      },
+      {
+        "id": "m2",
+        "partId": "p2",
+        "order": 0,
+        "label": "1",
+        "durationQuarter": {
+          "numerator": 4,
+          "denominator": 1
+        },
+        "alignedMeasureIds": [
+          "m1"
+        ]
+      }
+    ],
+    "events": [
+      {
+        "id": "guitar-c4",
+        "kind": "note",
+        "partId": "p1",
+        "staffId": "s1",
+        "voiceId": "v1",
+        "measureId": "m1",
+        "offsetQuarter": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 4,
+          "denominator": 1
+        },
+        "value": {
+          "type": "whole",
+          "dots": 0
+        },
+        "writtenPitch": {
+          "step": "C",
+          "alter": {
+            "numerator": 0,
+            "denominator": 1
+          },
+          "octave": 4
+        },
+        "technical": {
+          "stringNumber": 3,
+          "fret": 5,
+          "fingerings": [
+            "1"
+          ],
+          "bend": [
+            {
+              "position": {
+                "numerator": 0,
+                "denominator": 1
+              },
+              "semitones": {
+                "numerator": 0,
+                "denominator": 1
+              }
+            },
+            {
+              "position": {
+                "numerator": 1,
+                "denominator": 2
+              },
+              "semitones": {
+                "numerator": 2,
+                "denominator": 1
+              }
+            },
+            {
+              "position": {
+                "numerator": 1,
+                "denominator": 1
+              },
+              "semitones": {
+                "numerator": 0,
+                "denominator": 1
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "kick-event",
+        "kind": "unpitched",
+        "partId": "p2",
+        "staffId": "s2",
+        "voiceId": "v2",
+        "measureId": "m2",
+        "offsetQuarter": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "value": {
+          "type": "quarter",
+          "dots": 0
+        },
+        "unpitched": {
+          "instrumentId": "kick",
+          "displayStep": "F",
+          "displayOctave": 4
+        },
+        "notehead": "normal"
+      },
+      {
+        "id": "snare-event",
+        "kind": "unpitched",
+        "partId": "p2",
+        "staffId": "s2",
+        "voiceId": "v2",
+        "measureId": "m2",
+        "offsetQuarter": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "value": {
+          "type": "quarter",
+          "dots": 0
+        },
+        "unpitched": {
+          "instrumentId": "snare",
+          "displayStep": "C",
+          "displayOctave": 5
+        },
+        "notehead": "normal"
+      },
+      {
+        "id": "drum-rest",
+        "kind": "rest",
+        "partId": "p2",
+        "staffId": "s2",
+        "voiceId": "v2",
+        "measureId": "m2",
+        "offsetQuarter": {
+          "numerator": 2,
+          "denominator": 1
+        },
+        "durationQuarter": {
+          "numerator": 2,
+          "denominator": 1
+        },
+        "value": {
+          "type": "half",
+          "dots": 0
+        }
+      }
+    ],
+    "instruments": [
+      {
+        "id": "guitar",
+        "name": "Guitar"
+      },
+      {
+        "id": "kick",
+        "name": "Bass drum"
+      },
+      {
+        "id": "snare",
+        "name": "Snare drum"
+      }
+    ]
+  }
+}

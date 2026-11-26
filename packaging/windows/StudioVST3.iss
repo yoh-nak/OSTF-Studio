@@ -18,7 +18,12 @@ OutputDir={#OutputDir}
 OutputBaseFilename=OSTF-Studio-VST3-Setup
 SetupIconFile=..\..\assets\AppIcon.ico
 
+[Types]
+Name: "full"; Description: "All plug-ins"
+Name: "custom"; Description: "Selected plug-ins"; Flags: iscustom
+
+[Components]
+#include HelperComponents
+
 [Files]
-Source: "{#ArrangerBundle}\*"; DestDir: "{commoncf64}\VST3\OSTF Studio\OSTF Arranger.vst3"; Flags: replacesameversion recursesubdirs createallsubdirs
-Source: "{#GmBundle}\*"; DestDir: "{commoncf64}\VST3\OSTF Studio\OSTF GM Sound Module.vst3"; Flags: replacesameversion recursesubdirs createallsubdirs
-Source: "{#EffectsDir}\*"; DestDir: "{commoncf64}\VST3\OSTF Studio"; Flags: replacesameversion recursesubdirs createallsubdirs
+#include PluginFiles

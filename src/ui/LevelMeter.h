@@ -10,11 +10,20 @@ public:
 
     void update(ostfstudio::StereoPeak peak, double now) {
         const auto fall = static_cast<float>(24.0 * std::max(0.0, now - lastUpdate_));
+        const auto elapsedFrom = lastUpdate_;
         lastUpdate_ = now;
         bool changed = false;
         for (std::size_t c = 0; c < peak.size(); ++c) {
             const float db = juce::Decibels::gainToDecibels(peak[c], floorDb);
             const float next = std::max(db, levels_[c] - fall);
+            const auto previous = held_[c];
+            const auto decay = 18.f * float(std::max(0.,now - std::max(elapsedFrom,holdUntil_[c])));
+            held_[c] = std::max(floorDb,previous - decay);
+            if (db > floorDb && db >= held_[c]) {
+                held_[c] = db;
+                holdUntil_[c] = now + 1.5;
+            }
+            changed |= previous != held_[c];
             if (db >= 0.0f) clipUntil_[c] = now + 1.0;
             const bool clipped = now < clipUntil_[c];
             changed |= levels_[c] != next || clipped_[c] != clipped;
@@ -25,6 +34,8 @@ public:
     }
     void clear() {
         levels_.fill(floorDb);
+        held_.fill(floorDb);
+        holdUntil_.fill(0.);
         clipped_.fill(false);
         clipUntil_.fill(0.0);
         repaint();
@@ -66,9 +77,15 @@ public:
                 else g.fillRect(bar.getX() + start * bar.getWidth(), bar.getY(),
                                 (end - start) * bar.getWidth(), bar.getHeight());
             };
-            band(floorDb, -12, juce::Colour(0xff56ceb0));
-            band(-12, -3, juce::Colour(0xffefbb65));
-            band(-3, 0, juce::Colour(0xffed8961));
+            band(floorDb, -12, juce::Colour(0xff49ce75));
+            band(-12, -3, juce::Colour(0xffffd14b));
+            band(-3, 0, juce::Colour(0xfff65055));
+            if (held_[c] > floorDb) {
+                const auto pos = std::clamp((held_[c]-floorDb)/-floorDb,0.f,1.f);
+                g.setColour(juce::Colour(0xfff6ecc5));
+                if (vertical_) g.fillRect(bar.getX(),std::clamp(bar.getBottom()-pos*bar.getHeight(),bar.getY(),std::max(bar.getY(),bar.getBottom()-2)),bar.getWidth(),2.f);
+                else g.fillRect(std::min(bar.getRight()-2,bar.getX()+pos*bar.getWidth()),bar.getY(),2.f,bar.getHeight());
+            }
             if (clipped_[c]) {
                 g.setColour(juce::Colour(0xffff5654));
                 g.fillRect(vertical_ ? bar.withHeight(2.0f) : bar.withLeft(bar.getRight() - 3.0f));
@@ -79,7 +96,8 @@ private:
     static constexpr float floorDb = -60.0f;
     const bool vertical_;
     ostfstudio::StereoPeak levels_{floorDb, floorDb};
-    std::array<double, 2> clipUntil_{};
+    ostfstudio::StereoPeak held_{floorDb,floorDb};
+    std::array<double,2> holdUntil_{},clipUntil_{};
     std::array<bool, 2> clipped_{};
     double lastUpdate_ = 0;
 };

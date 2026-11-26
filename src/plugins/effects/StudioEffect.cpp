@@ -1,7 +1,11 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
+#include "../StudioPluginEditor.h"
+#include "CompressorListen.h"
 #include <array>
 #include <cmath>
+
+juce::AudioProcessor* makeMixingEffect(const char* type, const char* name);
 
 namespace {
 enum class Kind { Reverb, Chorus, EQ, Compressor, Limiter, Phaser, Flanger, Distortion, Amp };
@@ -19,11 +23,119 @@ constexpr Design designs[] {
     {Kind::Amp, "Amp", {{{"Preamp dB", 0, 36, 16}, {"Cabinet tone Hz", 1200, 7000, 3500}, {"Wet %", 0, 100, 65}}}},
 };
 
+class RackEditor final : public ostfstudio::StudioPluginEditor, private juce::Timer {
+public:
+    RackEditor(juce::AudioProcessor& processor, const std::array<juce::AudioParameterFloat*, 3>& params,
+               ostfstudio::CompressorListen* measurement)
+        : StudioPluginEditor(processor), title(processor.getName()), listen(measurement), threshold(params[0]), ratio(params[1]) {
+        for (std::size_t i = 0; i < sliders.size(); ++i) {
+            auto& slider = sliders[i];
+            const auto name = params[i]->getName(64);
+            const bool fader = name == "Wet %" || name == "Threshold dB" || name == "Ceiling dB";
+            slider.setName(name);
+            slider.setTitle(name);
+            slider.setSliderStyle(fader ? juce::Slider::LinearVertical : juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 76, 21);
+            labels[i].setText(name, juce::dontSendNotification);
+            labels[i].setJustificationType(juce::Justification::centred);
+            labels[i].setInterceptsMouseClicks(false, false);
+            addAndMakeVisible(labels[i]);
+            addAndMakeVisible(slider);
+            bindings[i] = std::make_unique<juce::SliderParameterAttachment>(*params[i], slider);
+        }
+        if (listen) {
+            addAndMakeVisible(learn);
+            addAndMakeVisible(apply);
+            addAndMakeVisible(advice);
+            learn.onClick = [this] { listen->state.store(ostfstudio::CompressorListen::requested); timerCallback(); };
+            apply.onClick = [this] {
+                if (listen->state.load() != ostfstudio::CompressorListen::ready || ratio->get() <= 1.0f) return;
+                threshold->beginChangeGesture();
+                threshold->setValueNotifyingHost(threshold->convertTo0to1(listen->threshold(ratio->get())));
+                threshold->endChangeGesture();
+                listen->state.store(ostfstudio::CompressorListen::idle);
+                timerCallback();
+            };
+            timerCallback();
+            startTimerHz(5);
+        }
+        setSize(456, listen ? 270 : 230);
+    }
+
+    void resized() override {
+        auto panel = getLocalBounds().reduced(18, 12).withTrimmedTop(43);
+        if (listen) {
+            auto row = panel.removeFromBottom(40).reduced(3, 5);
+            learn.setBounds(row.removeFromLeft(110));
+            apply.setBounds(row.removeFromRight(70));
+            advice.setBounds(row);
+        }
+        const int width = panel.getWidth() / static_cast<int>(sliders.size());
+        for (std::size_t i = 0; i < sliders.size(); ++i) {
+            auto bay = panel.removeFromLeft(width).reduced(8, 5);
+            labels[i].setBounds(bay.removeFromTop(23));
+            sliders[i].setBounds(bay.reduced(3, 3));
+        }
+    }
+    void paint(juce::Graphics& g) override {
+        const auto bounds = getLocalBounds().toFloat();
+        const auto colour = juce::Colour(face.panel);
+        ostfstudio::console::LookAndFeel::verticalGradient(g, bounds, colour.brighter(.08f).getARGB(), face.background);
+        g.fillAll();
+        g.setColour(juce::Colour(face.background));
+        g.fillRect(0, 0, getWidth(), 48);
+        g.setColour(juce::Colour(face.accent));
+        g.fillRect(20, 14, 3, 20);
+        g.setFont(juce::FontOptions(22.f, juce::Font::bold));
+        g.setColour(juce::Colour(0xfff3f1e9));
+        g.drawText(title, 32, 4, getWidth()-64, 40, juce::Justification::centredLeft);
+        for (std::size_t i = 1; i < sliders.size(); ++i) {
+            g.setColour(juce::Colours::white.withAlpha(.13f));
+            const int x = (sliders[i-1].getRight() + sliders[i].getX()) / 2;
+            g.drawVerticalLine(x, 68.f, bounds.getBottom()-24.f);
+        }
+        for (auto x : {9.f, bounds.getRight()-9.f}) {
+            for (auto y : {9.f, bounds.getBottom()-9.f}) {
+                g.setColour(juce::Colour(0xff161b1d));
+                g.fillEllipse(x-3.6f,y-3.4f,7.2f,7.2f);
+                g.setColour(juce::Colour(0xff788184));
+                g.fillEllipse(x-2.7f,y-3.f,5.4f,5.4f);
+                g.setColour(juce::Colour(0xff2d3437));
+                g.drawLine(x-1.6f,y+1.f,x+1.6f,y-1.5f,1.1f);
+            }
+        }
+    }
+private:
+    void timerCallback() override {
+        using Meter = ostfstudio::CompressorListen;
+        const auto state = listen->state.load();
+        const bool busy = state == Meter::requested || state == Meter::listening;
+        learn.setEnabled(!busy);
+        const bool usable = state == Meter::ready && ratio->get() > 1.0f;
+        apply.setEnabled(usable);
+        const juce::String text = busy ? "Listening to input..." : state == Meter::noSignal ? "No input detected"
+            : usable ? juce::String(listen->threshold(ratio->get()), 1) + " dB threshold"
+            : state == Meter::ready ? "Choose a ratio above 1:1" : "";
+        advice.setText(text, juce::dontSendNotification);
+    }
+    const juce::String title;
+    ostfstudio::CompressorListen* listen;
+    juce::AudioParameterFloat *threshold, *ratio;
+    juce::TextButton learn{"Listen (3 s)"}, apply{"Apply"};
+    juce::Label advice;
+    std::array<juce::Slider, 3> sliders;
+    std::array<juce::Label, 3> labels;
+    std::array<std::unique_ptr<juce::SliderParameterAttachment>, 3> bindings;
+};
+
 class StudioEffect final : public juce::AudioProcessor {
 public:
     StudioEffect(const Design& design, const char* name)
-        : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
-                                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+        : AudioProcessor([&] {
+              auto io = BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true);
+              if (design.kind == Kind::Compressor) io = io.withInput("Sidechain", juce::AudioChannelSet::stereo(), false);
+              return io.withOutput("Output", juce::AudioChannelSet::stereo(), true);
+          }()),
           design_(design), name_(name) {
         for (int i = 0; i < 3; ++i) {
             const auto& c = design.controls[i];
@@ -37,7 +149,7 @@ public:
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     bool hasEditor() const override { return true; }
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor(*this); }
+    juce::AudioProcessorEditor* createEditor() override { return new RackEditor(*this, params_, design_.kind == Kind::Compressor ? &listen_ : nullptr); }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
@@ -45,6 +157,8 @@ public:
     void changeProgramName(int, const juce::String&) override {}
     double getTailLengthSeconds() const override { return design_.kind == Kind::Reverb ? 5.0 : 0.2; }
     bool isBusesLayoutSupported(const BusesLayout& layout) const override {
+        if (layout.inputBuses.size() > 1 && !layout.inputBuses[1].isDisabled()
+            && layout.inputBuses[1] != juce::AudioChannelSet::mono() && layout.inputBuses[1] != juce::AudioChannelSet::stereo()) return false;
         const auto input = layout.getMainInputChannelSet();
         return input == layout.getMainOutputChannelSet()
             && (input == juce::AudioChannelSet::stereo() || input == juce::AudioChannelSet::mono());
@@ -89,7 +203,8 @@ public:
         dc_ = {};
         reduction_ = 1.0f;
     }
-    void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer&) override {
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override {
+        auto audio = getBusBuffer(buffer, false, 0);
         juce::ScopedNoDenormals noDenormals;
         if (audio.getNumChannels() < 1 || audio.getNumSamples() == 0) return;
         const float a = *params_[0], b = *params_[1], c = *params_[2];
@@ -129,13 +244,21 @@ public:
             }
             case Kind::Compressor: case Kind::Limiter: {
                 const bool limit = design_.kind == Kind::Limiter;
+                if (!limit) listen_.beginBlock(rate_);
+                bool measuring = !limit && listen_.state.load() == ostfstudio::CompressorListen::listening;
                 const float threshold = juce::Decibels::decibelsToGain(a);
                 const float input = limit ? juce::Decibels::decibelsToGain(b) : 1.0f;
                 const float attack = limit ? 0.0f : static_cast<float>(std::exp(-1.0 / (rate_ * 0.008)));
                 const float release = static_cast<float>(std::exp(-1000.0 / (rate_ * c)));
+                const bool external = !limit && getChannelCountOfBus(true, 1) > 0;
+                const auto detector = getBusBuffer(buffer, true, external ? 1 : 0);
                 for (int i = 0; i < audio.getNumSamples(); ++i) {
                     float peak = 0;
-                    for (int ch = 0; ch < audio.getNumChannels(); ++ch) peak = std::max(peak, input * std::abs(audio.getSample(ch, i)));
+                    for (int ch = 0; ch < detector.getNumChannels(); ++ch) peak = std::max(peak, input * std::abs(detector.getSample(ch, i)));
+                    if (measuring) {
+                        listen_.measure(peak);
+                        measuring = listen_.state.load(std::memory_order_relaxed) == ostfstudio::CompressorListen::listening;
+                    }
                     const float target = peak <= threshold ? 1.0f : limit ? threshold / peak : std::pow(threshold / peak, 1.0f - 1.0f / b);
                     const float smooth = target < reduction_ ? attack : release;
                     reduction_ = target + smooth * (reduction_ - target);
@@ -176,11 +299,11 @@ private:
     std::array<std::array<float, 2>, 2> cabinet_{};
     std::array<float, 2> dc_{};
     float reduction_ = 1;
+    ostfstudio::CompressorListen listen_;
 };
 }
 
 juce::AudioProcessor* makeStudioEffect(const char* type, const char* name) {
     for (const auto& design : designs) if (std::string_view(type) == design.type) return new StudioEffect(design, name);
-    jassertfalse;
-    return nullptr;
+    return makeMixingEffect(type, name);
 }

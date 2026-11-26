@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <vector>
 
 namespace ostfstudio {
@@ -18,6 +19,12 @@ public:
         return true;
     }
     bool empty() const { return points_.empty(); }
+    std::optional<TempoMap> scaled(double factor) const {
+        TempoMap result(ppq_);
+        for (const auto& p : points_)
+            if (!result.append(p.tick, p.bpm * factor)) return std::nullopt;
+        return result;
+    }
     double secondsAt(std::int64_t tick) const {
         if (empty()) return 0;
         const auto& p = atTick(tick);
@@ -31,6 +38,11 @@ public:
         return p.tick + (seconds - p.seconds) / p.secondsPerTick;
     }
     double bpmAt(std::int64_t tick) const { return empty() ? 0.0 : atTick(tick).bpm; }
+    std::optional<std::int64_t> nextChangeAfter(std::int64_t tick) const {
+        const auto it = std::upper_bound(points_.begin(), points_.end(), tick,
+            [](std::int64_t t, const Point& p) { return t < p.tick; });
+        return it == points_.end() ? std::nullopt : std::optional(it->tick);
+    }
 private:
     struct Point { std::int64_t tick; double seconds, bpm, secondsPerTick; };
     const Point& atTick(std::int64_t tick) const {

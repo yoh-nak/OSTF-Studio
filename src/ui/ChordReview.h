@@ -1,0 +1,74 @@
+#pragma once
+#include "ui/OstfpPreview.h"
+#include <juce_gui_basics/juce_gui_basics.h>
+
+namespace ostfstudio {
+using ReviewRange = juce::Range<juce::int64>;
+struct ChordDecision {
+    ReviewRange range;
+    juce::String current;
+    juce::StringArray candidates;
+    juce::var sourceChord;
+    // 0 keeps the score, 1..3 choose a ranked chord, 4 uses the dropped chord.
+    int choice = 0;
+    ReviewNoteOrigins noteOrigins;
+    bool fromMaterial = false;
+    std::array<int, 5> trackFit{-1, -1, -1, -1, -1};
+};
+using ChordDecisions = std::vector<ChordDecision>;
+enum class ChordReviewAction { apply, cancel, keep };
+void rememberReviewedNotes(ChordDecisions&, const juce::MemoryBlock& before, std::size_t track,
+                           const std::vector<NoteEdit>& edits, const juce::StringArray& resultIds,
+                           const std::vector<PitchedNote>& after);
+class ChordAnalysis {
+  public:
+    explicit ChordAnalysis(const OstfpPreview&, std::optional<size_t> editedTrack = {});
+    juce::StringArray rank(ReviewRange) const;
+    void updateCandidates(ChordDecision&) const;
+    ChordDecisions review(const std::vector<ReviewRange>& affected,
+                          const juce::Array<juce::var>& imported = {}, bool crop = false, juce::int64 end = 0) const;
+
+  private:
+    struct Note {
+        juce::int64 start, end, latestEnd;
+        int pitch;
+        size_t track;
+    };
+    const OstfpPreview& project;
+    const juce::var score;
+    const std::optional<size_t> editedTrack;
+    std::vector<Note> notes;
+};
+std::vector<ReviewRange> changedNoteRanges(const std::vector<PitchedNote>& oldNotes,
+                                           const std::vector<NoteEdit>& edits);
+juce::Result chordDecisionEdits(const juce::var& score, const ChordDecisions&, juce::Array<juce::var>& remove,
+                                juce::Array<juce::var>& insert);
+} // namespace ostfstudio
+
+class ChordReviewLane : public juce::Component {
+  public:
+    ChordReviewLane();
+    void display(const ostfstudio::ChordDecisions&, const ostfstudio::OstfpPreview&);
+    int selected() const { return index_; }
+    juce::Rectangle<int> intervalBounds(int index) const;
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void resized() override;
+    juce::PopupMenu decisionMenu(int index);
+    int preferredHeight(int workspaceHeight) const { return workspaceHeight < 320 ? 42 : 60; }
+    std::function<std::pair<juce::Rectangle<int>,juce::Range<double>>()> timeline;
+    std::function<void(int)> choose;
+    std::function<void(bool all, ostfstudio::ChordReviewAction)> decide;
+
+  private:
+    int index_ = 0;
+    unsigned revision_ = 0;
+    ostfstudio::ChordDecisions rows_;
+    juce::StringArray names_;
+    juce::TextButton confirmAll_, keepAll_, cancelAll_;
+    juce::OwnedArray<juce::TextButton> decisions_;
+    juce::Rectangle<int> titleBounds_;
+    juce::Rectangle<int> boundsFor(ostfstudio::ReviewRange) const;
+    void showMenu(int index);
+    juce::String option(const ostfstudio::ChordDecision&,int) const;
+};

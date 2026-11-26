@@ -5,7 +5,7 @@ version=$(sed -nE 's/^project\(OSTFStudio VERSION ([0-9]+\.[0-9]+\.[0-9]+) .*/\1
 alpha_number=$(sed -nE 's/^set\(OSTF_STUDIO_ALPHA_NUMBER ([1-9][0-9]*)\)[[:space:]]*$/\1/p' CMakeLists.txt)
 test -n "$version"
 test -n "$alpha_number"
-alpha_version="$version-alpha.$alpha_number"
+alpha_version="$version-public-alpha.$alpha_number"
 display_version="$alpha_version-dev"
 
 if [[ "$RELEASE_TYPE" != none ]]; then

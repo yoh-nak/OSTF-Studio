@@ -1,6 +1,6 @@
 {
   "format": "OSTF",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "ppq": 960,
   "song": {
     "title": "Copper Mile",
@@ -82,11 +82,29 @@
         "at": 0,
         "numerator": 4,
         "denominator": 4
+      },
+      {
+        "at": 153600,
+        "numerator": 2,
+        "denominator": 2
+      },
+      {
+        "at": 168960,
+        "numerator": 4,
+        "denominator": 4
       }
     ],
     "tempoChanges": [
       {
         "at": 0,
+        "bpm": 116
+      },
+      {
+        "at": 153600,
+        "bpm": 104
+      },
+      {
+        "at": 168960,
         "bpm": 116
       }
     ],
@@ -2825,6 +2843,408 @@
               "pitch": 64,
               "velocity": 104,
               "releaseVelocity": 48
+            }
+          ],
+          "midiEvents": [
+            {
+              "id": "part-6-hook-2-2-2-slide-0",
+              "start": 4800,
+              "type": "pitchBend",
+              "value14": 8192
+            },
+            {
+              "id": "part-6-hook-2-2-2-wheel-0",
+              "start": 4800,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-2-2-2-at-0",
+              "start": 4800,
+              "type": "channelPressure",
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-2-2-2-slide-1",
+              "start": 4985,
+              "type": "pitchBend",
+              "value14": 9000
+            },
+            {
+              "id": "part-6-hook-2-2-2-slide-2",
+              "start": 5170,
+              "type": "pitchBend",
+              "value14": 10600
+            },
+            {
+              "id": "part-6-hook-2-2-2-wheel-1",
+              "start": 5231,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 36
+            },
+            {
+              "id": "part-6-hook-2-2-2-at-1",
+              "start": 5231,
+              "type": "channelPressure",
+              "value": 36
+            },
+            {
+              "id": "part-6-hook-2-2-2-slide-3",
+              "start": 5355,
+              "type": "pitchBend",
+              "value14": 12600
+            },
+            {
+              "id": "part-6-hook-2-2-2-slide-4",
+              "start": 5540,
+              "type": "pitchBend",
+              "value14": 14200
+            },
+            {
+              "id": "part-6-hook-2-2-2-wheel-2",
+              "start": 5663,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 72
+            },
+            {
+              "id": "part-6-hook-2-2-2-at-2",
+              "start": 5663,
+              "type": "channelPressure",
+              "value": 72
+            },
+            {
+              "id": "part-6-hook-2-2-2-slide-5",
+              "start": 5725,
+              "type": "pitchBend",
+              "value14": 12100
+            },
+            {
+              "id": "part-6-hook-2-2-2-slide-6",
+              "start": 5910,
+              "type": "pitchBend",
+              "value14": 9850
+            },
+            {
+              "id": "part-6-hook-2-2-2-slide-7",
+              "start": 6095,
+              "type": "pitchBend",
+              "value14": 8192
+            },
+            {
+              "id": "part-6-hook-2-2-2-wheel-3",
+              "start": 6095,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-2-2-2-at-3",
+              "start": 6095,
+              "type": "channelPressure",
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-3-1-3-slide-0",
+              "start": 7680,
+              "type": "pitchBend",
+              "value14": 8192
+            },
+            {
+              "id": "part-6-hook-3-1-3-wheel-0",
+              "start": 7680,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-3-1-3-at-0",
+              "start": 7680,
+              "type": "channelPressure",
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-3-1-3-slide-1",
+              "start": 7871,
+              "type": "pitchBend",
+              "value14": 9000
+            },
+            {
+              "id": "part-6-hook-3-1-3-slide-2",
+              "start": 8063,
+              "type": "pitchBend",
+              "value14": 10600
+            },
+            {
+              "id": "part-6-hook-3-1-3-wheel-1",
+              "start": 8127,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 36
+            },
+            {
+              "id": "part-6-hook-3-1-3-at-1",
+              "start": 8127,
+              "type": "channelPressure",
+              "value": 36
+            },
+            {
+              "id": "part-6-hook-3-1-3-slide-3",
+              "start": 8255,
+              "type": "pitchBend",
+              "value14": 12600
+            },
+            {
+              "id": "part-6-hook-3-1-3-slide-4",
+              "start": 8447,
+              "type": "pitchBend",
+              "value14": 14200
+            },
+            {
+              "id": "part-6-hook-3-1-3-wheel-2",
+              "start": 8575,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 72
+            },
+            {
+              "id": "part-6-hook-3-1-3-at-2",
+              "start": 8575,
+              "type": "channelPressure",
+              "value": 72
+            },
+            {
+              "id": "part-6-hook-3-1-3-slide-5",
+              "start": 8639,
+              "type": "pitchBend",
+              "value14": 12100
+            },
+            {
+              "id": "part-6-hook-3-1-3-slide-6",
+              "start": 8831,
+              "type": "pitchBend",
+              "value14": 9850
+            },
+            {
+              "id": "part-6-hook-3-1-3-slide-7",
+              "start": 9023,
+              "type": "pitchBend",
+              "value14": 8192
+            },
+            {
+              "id": "part-6-hook-3-1-3-wheel-3",
+              "start": 9023,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-3-1-3-at-3",
+              "start": 9023,
+              "type": "channelPressure",
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-3-3-3-slide-0",
+              "start": 9600,
+              "type": "pitchBend",
+              "value14": 8192
+            },
+            {
+              "id": "part-6-hook-3-3-3-wheel-0",
+              "start": 9600,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-3-3-3-at-0",
+              "start": 9600,
+              "type": "channelPressure",
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-3-3-3-slide-1",
+              "start": 9791,
+              "type": "pitchBend",
+              "value14": 9000
+            },
+            {
+              "id": "part-6-hook-3-3-3-slide-2",
+              "start": 9983,
+              "type": "pitchBend",
+              "value14": 10600
+            },
+            {
+              "id": "part-6-hook-3-3-3-wheel-1",
+              "start": 10047,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 36
+            },
+            {
+              "id": "part-6-hook-3-3-3-at-1",
+              "start": 10047,
+              "type": "channelPressure",
+              "value": 36
+            },
+            {
+              "id": "part-6-hook-3-3-3-slide-3",
+              "start": 10175,
+              "type": "pitchBend",
+              "value14": 12600
+            },
+            {
+              "id": "part-6-hook-3-3-3-slide-4",
+              "start": 10367,
+              "type": "pitchBend",
+              "value14": 14200
+            },
+            {
+              "id": "part-6-hook-3-3-3-wheel-2",
+              "start": 10495,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 72
+            },
+            {
+              "id": "part-6-hook-3-3-3-at-2",
+              "start": 10495,
+              "type": "channelPressure",
+              "value": 72
+            },
+            {
+              "id": "part-6-hook-3-3-3-slide-5",
+              "start": 10559,
+              "type": "pitchBend",
+              "value14": 12100
+            },
+            {
+              "id": "part-6-hook-3-3-3-slide-6",
+              "start": 10751,
+              "type": "pitchBend",
+              "value14": 9850
+            },
+            {
+              "id": "part-6-hook-3-3-3-slide-7",
+              "start": 10943,
+              "type": "pitchBend",
+              "value14": 8192
+            },
+            {
+              "id": "part-6-hook-3-3-3-wheel-3",
+              "start": 10943,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-3-3-3-at-3",
+              "start": 10943,
+              "type": "channelPressure",
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-4-1-4-slide-0",
+              "start": 11520,
+              "type": "pitchBend",
+              "value14": 8192
+            },
+            {
+              "id": "part-6-hook-4-1-4-wheel-0",
+              "start": 11520,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-4-1-4-at-0",
+              "start": 11520,
+              "type": "channelPressure",
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-4-1-4-slide-1",
+              "start": 11698,
+              "type": "pitchBend",
+              "value14": 9000
+            },
+            {
+              "id": "part-6-hook-4-1-4-slide-2",
+              "start": 11876,
+              "type": "pitchBend",
+              "value14": 10600
+            },
+            {
+              "id": "part-6-hook-4-1-4-wheel-1",
+              "start": 11935,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 36
+            },
+            {
+              "id": "part-6-hook-4-1-4-at-1",
+              "start": 11935,
+              "type": "channelPressure",
+              "value": 36
+            },
+            {
+              "id": "part-6-hook-4-1-4-slide-3",
+              "start": 12054,
+              "type": "pitchBend",
+              "value14": 12600
+            },
+            {
+              "id": "part-6-hook-4-1-4-slide-4",
+              "start": 12232,
+              "type": "pitchBend",
+              "value14": 14200
+            },
+            {
+              "id": "part-6-hook-4-1-4-wheel-2",
+              "start": 12351,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 72
+            },
+            {
+              "id": "part-6-hook-4-1-4-at-2",
+              "start": 12351,
+              "type": "channelPressure",
+              "value": 72
+            },
+            {
+              "id": "part-6-hook-4-1-4-slide-5",
+              "start": 12410,
+              "type": "pitchBend",
+              "value14": 12100
+            },
+            {
+              "id": "part-6-hook-4-1-4-slide-6",
+              "start": 12588,
+              "type": "pitchBend",
+              "value14": 9850
+            },
+            {
+              "id": "part-6-hook-4-1-4-slide-7",
+              "start": 12767,
+              "type": "pitchBend",
+              "value14": 8192
+            },
+            {
+              "id": "part-6-hook-4-1-4-wheel-3",
+              "start": 12767,
+              "type": "controlChange",
+              "controller": 1,
+              "value": 0
+            },
+            {
+              "id": "part-6-hook-4-1-4-at-3",
+              "start": 12767,
+              "type": "channelPressure",
+              "value": 0
             }
           ]
         },
@@ -16239,105 +16659,105 @@
               "start": 0,
               "duration": 3680,
               "pitch": 74,
-              "velocity": 53
+              "velocity": 56
             },
             {
               "id": "part-3-organ-2",
               "start": 0,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 56
+              "pitch": 88,
+              "velocity": 59
             },
             {
               "id": "part-3-organ-3",
               "start": 0,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 59
+              "velocity": 65
             },
             {
               "id": "part-3-organ-4",
               "start": 3840,
               "duration": 3680,
               "pitch": 74,
-              "velocity": 53
+              "velocity": 56
             },
             {
               "id": "part-3-organ-5",
               "start": 3840,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 56
+              "pitch": 88,
+              "velocity": 59
             },
             {
               "id": "part-3-organ-6",
               "start": 3840,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 59
+              "velocity": 65
             },
             {
               "id": "part-3-organ-7",
               "start": 7680,
               "duration": 1920,
               "pitch": 69,
-              "velocity": 53
+              "velocity": 56
             },
             {
               "id": "part-3-organ-8",
               "start": 7680,
               "duration": 1920,
-              "pitch": 74,
-              "velocity": 56
+              "pitch": 86,
+              "velocity": 59
             },
             {
               "id": "part-3-organ-9",
               "start": 7680,
               "duration": 1920,
               "pitch": 78,
-              "velocity": 59
+              "velocity": 65
             },
             {
               "id": "part-3-organ-7-change",
               "start": 9600,
               "duration": 1760,
               "pitch": 69,
-              "velocity": 53
+              "velocity": 56
             },
             {
               "id": "part-3-organ-8-change",
               "start": 9600,
               "duration": 1760,
-              "pitch": 73,
-              "velocity": 56
+              "pitch": 85,
+              "velocity": 59
             },
             {
               "id": "part-3-organ-9-change",
               "start": 9600,
               "duration": 1760,
               "pitch": 76,
-              "velocity": 59
+              "velocity": 65
             },
             {
               "id": "part-3-organ-10",
               "start": 11520,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 53
+              "velocity": 56
             },
             {
               "id": "part-3-organ-11",
               "start": 11520,
               "duration": 3680,
-              "pitch": 73,
-              "velocity": 56
+              "pitch": 85,
+              "velocity": 59
             },
             {
               "id": "part-3-organ-12",
               "start": 11520,
               "duration": 3680,
               "pitch": 76,
-              "velocity": 59
+              "velocity": 65
             }
           ],
           "midiEvents": [
@@ -16346,7 +16766,7 @@
               "type": "programChange",
               "start": 0,
               "channel": 5,
-              "program": 16
+              "program": 3
             }
           ]
         },
@@ -16361,189 +16781,189 @@
               "start": 0,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 59
+              "velocity": 62
             },
             {
               "id": "part-4-organ-2",
               "start": 0,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 62
+              "pitch": 86,
+              "velocity": 65
             },
             {
               "id": "part-4-organ-3",
               "start": 0,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 65
+              "velocity": 71
             },
             {
               "id": "part-4-organ-4",
               "start": 3840,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 59
+              "velocity": 62
             },
             {
               "id": "part-4-organ-5",
               "start": 3840,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 62
+              "pitch": 86,
+              "velocity": 65
             },
             {
               "id": "part-4-organ-6",
               "start": 3840,
               "duration": 3680,
               "pitch": 78,
-              "velocity": 65
+              "velocity": 71
             },
             {
               "id": "part-4-organ-7",
               "start": 7680,
               "duration": 3680,
               "pitch": 74,
-              "velocity": 59
+              "velocity": 62
             },
             {
               "id": "part-4-organ-8",
               "start": 7680,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 62
+              "pitch": 88,
+              "velocity": 65
             },
             {
               "id": "part-4-organ-9",
               "start": 7680,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 65
+              "velocity": 71
             },
             {
               "id": "part-4-organ-10",
               "start": 11520,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 59
+              "velocity": 62
             },
             {
               "id": "part-4-organ-11",
               "start": 11520,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 62
+              "pitch": 88,
+              "velocity": 65
             },
             {
               "id": "part-4-organ-12",
               "start": 11520,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 65
+              "velocity": 71
             },
             {
               "id": "part-4-organ-13",
               "start": 15360,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 59
+              "velocity": 62
             },
             {
               "id": "part-4-organ-14",
               "start": 15360,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 62
+              "pitch": 86,
+              "velocity": 65
             },
             {
               "id": "part-4-organ-15",
               "start": 15360,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 65
+              "velocity": 71
             },
             {
               "id": "part-4-organ-16",
               "start": 19200,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 59
+              "velocity": 62
             },
             {
               "id": "part-4-organ-17",
               "start": 19200,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 62
+              "pitch": 86,
+              "velocity": 65
             },
             {
               "id": "part-4-organ-18",
               "start": 19200,
               "duration": 3680,
               "pitch": 78,
-              "velocity": 65
+              "velocity": 71
             },
             {
               "id": "part-4-organ-19",
               "start": 23040,
               "duration": 1920,
               "pitch": 74,
-              "velocity": 59
+              "velocity": 62
             },
             {
               "id": "part-4-organ-20",
               "start": 23040,
               "duration": 1920,
-              "pitch": 76,
-              "velocity": 62
+              "pitch": 88,
+              "velocity": 65
             },
             {
               "id": "part-4-organ-21",
               "start": 23040,
               "duration": 1920,
               "pitch": 79,
-              "velocity": 65
+              "velocity": 71
             },
             {
               "id": "part-4-organ-19-change",
               "start": 24960,
               "duration": 1760,
               "pitch": 76,
-              "velocity": 59
+              "velocity": 62
             },
             {
               "id": "part-4-organ-20-change",
               "start": 24960,
               "duration": 1760,
-              "pitch": 76,
-              "velocity": 62
+              "pitch": 88,
+              "velocity": 65
             },
             {
               "id": "part-4-organ-21-change",
               "start": 24960,
               "duration": 1760,
               "pitch": 79,
-              "velocity": 65
+              "velocity": 71
             },
             {
               "id": "part-4-organ-22",
               "start": 26880,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 59
+              "velocity": 62
             },
             {
               "id": "part-4-organ-23",
               "start": 26880,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 62
+              "pitch": 88,
+              "velocity": 65
             },
             {
               "id": "part-4-organ-24",
               "start": 26880,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 65
+              "velocity": 71
             }
           ]
         },
@@ -16558,189 +16978,189 @@
               "start": 0,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 61
+              "velocity": 64
             },
             {
               "id": "part-6-organ-2",
               "start": 0,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 64
+              "pitch": 88,
+              "velocity": 67
             },
             {
               "id": "part-6-organ-3",
               "start": 0,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 67
+              "velocity": 73
             },
             {
               "id": "part-6-organ-4",
               "start": 3840,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 61
+              "velocity": 64
             },
             {
               "id": "part-6-organ-5",
               "start": 3840,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 64
+              "pitch": 86,
+              "velocity": 67
             },
             {
               "id": "part-6-organ-6",
               "start": 3840,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 67
+              "velocity": 73
             },
             {
               "id": "part-6-organ-7",
               "start": 7680,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 61
+              "velocity": 64
             },
             {
               "id": "part-6-organ-8",
               "start": 7680,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 64
+              "pitch": 86,
+              "velocity": 67
             },
             {
               "id": "part-6-organ-9",
               "start": 7680,
               "duration": 3680,
               "pitch": 78,
-              "velocity": 67
+              "velocity": 73
             },
             {
               "id": "part-6-organ-10",
               "start": 11520,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 61
+              "velocity": 64
             },
             {
               "id": "part-6-organ-11",
               "start": 11520,
               "duration": 3680,
-              "pitch": 73,
-              "velocity": 64
+              "pitch": 85,
+              "velocity": 67
             },
             {
               "id": "part-6-organ-12",
               "start": 11520,
               "duration": 3680,
               "pitch": 76,
-              "velocity": 67
+              "velocity": 73
             },
             {
               "id": "part-6-organ-13",
               "start": 15360,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 61
+              "velocity": 64
             },
             {
               "id": "part-6-organ-14",
               "start": 15360,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 64
+              "pitch": 86,
+              "velocity": 67
             },
             {
               "id": "part-6-organ-15",
               "start": 15360,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 67
+              "velocity": 73
             },
             {
               "id": "part-6-organ-16",
               "start": 19200,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 61
+              "velocity": 64
             },
             {
               "id": "part-6-organ-17",
               "start": 19200,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 64
+              "pitch": 86,
+              "velocity": 67
             },
             {
               "id": "part-6-organ-18",
               "start": 19200,
               "duration": 3680,
               "pitch": 78,
-              "velocity": 67
+              "velocity": 73
             },
             {
               "id": "part-6-organ-19",
               "start": 23040,
               "duration": 1920,
               "pitch": 74,
-              "velocity": 61
+              "velocity": 64
             },
             {
               "id": "part-6-organ-20",
               "start": 23040,
               "duration": 1920,
-              "pitch": 76,
-              "velocity": 64
+              "pitch": 88,
+              "velocity": 67
             },
             {
               "id": "part-6-organ-21",
               "start": 23040,
               "duration": 1920,
               "pitch": 79,
-              "velocity": 67
+              "velocity": 73
             },
             {
               "id": "part-6-organ-19-change",
               "start": 24960,
               "duration": 1760,
               "pitch": 76,
-              "velocity": 61
+              "velocity": 64
             },
             {
               "id": "part-6-organ-20-change",
               "start": 24960,
               "duration": 1760,
-              "pitch": 76,
-              "velocity": 64
+              "pitch": 88,
+              "velocity": 67
             },
             {
               "id": "part-6-organ-21-change",
               "start": 24960,
               "duration": 1760,
               "pitch": 79,
-              "velocity": 67
+              "velocity": 73
             },
             {
               "id": "part-6-organ-22",
               "start": 26880,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 61
+              "velocity": 64
             },
             {
               "id": "part-6-organ-23",
               "start": 26880,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 64
+              "pitch": 88,
+              "velocity": 67
             },
             {
               "id": "part-6-organ-24",
               "start": 26880,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 67
+              "velocity": 73
             }
           ]
         },
@@ -16755,105 +17175,105 @@
               "start": 0,
               "duration": 3680,
               "pitch": 74,
-              "velocity": 47
+              "velocity": 50
             },
             {
               "id": "part-7-organ-2",
               "start": 0,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 50
+              "pitch": 88,
+              "velocity": 53
             },
             {
               "id": "part-7-organ-3",
               "start": 0,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 53
+              "velocity": 59
             },
             {
               "id": "part-7-organ-4",
               "start": 3840,
               "duration": 3680,
               "pitch": 74,
-              "velocity": 47
+              "velocity": 50
             },
             {
               "id": "part-7-organ-5",
               "start": 3840,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 50
+              "pitch": 88,
+              "velocity": 53
             },
             {
               "id": "part-7-organ-6",
               "start": 3840,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 53
+              "velocity": 59
             },
             {
               "id": "part-7-organ-7",
               "start": 7680,
               "duration": 1920,
               "pitch": 71,
-              "velocity": 47
+              "velocity": 50
             },
             {
               "id": "part-7-organ-8",
               "start": 7680,
               "duration": 1920,
-              "pitch": 76,
-              "velocity": 50
+              "pitch": 88,
+              "velocity": 53
             },
             {
               "id": "part-7-organ-9",
               "start": 7680,
               "duration": 1920,
               "pitch": 79,
-              "velocity": 53
+              "velocity": 59
             },
             {
               "id": "part-7-organ-7-change",
               "start": 9600,
               "duration": 1760,
               "pitch": 69,
-              "velocity": 47
+              "velocity": 50
             },
             {
               "id": "part-7-organ-8-change",
               "start": 9600,
               "duration": 1760,
-              "pitch": 76,
-              "velocity": 50
+              "pitch": 88,
+              "velocity": 53
             },
             {
               "id": "part-7-organ-9-change",
               "start": 9600,
               "duration": 1760,
               "pitch": 81,
-              "velocity": 53
+              "velocity": 59
             },
             {
               "id": "part-7-organ-10",
               "start": 11520,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 47
+              "velocity": 50
             },
             {
               "id": "part-7-organ-11",
               "start": 11520,
               "duration": 3680,
-              "pitch": 73,
-              "velocity": 50
+              "pitch": 85,
+              "velocity": 53
             },
             {
               "id": "part-7-organ-12",
               "start": 11520,
               "duration": 3680,
               "pitch": 76,
-              "velocity": 53
+              "velocity": 59
             }
           ]
         },
@@ -16868,357 +17288,357 @@
               "start": 0,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-2",
               "start": 0,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 65
+              "pitch": 86,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-3",
               "start": 0,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-4",
               "start": 3840,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-5",
               "start": 3840,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 65
+              "pitch": 86,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-6",
               "start": 3840,
               "duration": 3680,
               "pitch": 78,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-7",
               "start": 7680,
               "duration": 3680,
               "pitch": 74,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-8",
               "start": 7680,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 65
+              "pitch": 88,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-9",
               "start": 7680,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-10",
               "start": 11520,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-11",
               "start": 11520,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 65
+              "pitch": 88,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-12",
               "start": 11520,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-13",
               "start": 15360,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-14",
               "start": 15360,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 65
+              "pitch": 86,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-15",
               "start": 15360,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-16",
               "start": 19200,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-17",
               "start": 19200,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 65
+              "pitch": 86,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-18",
               "start": 19200,
               "duration": 3680,
               "pitch": 78,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-19",
               "start": 23040,
               "duration": 3680,
               "pitch": 74,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-20",
               "start": 23040,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 65
+              "pitch": 88,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-21",
               "start": 23040,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-22",
               "start": 26880,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-23",
               "start": 26880,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 65
+              "pitch": 88,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-24",
               "start": 26880,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-25",
               "start": 30720,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-26",
               "start": 30720,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 65
+              "pitch": 86,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-27",
               "start": 30720,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-28",
               "start": 34560,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-29",
               "start": 34560,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 65
+              "pitch": 86,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-30",
               "start": 34560,
               "duration": 3680,
               "pitch": 78,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-31",
               "start": 38400,
               "duration": 3680,
               "pitch": 74,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-32",
               "start": 38400,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 65
+              "pitch": 88,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-33",
               "start": 38400,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-34",
               "start": 42240,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-35",
               "start": 42240,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 65
+              "pitch": 88,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-36",
               "start": 42240,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-37",
               "start": 46080,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-38",
               "start": 46080,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 65
+              "pitch": 86,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-39",
               "start": 46080,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-40",
               "start": 49920,
               "duration": 3680,
               "pitch": 69,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-41",
               "start": 49920,
               "duration": 3680,
-              "pitch": 74,
-              "velocity": 65
+              "pitch": 86,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-42",
               "start": 49920,
               "duration": 3680,
               "pitch": 78,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-43",
               "start": 53760,
               "duration": 1920,
               "pitch": 74,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-44",
               "start": 53760,
               "duration": 1920,
-              "pitch": 76,
-              "velocity": 65
+              "pitch": 88,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-45",
               "start": 53760,
               "duration": 1920,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-43-change",
               "start": 55680,
               "duration": 1760,
               "pitch": 76,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-44-change",
               "start": 55680,
               "duration": 1760,
-              "pitch": 76,
-              "velocity": 65
+              "pitch": 88,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-45-change",
               "start": 55680,
               "duration": 1760,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             },
             {
               "id": "part-8-organ-46",
               "start": 57600,
               "duration": 3680,
               "pitch": 71,
-              "velocity": 62
+              "velocity": 65
             },
             {
               "id": "part-8-organ-47",
               "start": 57600,
               "duration": 3680,
-              "pitch": 76,
-              "velocity": 65
+              "pitch": 88,
+              "velocity": 68
             },
             {
               "id": "part-8-organ-48",
               "start": 57600,
               "duration": 3680,
               "pitch": 79,
-              "velocity": 68
+              "velocity": 74
             }
           ]
         }
@@ -17245,56 +17665,56 @@
               "start": 5760,
               "duration": 410,
               "pitch": 79,
-              "velocity": 75
+              "velocity": 81
             },
             {
               "id": "part-2-guitar-2",
               "start": 7200,
               "duration": 320,
               "pitch": 74,
-              "velocity": 63
+              "velocity": 62
             },
             {
               "id": "part-2-guitar-3",
               "start": 13440,
               "duration": 410,
               "pitch": 76,
-              "velocity": 75
+              "velocity": 81
             },
             {
               "id": "part-2-guitar-4",
               "start": 14880,
               "duration": 320,
               "pitch": 73,
-              "velocity": 63
+              "velocity": 62
             },
             {
               "id": "part-2-guitar-5",
               "start": 21120,
               "duration": 410,
               "pitch": 79,
-              "velocity": 75
+              "velocity": 81
             },
             {
               "id": "part-2-guitar-6",
               "start": 22560,
               "duration": 320,
               "pitch": 74,
-              "velocity": 63
+              "velocity": 62
             },
             {
               "id": "part-2-guitar-7",
               "start": 28800,
               "duration": 410,
               "pitch": 76,
-              "velocity": 75
+              "velocity": 81
             },
             {
               "id": "part-2-guitar-8",
               "start": 30240,
               "duration": 320,
               "pitch": 73,
-              "velocity": 63
+              "velocity": 62
             }
           ],
           "midiEvents": [
@@ -17318,56 +17738,56 @@
               "start": 5760,
               "duration": 410,
               "pitch": 78,
-              "velocity": 85
+              "velocity": 91
             },
             {
               "id": "part-4-guitar-2",
               "start": 7200,
               "duration": 320,
               "pitch": 74,
-              "velocity": 73
+              "velocity": 72
             },
             {
               "id": "part-4-guitar-3",
               "start": 13440,
               "duration": 410,
               "pitch": 79,
-              "velocity": 85
+              "velocity": 91
             },
             {
               "id": "part-4-guitar-4",
               "start": 14880,
               "duration": 320,
               "pitch": 76,
-              "velocity": 73
+              "velocity": 72
             },
             {
               "id": "part-4-guitar-5",
               "start": 21120,
               "duration": 410,
               "pitch": 78,
-              "velocity": 85
+              "velocity": 91
             },
             {
               "id": "part-4-guitar-6",
               "start": 22560,
               "duration": 320,
               "pitch": 74,
-              "velocity": 73
+              "velocity": 72
             },
             {
               "id": "part-4-guitar-7",
               "start": 28800,
               "duration": 410,
               "pitch": 79,
-              "velocity": 85
+              "velocity": 91
             },
             {
               "id": "part-4-guitar-8",
               "start": 30240,
               "duration": 320,
               "pitch": 76,
-              "velocity": 73
+              "velocity": 72
             }
           ]
         },
@@ -17382,56 +17802,56 @@
               "start": 5760,
               "duration": 410,
               "pitch": 79,
-              "velocity": 87
+              "velocity": 93
             },
             {
               "id": "part-6-guitar-2",
               "start": 7200,
               "duration": 320,
               "pitch": 74,
-              "velocity": 75
+              "velocity": 74
             },
             {
               "id": "part-6-guitar-3",
               "start": 13440,
               "duration": 410,
               "pitch": 76,
-              "velocity": 87
+              "velocity": 93
             },
             {
               "id": "part-6-guitar-4",
               "start": 14880,
               "duration": 320,
               "pitch": 73,
-              "velocity": 75
+              "velocity": 74
             },
             {
               "id": "part-6-guitar-5",
               "start": 21120,
               "duration": 410,
               "pitch": 78,
-              "velocity": 87
+              "velocity": 93
             },
             {
               "id": "part-6-guitar-6",
               "start": 22560,
               "duration": 320,
               "pitch": 74,
-              "velocity": 75
+              "velocity": 74
             },
             {
               "id": "part-6-guitar-7",
               "start": 28800,
               "duration": 410,
               "pitch": 79,
-              "velocity": 87
+              "velocity": 93
             },
             {
               "id": "part-6-guitar-8",
               "start": 30240,
               "duration": 320,
               "pitch": 76,
-              "velocity": 75
+              "velocity": 74
             }
           ]
         },
@@ -17446,28 +17866,28 @@
               "start": 5760,
               "duration": 410,
               "pitch": 79,
-              "velocity": 73
+              "velocity": 79
             },
             {
               "id": "part-7-guitar-2",
               "start": 7200,
               "duration": 320,
               "pitch": 76,
-              "velocity": 61
+              "velocity": 60
             },
             {
               "id": "part-7-guitar-3",
               "start": 13440,
               "duration": 410,
               "pitch": 76,
-              "velocity": 73
+              "velocity": 79
             },
             {
               "id": "part-7-guitar-4",
               "start": 14880,
               "duration": 320,
               "pitch": 73,
-              "velocity": 61
+              "velocity": 60
             }
           ]
         },
@@ -17482,112 +17902,112 @@
               "start": 5760,
               "duration": 410,
               "pitch": 78,
-              "velocity": 88
+              "velocity": 94
             },
             {
               "id": "part-8-guitar-2",
               "start": 7200,
               "duration": 320,
               "pitch": 74,
-              "velocity": 76
+              "velocity": 75
             },
             {
               "id": "part-8-guitar-3",
               "start": 13440,
               "duration": 410,
               "pitch": 79,
-              "velocity": 88
+              "velocity": 94
             },
             {
               "id": "part-8-guitar-4",
               "start": 14880,
               "duration": 320,
               "pitch": 76,
-              "velocity": 76
+              "velocity": 75
             },
             {
               "id": "part-8-guitar-5",
               "start": 21120,
               "duration": 410,
               "pitch": 78,
-              "velocity": 88
+              "velocity": 94
             },
             {
               "id": "part-8-guitar-6",
               "start": 22560,
               "duration": 320,
               "pitch": 74,
-              "velocity": 76
+              "velocity": 75
             },
             {
               "id": "part-8-guitar-7",
               "start": 28800,
               "duration": 410,
               "pitch": 79,
-              "velocity": 88
+              "velocity": 94
             },
             {
               "id": "part-8-guitar-8",
               "start": 30240,
               "duration": 320,
               "pitch": 76,
-              "velocity": 76
+              "velocity": 75
             },
             {
               "id": "part-8-guitar-9",
               "start": 36480,
               "duration": 410,
               "pitch": 78,
-              "velocity": 88
+              "velocity": 94
             },
             {
               "id": "part-8-guitar-10",
               "start": 37920,
               "duration": 320,
               "pitch": 74,
-              "velocity": 76
+              "velocity": 75
             },
             {
               "id": "part-8-guitar-11",
               "start": 44160,
               "duration": 410,
               "pitch": 79,
-              "velocity": 88
+              "velocity": 94
             },
             {
               "id": "part-8-guitar-12",
               "start": 45600,
               "duration": 320,
               "pitch": 76,
-              "velocity": 76
+              "velocity": 75
             },
             {
               "id": "part-8-guitar-13",
               "start": 51840,
               "duration": 410,
               "pitch": 78,
-              "velocity": 88
+              "velocity": 94
             },
             {
               "id": "part-8-guitar-14",
               "start": 53280,
               "duration": 320,
               "pitch": 74,
-              "velocity": 76
+              "velocity": 75
             },
             {
               "id": "part-8-guitar-15",
               "start": 59520,
               "duration": 410,
               "pitch": 79,
-              "velocity": 88
+              "velocity": 94
             },
             {
               "id": "part-8-guitar-16",
               "start": 60960,
               "duration": 320,
               "pitch": 76,
-              "velocity": 76
+              "velocity": 75
             }
           ]
         }
@@ -17688,7 +18108,7 @@
             "solo": false,
             "soloSafe": false,
             "deviceIds": [
-              "bus-1-compressor"
+              "bus-1-buscompressor"
             ],
             "name": "Rhythm",
             "outputChannelId": "master"
@@ -17703,7 +18123,7 @@
             "solo": false,
             "soloSafe": false,
             "deviceIds": [
-              "bus-2-eq"
+              "bus-2-parametriceq"
             ],
             "name": "Harmony",
             "outputChannelId": "master"
@@ -17734,8 +18154,8 @@
             "soloSafe": false,
             "deviceIds": [
               "instrument-1",
-              "track-1-distortion",
-              "track-1-amp"
+              "track-1-electricrig",
+              "track-1-delay"
             ],
             "trackId": "lead",
             "outputChannelId": "master",
@@ -17760,7 +18180,7 @@
             "soloSafe": false,
             "deviceIds": [
               "instrument-2",
-              "track-2-amp"
+              "track-2-electricrig"
             ],
             "trackId": "rhythm",
             "outputChannelId": "bus-2",
@@ -17785,6 +18205,7 @@
             "soloSafe": false,
             "deviceIds": [
               "instrument-3",
+              "track-3-bassrig",
               "track-3-compressor"
             ],
             "trackId": "bass",
@@ -17850,7 +18271,7 @@
             "soloSafe": false,
             "deviceIds": [
               "instrument-6",
-              "track-6-amp"
+              "track-6-electricrig"
             ],
             "trackId": "guitar",
             "outputChannelId": "bus-2",
@@ -17880,29 +18301,29 @@
             }
           },
           {
-            "id": "bus-1-compressor",
+            "id": "bus-1-buscompressor",
             "role": "effect",
             "enabled": true,
             "bypass": false,
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663034",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663135",
               "vendor": "OSTF Studio",
-              "name": "OSTF Compressor"
+              "name": "OSTF Bus Compressor"
             }
           },
           {
-            "id": "bus-2-eq",
+            "id": "bus-2-parametriceq",
             "role": "effect",
             "enabled": true,
             "bypass": false,
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663033",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663234",
               "vendor": "OSTF Studio",
-              "name": "OSTF EQ"
+              "name": "OSTF Parametric EQ"
             }
           },
           {
@@ -17932,29 +18353,29 @@
             }
           },
           {
-            "id": "track-1-distortion",
+            "id": "track-1-electricrig",
             "role": "effect",
             "enabled": true,
             "bypass": false,
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663038",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663235",
               "vendor": "OSTF Studio",
-              "name": "OSTF Distortion"
+              "name": "OSTF Electric Guitar Rig"
             }
           },
           {
-            "id": "track-1-amp",
+            "id": "track-1-delay",
             "role": "effect",
             "enabled": true,
             "bypass": false,
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663039",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663138",
               "vendor": "OSTF Studio",
-              "name": "OSTF Guitar Amp"
+              "name": "OSTF Delay"
             }
           },
           {
@@ -17971,16 +18392,16 @@
             }
           },
           {
-            "id": "track-2-amp",
+            "id": "track-2-electricrig",
             "role": "effect",
             "enabled": true,
             "bypass": false,
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663039",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663235",
               "vendor": "OSTF Studio",
-              "name": "OSTF Guitar Amp"
+              "name": "OSTF Electric Guitar Rig"
             }
           },
           {
@@ -17994,6 +18415,19 @@
               "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
               "name": "OSTF GM Sound Module",
               "vendor": "OSTF Studio"
+            }
+          },
+          {
+            "id": "track-3-bassrig",
+            "role": "effect",
+            "enabled": true,
+            "bypass": false,
+            "onUnavailable": "reportAndPreserve",
+            "plugin": {
+              "format": "vst3",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663237",
+              "vendor": "OSTF Studio",
+              "name": "OSTF Bass Rig"
             }
           },
           {
@@ -18030,8 +18464,8 @@
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F676D31",
-              "name": "OSTF GM Sound Module",
+              "pluginId": "ABCDEF019182FAEB4F7374664F666D31",
+              "name": "OSTF FM Synth",
               "vendor": "OSTF Studio"
             }
           },
@@ -18062,17 +18496,531 @@
             }
           },
           {
-            "id": "track-6-amp",
+            "id": "track-6-electricrig",
             "role": "effect",
             "enabled": true,
             "bypass": false,
             "onUnavailable": "reportAndPreserve",
             "plugin": {
               "format": "vst3",
-              "pluginId": "ABCDEF019182FAEB4F7374664F663039",
+              "pluginId": "ABCDEF019182FAEB4F7374664F663235",
               "vendor": "OSTF Studio",
-              "name": "OSTF Guitar Amp"
+              "name": "OSTF Electric Guitar Rig"
             }
+          }
+        ],
+        "automation": [
+          {
+            "id": "solo-pan",
+            "target": {
+              "kind": "channel",
+              "channelId": "track-1",
+              "parameter": "pan"
+            },
+            "valueType": "number",
+            "interpolation": "linear",
+            "points": [
+              {
+                "atTick": 122880,
+                "value": 0.08
+              },
+              {
+                "atTick": 130560,
+                "value": -0.65
+              },
+              {
+                "atTick": 138240,
+                "value": 0.65
+              },
+              {
+                "atTick": 145920,
+                "value": -0.35
+              },
+              {
+                "atTick": 153600,
+                "value": 0.08
+              }
+            ]
+          },
+          {
+            "id": "master-limiter-p-control1",
+            "target": {
+              "kind": "device",
+              "deviceId": "master-limiter",
+              "parameterId": "1580549748"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.92
+              }
+            ]
+          },
+          {
+            "id": "master-limiter-p-control3",
+            "target": {
+              "kind": "device",
+              "deviceId": "master-limiter",
+              "parameterId": "1580549750"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.22
+              }
+            ]
+          },
+          {
+            "id": "bus-1-buscompressor-p-threshold1",
+            "target": {
+              "kind": "device",
+              "deviceId": "bus-1-buscompressor",
+              "parameterId": "1482336550"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.7
+              }
+            ]
+          },
+          {
+            "id": "bus-1-buscompressor-p-ratio1",
+            "target": {
+              "kind": "device",
+              "deviceId": "bus-1-buscompressor",
+              "parameterId": "1209381254"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.065
+              }
+            ]
+          },
+          {
+            "id": "bus-1-buscompressor-p-attack",
+            "target": {
+              "kind": "device",
+              "deviceId": "bus-1-buscompressor",
+              "parameterId": "740224584"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.55
+              }
+            ]
+          },
+          {
+            "id": "bus-2-parametriceq-p-gain2",
+            "target": {
+              "kind": "device",
+              "deviceId": "bus-2-parametriceq",
+              "parameterId": "98116755"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.45
+              }
+            ]
+          },
+          {
+            "id": "bus-2-parametriceq-p-gain3",
+            "target": {
+              "kind": "device",
+              "deviceId": "bus-2-parametriceq",
+              "parameterId": "98116756"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.535
+              }
+            ]
+          },
+          {
+            "id": "return-1-reverb-p-control1",
+            "target": {
+              "kind": "device",
+              "deviceId": "return-1-reverb",
+              "parameterId": "1580549748"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.54
+              }
+            ]
+          },
+          {
+            "id": "return-1-reverb-p-control2",
+            "target": {
+              "kind": "device",
+              "deviceId": "return-1-reverb",
+              "parameterId": "1580549749"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.67
+              }
+            ]
+          },
+          {
+            "id": "return-1-reverb-p-control3",
+            "target": {
+              "kind": "device",
+              "deviceId": "return-1-reverb",
+              "parameterId": "1580549750"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 1
+              }
+            ]
+          },
+          {
+            "id": "track-1-electricrig-p-drive",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-1-electricrig",
+              "parameterId": "95852938"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.39
+              }
+            ]
+          },
+          {
+            "id": "track-1-electricrig-p-blend",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-1-electricrig",
+              "parameterId": "93823057"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.57
+              }
+            ]
+          },
+          {
+            "id": "track-1-electricrig-p-output",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-1-electricrig",
+              "parameterId": "1141971201"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.56
+              }
+            ]
+          },
+          {
+            "id": "track-1-delay-p-feedback",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-1-delay",
+              "parameterId": "1955982213"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.18
+              }
+            ]
+          },
+          {
+            "id": "track-1-delay-p-mix",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-1-delay",
+              "parameterId": "108124"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.13
+              }
+            ]
+          },
+          {
+            "id": "track-1-delay-p-time",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-1-delay",
+              "parameterId": "3560141"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.774959
+              }
+            ]
+          },
+          {
+            "id": "track-2-electricrig-p-drive",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-2-electricrig",
+              "parameterId": "95852938"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.16
+              }
+            ]
+          },
+          {
+            "id": "track-2-electricrig-p-blend",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-2-electricrig",
+              "parameterId": "93823057"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.57
+              }
+            ]
+          },
+          {
+            "id": "track-2-electricrig-p-output",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-2-electricrig",
+              "parameterId": "1141971201"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.56
+              }
+            ]
+          },
+          {
+            "id": "track-3-bassrig-p-drive",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-3-bassrig",
+              "parameterId": "95852938"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.1
+              }
+            ]
+          },
+          {
+            "id": "track-3-bassrig-p-blend",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-3-bassrig",
+              "parameterId": "93823057"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.28
+              }
+            ]
+          },
+          {
+            "id": "track-3-bassrig-p-output",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-3-bassrig",
+              "parameterId": "1141971201"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.62
+              }
+            ]
+          },
+          {
+            "id": "track-3-compressor-p-control1",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-3-compressor",
+              "parameterId": "1580549748"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.6
+              }
+            ]
+          },
+          {
+            "id": "track-3-compressor-p-control2",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-3-compressor",
+              "parameterId": "1580549749"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.11
+              }
+            ]
+          },
+          {
+            "id": "track-3-compressor-p-control3",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-3-compressor",
+              "parameterId": "1580549750"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.15
+              }
+            ]
+          },
+          {
+            "id": "track-5-phaser-p-control2",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-5-phaser",
+              "parameterId": "1580549749"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.42
+              }
+            ]
+          },
+          {
+            "id": "track-5-phaser-p-control3",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-5-phaser",
+              "parameterId": "1580549750"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.18
+              }
+            ]
+          },
+          {
+            "id": "track-6-electricrig-p-drive",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-6-electricrig",
+              "parameterId": "95852938"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.16
+              }
+            ]
+          },
+          {
+            "id": "track-6-electricrig-p-blend",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-6-electricrig",
+              "parameterId": "93823057"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.57
+              }
+            ]
+          },
+          {
+            "id": "track-6-electricrig-p-output",
+            "target": {
+              "kind": "device",
+              "deviceId": "track-6-electricrig",
+              "parameterId": "1141971201"
+            },
+            "valueType": "number",
+            "interpolation": "step",
+            "points": [
+              {
+                "atTick": 0,
+                "value": 0.56
+              }
+            ]
           }
         ]
       }

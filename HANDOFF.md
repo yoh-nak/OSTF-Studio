@@ -1,8 +1,663 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — Public Alpha 1
+
+The owner withdrew the three experimental GitHub Releases and their 12 attached files. The experimental tags remain available for source history. The candidate previously called alpha 4 is now **OSTF Studio Public Alpha 1**, with a fresh tag name reserved for publication, `v1.0.0-public-alpha.1`. PR builds show `1.0.0-public-alpha.1-dev` in Studio and in both installers. The package receipt version remains numeric for upgrades. Review the Windows and macOS checks in [draft PR 7](https://github.com/yoh-nak/OSTF-Studio/pull/7). Publishing still requires explicit authorization.
+
+## 2026-11-27 — compact Scale Editor controls and alpha 4 preparation
+
+The public README introduces Studio with a 1536 × 970 PNG from the Windows Portable running Paper Lantern Replies. To reproduce it, set `OSTF_LIVE_MATRIX_PNG` to an absolute output path and run Studio with `--live-session-smoke examples/demo-songs/paper-lantern-replies.ostf` using an absolute fixture path. Keep `docs/images/ostf-studio-live-session.png` with the README in the source tree so branches and release tags resolve the same illustration.
+
+Toolbar and text-view buttons use compact English and Japanese labels with vector icons. Pointer hover and keyboard focus open the action description; Escape dismisses it. The Studio exchange group, selected audition instrument, disabled host-read state and drag grip remain visible. Headless Edge exercised the Japanese toolbar, a disabled control’s hint, keyboard focus, Escape, drag and text import at widths of 1440 and 760 pixels.
+
+The Singer's English syllable matcher handles the final /ndz/ written as n-zu in “hands” and still honours a separately transcribed stop. The regression uses the reading from Paper Lantern Replies. The next candidate is `v1.0.0-alpha.4`; publication requires a separate authorization.
+
+The image is on public main through [PR 6](https://github.com/yoh-nak/OSTF-Studio/pull/6). [Draft PR 7](https://github.com/yoh-nak/OSTF-Studio/pull/7) builds the candidate for Windows x64 and macOS arm64. Its first macOS run caught the demo verifier applying the 5.1 version constraint to the empty 5.2 score. The verifier now checks the startup document against the pinned 5.2 schema bundled with Studio, resolves companion schemas offline, and still uses the official 5.1 validator for all eight existing demo packages. All eight passed locally. Build, test and installer results for the candidate are recorded in the PR checks.
+
+The offline English/Japanese A/B from the Pre-Chorus first differs at 9.811 s, on the “hands” onset at 9.808 s. Both renders have the same duration. Real-device listening remains open. The local Windows Release build passed all 44 tests on the full rerun, after a transient waveform timeout and three successful focused repeats. The extracted Portable passed the Live Session smoke and all 39 executable and VST3 hashes matched the build outputs.
+
+Windows CI on a clean checkout exposed missing OSTF 5.2 package fixtures. The 16 files under `tests/fixtures/ostf52` match the official release byte-for-byte; the package test now checks their presence before exercising imports and round trips. Studio smoke test failures include the check number in the CI log.
+
+The manufacturer filter smoke test seeds a temporary in-memory catalogue, so it also runs on machines with no installed instruments. The GM editor smoke waits for its asynchronous editor instead of assuming a fixed startup delay (12 consecutive Windows passes). macOS CI reproduced an invalid free in both the FM and Harmonizer VST3 editors while JUCE was constructing a slider. The macOS build now applies hidden visibility to the shared static module code and exports only the three VST3 entry points from each bundle. The same nested-editor tests exercise this boundary in CI.
+
+After isolating the VST3 symbols, macOS opened both editors and passed 42 of 43 tests. The remaining test checks keyboard focus after opening an effect from its chain. On macOS that test now uses on-screen windows, checks for unexpected focused peers and accounts for another application being active. Studio restores the editor's native key status after reordering an owned window when Studio is active. The release-source builder also archives the pinned Ableton Link and standalone Asio checkouts, verifies the README illustration and configures the extracted source without fetching dependencies on macOS.
+
+## 2026-11-27 — Scale Editor score exchange, text workflow and sung ノット
+
+Branch `feat/ostf-52-studio`. The header exposes the audition instrument, test note, language choices, Studio score input, clipboard and a separate drag grip. Studio score input is enabled only after the hosting instance supplies a score through the VST3 score interface. A recalled document or an OSTF file opened in another host does not enable it. Dragging captures the current assignments when the pointer crosses the threshold, even when the browser releases pointer capture during the gesture. The receiving Studio instance still checks the original score revision and supports Undo.
+
+The text view names the document open in the plug-in and distinguishes displaying it in the text box from loading the text box into the plug-in. Save As writes the edited OSTF to a file. Whole-song scale proposals have an explicit local apply step. The chord timeline reserves width for the section name, with its disclosure arrow on the left and its completion count on the right. Unnamed sections show just their chord count beside the arrow. The three language choices and the song style menu use the Studio palette. Coverage includes the seven native finishes and computed control colours in the embedded editor.
+
+Formant Singer accepts a written オ for the English dictionary AA vowel when the consonants and remaining katakana agree. In “not / ノット” it carries the ノ vowel into a single /t/ release. Tests also cover “clock / クロック”, the unmatched reading ネット and literal Japanese. An offline A/B from the Paper Lantern Replies bridge first differs at 1.54 s on the target note. Subjective checking on the user's audio output remains open.
+
+Windows x64 Release was built locally. The 44-test run passed 43 checks and exposed a recall test that still expected the old Save label. After updating its English and Japanese assertions and rebuilding, all nine affected Scale Editor and host checks passed, including session recall. The embedded editor was tested from an empty state and a recalled project. A separate Edge check exercised continuous pointer movement across a capture loss, Japanese text validation and import, unnamed sections and a 760-pixel window. The OS file-drop receiver and web drag gesture have separate coverage. A manual cross-DAW drag and the macOS build remain unverified for this change.
+
+The Portable under `E:/OSTF-Studio-build-cache/menu-contrast-sung-vowels/Portable` contains the Studio executable and 38 bundled VST3s. The executable and all 764 bundle files were hash-checked. The common Windows Scale Editor VST3 matches the Portable build.
+
+## 2026-11-27 — Studio colour themes in plug-ins and short English releases
+
+Branch `feat/ostf-52-studio`. All bundled plug-in editor families share the Studio console theme and control rendering. A window reads the saved theme when it opens. The Scale Editor also applies it to its embedded workspace and independent instrument picker. In the search field, Up/Down selects an instrument, Enter loads it, and Shift+Enter loads and plays C4 with the search and manufacturer filters still in place.
+
+The Singer now recognises the written small ッ in a matching English syllable ending in a stop. On “Look / ルック” and “Let / レット” it keeps the authored vowel and uses the English stop's closure and release. The regression checks 88 ms of vowel and 32 ms of consonant on a 120 ms note, and checks literal Japanese and mismatched English spellings separately. For the listening comparison use Paper Lantern Replies, Pre-Chorus, the phrase “Look for the flame”, built-in Mei, original tempo and note velocities.
+
+Windows x64 Release built successfully. All 44 CTest cases passed. A separate run loaded the installed FM8 from the picker and measured a C4 peak of 0.07170 with Shift+Enter. The new Portable is `E:/OSTF-Studio-build-cache/studio-plugin-theme-short-stops/Portable` with eight demo projects. The executable and all 764 files in its 38 plug-in bundles were hash-checked against Release. Use the GM bundle from `OSTFGMSoundModule_artefacts/Release/VST3`. The common Windows VST3 Scale Editor binary matches this Portable. A separate run of the packaged Studio opened Paper Lantern Replies and wrote a four-bar vocal WAV through its Singer.
+
+Next to the Portable, `look-before-after.wav` contains two 1.60-second mono excerpts at 48 kHz and equal gain. The new one starts at 2.00 seconds. The full before/after renders first differ at 6.734 seconds, during “Look”. `studio-chorus.png` is an actual Chorus editor capture. Subjective listening, macOS, CI, rebuilding installers, and a new interactive check in Ableton Live are outstanding for this build.
+
+## 2026-11-27 — integrated Scale Editor workspace
+
+Branch `feat/ostf-52-studio`. The embedded Scale Editor opens directly to an empty file/drop prompt or the supplied score. File operations, assignment history, automatic assignment and OSTF text use the original workspace controls. Studio exchange, explicit apply to the plug-in score, language and the simple editor are in **Studio / Settings**. Instrument selection and editor, the test note and both MIDI switches are beside the audition keyboard. The development demo menu and automatic demo loading have been removed from the plug-in.
+
+Windows x64 Release passed all 44 CTest cases on the integrated toolbar build. After adding the empty startup screen, all eight Scale Editor and Studio plug-in focus tests passed again. The linked-save test opens an empty embedded editor before dropping a real score, saving a scale and detecting an external file change. The workspace test checks the full editor bounds and uses the embedded picker and apply action. The latest local Portable remains `E:/OSTF-Studio-build-cache/vocal-tempo-scale-relink/Portable` (38 VST3 bundles, eight demo projects). Both the Portable and registered common Scale Editor bundles matched the Release output. CI, macOS, installer regeneration, physical drag to another DAW and an interactive Ableton Live session were not exercised this round.
+
+The user removed REAPER from the development environment. Its five local test hosts, the installer, matching factory plug-ins/resources and the MIDI-through JSFX probe were moved to the Recycle Bin. Keep future verification on the Studio/JUCE test hosts or the user's designated DAW. Do not relaunch or reinstall REAPER for these checks.
+
+## 2026-11-26 — connected sung syllables and Scale Editor instrument recovery
+
+Branch `feat/ostf-52-studio`. Windows x64 Release passed all 44 CTest cases. A previous run timed out in `ostf_studio_written_notation`; the full repeat passed this case in 3.14 seconds. The local development Portable is `E:/OSTF-Studio-build-cache/vocal-tempo-scale-relink/Portable` with 38 VST3 bundles and eight demo projects. The application and every file of both changed bundles matched the Release output. The common Windows VST3 location also contains this Scale Editor. CI, installer generation, macOS and a new Ableton Live set round trip were not verified.
+
+Singer now handles syllable-aligned multisyllable English with an authored katakana reading, as well as a single syllable sung over several notes. The regression uses “flame” on three pitches with the note references out of time order. The opening consonant is attached to the first note, the middle sustains the vowel and the last note releases the glide and /m/. The OSTF reader schedules articulations using the tempo map even when a tempo change falls within the note. The 480-PPQ regression for “street” starts at tick 480 at 240 BPM, drops to 120 BPM at tick 720 and ends at tick 960. All phone edges match a 375 ms note in elapsed time.
+
+For the listening check, a temporary Paper Lantern Replies fixture put “flame” on three short notes at 78 BPM. The published local comparison `flame-before-after.wav`, next to the Portable, plays the old rendering at 0 seconds and the new one at 1 second. Both excerpts are 0.5 seconds, stereo, 48 kHz, matched to the quieter RMS. The current Portable's full vocal render was byte-identical to the “after” source. Subjective vocal quality still needs listening feedback.
+
+Scale Editor's visual keyboard opens the instrument list. Selecting a relocated VST3 of the same class restores its saved parameters. The Windows regression moves the saved FM Synth path out of reach and checks the Tone parameter returns to 0.19. A separate test loaded the installed FM8 from the picker and measured a peak of 0.07170. The linked-save test wrote edited scales to a disposable OSTF, preserved an unrelated high-precision number and rejected a subsequent overwrite after an external edit. Scale returns to Studio also work through the clipboard with source-revision checks and Undo.
+
+REAPER 7.86 x64 loaded the registered Scale Editor VST3 from Common Files in an isolated test project and rendered the reference instrument for three seconds (48 kHz stereo, 24-bit PCM, peak 0.09449). The source project was seeded with the unchanged Neon Platforms OSTF as plug-in state. The project was saved and reopened through REAPER. Reading the recalled VST state returned the exact original UTF-8 score with all 74 chords and its scale assignment. This exercises external-host audio and project persistence. Interactive scale editing and linked-file saving were exercised separately by the Windows workspace test. For a manual repeat, open Neon Platforms in the VST3, save the host project, reopen it and inspect the OSTF Text tab. `paper-lantern-chorus-before-after.wav` beside the Portable compares four bars at 78 BPM; the second excerpt starts at 13.08 seconds.
+
+The strengthened `ostf_scale_linked_save` case then passed separately in 6.31 seconds. It opens a demo copy with an empty scale lane, selects the first chord, invokes the same Set Scale action as the UI, saves the linked OSTF and checks the scale intervals and exact chord range from disk. It also checks the unrelated high-precision decimal and an external edit conflict.
+
+The supplied Scale Editor v1.0 Max device contains its editor in the codebox's base64 HTML_PARTS. Compared with `ScaleWorkspace.html`, every original named JavaScript function and each of the 174 literal element IDs was found. A syntax-tree comparison counted 239 named function declarations including repeated names. 198 bodies were identical after normalizing line endings and 41 differed. Running each embedded adviser's `SA.candidates` on the same unmodified demos produced identical ordered candidate tonics, scale names and intervals for all 55 chords of Paper Lantern Replies and all 74 of Neon Platforms. A comparison of the actual M4L and VST3 behaviour for every control, preview/MIDI route and file operation is still open.
+
+## 2026-11-26 — singing katakana on short notes and comparing hosted instruments
+
+Branch `feat/ostf-52-studio`. The Windows x64 development Portable is `E:/OSTF-Studio-build-cache/katakana-phrasing-52/Portable` (38 VST3 bundles, eight demo projects). The app and the contents of the Singer and Scale Editor bundles were checked against the Release build. All 44 Windows Release CTest cases passed. CI, installers, macOS hardware and an external DAW round trip were not exercised for this change.
+
+Use Paper Lantern Replies at its original 78 BPM, the Mei voice and the four bars of Pre-Chorus. With the score's English lyric and matching katakana reading, the 337 ms test note for “street” allocates 204 ms to the central written vowel, up from 134.8 ms. The test also covers “lights”, “flame”, unknown or deliberately different readings, and katakana-only input at two note lengths. Several syllables within one English word still require further work. The old and new mono excerpts each contain 591872 samples at 48 kHz. To reproduce, run `ostf_singing_tests <paper-lantern-replies.ostf> <new-output.wav> bilingual-mei` at each revision. The machine-local `prechorus-A-B.wav` next to Portable joins the two renders at matched RMS, with the new render starting at 13.08 seconds. A separate `--vocal-track-smoke` capture of the Japanese opening vocals through the new Portable was byte-identical to the previous Portable's capture. Audio renders and timing tests do not establish perceived vocal quality.
+
+In Scale Editor, search under **Instruments**, use **Load and audition** to hear C4 and compare additional results with the filter intact. **Load** finishes the selection. The Windows test exercised an installed FM8 instrument through the picker with a 0.07170 peak. Full M4L feature parity is still unverified. The Japanese take guide now distinguishes native 5.1/5.2 MIDI comps from the remaining audio-take, recording and live-edit milestones.
+
+## 2026-11-26 — global Scale lane, short vowels and instrument audition
+
+Branch `feat/ostf-52-studio`. Open the Blue Hour Waltz demo: it has a key and no assigned scale. Its global Scale row now sits between Key and Meter. Double-click an unassigned bar to choose the tonic and mode. Use **Set scale for this bar** to override a song default. The row shows the inherited scale on either side of a timed assignment. Splitting an inherited interval respects nearby shared assignments, and a join can retain either side. The display alone does not create events in the score.
+
+The four-note Mei test uses 72 ms notes separated by 8 ms. The Singer now advances a short stable vowel and nasal body through the recorded sustain at up to its natural speed. Note pitch, consonant timing and the length of the score remain separate. A CC11 change on a sounding voice ramps over 4 ms. The test checks that an initially silent channel stays silent, another channel is unaffected, and a 10 ms stable vowel uses 10 ms of its recording. Use `ostf_singing_tests <paper-lantern-replies.ostf> <unused-output.wav> short-mei` to audition the short fixture.
+
+Windows Scale Editor keeps the open native editor and hosted instrument when the same plug-in is auditioned again. A failed load leaves the filtered picker open with the error. The Windows hosted test checks the active native editor survives; a separate audition with the installed third-party FM8 produced a peak of 0.07170. External DAW interaction, subjective vocal quality, complete M4L feature parity, CI and macOS hardware remain unverified for this change.
+
+The development Portable is `E:/OSTF-Studio-build-cache/global-scale-52/Portable` (38 VST3 bundles, eight demos). The executable and the two changed plug-in bundles were checked against the Release build. Use `--track-view-smoke tests/fixtures/10-comprehensive-core.ostfp` with an absolute fixture path to exercise the empty row and the Dorian preset. Set `OSTF_GLOBAL_SCALE_PNG` to a new PNG path to capture the arrangement.
+
+Windows x64 Release passed all 44 CTest cases. The demo gallery checks an imported 5.1 song with an empty row, a timed override, inherited names on both sides, splitting, both join choices and Undo. The updated Windows Portable is local. Installer builds and release publication were not run.
+
+For a matched listening check, copy the standalone Paper Lantern Replies score and its referenced chimes WAV, change the test copy's first tempo from 78 to 312 BPM, and run `--vocal-track-smoke <test-score> <new-output.wav>` with the previous and current Portables. Both four-bar captures lasted 3.077 seconds. Their normalized sample-difference RMS was 0.01426; the updated peak was 0.2573. The same four bars at the original 78 BPM were sample-identical. The test copy and listening WAVs are machine-local.
+
+## 2026-11-26 — waveform pitch and warp in one editor
+
+Branch `feat/ostf-52-studio`. Select an audio region in the arrangement. Double-click the upper waveform to add a pitch-preserving warp marker, then drag it horizontally. Drag a note in the lower lane vertically to retune its source interval by semitones. Both lanes use the same timeline and Undo history. For aligned stems, enable **Link aligned stems** before moving a marker. It links matching region timing and leaves each stem's pitch edits independent. Saved older rate-based warps retain their playback policy.
+
+The 5.2 reference used for this change is `yoh-nak/Open-Song-Timeline-Format-5.2` at `2be1c2ddd62708fdd4f9ffd86403c86336cc7a9f`. Use `11-audio-single-edit-render.ostfp` to reproduce editing both an original and a replacement region. For supported Production packages the project round-trips Studio-specific edits, preserves score and source asset bytes, and updates the Production digest. Standard linear fit can specify `preserve` or `followRate`. Independent note isolation in a polyphonic mix and interchange of the new region edits as native Audio Model edits are still open.
+
+Build the Windows Release targets `OSTFStudio`, `ostf_studio_ostfp_tests`, `ostf_singing_tests`, and `ostf_scale_instrument_tests`. `ostf_studio_52` checks pitch, warp and package reopening: the 48 kHz one-second reference measured approximately 520 Hz in the +3-semitone interval and 440 Hz in the unchanged interval after moving the warp marker. `ostf_studio_written_notation` exercises mouse pitch and warp editing and TAB fingering export. `ostf_singing_tests` compares short-note boundaries with intervening expression or pitch-bend events. `ostf_scale_instrument_tests` checks selection across filters. An installed FM8 VST3 produced a nonzero audition (peak 0.0717) on Windows. Subjective voice quality, macOS hardware, external DAW interaction and complete M4L parity remain unverified for this change.
+
+Windows verification on this branch: `ctest --test-dir <gui-build> -C Release --output-on-failure` passed all 44 cases. The separate GUI-off LLVM-MinGW build passed both headless tests with its `bin` folder on `PATH`. `ostf_studio_track_view` includes three stems and checks that a single Undo restores the linked pair, retains its individual pitch edit, and leaves the offset stem untouched. The GM checks exercise the five MIDI channels routed to the two GM instances in the current Neon Platforms arrangement. The new development Portable at `E:/OSTF-Studio-build-cache/pitch-warp-52/Portable` contains 38 VST3 bundles and eight demo projects. The executable, Singer and Scale Editor binaries matched their Release outputs. The portable opened the 5.2 audio example and the Scale Editor window, passed the three-stem test and rendered `paper-lantern-vocal.wav` (12.308 seconds at 48 kHz). No installer, CI or release was produced.
+
+## 5.1 / 5.2 take and audio follow-up
+
+On `feat/ostf-52-studio`, the first native MIDI take in a section can include multiple contained, disjoint clips. `ostf_studio_52` builds this case at both source versions, auditions the empty second take, edits the adopted first take, switches away and back, and verifies the original score survives a rejected overlap. The test also checks the asset digest, exclusive end frame and trim boundaries of the audio pitch readout.
+
+`ostf_studio_written_notation` adds the official `14-notation-tab-percussion.ostf` example from the pinned 5.2 snapshot below. It checks the kick and snare staff positions, instrument names and MusicXML references, and produces `written-drums.pdf`. It also moves the pointer over the waveform editor for the original and replacement regions in `11-audio-single-edit-render.ostfp`.
+
+With Node installed at configure time, `ostf_scale_take_context` compares the native adviser script and the embedded WebView script using the shared-vocal-track example. `ostf_scale_instrument_tests <FM8.vst3> <paper-lantern-replies.ostf> --audition` measured a 0.0717 output peak with the third-party instrument on Windows.
+
+`ostf_singing_tests <paper-lantern-replies.ostf>` measures equivalent same-frame MIDI orderings, connected velocity changes and the tail of a held versus short Mei vowel. To compare the same four demo bars through two portable builds, run each executable with `--vocal-track-smoke <paper-lantern-replies.ostf> <new-output.wav>`. The build cache and listening WAVs are machine-local.
+
+Windows x64 Release passed 30 focused CTest cases. The verified Portable build contains 38 VST3 bundles and eight demos. Its Studio, Singer and Scale Editor binaries matched the build outputs. The portable executable opened the official rendered-audio project, opened the Scale Editor window and rendered four dry lead-vocal bars of Paper Lantern Replies at 48 kHz. In the 12.31-second render, the release of the first note measured RMS 0.00793 at 30–35 ms after note-off, versus zero in the previous portable. Both were silent at 45–47 ms. In the separate short-note test the peak difference between MIDI orderings was zero. The connected 100-to-36 velocity change measured relative RMS 0.795 early and 0.360 after settling. Subjective vocal quality, a new external DAW session, CI, installers and macOS hardware remain unverified for this change. Interactive audio pitch editing and full Max for Live parity remain in progress.
+
+## OSTF 5.2 Windows preview
+
+Branch `feat/ostf-52-studio`. The schema snapshot and test fixtures come from official commit `2be1c2ddd62708fdd4f9ffd86403c86336cc7a9f`. Build `OSTFStudio`, `OSTFSynthScaleEditor_VST3`, `ostf_studio_ostfp_tests` and `ostf_pitch_probe` in a GUI-enabled Release build. CTest includes `ostf_studio_52`, `ostf_studio_written_notation`, the native-comp tests and the pitch-probe self-test. The written-notation test renders the official grand-staff piano example to PDF and checks transposing clarinet MusicXML.
+
+Run `ostf_pitch_probe --self-test <existing-empty-directory>` for before/after WAVs. The 48 kHz two-note fixture measured 220.00 to 329.45 Hz for a 329.63 Hz target. The official audio-single-edit-render source measured 440.00 to 524.59 Hz over seconds 0.1–0.9 for a 523.25 Hz target. This demonstrates offline correction of a known monophonic interval. A user-facing pitch editor, polyphonic note isolation and macOS hardware verification remain open.
+
+Windows x64 Release passed the 23 Studio/format checks followed by eight focused plug-in/format checks. The official fixture suite reopens six standalone scores and round-trips 14 of the 16 official packages. The remaining two exercise explicit import errors for unsupported sidechain and state-asset routing. The additional edited-score test reopens a changed score from a 5.2 package and compares its audio assets. The portable (38 VST3 bundles and eight demos) passed hybrid-score startup, Scale Editor window and vocal-track smoke checks. CI, installers and macOS were not run for this branch.
+
+In the Scale Editor instrument picker, **Load and audition** plays one C4 locally even when preview MIDI is routed externally. A third-party FM8 test measured peak 0.0717. Run `ostf_scale_instrument_tests <path-to-FM8.vst3> <paper-lantern-replies.ostf> --audition`. Singer’s `nasal-join` option renders Mei entering ん from C4 toward E4. The first periodic window after the change measures 272.7 Hz and the later window 328.8 Hz. The regression also checks fresh vowel attacks and existing consonant closures. Expressive singing quality and full Max for Live parity require listening and host-level comparisons.
+
+## Scale Editor keyboard MIDI thru and Mei stop releases
+
+Branch `feat/scale-midi-thru-and-vocal-stops`. New Scale Editor instances enable **MIDI thru**. Existing host state without that option starts with it off. For external playback, route the plug-in's outgoing MIDI to an instrument track in the host. **Preview MIDI out** controls the comparison phrases independently. The packaged Windows VST3 test sends notes on channels 3 and 8 and compares their velocities and sample offsets. Processor tests cover a live key interrupting an audition, cancellation while the key is held, pedal release, and saved settings.
+
+The Singer regression renders /pa ta ka/ using Mei, with a 35 ms consonant followed by a 65 ms vowel. The final 10 ms of /t/ before its vowel previously had zero RMS and now measure 0.00928. The test also checks closure and silence after the phrase. Reproduce with `ostf_singing_tests <paper-lantern-replies.ostf> <output.wav> stops-mei`.
+
+## Scale Editor language and short sung phrases
+
+Branch `feat/scale-language-short-phrase`. Scale Editor's upper-right menu starts on System and allows English and Japanese overrides. Its per-user setting works across host launches. The embedded editor changes language in place. Some detailed musical analysis, tooltips and diagnostic messages remain in English. Windows tests exercise a real WebView2 page with an unfinished JSON draft and a song titled “Save” to check that changing the UI language preserves both.
+
+The Mei regression sends four 72 ms notes with 8 ms gate gaps. The early C4-to-E4 estimate moved from 328.8 to 275.9 Hz, reaching 328.8 Hz later in the same note. The first 5 ms RMS of the following /ma/ changed from 0.064 to 0.115. The phrase ends in silence. Reproduce with `ostf_singing_tests <paper-lantern-replies.ostf> <unused-output.wav> short-mei`.
+
+Windows Release passed all ten tests selected by `ctest -C Release -R "scale|singing|^ostf_studio_(core_tests|open_score|languages)$" --output-on-failure`. The Windows development portable with 38 VST3 bundles and eight demo projects passed both `--vocal-track-smoke` and `--plugin-focus-smoke`. No macOS build, external DAW session or physical speaker listening was verified for this change.
+
+## Linked scale files, audition MIDI output and singer pitch depth
+
+Windows Release passed all nine targeted CTests. Reproduce with `ctest -C Release -R "scale|singing|^ostf_studio_core_tests$|^ostf_studio_open_score$" --output-on-failure` in the GUI build directory.
+
+Branch `feat/scale-midi-linked-save-and-vocal-legato`. Windows Release builds use `OSTFSynthScaleEditor_VST3` and `OSTFSynthSinger_VST3`. Scale Editor can open a score from its file chooser or a drop on its header. Visual Save updates the linked file after a digest check. Save As creates a new binding. Host state stores the chosen preview route. Connect the plug-in's MIDI output on channel 1 to a downstream instrument when using **Preview MIDI out**. With the option off, **Instruments...** and **Test sound** audition the nested instrument. Windows tested the installed FM8 instrument through that picker (peak 0.0717).
+
+The Windows linked-save regression loads the built VST3 through a JUCE host to check its event buses, then exercises the real embedded editor with a temporary copy of Neon Platforms. It verifies preservation of a high-precision decimal, an external-edit conflict and retention of unsaved work. The processor test checks generated note events at the correct sample offsets and note release when switching destinations. Native file opening supports Core 5.0 and 5.1. Complete Max device parity, Ableton downstream playback and macOS remain unverified.
+
+Formant Singer joins adjacent recorded vowels on a single pitch trajectory. On the Mei C4-to-E4 regression, the early estimate changed from 328.8 to 272.7 Hz and settled at 328.8 Hz. **Vibrato / scoop depth** scales the score's two gestures and defaults to 100%. Run `ostf_singing_tests <paper-lantern-replies.ostf> <new-file.wav> bridge-mei` and repeat with `bridge-mei-40` to hear the same passage at 100% and 40%. The Bridge was sample-identical after the legato fix alone. The two depth settings produced different audio at approximately −19.48 dBFS RMS. Subjective listening and physical outputs are unverified. The Windows portable passed the vocal-track and Scale Editor host-window checks.
+
+## Track-specific scale returns and recorded voice joins
+
+Branch `feat/track-scale-return-voiced-stops`. The embedded editor saves OSTF 5.0 and 5.1 explicit improvisation scales on pitched tracks. A Studio return applies these directions and shared scales together in one undo step, preserving other directions and checking the source digest. The Mei singer closes English B, D and G within their allotted duration and phase-aligns connected voiced cycles. Windows Release passed eight focused CTests and the portable vocal-track and FX-window smoke checks. REAPER 7.86 rendered four MIDI notes through the Scale Editor to a stereo WAV (peak 0.0945). The manual external-host edit/save/drop workflow was interrupted. macOS and physical monitoring are unverified.
+
+## Scale Editor instrument selection and short sung morae
+
+Branch `feat/scale-instrument-browser-and-audition`. Build `OSTFStudio`, `OSTFSynthScaleEditor_VST3`, `OSTFSynthSinger_VST3`, `ostf_scale_instrument_tests`, `ostf_scale_editor_tests` and `ostf_singing_tests` in Release. The instrument picker reads the Studio scan and VST3 bundle metadata. Use Instruments → search by manufacturer/name → Enter, then Test sound. A missing score allows testing the audio path with a reference tone or nested instrument. Visual assignments can be dragged to the matching open Studio arrangement. The return file includes the digest of the opened score and unimported text is protected.
+
+Windows Release passed six focused CTests for host resizing, instrument selection and audition, the embedded workspace, state recall, Singer and the scale document. The third-party check `ostf_scale_instrument_tests <FM8.vst3> <paper-lantern-replies.ostf> --audition` rendered a peak of 0.0717. The 38-plug-in development portable passed Studio vocal-track and FX-window smoke runs. The 45 ms Japanese /shi/ regression compares the last 15 ms at MIDI 55 and 67. Their RMS difference increased from 0 to 0.208. An RMS difference measures pitch sensitivity, not perceived vocal quality. Speaker listening and macOS are unverified.
+
+## Sustained nasals and Scale Editor project recall
+
+Branch `feat/singer-nasals-scale-resume`. With Mei at fixed pitch, switching the following vowel between A and I changed the last 40 ms of isolated English M, N and NG. The previous RMS differences were 0.084, 0.134 and 0.111. All three differences now measure zero and all three sustains have a nonzero RMS of 0.116. Run `ostf_singing_tests` for this comparison and for Japanese length marks on successive notes after ん. For a listening comparison render the same `bilingual-mei` excerpt of Paper Lantern Replies with each binary and match RMS.
+
+Paper Lantern Replies has explicit katakana pronunciations. Its pre-chorus rendered identically after the English nasal fix alone. Japanese recorded morae now retain the duration of the voiced consonant-to-vowel transition on long notes. Tests cover long, short and open-ended MIDI notes.
+
+The hosted Scale Editor now saves draft assignments, raw text and analysis settings as part of VST3 state. The Windows `ostf_scale_workspace_recall` test edits a real embedded workspace, reopens it on a fresh plug-in, checks the independently saved score and draft, applies the assignments, rejects a mismatched score digest and restores the original state while the editor is open. Rebuild Studio, Singer and Scale Editor together. Hardware listening, macOS WebKit, macOS package testing and CI builds remain separate checks.
+
+Windows Release passed all seven focused CTests covering the core, Singer and Scale Editor. A development portable containing 38 VST3s passed Studio's plug-in window and vocal-track checks. The before/after pre-chorus is 12.33 s at 48 kHz. Both listening files have an RMS of −20 dBFS. The update changes the rendered katakana phrase. Perceived vocal quality still needs listening evaluation.
+
+## Mei consonants and MIDI input in Scale Editor
+
+Branch `feat/singer-consonants-scale-midi`. An isolated English /s/ rendered with Mei at MIDI 45 and 69 had an RMS sample difference of 0.171 in the previous build. The CV renderer was including the following pitched vowel. `ostf_singing_tests` now checks a non-silent, pitch-independent /s/ and /t/, a voiced Japanese /sa/, and a 100 ms noise-to-vowel transition with a 45 ms nominal attack. For listening comparisons run `ostf_singing_tests <paper-lantern-replies.ostf> <new-file.wav> bilingual-mei` for the English pre-chorus or `bridge-mei` for the Japanese bridge, and match RMS between revisions.
+
+Rebuild `OSTFSynthSinger_VST3`, `OSTFSynthScaleEditor_VST3`, `ostf_singing_tests` and `ostf_scale_instrument_tests` in Release. Windows tests exercised the hosted WebView keyboard with notes on two channels, channel-specific note release, VST3 state recall into a fresh editor, and host window resizing. The Windows portable copy also runs the Studio host smoke tests. Physical MIDI keyboards, speaker monitoring and the macOS WebKit build need separate validation.
+
+## Vowel resonance and hosted Scale Editor resizing
+
+Branch `feat/singer-envelope-scale-window`. The former pitch-window renderer kept the score F0 but transposed the recorded vowel's resonances. A reproducible UTAU test vowel has a broad resonance at 1,600 Hz. At A2 and A4 its strongest measured harmonic moved from 990 and 2,200 Hz in the previous build to 1,650 and 1,760 Hz in this build. The test measures the stationary portion and checks the score pitch separately. Compare the same Mei phrase at matched RMS when evaluating audible changes. Source material is a short bank of pre-synthesized phones. Expressive singing and perceived naturalness still need listening evaluation.
+
+The embedded Scale Editor's Open, Save and Save As actions now use the native validated score file path. The plugin remembers the window size while the same instance is open. Studio forwards resize constraints through its native plugin windows. Rebuild the Windows Release host and both VST3s together. Run `ostf_singing_tests`, `ostf_scale_workspace`, `ostf_scale_instrument_tests`, `ostf_scale_editor_tests` and `ostf_scale_host_resize`. The last test opens the VST3 on a real Studio track and changes its window size. The workspace test also checks that the embedded browser changes size. macOS hosting, hardware listening and manual file chooser interaction remain unverified for this change.
+
+## Parallel racks, voice rendering and embedded Scale Editor
+
+Branch `feat/performance-racks-and-voice`. Build both rack VST3s together with the Singer, Scale Editor and Studio app. The Scale Editor bundles the original offline workspace. The Windows build uses the pinned WebView2 SDK and ships its loader notices. The browser's scale and A/B auditions send note sequences to the plug-in's instrument. Applying assignments checks the opening score snapshot before updating the plug-in document.
+
+Windows Release checks cover summed VST3 layers with serial inserts, the embedded workspace editing a demo and auditioning its nested instrument, singer rendering, Camelot mapping and the drum loop controls. For the same 12.33-second Mei phrase, the old and new renders had zero clipped samples. The factory A vowel supplies 2,312 source samples to the new sustain trajectory. Hardware listening and the macOS WebKit/VST3 path still need validation.
+
+## Selectable plug-in installers
+
+Branch `feat/selectable-plugin-installers`. Windows Setup and the Apple silicon PKG share the stock catalogue in `packaging/plugin_choices.py`. Run `python tests/installer_choices.py` to check both selection trees, the Windows helper payloads and macOS receipt mappings. Windows Setup and Portable ZIP were built locally from the 5.1 Studio build and 36 stock VST3s. The workflow exercises selective installation on each OS and full installation afterward. The macOS package and native install paths still need a macOS run.
+
+## 5.1 score integration and demo arrangements
+
+Branch `feat/ostf51-studio`. Schemas and the MIDI comp fixture are from upstream revision `957bd071cecc58a12f417ad212c40723ba9812ca`. To refresh the arrangements run `python examples/demo-songs/generate.py`, then run `examples/demo-songs/verify.py` with the checked-out reference repository path. Build the app, stock VST3s and GUI tests in Release. Run `ostf_native_comps`, `ostf_studio_demo_gallery`, `ostf_studio_stock_effects`, the two scale tests and `ostf_singing_tests`. ScaleWorkspace.html adapts the offline HTML bundled in the supplied OSTF Scale Editor v1.0 Max device. Scale-only return validates against the original working snapshot. On Windows the eight generated projects passed upstream package validation and Score, Production and Manifest schemas. The gallery load/save checks also passed. A real browser applied a scale to Paper Lantern Replies and the native ScaleDocument imported the export successfully. Both a standalone bridge and a hosted lead vocal rendered to 48 kHz WAV. Hardware monitoring, macOS and subjective vocal listening require separate checks.
+
+## Live performance queue, singer onset and Scale Flow
+
+The live-session matrix has independent cell audition, per-cell looping and a section queue with take snapshots. The performer display follows the queue across section jumps. The count-in can run silently. Audio inputs can be armed together and recorded as separate regions. External MIDI destinations have no isolated cell preview.
+
+Formant Singer detects regular voicing before the annotated consonant boundary, allowing the pitched portion of an onset to follow the sung note. Scale Editor draws the original adviser's Scale Flow pitch-class matrix and Connections resolutions for the selected chord and candidate.
+
+Windows x64 verification on `feat/live-midi-takes` covers the core, section queue, transport, track view, piano editing, singer and scale instrument. Run `--live-session-smoke` with `examples/demo-songs/paper-lantern-replies.ostf` for the queue and performer view. Set `OSTF_LIVE_MATRIX_PNG` to capture that screen. The portable build also renders the lead from the packaged project using `--vocal-track-smoke <project.ostfp> <lead.wav>`. For the scale-instrument test, supply the bundled FM Synth and a score. Two players on physical inputs, timing under third-party plug-in load and macOS still require device validation.
+
+Playback supports appending and duplicating sections. Rebuilding or removing an arbitrary sounding track or section during a performance and per-track selection of multiple MIDI input ports in one recording remain open.
+
+## Previous MIDI take implementation
+
+Branch `feat/live-midi-takes`. The arrangement track menu and piano roll and each live MIDI cell expose T1 and alternate takes. Selecting T2 for editing leaves T1 adopted until the user explicitly adopts T2. The live renderer stages auditions and note edits until a section boundary. The button with the filled triangle shows the active audition and the outlined triangle marks a pending audition. The current section's sounding combination can be adopted together. OSTF/OSTFP preserve MIDI take ownership and adopted intervals using a Studio extension. SMF uses the adopted notes.
+
+The cell play/stop button starts a temporary audition or returns to the adopted take. A row launch while playing is queued to the next bar or the current section end, whichever comes first. Row counts start at one. A zero row is skipped. During live playback, section append/duplicate preserves the current cursor and remaining passes. MIDI capture from an armed track can be committed during playback. Print previews select existing credit lines; the plug-in browser filters the local catalogue by name, maker and category.
+
+The Windows x64 portable is `dist/windows-midi-takes/Portable/OSTF Studio.exe`. This package reuses the 36 bundled VST3 plug-ins from the session-edit portable. Both JUCE-free core tests passed. The Windows suite passed 32 of 33 in one run, and the Link transport test passed on its isolated retry. The final transport, matrix, piano editing, notation, language and SMF tests passed together. The portable UI smoke captures `build-visuals/live-midi-takes.png`. It runs on the packaged comprehensive score, including optional lyric-unit timing.
+
+Open items include audio take lanes, resolving sustains across a comp cut, and rearranging or removing source sections/tracks during playback. Dedicated recording still uses the linear/cycle transport. macOS, hardware monitoring and real-device recording remain unverified. [Take workflow and acceptance scenarios](docs/TAKES_AND_LIVE_SESSION.ja.md)
+
+## Live session editing and global scissors
+
+The Windows portable folder for this change is `dist/windows-session-edit/Portable`. Live session has one grid. Its column chooser, M/R buttons and track/section menus sit above a resizable piano roll or mixer. New four-bar sections and section copies go at the end of the arrangement. Track colours are available from the arrangement track icon, Track menu and live column header.
+
+Scissors insert a boundary inside a section, chord, key, scale, tempo or meter interval. An identical meter marker keeps the downbeat. Section splits expand finite visit references across both halves. The track-view smoke clicks each lane in Neon Platforms, exercises append/undo and checks the live divider and mute state.
+
+Print preview offers credit entry for songs without attribution and individual line selection for credited songs. Both print formats use the selection for pagination and output. Paper Lantern Replies has no supplied author names. Its bundled metadata was preserved.
+
+Formant Singer tracks periods from the steady voiced recording, filters upward-transposed cycles before playback and applies pitch gestures from the score. The Windows vocal-track smoke can render an isolated lead with the saved track and output inserts by setting `OSTF_VOCAL_INSERTS=1`. Dry and processed verse renders are in `build-visuals/paper-lantern-session-dry.wav` and `build-visuals/paper-lantern-session-fx.wav`. macOS, hardware printing, live input and listening on the user's playback system remain unverified.
+
+Windows Release verification on `feat/live-sections-track-console` covered all 33 CTest cases. The final suite passed 32 together and the GM plug-in test passed on its individual retry. Link transport also needed a retry on an earlier run. Both core-only tests passed. The selected-credits PDF was rasterised and inspected with only the chosen composer visible. The portable executable and singer module matched the built binaries.
+
+## Live session grid, annotated scores and instrument updates
+
+The Windows x64 build is in `dist/windows-live-session-grid/Portable`. **Live session** (ライブセッション) opens with track settings above the section grid. Select a MIDI cell to edit its source notes below. Neighbouring sections scroll into view and are shaded. A note is editable from its starting section and may extend across the boundary. Audio-track cells show overlapping region names.
+
+The staff view and print preview support song chord symbols and an independently chosen lyric voice. Written lyrics and pronunciation can be shown together. Credit visibility participates in print pagination. The lead-sheet print icon uses C7 and the score-print icon uses beamed notes. A piano-part PDF with English lyrics and Japanese pronunciation is generated at `build-win-plugins/notation-check/piano-chords-and-lyrics.pdf` by the notation test.
+
+The Scale Editor adds a pinned A/B scale comparison, per-track Note Fit weighted by the time each note sounds during the chord, navigation to the next unassigned chord, and safe assignment over a selected range, section or song. The original Max device's Scale Flow and Connections screens still need a full native port. Formant Singer uses one phase-aligned playback path for pitched vowel cycles, including upward transpositions. A solo Mei render is at `build-visuals/mei-single-period-prechorus.wav`.
+
+Windows Release coverage includes section-onset locking and cross-boundary sustains, score annotations on an instrumental part, credit pagination, Scale Editor assignment and undo, Note Fit, and vowel pitch purity. Physical printers, macOS and listening on the user's audio chain still need verification.
+
+## Live section input and stage navigation
+
+Branch `feat/live-sections-track-console`. The microphone icon opens Live session. Under **Section input**, select a section-row and MIDI-track-column cell to edit the shared arrangement piano roll. Chord boundaries, chord fit and scale fit appear inside the cells. Row launch and extra-pass controls operate on the full section independently of the selected track. Stage rows show the first and last bar and section length. Audio tracks can be monitored from Stage. Independent cross-section clip playback and AI performers are outside this implementation.
+
+Windows x64 portable folder: `dist/windows-live-tracks/Portable`. The track-view regression checks the section bar label, changing a different row's repeat count, editing the underlying arrangement, and undo across views. The theory regression checks time-local chord fits. Windows screenshots can be captured with `OSTF_LIVE_MATRIX_PNG` and `OSTF_LIVE_SECTIONS_PNG`. macOS and live hardware are unverified for this update.
+
+## Live track selection
+
+On `feat/live-sections-track-console`, the live piano roll has direct track buttons and a per-song Favourites filter. Use the star beside each track to edit the set. The header identifies the piano-roll target even when it is filtered out. Narrow windows wrap the track list and allow vertical scrolling. The ordinary arrangement retains its track picker.
+
+Windows x64 portable build: `dist/windows-live-tracks/Portable/OSTF Studio.exe`. The track-view smoke test exercises direct selection, empty and multi-track favourites, document isolation, restored settings, narrow-window scrolling and wide-window wrapping. macOS and physical-controller operation have not been tested for this change.
+
+## Live sections, track colours and print layout
+
+Branch `feat/live-sections-track-console`. Windows x64 portable build: `dist/windows-live-sections/Portable/OSTF Studio.exe`. The folder includes 36 VST3 bundles and their licences.
+
+- View → Live session opens an editable section piano roll and a launch list. A repeat count of zero advances at the end of the current pass. Counts can be changed during playback. The local transport exposes bounded upcoming visits by section ID and source ticks. A live note edit takes effect at a section boundary. Guitar input monitoring is opt-in via the track arm, with input gain and track FX. Network performance negotiation and physical-AI players remain future work.
+- An arrangement or mixer track menu edits the OSTF presentation colour for that track. Input gain, meters and MIDI activity share the track routing. The instrument and FX strip controls display the current instrument and insert count.
+- The Scale Editor projects the Max adviser into three native panes, with chord selection, ranked candidates, inspector, map selection, Pin A, audition and whole-song auto-assignment with undo/redo. `build-visuals/scale-editor-live.png` is a captured editor.
+- File → Print and two printer toolbar buttons open separate lead-sheet and part-score previews. The first page reserves room for subtitle, credits and description. Subsequent pages use a compact title. Windows uses PrintDlg/GDI and macOS uses PDFKit/NSPrintOperation. A 15-credit fixture rendered three pages, with the first 20 measures on page one.
+- Singer retains consonant attacks and uses the analysed voiced region for pitch-synchronous vowel playback. A 12.33 s isolated Mei render is available in `build-visuals/mei-live-section-prechorus.wav` (mono, 48 kHz, peak −6.21 dBFS).
+
+Windows Release regression coverage includes section navigation, instrument monitoring, repeat changes across subdivided buffers, colour round-trip, print pagination and sung pitch. The independent MSVC core ran 2/2 tests. Physical inputs, printer drivers, macOS compilation and listening quality on the user’s equipment need validation.
+
+## Mixer recording, output routing and MIDI capture
+
+Branch `feat/plugin-names-keys-player`. The playable Windows x64 package is `dist/windows-mixer-capture/Portable`.
+
+- The mixer shares the track header MIDI and audio input selectors and audio recording gain. Arming or recording from the mixer keeps it open. Armed MIDI tracks retain up to 4,096 note events across a 120-second performance window. Capture inserts a score clip with pitch, duration and velocity and can be undone. Stopped performances start at the edit cursor. Playing performances use transport ticks.
+- Master and Cue can select active output pairs and open device settings. Their destinations are stored locally per device. Browser instruments and inserts can be dropped onto compatible mixer strips, including effect drops on the master, buses and returns.
+- The track and global chord and scale fit indicators combine a numeric percentage with a thin colour-coded line. The snapshot is `build-visuals/mixer-capture-fit.png`.
+- Of the 36 bundled VST3 classes, 34 have generic names. OSTF Scale Editor and OSTF Formant Singer retain their prefix. Compatible dynamics processors accept a detector source through the FX key menu. Scale Editor uses its genre selector for candidate ranking and audition. Lead sheet and score exports use the preview paper size and orientation.
+- Formant Singer splices successive recorded sounds using a continuous waveform and keeps ordinary voice levels linear. The isolated English passage is `build-visuals/mei-mixer-capture-prechorus.wav` (48 kHz, 12.33 s). Perceived naturalness needs listening validation.
+
+The independent core suite passed 2/2. The final Windows Release suite passed 32/33 on its main run. The intermittent Link transport check passed on the CTest rerun and four direct runs. The portable app passed demo startup, stock effects and the vocal-track smoke, which includes filtered retrospective MIDI capture, undo and a browser-to-master EQ drop. Physical input devices, headphones on multiple outputs and other DAWs have not been validated in this build.
+
+## Print preview, scale ranges, singer and sidechain unmasking
+
+Branch `feat/lead-print-scale-unmask`. The Windows x64 portable is in `dist/windows-print-scale-unmask/Portable`. It includes the Studio application and the new OSTF Unmask VST3.
+
+- The master mute sits below the master fader. The scope column combines the phase display with stereo waveform traces from the post-fader sample history.
+- Paper Lantern Replies stores English in its written lyric phrases and their note units. The 135 English note units have separate katakana pronunciations. The recorded singer now resamples neighbouring recorded cycles at a common glottal phase. The backing channel's chorus insert was removed. `build-visuals/mei-phase-aligned-prechorus.wav` is the isolated pre-chorus render.
+- The Scale Editor song map supports contiguous chord selection, exact repeated progressions, chord-targeted scale assignment and a one-step undo. The existing nested instrument, A/B playback, save and Studio drop paths remain in place.
+- Lead sheet and score PDF export open an A4 paper preview. Both output paths draw the same score pages, honour millimetre margins and start new pages at the requested bars. The lead sheet exposes its chord, scale, lyric and layout controls in the preview. `build-win-plugins/notation-check/lead-with-breaks.pdf` uses 20 mm margins and starts new pages at bars 5 and 9.
+- OSTF Unmask uses a mono or stereo key bus and five frequency bands. Studio's FX chain key selector taps the source before its FX, fader and mute. The supported routing round-trips in the production session. Existing projects without a key bypass the extra source-buffer copy.
+
+The final Windows Release suite passed 33/33 and the independent core suite passed 2/2. The portable executable opened the packaged demo and passed its stock-effect routing smoke. The initial full run reproduced the pre-existing intermittent Link stop failure. Five direct runs and the final full suite passed. Commercial hosts, macOS and hardware listening need separate validation. The current native Scale Editor and Player views cover part of the supplied Max devices.
+
+## Scale instrument, vocal and track console
+
+Branch `feat/scale-instrument-console`. The Scale Editor is a new VST3 instrument class (`Ose1`). It uses the supplied Max device's candidate, flow, genre/lens and contextual A/B audition engines. Load a VST3 instrument inside the editor or use the built-in reference tone. Studio supplies its score in the instrument slot and supports preview in its stopped-transport monitor path. External hosts use Open OSTF. Chord assignment, whole-score export and digest-checked drag return use the existing 5.0 path. The Max pattern/range tools and complete original workspace remain future work.
+
+Paper Lantern Replies stores katakana in the printed English phrases, note text and per-note pronunciations. The standalone and packaged scores are identical. All 42 phrases and 204 lyric units have been checked. The Japanese bank's missing-consonant path now uses recorded voicing and an unvoiced onset. Voiced transitions are shortened. The isolated English pre-chorus render is `build-visuals/mei-prechorus-single-voice.wav`.
+
+Transport fields, the prompt panel, current lyric panels and the master's digital displays use a shared black LCD surface. Track headers reserve eight send controls and disable unmapped returns. Width and interaction coverage is in the vocal-track smoke. Set `OSTF_TRACK_HEADER_PREVIEWS` to an existing output directory for narrow and wide audio-track screenshots. Windows nested FM rendering, state restoration, MIDI and A/B playback have been exercised with `ostf_scale_instrument_tests`. Commercial DAWs, macOS and hardware listening remain unverified.
+
+The Windows Portable build is `dist/windows-scale-instrument/Portable`. Its packaged vocal-track and stock-plugin smoke tests passed, as did both independent core tests. The final full Windows suite passed 32 of 33 tests. The unrelated Link transport test intermittently reports that playback is still active immediately after stop (exit 2, one failure in ten direct runs).
+
+## Scale Editor, sung English readings and send slots
+
+Branch `feat/scale-editor-and-vocal-reading`. Scale Editor opens a Studio chord snapshot or an OSTF file in another VST3 host. Assignments are chord-targeted timed scales. Dragging back checks the originating score and uses Studio's timeline undo history. The native editor includes the 24 scale collections from the Max device. Run `ostf_scale_editor_tests`, the stock VST3 smoke and the vocal track smoke for file, host and drop coverage. Paper Lantern Replies has separate printed English and katakana readings throughout the lead and backing parts. The bilingual-mei render now starts at the first Pre-Chorus. Eight mixer sends are displayed with inactive slots dimmed. Expanded narrow headers wrap active sends across two rows.
+
+Windows Release passed all 32 CTest cases and the independent core build passed both tests. The portable executable in `dist/windows-scale-editor/Portable` passed `--vocal-track-smoke` with the bundled Paper Lantern project, including stale-return rejection and undo. The 135 English lyric units have katakana readings in both the standalone and packaged score. `build-visuals/mei-prechorus-katakana.wav` is a 12.33-second render of the opening English pre-chorus. Commercial DAW operation, macOS and perceived vocal naturalness still need independent verification.
+
+## Song loading, LCD panels and vocal articulation
+
+Branch `feat/song-loading-and-vocal-display` adds asynchronous song opening and a filename overlay, revises the mixer and track send layouts, and gives the prompt guide and lyric captions a common LCD face. The bridge of Paper Lantern Replies uses explicit kana readings. The singer adapts recorded consonants to the following vowel, carries long vowels and shortens closure and nasal timing. Pass `bridge-mei` as the last argument of `ostf_singing_tests` to render the opening of the bridge.
+
+The Windows portable contains the same Paper Lantern Replies project as the demo gallery source. Its vocal smoke check covers the loading overlay, error recovery with the previous song intact, the LCD lyric panel, eight accessible send knobs at a 487 px header width and independent lead and backing playback. Two 12.33-second Bridge renders compare the same Mei voice with explicit katakana or dictionary input. Listening quality and macOS rendering still need listening and device checks.
+
+## Cue switches, mixer peak hold and bilingual singers
+
+Branch `feat/consistent-singer-console` aligns the track and mixer Cue switches with the other transport switches. The master has independent channel peak holds beside its fader. The mixer source strips and track headers use staggered send controls around a larger pan. Imported sessions with no voicing mix open muted. The Singer voice selector recalls Mei, KAL16 or a local voice folder for either lyric language. `ostf_singing_tests` can render the Japanese-to-English transition of Paper Lantern Replies with `bilingual-mei` or `bilingual-kal16` as its final argument.
+
+The Windows Release suite passed all 31 tests and the standalone core build passed both tests. The staged Windows executable and singer VST3 match the build outputs. The portable also passed `--vocal-track-smoke` with Paper Lantern Replies. The bilingual samples cover the same 12.33-second excerpt for each singer. These checks cover rendering and saved state, with listening quality and physical headphone output still requiring listening on a device.
+
+## Chord lyric headers and mixer controls
+
+The header beside each vocal part’s lyric lanes follows its written chord cell. The mixer has a fixed instrument and split FX control row. The master VUs, phase scope and measurement panel share one view. Per-return send gains remain available in the mixer and track headers. Singer pitch marks use waveform similarity, with transitions timed by incoming phoneme and English vowel stress.
+
+Windows Release passed 31/31 tests and the separate core build passed 2/2. The packaged executable in `dist/windows-lyric-console/Portable` also passed the hosted lead/backing vocal check. `build-visuals/lyric-console-header.png` shows the demo at the vocal entrance. `build-visuals/lyric-console-mixer.png` uses deterministic meter inputs.
+
+The same 12.33-second Paper Lantern Replies passage is rendered at 48 kHz in `build-visuals/mixer-singer-phrasing.wav` (previous) and `build-visuals/lyric-console-singer.wav` (current). The automated render does not rate perceived voice quality. On the Windows workstation, older compiler objects from the timeline and startup-fix debug builds were copied and hash-verified under `E:/OSTF-Studio-build-cache/timeline-objects-for-console-build` and `E:/OSTF-Studio-build-cache/legacy-objects-lyric-console` to make space for the portable.
+
+## Mixer send racks, right-hand master and singer articulation
+
+Branch `feat/master-meter-plugin-strips`. A return owns a named send knob on every source track in both the arrangement and the mixer. Both views update the same channel send. Long rows scroll horizontally in the header and vertically within a two-row mixer send rack. A rotary pan remains accessible beside them. Each output kind allows one through eight members, including restored legacy mixes. Delete and duplicate commands use the same limits.
+
+The stereo mixer measures track, individual send, bus, return and Cue signals independently. The fixed right master shows twin VUs and a phase scope, with optional loudness/true-peak, balance, correlation, history and spectrum displays. Mixer instrument and insert buttons open their existing host editors. The singer advances through the recorded Japanese vowel over the syllable duration, connects pitch across syllables and gives English consonants different articulation lengths. The A/B passage is in `build-visuals/console-singer-after.wav` and `build-visuals/mixer-singer-phrasing.wav`.
+
+Windows Release passed 31/31 tests, the core-only build passed 2/2 and the packaged host passed the lead/backing singer playback check. The verified portable is in `dist/windows-master-section/Portable` with 34 VST3 bundles. The layout snapshot in `build-visuals/master-section-mixer.png` uses deterministic meters. Hardware listening and macOS validation remain open. To free packaging space the Release host object files were hash-verified and archived under `E:/OSTF-Studio-build-cache/master-section-objects-3ed4d2d62ba54b769fb3638cfa01643f`. CMake regenerates them on rebuild.
+
+## Console VUs, drum loop range and singer phrasing
+
+Branch `feat/console-meters-drum-loop-singer`. Source channels have needle VUs. The master at the far left has independent left/right VUs and a phase scope, tapped after master gain and before Cue selection. The numbered button beside the step-sequencer Loop switch sets a first bar and length. Paging the step editor preserves an explicit loop. The singer tracks source pitch marks, overlaps neighbouring syllables and fits English vowel transitions and consonants to their allocated duration.
+
+The Windows Release portable in `dist/windows-console-vu/Portable` passed the hosted Paper Lantern Replies lead/backing vocal check, including both master VUs and the scope. Both core tests passed. Of 31 Windows tests, 29 passed on the first run. The track-view test passed on its isolated retry. The Link transport check failed twice in the network-enabled test environment and passed in a separate isolated run. The mixer screenshot uses deterministic test signals. Matching 12.33-second vocal renders are in `build-visuals/console-singer-before.wav` and `console-singer-after.wav`. Hardware listening and macOS were not verified.
+
+## Chorus display lyrics and mixer monitoring
+
+The arrangement and piano roll share the written lyric cells derived from the original phrases and the exact chord boundaries. Paper Lantern Replies has 55 chord cells per voice. Its first backing “Ah” starts on the offbeat of beat two in bar 18. The backing track opens at 100 px. Note timing and the portable score schema are unchanged.
+
+Edit commands are in the toolbar and Edit menu. Settings → Performance controls history capacity and meter refresh rate. Source mixer strips include record arm and VU, with momentary and integrated loudness, true peak and a stereo phase scope on the master. The singer includes the CMU pronunciation dictionary and local English speech sounds, with sustained vocal pitch and short consonants.
+
+Windows Release passed all 31 CTest cases, and the core-only build passed both tests. The verified portable executable in `dist/windows-chorus-lyrics/Portable` opens Paper Lantern Replies with the lead and backing controls visible and renders both independent singers. Listening quality and macOS operation were not assessed in this run.
+
+## Plug-in catalogue and global chord and scale fit
+
+Branch `feat/plugin-catalog-global-fit` retires the fixed-phrase OSTF Arranger from the host, CMake targets and Windows/macOS package definitions. The Windows scan cache contained stock components from the shared VST3 directory. Portable startup also registered the same classes beside the executable. The browser and track menus now select a single usable copy for each class, preferring the portable bundle. Previously scanned Arranger entries are hidden.
+
+The corresponding View switches show a percentage at the right of each global chord or scale. Each pitched note contributes its duration inside that interval. A scale with explicit targets counts matching tracks, sections, chords, clips or notes. The generated chord voicing does not duplicate the ensemble's harmonic evidence. Empty intervals display a dash. The model test covers a sustained note across two chords, unequal part durations, independent scale targets, the song scale and disabled clips.
+
+The Windows Release suite passed all 31 tests, with two additional checks in the core-only build. The executable in `dist/windows-global-fit/Portable` passed the actual catalogue check for 34 bundled classes and the chord/scale drawing test. Large unchanged plug-in resources use NTFS hard links to conserve disk space. macOS and installer upgrades were not exercised locally.
+
+## Chord review, edit history and Japanese singing
+
+Branch `feat/review-performance-history`. The piano roll opens chord review when a pitch or timing edit or a material drop creates pending decisions. The lane collapses after the final decision. The whole ensemble supplies the candidate ranking, while each candidate displays its chord-tone coverage for the selected part, weighted by sounding duration in that interval. Untouched intervals have no decision controls.
+
+The footer offers Undo, Redo and a menu of recorded score and clip edits. Keeping a chord is also a history step and undoing it reopens the review. CPU and RAM show system usage at one-second intervals. The tooltip includes used and total physical memory in GiB.
+
+The Japanese singer preserves recorded consonant timing across pitches, crossfades neighbouring articulations and adds subtle motion to sustained vowels. The singing test checks the source-rate onset and the pitch of a transposed sustain. The portable host rendered the first verse of Paper Lantern Replies as a 12.308-second stereo WAV at 48 kHz. The waveform differs from the previous Mei render. Physical listening and macOS are unverified.
+
+The final Windows Release run passed all 31 CTest cases. The separate core build passed both tests with the local LLVM runtime on PATH. An earlier full run observed the known intermittent Link transport failure, which also passed in isolation. Track-view tests cover duration-weighted candidate percentages on separate tracks, a silent track, the hidden lane, restoring a pending decision from history and the small-window footer. The unpacked host also passed the packaged OSTFP vocal check. The portable folder, verified ZIP (552 files including 35 plug-in bundles) and vocal WAV are under `dist/windows-review-history`.
+
+## Piano roll restoration and vocal track order
+
+Branch `fix/vocal-track-groups`. The mixer temporarily occupies the lower pane. Closing it restores the previous track editor and its size, or the full-height arrangement if the editor was closed. Chord Voicing is fixed above the lead. Each vocal part owns a display-lyric lane, a pronunciation lane and its melody row. Backing vocal groups can be reordered by dragging the handle beside their track name or by using the header menu. Their row order is fixed, and arrangement tracks retain their own ordering. These changes use the existing score and session formats.
+
+The packaged Windows x64 host passed `--vocal-track-smoke` with Paper Lantern Replies. The check opens and closes the mixer with the piano roll initially open and initially closed, and verifies its track, bounds, visibility and toolbar state. The demo gallery checks the lead's 32 written phrases and 194 readings and the backing part's ten written phrases and ten readings. The GM plug-in host regression drags two backing vocal groups, checks their bounds, and switches their lyric lanes on and off. macOS has not been exercised for this change.
+
+Windows Release CTest passed 30 of 31 cases, including the GM host, track view and demo gallery. The independent Link transport check intermittently reports that playback is still active immediately after stop. Eight isolated executions returned six passes and two failures at that assertion. The verified Windows executable and portable ZIP are under `dist/windows-vocal-track-groups`.
+
+## Japanese factory voice and lead-sheet lyrics
+
+Branch `fix/vocal-lyrics-and-chorus`. Paper Lantern Replies opens with two independent Formant Singer instances. Its lead enters in bar 5 and its backing vocal enters in bar 18. The demo's Japanese verses have timed written phrases and separate note-level readings. Studio uses the same written phrases in the arrangement, piano roll, lead sheet and ChordPro. The compact vocal header exposes the instrument. Overlaying the other singing parts in the piano roll affects display only.
+
+The VST3 embeds a local syllable bank derived from MMDAgent's Mei voice. Its source notice and the offline generator are under `assets/voices`. The singing regression checks the factory vowel against the samples emitted by the processor. The hosted `--vocal-track-smoke` checks the two instruments, the written phrase and the first simultaneous lead and harmony notes. Pass a third argument to render the lead verse as a WAV file.
+
+Both the packaged and standalone demo passed the portable host check on Windows x64. Rendering the lead verse produced a 12.308-second stereo WAV at 48 kHz. Changing only the second note reading from め to し changed the PCM at that note and left the preceding and subsequent notes sample-identical. At tick 66720, the lead F4 and backing D4 overlap and both independent singer channels register output. The seven demo scores and projects passed the pinned official format checks. All 31 CTest cases passed in the Windows Release build. The verified executable, corresponding portable ZIP and lead-only WAV are in `dist/windows-vocal-parts`. Physical-speaker listening and macOS playback remain unverified.
+
+## Cue monitoring
+
+Branch `fix/cue-monitor-routing`. Track headphone switches feed a stereo Cue bus independently of the number of device outputs. The Cue strip meters the sum after its fader. With four enabled outputs the second pair carries Cue. **Listen on 1-2** auditions the same bus on the primary pair, and a second click restores Master. The strip reports the active destination when the audio device opens or changes.
+
+The Windows `ostf_studio_stock_effects` regression checks the Cue samples and meters with a hosted GM instrument and the audio clip from Paper Lantern Replies. It covers two track sends, two to four device outputs, Cue gain, pan, disabled sends and switching back to Master. `ostf_studio_track_view` checks the mixer control and destination labels. Physical headphone routing and macOS playback still require device testing.
+
+The Windows Release suite passed 30 of 31 tests on the first run. The Link timing test passed on a separate rerun. The executable in `dist/windows-cue-monitor/Portable` passed both Cue regressions with its bundled plug-ins and matches the executable in the portable ZIP by SHA-256.
+
+## Vocal timeline and track playback
+
+`feature/vocal-piano-roll` adds written and pronounced lyric lanes, per-note delivery editing and a voicebank portrait. The first verse of Paper Lantern Replies enters in bar 5. Its lead and backing tracks use separate Formant Singer instances. The Windows app's `--vocal-track-smoke INPUT [OUTPUT.wav]` opens the score through Studio, checks both singers and the piano-roll lanes, edits and undoes a delivery parameter, and renders the lead on its own. Run it from a portable folder containing the bundled VST3s. The preview tests also cover package save and reopen after changing a reading.
+
+## Plug-in editor focus
+
+Branch `fix/plugin-editor-focus`. Track instruments, track/output FX and Splice open in desktop windows associated with the Studio workspace. Their native peers are created on explicit open. The FX chain's Edit action exits its modal callout before showing the editor. Audio-device setup and Mackie port discovery can run with their settings windows off the desktop.
+
+The `ostf_studio_plugin_focus` regression opens the real OSTF Harmonizer from the master FX chain. It checks the editor following an idle period and during off-device transport playback, then activates the arrangement and closes and reopens the effect. On Windows it also checks the OS owner, keyboard focus and window stacking order.
+
+The Windows x64 desktop regression passed three times in succession, including 16 seconds without input in each run. The final Release suite passed all 31 tests. The executable and Harmonizer in `dist/windows-plugin-focus/Portable` also passed the focus regression together. macOS window behavior has not been exercised locally.
+
+## Japanese Formant Singer and local voices
+
+Branch `feature/japanese-formant-singer`. In the demo gallery, select **Paper Lantern Replies** and play bar 5. The two verses use Japanese morae aligned to melody notes. The singer reads kana or the optional OSTF 5.0 lyric pronunciation field and supports note-targeted scoop and vibrato. Studio also sends pitch bend and expression to the instrument. In other hosts the VST3 file player follows the selected melodic part.
+
+**Load voice folder...** accepts kana- or romaji-named WAV recordings and Japanese UTAU CV folders with UTF-8 or CP932 `oto.ini`. Choose one pitch folder. It estimates the recorded pitch and sustain loop at load time. The folder path is saved in plugin state. A missing folder uses the built-in voice. Multi-pitch mapping, VCV and automatic kanji readings remain open.
+
+The Windows singing test renders the authored score, checks imported sample playback against known waveforms and verifies pitch, note length, pronunciation, expressive articulation and state recall. For a listening excerpt, pass the full path to the demo score and a new WAV path to `ostf_singing_tests.exe`. An optional third argument selects a voice folder. A four-bar excerpt rendered with both the built-in voice and 125 imported morae from Kasane Teto's free 2008 Lite CV library. Those third-party recordings remain local to validation. [Original voicebank](https://kasaneteto.jp/utau/)
+
+The final Windows Release suite passed all 30 tests in one run. In earlier runs the piano-roll editing and Link timing checks each failed once and subsequently passed. All seven demo projects passed the pinned OSTF 5.0 schema, manifest and production validation. The extracted app and singer under `dist/windows-japanese-singer/Portable` matched the build binaries by SHA-256 and passed the hosted instruments test. The built-in voice excerpt is next to the Portable folder. macOS, third-party DAWs and listening on physical audio hardware remain unverified.
+
+## Track header and mixer controls
+
+Branch `feature/track-header-button-order` places Record Arm immediately before headphone Cue in all three arrangement row layouts. The mixer has adjacent **+ Bus** and **+ Return** buttons. The track-view regression checks hit targets at all three heights, adds buses from the mixer, routes a track to each new bus and checks the eight-bus limit independently of returns.
+
+The Windows Release suite passed all 30 tests. macOS has not been tested for this change.
+
+## Two-voice harmonizer
+
+On `feature/harmonizer-effect`, insert **OSTF Harmonizer** in a track's FX chain. The two fixed chromatic intervals each span −12 to +12 semitones. The default adds a perfect fifth and an octave above the input. A/B blend sets the relative voice levels and Wet sets their combined level against the time-aligned original. Both mono and stereo layouts report the pitch shifter's latency to the host.
+
+The Windows Release `ostf_studio_stock_effects` test loads the actual VST3, opens its editor, recalls its four parameters, and measures the original, upper fifth and lower octave against neighbouring pitches. It also checks stereo channel isolation and the dry impulse position at the reported latency after switching to mono at a different sample rate. It passed three consecutive runs and the full Windows suite passed 30/30. The extracted application under `dist/windows-harmonizer/Portable` passed the hosted FX test using the shipped bundles. macOS and listening through physical audio hardware remain unverified.
+
+## Two GM instances in Neon Platforms
+
+On `feature/two-gm-demo-routing`, the gallery's first song stores eight MIDI parts on two independent GM devices. Open the guitar and bass instrument buttons at bar 17 to compare their editors. Guitar (#1) takes channels 1, 2, 5, 7 and 8. Bass (#3) takes channels 3, 6 and 10. Both the standalone score and the packaged project carry the routes. The Sharing dropdown starts with the relevant detach actions and preserves musical tracks.
+
+Windows Release tests rendered the chorus through the transport into two GM processors and inspected both editors' 16 meter columns. The hosted VST3 test checked independent program states, audio on both stereo returns, editor ownership and isolated detach. The first full run passed 29 of 30 tests. The unrelated Link transport test then passed three consecutive isolated runs. Both core tests and the demo schema verifier passed. Hardware listening and macOS remain unverified.
+
+## Per-chord decisions and reading views
+
+Branch `feature/per-chord-actions-reading-views`. Each pending chord has its own three-action menu anchored to its interval. The left gutter contains individual batch buttons for Confirm all, Keep all and Cancel all. The lead sheet, score and mixer can be opened while edits await review. Returning to the piano roll restores the same pending decisions. Toolbar icons use the standard hover tooltip.
+
+Windows x64 Release passed the transport, track-view, notation, piano-edit, theory-guide, open-project and open-score tests in one run. Both JUCE-free core tests passed. The track-view regression exercises a decision for a second chord, all three batch controls, and switching views with unresolved notes. It also checks button and grid geometry at the minimum 680 × 550 window size. At that size the compact layout reserves a two-row review lane, combines timeline navigation on one row when it fits, and returns space from the performance lane to the notes when the lane is too short to edit. The transport screenshot verified the compact layout and visible playhead. macOS and manual interaction remain unverified.
+
+## Shared instrument windows and arrangement handles
+
+Branch `feature/shared-part-monitor-track-drag`. Each shared instrument button opens the owner's native editor. Its adjacent arrow opens the routing menu. Selecting the current plug-in again on a routed part reuses the owner. Replacing the instrument from a member requires confirmation and preserves the member routes. In the arrangement, a dotted handle supports dragging a row above or below another row in its group. The lead is first among global note rows, and only backing vocals can reorder within that group. Source track IDs and MIDI destinations stay attached to the original tracks.
+
+Windows x64 Release passed the hosted GM, native channel-meter, track view, OSTFP, open-score and open-project checks, plus both JUCE-free core tests. The GM regression compares simultaneous piano and bass playback through the real VST3 against the sum of their isolated waveforms. It also opens one window from multiple member buttons and repeats the instrument assignment. The track test drags across multiple rows and attempts drops onto protected rows. A separate transport smoke run failed its piano playhead screenshot check (exit 14) on both this build and the preceding portable build. macOS, physical audio hardware and third-party instruments have not been tested for this change.
+
+## Chord decisions and per-interval clip fit
+
+Branch `feature/persistent-chord-review-lane`. The pitched piano roll keeps its chord review lane visible. Only intervals touched by a note edit require a decision. The gold **Decide chords** menu applies Confirm, Cancel or Keep to the selected interval or all pending intervals. Cancel restores the affected notes with their original IDs and attributes, including notes spanning or moving between intervals. Keep preserves the edited notes and the destination harmony. Undoing a cancellation restores the pending review.
+
+Arrangement chord and scale fit are indexed by clip and score chord. The drawing test compares the four visible chord intervals in the Neon Platforms electric piano clip against a render with both fit indicators hidden. The track-view test exercises the actual decision menu, independent edits and a batch containing a moved note, a deletion and a duplicate. The score format remains OSTF 5.0.
+
+Windows x64 Release compiled locally. Track view, piano edits, theory guide and both JUCE-free core tests passed. The development portable ZIP in `dist/windows-chord-review-lane/` contains the tested executable. macOS and physical-device operation were not exercised for this change.
+
+## Whole-score chord analysis
+
+Branch `feature/whole-score-chord-analysis`. Chord review after piano edits and material drops ranks each interval using all pitched score tracks. The track that initiated an edit determines which intervals need a decision. Clip fit percentages continue to describe each individual clip. The track-view regression uses a sustained C melody over bass and keys changing from C major to F major, including disabled events and generated voicing as exclusion cases.
+
+Local Windows x64 Release compiled. The track-view, piano-edit and theory-guide tests all passed. macOS and real-device interaction were not tested in this change.
+
+## Mixing, shared instruments and vocal playback
+
+Branch `feature/stock-rigs-vocal-shared-arrangement`. The effects catalog contains independent VST3 identities for the mixing processors and guitar/bass rigs. `OSTF Formant Singer` renders aligned lyric units locally using formant synthesis. The Studio transport delivers articulation with the pitched track timeline and restores it on seek. The file player stores its OSTF source and selected part in plugin state and follows host PPQ. Its initial dictionary covers five vowels, limited consonants and kana. File playback takes one melodic line per part. Expressive vocal curves, native SVP conversion and third-party DAW/device validation remain open.
+
+The Neon Platforms demo stores a guitar-owned GM instance and routes its piano part there on channel 2. Arrange-order changes use stable source track IDs in Studio session data. Track reordering does not renumber mixer channels.
+
+The chord review is now aligned with the piano-roll time axis. The first note edit opens each score chord for review, with untouched chords set to Keep. Individual confirmation leaves other intervals pending. The former per-track fit rows are replaced by per-clip chord and scale readouts.
+
+Windows x64 Release and all 34 VST3 bundles built locally. The final CTest suite passed 29 of 30 in a single run. The notation test timed out in that run and passed on its own in 26 seconds. Both JUCE-free core tests passed. The demo verifier checked the updated projects against the supplied OSTF 5.0 schemas. Regression coverage includes cross-boundary note ranking and review-cell widths, track switching and height, shared instruments and hosted singer vowel changes. macOS, listening on physical hardware and third-party DAW playback were not verified.
+
+## Timeline tools and chord review
+
+Branch `feature/timeline-tools-chord-review`. The scissors and join icons dispatch arrangement clip commands and global boundary edits. The global-lane context menu persists which side supplies a joined value. The chord review strip shows affected intervals after pitched-note edits and OSTF or OSTFP drops. Users can apply a ranked candidate, retain the destination chord, or use an imported chord with its voicing. The source and destination tempo maps determine the imported ranges. Resolve pending decisions before switching tracks. Note edits and score-changing decisions carry review snapshots in local undo history.
+
+Regression coverage is in `checkSamplePlacement` and the piano-edit smoke test. It exercises audio tool clicks, global splits and both join policies, ranked triads, partial chord replacement, note-edit undo/redo, both score container forms and the track-switch gate. The format remains OSTF 5.0. Engraving performance-plan repeats and comparing the playing technique of two sections remain future work.
+
+Windows x64 Release built locally. All 29 Windows CTest cases passed across the delivery run and a targeted rerun. The Link test failed once in the full run and passed three consecutive isolated runs. The separate JUCE-free build passed both core tests. macOS, physical controllers and real-device audio were not exercised in this change.
+
+## Media library and shared GM instruments
+
+Branch `feature/media-browser-gm-racks`. The folder tab accepts local audio, MIDI and OSTF or OSTFP material. A score or SMF drop lets the user choose a source track and uses the import placement and undo path. Program changes, CC 0–119, pitch bend, poly pressure and channel pressure are carried with the selected part.
+
+The track instrument menu identifies each host by track number and name. It can connect existing tracks, disconnect individual or all parts, and separately review empty, unassigned parts with generated names. The GM VST3 meters the audio of all 16 SoundFont parts. Its editor and the four stock synths emit program edit gestures. Studio asks which score event to write and keeps the existing bank selects. Use the rebuilt GM VST3 with the rebuilt application.
+
+The two-instance routing test in `checkGallery` saves and reads back both supported project forms. The GM editor test exercises two independent level meters and an editor-initiated program change. The track-view smoke test drops MIDI, OSTF and OSTFP. The hosted GM smoke test exercises part creation, routing and reuse. No new OSTF schema version was introduced. Windows x64 Release passed all 29 CTest cases, including the real hosted GM VST3, and the separate JUCE-free core passed both tests. macOS and third-party hardware or plug-in preset workflows were not exercised.
+
+## Arrangement clip editing
+
+Branch `feature/arrangement-clip-editing`. MIDI and audio clip editing lives in `ArrangementClipEdits.cpp`, with regression cases in the track-view, transport and OSTFP tests. Each track can hold multiple audio regions. The OSTFP production layer binds them to shared audio sources, and the existing Studio timing extension stores the source phase of a split region. Existing OSTF 5 scores can be loaded without migration. Test references include both parts of a split warped loop and copying or moving an imported MIDI clip. Windows x64 Release passed all 29 tests including reruns. Startup reached its timeout and the waveform check missed its asynchronous thumbnail during the full run. Both passed on the isolated rerun. The JUCE-free core passed 2/2. The locally packaged portable executable passed the track-view and transport checks and matched the compiled executable. The Setup and Portable packages were built. Real-device playback and macOS were not validated in this change.
+
+## Sample placement, stem separation and shared-part feedback
+
+Branch `feature/sample-placement-stem-separator`. Windows x64 Release passed all 29 CTest cases. The separate JUCE-free core build passed 2/2. The Audio files button next to Plug-ins opens the right-hand folder browser. Drop a sample to place it at the pointer, then drag the clip body to move it. Dropping over an occupied audio track opens a replacement menu. The current model has one audio clip per track.
+
+The bundled **OSTF Stem Separator** VST3 accepts a file or records its audio insert input. It reuses Studio's local separation and transcription and writes WAV stems, detected MIDI parts and a named chord MIDI track to the user's Music folder under `OSTF Studio/Stems`. MIDI uses the importer's provisional 120 BPM grid. The named chord markers can be dropped on Studio's chord lane. Test file and capture paths with `ostf_stem_separator_tests` and host loading with `ostf_studio_stock_effects`. Real-device monitoring, macOS and file dragging in a third-party host require separate verification.
+
+The GM editor shows the edited part and currently sounding channels separately. Its periodic display refresh no longer takes the synthesizer lock. Stop sharing from a child track's instrument menu or choose a child by name on the owner. The Windows tests `ostf_gm_channel_activity_tests`, `ostf_studio_gm_plugin` and `ostf_studio_track_view` cover sustained multi-channel activity, rendering each of the seven shared GM demo parts, unlinking one sibling and moving samples.
+
+## Shared multitimbral instrument tracks
+
+Branch `feature/shared-instrument-parts`. Open a loaded instrument's button and choose **Add MIDI track sharing this instrument**. The same command on a child creates a sibling. Studio finds a free channel on that instance. A shared GM part on channel 10 uses the drum editor. To route an existing track, choose **Instrument destination and channel**. Occupied channels show their track names.
+
+The **Blue Hour Waltz (Shared GM)** gallery entry routes seven parts into one GM instrument on the piano track. The package stores the instrument assignment, routes and MIDI patch events. Its stereo return goes to the piano strip. Reproduce the Windows checks with the Release CTest cases `ostf_studio_gm_plugin`, `ostf_studio_demo_gallery`, `ostf_studio_transport` and `ostf_studio_track_view`. The GM case reads back all seven part programs from the hosted VST3 after a seek and exercises track creation from the owner and a child. Independent audio returns and arbitrary third-party plug-in state recall are outside this implementation.
+
+Windows x64 Release passed 27/27 CTest cases, and the core-only build passed 2/2. All eight demo packages passed the pinned OSTF 5.0 package and schema checks. The GM playback check renders to memory. macOS execution and listening through a physical audio interface remain unverified.
+
+## Local samples, performance entry and factory instruments
+
+Branch `feature/instruments-browser-midi-entry`. The information icon opens metadata, the note-and-arrows menu offers score and audition transforms, and divider lines group the toolbar commands. In the right browser choose **Audio files**, select a folder and drag a file to an audio track. WAV stays linked during editing. AIFF, FLAC and MP3 are decoded to 24-bit WAV for the project. The current one-region-per-audio-track rule prompts before replacement. In a performance lane, **Enter value…** accepts an exact tick and value. Velocity applies to the selected notes. Pitch bend uses −8192 to 8191, and mixer pan uses −100 to 100 percent.
+
+First Light Vector uses four locally synthesized VST3 instruments with four presets each. The embedded demo and standalone package switch all four parts to PC 2 at bar 49. The catalog in `src/plugins/instruments` drives wrapper metadata and factory registration. Release packages include the four wrappers alongside the existing twelve.
+
+Windows x64 Release compiled. The hosted instrument test distinguished all sixteen program renders, verified preset-state recall, matched the demo's class IDs and rendered all four tracks after a seek to bar 49. The toolbar, piano and browser tests passed, including internal WAV placement and AIFF-to-WAV sample fidelity. All seven gallery packages passed the pinned official schema/package checks. Core-only CTest passed 2/2. The full Windows suite passed 26/27. The existing Link transport test intermittently reported playing after an immediate start/stop (4 failures in 12 standalone runs). macOS execution and listening on physical outputs are unverified.
+
+## PDF recognition, shared instruments and the warp demo
+
+The Windows import panel finds the Audiveris per-user installation under LocalAppData/Programs. When the executable is missing it offers the official installation instructions and retries the selected PDF after setup. The Windows x64 Release import ran with Audiveris 5.11.0 plus English OCR data. On the eight-bar Lantern Walk sample the 23 pitches, starts and durations matched the source MusicXML. Recognition took the subtitle as title, supplied 120 BPM (source 96), and recognised the last four of eight chords. The unedited result is in `examples/score-interchange/lantern-walk-from-pdf.ostf`.
+
+Logic Pro's [New Track with Next Channel](https://support.apple.com/guide/logicpro/lgcp4369dca8/mac) shares an instrument among tracks. [Cubase's MIDI channel and output controls](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/recording/recording_setting_the_midi_channel_and_output_t.html) select the receiving part. Studio's instrument destination menu now pairs a loaded track instrument with a channel. An in-process playback test sends two tracks and a channel-explicit patch to a single instrument on different channels. The GM VST3 test plays separate kits on channels 10 and 11, then switches channel 10 to piano and selects an electric-piano variation. GM2 sound-set and controller/effect coverage is incomplete. The official logo is absent.
+
+First Light Vector repeats the warped Transition Sweep three times from bar 8 beat 3. The standalone score, manifest and production document passed the official release schemas. The packed member hashes matched. The gallery regression reads the warped source frame positions in each cycle and after saving both formats. No OSTF version increase was needed for the Studio extension.
+
+The compressor suggests a threshold from local peak measurements. Windows core tests passed 2/2. All 26 Windows Release tests passed, and the optional PDF fixture also passed in a fresh output directory. macOS and hands-on third-party multitimbral instrument playback were not tested on this change.
+
+## Console controls and colour themes
+
+Branch `feature/console-controls-themes` updates the mixer, GM Sound Module and the nine stock effects with numeric parameters. Settings → Colour theme selects one of seven finishes. Workspace finish keys live in the existing local view preferences. Each effect editor binds to the same three parameter IDs used by existing sessions and other VST3 hosts.
+
+`ostf_console_editor_tests` checks both directions of parameter updates, fader/knob layout, editable values and default resets for all nine effects. Give the test executable a PNG path to capture the Chorus panel. Setting `OSTF_CONSOLE_MIXER_PNG` to an absolute output path when running `ostf_studio_theory_guide` captures four full-size mixer strips from the demo.
+
+Windows x64 Release built locally. Both core-only tests and all 26 Release tests passed. The GUI suite exercised the seven theme menu entries, musical colour legend, GM VST3 and effect parameters. The first full run had a Link timing failure and transport timeout. Both passed on isolated rerun and on the final full run. Mixer and Chorus snapshots were inspected. macOS build and hands-on control-surface testing are pending for this change.
+
+## Splice Sounds window, Mackie Control, Link and prompt navigation
+
+The horizontal divider adjusts the mixer height independently of the piano-roll height. The arrangement bar heading uses the global lane header background.
+The File menu exports partwise MusicXML and ChordPro. The import window accepts MusicXML and compressed MXL. The matching eight-bar PDF and MusicXML example is in `examples/score-interchange`. The optional `OSTF_PDF_IMPORT_FIXTURE` environment variable enables a local Audiveris integration check in the notation smoke test. On Windows, Audiveris 5.11.0 with the legacy English OCR data reproduced all 23 note pitches, onsets and durations. It recognised the last four chord symbols and used 120 BPM instead of the printed 96. Direct MusicXML import retained all eight chords and 96 BPM.
+
+External connections → Open Splice Sounds opens the scanned VST3 in an independent window. The optional Windows integration check `OSTF Studio.exe --splice-window-smoke` exercises menu launch, native window ownership, close/reopen and browser layout stability. Exit 77 indicates that the plugin is unavailable. The packaged x64 preview passed with the installed Splice Sounds VST3 on Windows. A WAV file drop is covered by the track-view test. A drag initiated inside the vendor editor and macOS behavior have not been exercised.
+
+Mackie Control input and optional feedback output replace the SMK preset editor and fixed mixer shortcuts. The Link follower uses the remote start timestamp and catches up when the local audio engine starts late. Two SDK peers exchanged tempo, beat phase, play and stop on Windows. Live 12 did not advertise a peer during a passive check. Physical MCU controls still need verification. Each Studio mode has three local prompt examples with 15-second rotation and manual previous/next navigation.
+
+## Mixer shortcuts and clip loops
+
+SMK-25 II presets select permanent groups of eight tracks. Banks A and B control volume and pan. Mapped controls display channel and CC or note in their tooltip. The editor previews all sixteen banks and the Windows BLE bulk transfer uses its existing slot backup and read-back path. The recommended mixer mapping is independent of MIDI Learn and plug-in focus.
+
+One-shot audio region extensions retain the source onset and trimmed end. Waveforms indicate loop boundaries and all warp cycles share one marker set. MIDI loops materialise standard notes and MIDI events and save their edit period in the Studio MIDI-loops extension. The score format remains OSTF 5.0. The transport combines click and count-in and can jump to the end of the song.
+
+Windows Release passed all 26 CTest cases, including mixer shortcut addresses, warp repeats, silence, the transport controls and split/loop/undo. The independent core configuration passed all three tests. Bulk hardware writes with this mapping and macOS execution still require device/platform validation.
+
+## Studio mode menu and prompt guide
+
+On `feature/studio-mode-prompt-guide`, the Mode menu changes the stored AI analysis mode and its two examples. The ChatGPT connection, model and refresh controls sit at the right of the toolbar. The read-only guide occupies the space left of the global lane headings and scrolls out of view above the track headers. The examples are local text. Prompt submission and generation are future work.
+
+The Windows track-view smoke test exercises all three menu entries, the displayed examples, the toolbar at narrow widths and the guide boundary when scrolling. All 26 Windows Release tests passed locally. The English and Japanese strings ship with the application. Live account sign-in and macOS were not retested for this layout change.
+
+## Workspace controller targets, Link and clip editing
+
+On `feature/studio-controls-link-clips`, transport and mixer share a control target. The MIDI and waveform panes and each instrument or effect editor have their own assignment button. Port identifiers distinguish separate units, and SMK-25 II preset addresses select per-preset targets. Effect assignments follow insert reordering. MIDI assignments and destinations are saved in local Studio preferences. Track names are editable inline by double-click, F2 or the track menu.
+
+The Windows tests cover inline editing, separate controller inputs and presets, reorder/delete rules for targeted inserts, clip selection, cropped Melodyne WAV replacement, the model catalogue, and MIDI/audio transport. The desktop account catalogue returned GPT-6.1-Sol. Two SDK participants exchanged tempo, phase and start/stop. A separate passive test detected Live 12 Standard at 120 BPM while stopped. Simultaneous operation of two physical controllers and an editing round trip in the Melodyne application still need human-device validation. Installer and portable ZIP for this build are generated in `dist/windows-workspace-control-link`.
+
+## SMK-25 II rig and live MIDI monitoring
+
+Branch `feature/controller-rig-and-midi-monitor` adds Bluetooth discovery on opening the editor, per-preset read/write, verified bulk provisioning of 8 × 2 banks, contextual mixer/plugin knobs and coloured performance/command pads. Edited files can supply both banks of a slot. Armed MIDI tracks monitor through their instrument and FX while stopped. The instrument menu offers an external MIDI destination for monitoring and playback.
+
+Physical Windows BLE validation read all eight presets. With explicit permission, the slot 8 diagnostic changed one pad colour, verified the written image, restored the original and independently re-read all 2,504 bytes. No bulk overwrite was performed. Automatic tests exercise MIDI routing, monitor meters, score position, stopped monitoring with the bundled GM VST3, bank address conflicts and the BLE protocol. Hardware audio returns and macOS are unverified. Windows preview packages are under `dist/windows-controller-rig`.
+
+## Track inputs, cue and program editing
+
+Branch `feature/input-cue-program-editors` adds per-track recording input selection, digital recording gain, stopped-transport input meters, headphone cue controls and distinct mute/solo/arm colours. Use IN or arm the audio track to open its device. The Track menu sets the bank and program at the start or cursor. MIDI tracks also have editable program and bank lanes below the piano roll. MIDI-receiving track inserts share the destination's patch messages. The tempo grid follows both edges of the arrangement ruler.
+
+The global AI selector chooses arrangement, lyric or vocal guidance for import. The connection menu refreshes the official CLI model catalog for the isolated Studio sign-in. Audio devices, a third-party amp simulator and a live ChatGPT account still require interactive verification for this change.
+
+The Windows Release test suite passed 25 cases and the GUI-free core suite passed three. The recording test decodes the captured WAV, checks the chosen channels and gain, and exercises count-in and loop capture. The MIDI probe consumes messages in the instrument and first effect to verify delivery to the next insert. GUI coverage compares the tempo grid edges with the arrangement ruler. The account test uses an isolated CLI fixture. Windows packages for this branch are under `dist/windows-track-workspace`.
+
+## Native SMK-25 II preset editor
+
+Branch `feature/native-mvave-editor` replaces the vendor application launcher with a JUCE preset editor in Settings → M-VAVE. It supports new and imported .mkcII presets, two banks, pad note/program, channel, RGB, absolute knob CCs, local input mapping and crash-recoverable edits. The Studio settings tab also accepts manual note/CC mappings for generic controllers. No vendor executables, preset binaries or libraries are included.
+
+Windows Bluetooth settings transfer uses the SMK-25 II vendor service, independent of its performance MIDI port. A device model query and addressed reads identify the target. Preset writes save the original slot in the user application data backup directory, send changed spans, and compare the full slot before and after the device save command. The manufacturer distributes the Android CubeSuite app and lists SMK-25 II support on its [downloads page](https://www.m-vave.com/download).
+
+On this Windows machine the native transport discovered and identified a physical SMK-25 II and read slot 1 successfully. Repeat with `OSTF Studio.exe --smk25-read-smoke <absolute-path-to-new-report>` and exactly one matching device. The check reads only. Physical writes and macOS execution are unverified. Direct settings transfer currently targets the SMK-25 II on Windows over Bluetooth. File editing and Studio mappings use the cross-platform UI. Other models and USB preset transfer need their own transport validation.
+
+The GUI-free tests cover bank offsets, unsupported controls, byte-preserving edits, MIDI bindings, slot bounds, bad acknowledgements and read-back mismatches. Eight existing user .mkcII exports also round-tripped byte for byte. The GUI regression exercises bank selection and recovery of a changed note. The Windows x64 Release passed all 25 CTest cases and the GUI-free build passed its three tests. Local Windows packaging uses `dist/windows-native-mvave-editor`.
+
+## MIDI input routing
+
+On `feature/midi-input-routing`, open M-VAVE from Settings. The generic profile learns up to 16 notes and eight CC controls. The panel can launch the installed vendor editor. Per-track IN filters by port and channel, a lamp shows matching input, and R arms one destination. Audio rows omit all fit lanes. ChatGPT shows connection state in the global header and supports a locally saved choice of analysis model.
+
+On the local Windows machine, the OS enumerated SMK25II-bt, SMK25II-bt-DAW and MiniFuse 4 MIDI In. The routing regression injects matching and nonmatching MIDI messages and checks the recorded notes. The layout regression enables both fit lanes, measures the spacing between audio tracks, and checks fixed-height fit lanes on pitched tracks under vertical zoom. The Windows x64 Release passed all 24 CTest cases on a sequential run and both GUI-free core checks passed. During packaging two tests timed out and one portable GUI smoke run hung. The two tests then passed individually, and both track view and transport passed in the final extracted portable build. Local installer and ZIP are in `dist/windows-midi-input-routing`. Account consent, physical pad and knob input, vendor preset writes and macOS remain unverified.
+
+## Controller workspace
+
+Branch `feature/controller-workspace` uses a dedicated Studio CLI profile for browser sign-in and puts the connection controls to the left of the global timeline labels. Import placement can extend a score transactionally and write pitched and drum notes into editable clips. The arrangement accepts new parts outside compatible tracks. Melody rows start at 100 px plus independent fit lanes.
+
+On the earlier controller-workspace build, M-VAVE opened from the timeline header. The SMK-25 II profile follows the selected drum kit. Its initial input preset is notes 36–51 on channel 10 and CC16–23 on channel 1. MIDI Learn can adapt it to the physical preset. The SMC-Mixer input profile supports the first eight Mackie faders and pan encoders in each track bank. Account consent, physical control movement, hardware output and macOS require separate verification.
+
+Windows PDF analysis renders each page in a disposable worker. A debugger reproduced an intermittent shutdown exception (0x87a) inside Windows.Data.Pdf and DXGI after the analysis had already succeeded. The worker releases its page, files and COM objects before stopping. The main process consumes one rendered page at a time.
+
+Windows x64 Release passed all 24 CTest cases, both GUI-free core tests passed, and the notation/import smoke passed five consecutive runs after isolating PDF rendering. The OAuth fixture checks separate credentials and a new sign-in URL on each connect. The arrangement test checks the viewport drag source, target hit testing and clip placement. Physical mouse dragging, external account consent, hardware signalling and macOS still need hands-on validation. The local installer and portable build are in `dist/windows-controller-workspace`.
+
 Read this file after `AGENTS.md` when resuming work on another computer. Update it in the same change as significant implementations, fixes, or validation results. Record what changed, what was verified on each platform, and what remains to be done. Keep durable policy in `AGENTS.md` and detailed procedures in the linked documents.
 
 ## Current state
+
+- On `feature/media-services`, score import handles recordings past 256 bars. FFT analysis keeps a bounded overlapping buffer across sequential reads. Windows prefers the system MP3 decoder. The import review defaults to local analysis and offers only connected AI providers. The first adapter uses the official Codex CLI for ChatGPT browser sign-in and schema-constrained proposals. Studio stores the local opt-in. No provider credentials enter a score or project.
+- Local PDF import requires Audiveris for optical recognition and imports the resulting MXL directly. AI PDF import renders the pages with Windows.Data.Pdf on Windows/MSVC and CoreGraphics on macOS. Other builds use pdftoppm. Audio AI analysis sends detected note/timbre measurements, MIDI sends summaries and PDF sends page images. All routes return editable score data for the same review and placement workflow.
+- The waveform editor opens the official Splice Sounds instrument in its own hosted window with an audition output. The Melodyne action opens a per-source WAV copy in the installed standalone editor. Use Replace Audio there, then Apply edited WAV in Studio. This workflow uses file exchange.
+- Windows x64 Release `1.0.0-alpha.3+media-services` passed all 23 CTest cases. The two GUI-free core tests passed. Regression coverage includes a note after 513 seconds in WAV and MP3 (with LAME on the test PATH), preservation of MIDI timing and meter, Windows PDF page rendering, rejection of invalid provider responses and disconnected providers. The suite used a test provider. Melodyne started with a test WAV argument. Its onscreen waveform, a live ChatGPT session, the Splice Sounds account library, installed local OMR engines and macOS have not been verified. Windows installer and portable package are in `dist/windows-media-services`.
+
+- On `feature/song-header-tempo-editor`, the top song defaults strip opens complete song information, credits and musical defaults. The native title bar identifies the document and unsaved changes. Select BPM in the timeline to draw tempo changes in the lower editor. Ramps use bounded sequences of standard OSTF 5.0 tempo events. Arrangement zoom applies to the 100 px track body independently of the 16 px chord and scale fit rows.
+- Windows x64 Release passed all 23 CTest cases for `1.0.0-alpha.3+tempo-editor`. Both GUI-free core tests passed. Opening the comprehensive fixture through the normal Windows entry point showed its song title and filename in the native window caption. The track view test checks a combined 32 px for both fit rows at 42, 100 and 155 px arrangement heights. It also selects the tempo lane, draws a ramp, undoes the edit and returns to the instrument editor. The transport test checks the ramp after OSTF/OSTFP round trips and in SMF tempo events. macOS build and display testing for this change are pending.
+
+- On `feature/editor-loop-recording`, the lower piano and waveform editors record from the cursor into an arbitrary tick range. The transport can count one bar and play a metronome. MIDI takes collect notes across passes. Audio takes use the first one or two enabled inputs, replace the recorded portion on each pass and produce one embedded PCM WAV on stop. Replacing an existing region asks for confirmation. WAV regions retain per-clip trim, loop and re-pitch timing. The current audio limit is one region per track and 16 MiB per recording.
+- Step rows start with Kick at the bottom. Row moves preserve slot IDs. MIDI Learn maps incoming pitches to kit output pitches in local preferences. Enabled MIDI inputs can light the pad and its row with playback stopped. The arrangement opens at up to ten bars with 100 px arrangement rows and minimum-height global and output rows. The waveform editor accepts downloaded Splice WAVs from its file picker as well as drag-and-drop.
+- The pinned OSTF 5.0 schemas are unchanged. Notes, drum kit ordering and instrument assignments use existing score data. Studio stores the editor cycle, audio recording width and per-clip timing in the Production Session host extension. Physical controller mappings and device identifiers stay on the workstation.
+
+- Windows x64 Release for `1.0.0-alpha.3+editor-recording` passed 23 CTest cases. The GUI-free build passed both core tests. Synthetic input covered count-in exclusion, loop boundaries, mono/stereo PCM, drum mapping, kit order and take persistence. The GUI checks covered stopped-pad illumination and narrow-window transport/track layout. Windows output is in `dist/windows-editor-recording`. Physical MIDI and audio hardware, Splice plugin interaction, Melodyne online services and macOS remain unverified.
+
+- On `feature/score-import-workspace`, audio-to-score import detects note and percussion events and major/minor chord candidates using local DSP. A single result window supports individual track drops and loading the entire score into the original editor. The initial audio grid is 120 BPM in 4/4. Isolated fundamentals can supply instrument-family candidates through conservative harmonic matching against the Studio preview bank. Mixed and ambiguous spectra leave the role alone.
+- Windows x64 Release passed all 23 CTest cases for `1.0.0-alpha.3+score-workspace`, including WAV/AIFF note extraction, silence, a synthetic reed timbre, chord changes, new-track drops and dock relocation. The shared harmonic data regenerates the original GM preview SoundFont byte for byte. Accuracy on mixed commercial recordings, macOS and physical-device operation remain unverified.
+- Song defaults can be edited in the global header or moved to the transport area. Ruler, degree/progression and function lanes follow the global height control, and track-fit rows follow their parent track. All piano-roll themes share the harmonic interval and underline colours.
+
+- The previous waveform/MIDI review and drum mapping implementation is on `feature/import-parts-drum-pads`. Windows package path: `dist/windows-import-drum-pads`. PDF OMR and physical pad testing remain open.
+
+- Windows x64 Release passed all 23 CTest cases for `1.0.0-alpha.3+audio-clip-editor`, including real WAV drop placement, selection-driven editor switching, warp-marker movement, loop edge dragging, waveform/PCM checks across a tempo boundary, and saving/reopening Studio timing. The edited-WAV regression checks source identity and retention of trim and markers. The local Studio scanner cache lists Melodyne as a Celemony VST3 effect. macOS, hardware monitoring, and end-to-end UI interaction in Melodyne and Splice have not been tested for this change.
+- On `feature/audio-clip-editor`, the Theory Guide fits the chord degrees and recognised progressions on one bracketed row above the harmonic functions. Added plagal, deceptive and turnaround readings with same-key adjacency checks.
+- The bottom editor now follows the selected audio track. Looping repeats the trimmed source under the arrangement right-edge handle. Re-pitch warp uses a cycle length in quarter notes and draggable interior anchors. The thumbnail and transport share the source mapping. Loop and marker edits round-trip in the Studio host extension.
+- An audio lane accepts a single local WAV dropped from Splice Desktop or a file manager. Melodyne can edit a separate source WAV and return the rendered samples to the project. Replace Audio in Melodyne and Apply edited WAV in Studio complete the round trip. The existing VST3 host can also open the installed Melodyne in Transfer mode. The source-copy workflow preserves edits in saved projects. ARA region hosting, pitch-preserving stretching and Splice catalogue browsing remain open. See [Celemony's external editor workflow](https://helpcenter.celemony.com/M5/doc/melodyneEditor5/en/M5tour_LoadingSavingAudio?env=standAlone) and [Splice's desktop drag workflow](https://support.splice.com/en/articles/8652634-how-do-i-add-samples-to-my-daw).
+
+- `feature/studio-timeline-editor` adds in-memory import results. Opening a draft creates a separate unsaved Studio window. Results can also be placed on audio, pitched or chord lanes. Audio and note placement follows elapsed time across different tempo maps. An occupied audio track or a fully covered chord progression asks for replacement approval. Partial chord overlap keeps the existing material and reports the boundary conflict.
+- The song information editor supports OSTF genre and mood records. The global lane editor supports value changes, cut, copy and paste. Wide function cells show their names. The Settings menu adds Graphite and Aubergine, and the piano editor adds pitch-row zoom and a draggable parameter divider.
+- The native chord estimator covers major/minor triads. Four-stem separation calls a separately installed Demucs CLI. Four aligned stem WAVs can also be imported directly. The notation and theory smoke tests cover unsaved opening, stem round trips, chord detection, import placement, timeline edits, tags and pitch rows. Windows x64 Release passed all 23 CTest checks. Windows output for this change is `dist/windows-timeline-editor`. Model inference, physical audio interfaces and macOS still require separate validation.
+
+- On `feature/wave-analyzer`, the stock FX catalog includes OSTF Wave Analyzer (Of10). For a local Windows trial, open the plug-in browser, scan the complete bundle in `dist/windows-wave-analyzer` and insert it on Master. The single-plug-in ZIP contains the same x64 binary and license notices. The meter test uses silence, calibrated mono/stereo tones, reversed polarity, relative gating and an intersample peak. The editor test checks the Hann spectrum and waveform freeze. Set `OSTF_ANALYZER_SMOKE_PNG` to capture a render. The stock-effects test also loads the actual VST3 and checks transparent mono/stereo processing, span recall and editor construction. Commercial DAW and hardware trials and macOS validation are pending.
+
+- The Windows development build `1.0.0-alpha.3+drum-automation` adds editable MIDI performance lanes and track pan automation, slot-based drum step entry and range looping. Copper Mile exercises bend, pressure, CC, moving pan and equal-bar-length meter changes. Windows x64 Release passed all 21 CTest checks, including real editor gestures, CC/bend/pressure persistence and playback chase, offline stereo pan output, loop-boundary timing and a newly programmed drum hit on the next pass. The seven demo packages passed the pinned reference validation. The piano and slot-view smoke renders were inspected. The local distribution directory is `dist/windows-drum-automation`. Physical audio hardware and macOS have not been tested for this change.
+
+- The Windows development build `1.0.0-alpha.3+note-entry` adds Settings → Colour theme with Studio Blue as the default and Harmonic colours as an alternative. Both bar rulers use larger labels. In the piano inspector, B toggles pencil input. Drag to draw a note or Alt/Option-drag to paint repeated grid steps. The inspector also splits selected notes into triplets or strums simultaneous notes by pitch in either direction or alternating strokes. Each gesture uses a single undo step.
+- Windows x64 Release passed all 21 CTest checks. Added checks exercise both palettes through the Settings menu, pencil and repeat gestures, fractional triplet boundaries, split-note identity and undo, and strum direction, unisons, short notes, percussion exclusion and selection boundaries. The rendered Neon Platforms arrangement and piano roll were inspected. Windows installer and portable outputs belong in `dist/windows-note-entry`. macOS, manual installation and physical audio devices have not been exercised for this build.
+
+- The 1.0.0-alpha.3+piano-workspace Windows development build shares zoom, scroll and ruler geometry between the arrangement and piano roll. Drag the horizontal divider to adjust heights or the grip beside the keyboard to resize both headers. The piano inspector applies onset quantization and velocity ramps to a selection through the existing undo history. Relative and absolute snapping work on body and edge drags, with Shift temporarily bypassing the grid.
+- Piano-key, chord and scale modes are available in the inspector. Degree colours follow the active root or tonic, with a separate role stripe for fifths, authored or available tensions and avoid candidates. Every pitched track displays both fit lanes when enabled. The global degree, abbreviated function and progression lanes distinguish tritone substitutes, IV in the predominant position, and local ii–V resolutions. Notes crossing a boundary retain one editable identity.
+- Windows x64 Release passed 21 CTest checks. Regression checks cover ruler alignment and common zoom, dragging both dividers, snap bypass, both trim edges, quantize strength, velocity ramps, undo, explicit chord extensions and substitute cadences. A rendered Neon Platforms snapshot was inspected. macOS and physical audio devices have not been exercised for this change.
+
+- The song settings toolbar and File menu expose score defaults, undoable whole-score transposition and tempo scaling, and session-only audition controls. The Theory Guide button is beside the timeline lanes button. The piano roll displays chord names and updates selected-note and aggregate fit while dragging. The theory-guide smoke test exercises score defaults, tempo-map preservation, transposition, save/reopen, and piano-roll editing on Neon Platforms. The Windows development package for this change uses the build identifier `1.0.0-alpha.3+song-controls`.
+- Windows x64 Release passed all 21 CTest checks. The GUI check dragged C to C-sharp over Cmaj7 and verified both the drag preview and the committed result. The rendered four-bar piano-roll view was inspected. The audition clock was exercised by offline audio rendering. macOS and physical audio-device playback have not been checked for this change.
+
+- The [arranger exchange design](docs/ARRANGER_PHRASE_EXCHANGE.ja.md) proposes embedding Composer’s chord functions in every part arranger. Test that the same notes and settings produce the same analysis in both plug-ins and that a bass arranger works on its own. Keep existing OSTF chord spans, analyse gaps with pitched evidence, and label newly composed harmony as a suggestion. The cross-part check uses a mid-bar chord change on the global lane. The current preview still uses its fixed pattern.
+
+- The proposed native editor’s first musical test regenerates only the ending of a four-bar bass phrase. Compare takes on the same loop, adopt one, save/reopen and compare both exports. Include a bass note sustained across the selection boundary and verify old instrument-only plug-in state still opens.
+
+- For the proposed Studio chord comparison, test a single-bar substitution with a dependent bass clip and unrelated performances. Verify cancel, chords-only acceptance, selective part adoption, concurrent edits, undo and reopening. Keep the optional score-level dependency status distinct from any clip-level review label.
+
+- On `feature/theory-guide-lanes`, **View → Theory Guide** controls arrangement analysis. Select a pitched track or expand its row. The guide headers show the readings at the cursor even at full-song zoom. The piano roll has an independent colour selector beside the snap grid. Check its four modes with the arrangement guide on and off, and hover either side of a held note across a chord change. For a C-major A7 → Dm7, the arrangement identifies A7 as V/ii and its hover text names Dm7. Set `OSTF_THEORY_SMOKE_PNG` to an absolute file path when running the theory smoke test to capture the editor at bar 14 of Neon Platforms.
+
+- Run `ostf_studio_theory_guide` in CTest. It checks bar 14 of Neon Platforms: Electric Piano Comp contains 13,176 note-ticks over A7, all chord tones, with 9,904 note-ticks in C Ionian. Other tests cover held notes, missing or overlapping context, key changes, track/section/chord/clip/note scopes, fixed triggers, modal uncertainty, minor cadences and piano-roll layer switching.
+
+- Toggle the proposed guitar scale row for a solo with an A-minor pentatonic improvisation direction. Verify that its range and strict/preferred labels stay local to the part, that drum rows remain neutral and that identical chord results are shown with the scale row open or closed.
+
+- The guide caches the analysis outside the audio callback. Benchmark GUI scrolling and physical playback under plug-in load separately. Previewing arranger proposals and applying a reharmonisation with undo remain design work.
+
+- Windows x64 Release validation in `build-win-plugins` includes 21 CTests and a snapshot of the chord/scale colours at bar 14. One piano-edit test run timed out. Four consecutive isolated reruns passed. macOS compilation and physical-device playback under load are unverified for this change.
+
+- Both bar rulers seek the shared transport using their own zoom and scroll. Audio regions draw stereo peaks from linked or embedded WAVs with source trims and tempo changes. Relay Circuit has four audio tracks; First Light Vector has five. Sample-by-sample rendering is reproducible with the demo generator. The transport smoke test checks the seek coordinates and waveform against a known pulse; the stock FX test checks both overlapping stems during playback.
+
+- The piano roll edits source MIDI notes, including mapped drum hits, by stable OSTF note ID. It supports multi-selection, copying, trimming either edge, grid nudge, velocity and bounded undo/redo. Test with `ostf_studio_piano_edits`, which exercises pointer gestures, round trips in both formats and SMF. A note referenced by vocal or other data stays in its owning clip. The chord voicing projection remains read-only.
+
+- `feature/track-actions-ui-scale` adds toolbar actions for melody, chorus, pitched, drum, audio, bus and return tracks. Right-click the name in the arrangement or mixer to duplicate a part or remove it after confirmation. Master, Cue and the derived chord voicing are fixed. Source parts can occupy 15 of the 16 playback channels. There are up to eight buses and eight returns. Existing output slot IDs remain compatible.
+- The magnifiers set application scale to 75%, 100%, 125% or 150% and save it in view settings. At narrow widths the toolbar wraps to a second line. Test with `ostf_studio_track_view`, the round-trip and gallery tests, and the core mixer tests. The Windows x64 Release passed all 19 CTests, including copying the vocal demo's notes, voices and lyric alignments. Local development packages use `dist/windows-track-actions/`. Physical-device playback has not been verified for these changes.
 
 - On `feature/windows-vst3-installer-repair`, Windows Setup can install Studio alone, or repair the shared VST3 set while matching versioned binaries are loaded. The shared task is selected by default. Deferring it also defers migration of legacy bundles. The application binary is the `transport-nav` build. The revised installer is in `dist/windows-transport-nav-setup2/`.
 - An isolated Windows installer test held a matching VST3 open, restored missing bundle resources, reproduced exit code 5 with a changed and locked binary, deferred the shared update and successfully retried after releasing the lock. The workflow includes the locked repair and app-only paths. The local test used isolated paths and ran without UAC. The installed transport application and all 112 files in the 11 shared bundles on this workstation matched the build.
@@ -69,7 +724,7 @@ Read this file after `AGENTS.md` when resuming work on another computer. Update 
 
 - OSTF Studio is a JUCE UI bootstrap. The Global Timeline displays a 32-bar internal demo with sections, chords, key/scale, meter, tempo, phrasing and named arrangement regions in five tracks. The ruler and both lane groups use the same tested, bar-based projection. The separate fixed-meter beat converter and the JSON object/array inspector remain available.
 - The preview opens supported OSTF 5.0 scores and OSTFP projects. The bundled example opens at startup and via **File → Open demo song**. Full schema conformance, AI editing and remote collaboration are planned. [Fixture provenance](tests/fixtures/README.md) · [Architecture and roadmap](docs/ARCHITECTURE.md)
-- The OSTFP preview shows a piano roll when an arrangement row is selected. The official fixture tests verify pitch, note length and conversion from clip-relative to song ticks. Sound-slot percussion and direct note editing are pending.
+- The official fixture tests verify piano-roll pitch, note length and conversion from clip-relative to song ticks. Current editing and percussion coverage is listed above.
 - Startup selects the official demo's first pitched track. A track chooser supports keyboard selection. Mixer settings are session-local. The audio and MIDI selector uses JUCE and stores its configuration outside the project.
 - Windows builds enable JUCE ASIO by default. Use **Settings → Audio / MIDI Devices**. Arrangement rows share mix controls with the Mixer. A track slot can load one explicitly selected VST3 instance and open its native or generic parameter editor for the session. State persistence, third-party interoperability and ASIO hardware loopback checks remain pending.
 - The VST3 browser caches scan results locally, groups by manufacturer and loads on track drop. Transport supports playback of pitched notes at a fixed source tempo and MIDI note capture into the selected track. Audio recording remains pending.
@@ -102,3 +757,9 @@ The [original demo song gallery](examples/demo-songs/README.md) contains five OS
 2. Run `git fetch origin`, `git status --short --branch`, and `git branch -avv`. Continue from the verified remote feature branch if it exists. After the approved branch is pushed, a fresh clone can use `git switch --track origin/feature/release-packaging`. Otherwise the clone has only the changes already published to GitHub.
 3. Build in a fresh local build directory. Git carries source and project documentation. Compilers, SDKs, credentials, plugins, personal settings and generated packages are managed separately on each machine.
 4. Run the build and tests relevant to the next change, update this handoff, and commit on the feature branch. The pending CI check for this branch must use the artifacts-only workflow option. Follow [release and packaging procedures](docs/RELEASING.md) for packaging and approvals.
+
+### Audio demo tracks and song information
+
+The toolbar information icon opens the existing song metadata editor. Rename score tracks and production outputs from their context menus. Paper Lantern Replies and First Light Vector include original stereo WAV cues, two track inserts, a Harmony bus and a Room send. The preview reads one native, unwarped WAV region per score track, with source-frame trims, region mute/gain, tick placement and verified package bindings. Standalone saves place the WAV in a sibling media directory. The stock-effects smoke test renders the actual audio and checks routing, gating and gain offline.
+
+The pinned arrangement ruler locates on click and pans on horizontal drag. Shift-wheel and horizontal trackpad motion pan the timeline; Space toggles transport, Home returns to the start, and F1 opens the localized shortcut guide in Help. Manual horizontal navigation during playback switches off Follow.
