@@ -65,13 +65,14 @@ inline Lyrics lyricsFor(const juce::var& score) {
     for (const auto& phrase : items(score["lyrics"]["phrases"])) {
         const auto& units = phraseUnits[phrase["id"].toString()];
         size_t pos = 0;
-        for (const auto& word : juce::StringArray::fromTokens(phrase["text"].toString().toLowerCase(), " \t\r\n,.;:!?", {})) {
+        for (const auto& token : juce::StringArray::fromTokens(phrase["text"].toString(), " \t\r\n,.;:!?", {})) {
+            const auto word = englishLyricWord(token);
             if (word.isEmpty()) continue;
             juce::String joined;
             const auto begin = pos;
             while (pos < units.size() && joined.length() < word.length()) {
                 const auto& unit = units[pos++];
-                joined += unit["text"].toString().toLowerCase();
+                joined += englishLyricWord(unit["text"].toString());
             }
             if (joined != word) break;
             if (pos - begin < 2 || !word.containsOnly("abcdefghijklmnopqrstuvwxyz'-")) continue;

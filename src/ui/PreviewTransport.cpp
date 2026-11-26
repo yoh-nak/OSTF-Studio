@@ -1,4 +1,5 @@
 #include "ui/PreviewTransport.h"
+#include "plugins/studio/HostAudio.h"
 #include "ui/MasterSpectrum.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_cryptography/juce_cryptography.h>
@@ -111,7 +112,7 @@ juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const os
         for (const auto& input : juce::MidiInput::getAvailableDevices())
             enabled = enabled || (devices.isMidiInputDeviceEnabled(input.identifier) && (!options ||
                 (options->midiInput.enabled && (options->midiInput.port.isEmpty() || options->midiInput.port == input.identifier))));
-        if (!enabled) return juce::Result::fail("Enable a MIDI input in Settings before recording.");
+        if (!enabled && device->getTypeName() != "DAW") return juce::Result::fail("Enable a MIDI input in Settings before recording.");
     }
     const auto result = preparePlayback(project, tracks, inserts, device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples(), semitones, tempoRate, monitorOnly, options ? options->linkTempo : 0, options ? std::span<const ostfstudio::TakeSelection>(options->auditions) : std::span<const ostfstudio::TakeSelection>{});
     if (result.failed()) return result;
@@ -1130,6 +1131,24 @@ ostfstudio::MeterFrame PreviewTransport::takeMeters() noexcept {
 
 void PreviewTransport::audioDeviceIOCallbackWithContext(const float* const* input, int inputs, float* const* output, int channels,
                                                         int count, const juce::AudioIODeviceCallbackContext&) {
+    if (const auto* midi = ostfstudio::HostAudio::midi; midi && (monitorTrack_ || recording_) && channels == 2) {
+        const int first = ostfstudio::HostAudio::blockOffset;
+        int rendered = 0;
+        auto through = [&](int end) {
+            if (end <= rendered) return;
+            float* offset[]{output[0] + rendered, output[1] + rendered};
+            renderBlock(offset, 2, end - rendered);
+            rendered = end;
+        };
+        for (auto it = midi->findNextSamplePosition(first); it != midi->end(); ++it) {
+            auto event = *it;
+            if (event.samplePosition >= first + count) break;
+            through(event.samplePosition - first);
+            inputFromDevice(event.getMessage(), {});
+        }
+        through(count);
+        return;
+    }
     renderBlock(output, channels, count, input, inputs);
 }
 

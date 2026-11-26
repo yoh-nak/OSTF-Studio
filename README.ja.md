@@ -1,5 +1,11 @@
 # OSTF Studio
 
+## 他のDAWでStudio本体を使う（開発版）
+
+インストゥルメントトラックに **OSTF Studio** を挿し、プラグイン内で `.ostf` または `.ostfp` を開きます。アレンジ、ライブセッション、ピアノロール、ミキサーを操作でき、ステレオのミックスがDAWのトラックに返ります。**DAWの再生に追従** をオンにすると再生・停止とタイムラインの秒位置に追従します。テンポはOSTFのテンポマップを使います。単独で試聴したいときは追従をオフにします。
+
+DAWのプロジェクトを保存すると、Studioの曲、プロジェクトに同梱した音声、音源・エフェクトの設定も一緒に保存されます。このVST3は公開アルファ1の次の開発版で追加した機能です。
+
 **公開アルファ1をダウンロード** · [Windows x64 インストーラー](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Setup.exe) · [Windows ポータブル ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Portable.zip) · [Appleシリコン Mac 用 DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_macOS_arm64.dmg) · [リリースノートと対応ソース](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1)
 
 Formant Singerは「フレイム」のような1つの歌詞を複数の音符に割り当てたとき、最初の音で子音を発音し、途中は母音でつないで最後の音で語尾を歌います。Singerに直接読み込んだOSTFでは、音符の途中のテンポ変更も発音の長さに反映されます。

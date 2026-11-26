@@ -34,6 +34,7 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank) {
     if (appDirectory.getChildFile("OSTF Chorus.vst3").isDirectory()) {
         PluginBrowser browser;
         for (const auto& bundle : appDirectory.findChildFiles(juce::File::findDirectories, false, "OSTF *.vst3")) {
+            if (bundle.getFileName() == "OSTF Studio.vst3") continue;
             const auto matches = std::count_if(browser.types().begin(), browser.types().end(), [&](const auto& type) {
                 return type.manufacturerName == "OSTF Studio" && type.name == bundle.getFileNameWithoutExtension();
             });

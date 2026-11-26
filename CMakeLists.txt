@@ -145,53 +145,75 @@ if (OSTF_STUDIO_BUILD_GUI)
         set_source_files_properties(${ostf_document_icons} PROPERTIES MACOSX_PACKAGE_LOCATION Resources HEADER_FILE_ONLY TRUE)
     endif()
     juce_add_binary_data(OSTFEnglishLexicon HEADER_NAME EnglishLexiconData.h NAMESPACE EnglishLexiconData SOURCES assets/voices/english-lexicon.gz)
-    target_link_libraries(OSTFStudio PRIVATE OSTFEnglishLexicon)
+
     juce_add_binary_data(OSTFStudioAssets SOURCES
         assets/AppIcon.png assets/Japanese.txt assets/NewProject.ostf assets/GMFamilies.json
         examples/demo-songs/neon-platforms.ostfp examples/demo-songs/blue-hour-waltz.ostfp
         examples/demo-songs/blue-hour-waltz-shared-gm.ostfp
         examples/demo-songs/relay-circuit.ostfp examples/demo-songs/paper-lantern-replies.ostfp
         examples/demo-songs/offset-bridges.ostfp examples/demo-songs/copper-mile.ostfp examples/demo-songs/first-light-vector.ostfp)
-    juce_generate_juce_header(OSTFStudio)
-    target_sources(OSTFStudio PRIVATE src/app/Main.cpp src/ui/MainComponent.cpp src/ui/SystemUsageMeter.cpp src/ui/ArrangementClipEdits.cpp src/ui/ChordReview.cpp src/ui/OstfpPreview.cpp
-        src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
-        src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
-        src/ui/TheoryGuide.cpp tests/stock_effects_smoke.cpp tests/track_view_smoke.cpp tests/notation_smoke.cpp
-        tests/transport_smoke.cpp tests/piano_edit_smoke.cpp tests/theory_guide_smoke.cpp)
+    juce_add_plugin(OSTFStudioPlugin COMPANY_NAME "OSTF Studio" BUNDLE_ID org.ostf.studio.plugin
+        PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE Osd1 PRODUCT_NAME "OSTF Studio"
+        IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE FORMATS VST3 VST3_CATEGORIES Instrument
+        VST3_COPY_DIR "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" COPY_PLUGIN_AFTER_BUILD FALSE)
+    target_sources(OSTFStudioPlugin PRIVATE src/plugins/studio/StudioProcessor.cpp)
+    target_compile_definitions(OSTFStudioPlugin PRIVATE OSTF_STUDIO_HOSTED=1)
+    target_sources(OSTFStudio PRIVATE src/app/Main.cpp tests/stock_effects_smoke.cpp tests/track_view_smoke.cpp
+        tests/notation_smoke.cpp tests/transport_smoke.cpp tests/piano_edit_smoke.cpp tests/theory_guide_smoke.cpp)
     set_property(SOURCE src/ui/MainComponent.cpp tests/stock_effects_smoke.cpp APPEND PROPERTY INCLUDE_DIRECTORIES "${ostf_vst_sdk}")
-    target_include_directories(OSTFStudio PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
-    target_compile_definitions(OSTFStudio PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
-    target_compile_definitions(OSTFStudio PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
     if (WIN32)
         target_compile_definitions(OSTFStudio PRIVATE JUCE_ASIO=$<BOOL:${OSTF_STUDIO_ENABLE_ASIO}>)
-    endif()
-    target_link_libraries(OSTFStudio PRIVATE
-        ostf_link
-        ostf_studio_core
-        ostf_score_validation
-        OSTFStudioAssets
-        juce::juce_gui_extra
-        juce::juce_dsp
-        juce::juce_audio_utils
-        juce::juce_cryptography
-        juce::juce_recommended_config_flags
-    )
-    if (WIN32)
-        target_sources(OSTFStudio PRIVATE src/ui/NativePrint.cpp)
-        target_link_libraries(OSTFStudio PRIVATE comdlg32 gdi32)
     elseif (APPLE)
         enable_language(OBJCXX)
-        set_target_properties(OSTFStudio PROPERTIES OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED YES)
-        target_sources(OSTFStudio PRIVATE src/ui/NativePrint.mm)
-        set_source_files_properties(src/ui/NativePrint.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-        target_link_libraries(OSTFStudio PRIVATE "-framework PDFKit")
     endif()
-    if (WIN32 AND MSVC)
-        target_link_libraries(OSTFStudio PRIVATE windowsapp shcore shlwapi windowscodecs)
-    elseif (APPLE)
-        target_link_libraries(OSTFStudio PRIVATE "-framework CoreGraphics" "-framework ImageIO")
-    endif()
+    foreach(studio_target IN ITEMS OSTFStudio OSTFStudioPlugin)
+        juce_generate_juce_header(${studio_target})
+        target_sources(${studio_target} PRIVATE src/ui/MainComponent.cpp src/ui/SystemUsageMeter.cpp src/ui/ArrangementClipEdits.cpp src/ui/ChordReview.cpp src/ui/OstfpPreview.cpp
+            src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
+            src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
+            src/ui/TheoryGuide.cpp)
+        target_include_directories(${studio_target} PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_compile_definitions(${studio_target} PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
+        target_compile_definitions(${studio_target} PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
+        target_link_libraries(${studio_target} PRIVATE
+            OSTFEnglishLexicon
+            ostf_link
+            ostf_studio_core
+            ostf_score_validation
+            OSTFStudioAssets
+            juce::juce_gui_extra
+            juce::juce_dsp
+            juce::juce_audio_utils
+            juce::juce_cryptography
+            juce::juce_recommended_config_flags
+        )
+        if (WIN32)
+            target_sources(${studio_target} PRIVATE src/ui/NativePrint.cpp)
+            target_link_libraries(${studio_target} PRIVATE comdlg32 gdi32)
+        elseif (APPLE)
+            set_target_properties(${studio_target} PROPERTIES OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED YES)
+            target_sources(${studio_target} PRIVATE src/ui/NativePrint.mm)
+            set_source_files_properties(src/ui/NativePrint.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+            target_link_libraries(${studio_target} PRIVATE "-framework PDFKit")
+        endif()
+        if (WIN32 AND MSVC)
+            target_link_libraries(${studio_target} PRIVATE windowsapp shcore shlwapi windowscodecs)
+        elseif (APPLE)
+            target_link_libraries(${studio_target} PRIVATE "-framework CoreGraphics" "-framework ImageIO")
+        endif()
+    endforeach()
     include(packaging/collect-notices.cmake)
+    ostf_attach_notices(OSTFStudioPlugin_VST3)
+    juce_enable_copy_plugin_step(OSTFStudioPlugin)
+    add_executable(ostf_hosted_studio_tests tests/hosted_studio.cpp)
+    target_compile_definitions(ostf_hosted_studio_tests PRIVATE JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 JUCE_PLUGINHOST_VST3=1)
+    target_include_directories(ostf_hosted_studio_tests PRIVATE "${JUCE_MODULES_DIR}")
+    target_link_libraries(ostf_hosted_studio_tests PRIVATE OSTFStudioPlugin juce::juce_recommended_config_flags)
+    add_dependencies(ostf_hosted_studio_tests OSTFStudioPlugin_VST3)
+    add_test(NAME ostf_studio_external_host COMMAND ostf_hosted_studio_tests
+        "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF Studio.vst3"
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostfp")
+    set_tests_properties(ostf_studio_external_host PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
     add_subdirectory(src/plugins/scale)
     add_subdirectory(src/plugins/rack)
     add_subdirectory(src/plugins/effects)

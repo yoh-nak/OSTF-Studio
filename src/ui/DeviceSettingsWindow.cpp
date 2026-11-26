@@ -1,5 +1,6 @@
 #include "ui/DeviceSettingsWindow.h"
 #include "ui/MidiActivityLamp.h"
+#include "plugins/studio/HostAudio.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 
 namespace {
@@ -38,7 +39,13 @@ private:
 
 class DeviceSettingsContent final : public juce::Component, private juce::ChangeListener, private juce::MidiInputCallback, private juce::AsyncUpdater {
 public:
-    explicit DeviceSettingsContent(std::function<void(int)> outputsChanged) : outputsChanged_(std::move(outputsChanged)) {
+    DeviceSettingsContent(std::function<void(int)> outputsChanged, ostfstudio::HostAudio* host)
+        : outputsChanged_(std::move(outputsChanged)), hosted_(host != nullptr) {
+        if (host) {
+            devices_.addAudioDeviceType(std::make_unique<ostfstudio::DawDeviceType>(*host));
+            devices_.initialiseWithDefaultDevices(0, 2);
+            return;
+        }
         juce::PropertiesFile::Options options;
         options.applicationName = "OSTF Studio";
         options.filenameSuffix = ".settings";
@@ -64,6 +71,7 @@ public:
     AudioInputPeaks peaks;
 
     void prepareAudio() {
+        if (hosted_) return;
         if (selector_) return;
         // A control surface can already be open while the transport is stopped.
         // Restoring the saved audio setup must preserve those current MIDI inputs.
@@ -121,6 +129,7 @@ public:
     juce::AudioDeviceManager& devices() { return devices_; }
 
     bool enableTrackInput(const juce::MidiDeviceInfo& port) {
+        if (hosted_) return false;
         devices_.setMidiInputDeviceEnabled(port.identifier, true);
         if (!devices_.isMidiInputDeviceEnabled(port.identifier)) return false;
         if (selector_) { save(); return true; }
@@ -171,6 +180,7 @@ private:
         if (outputsChanged_) outputsChanged_(device && device->isOpen() ? device->getActiveOutputChannels().countNumberOfSetBits() : 0);
     }
     std::function<void(int)> outputsChanged_;
+    bool hosted_;
 
     juce::ApplicationProperties properties_;
     juce::AudioDeviceManager devices_;
@@ -181,10 +191,10 @@ private:
 };
 }
 
-DeviceSettingsWindow::DeviceSettingsWindow(std::function<void(int)> outputsChanged)
+DeviceSettingsWindow::DeviceSettingsWindow(std::function<void(int)> outputsChanged, ostfstudio::HostAudio* host)
     : DocumentWindow(TRANS("Audio / MIDI Settings"), juce::Colour(0xff1b2734), DocumentWindow::closeButton, false) {
     setUsingNativeTitleBar(true);
-    setContentOwned(new DeviceSettingsContent(std::move(outputsChanged)), true);
+    setContentOwned(new DeviceSettingsContent(std::move(outputsChanged), host), true);
     setResizable(true, true);
     setResizeLimits(460, 360, 1000, 1000);
     centreWithSize(getWidth(), getHeight());

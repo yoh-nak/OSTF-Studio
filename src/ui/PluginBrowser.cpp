@@ -236,7 +236,12 @@ bool PluginBrowser::startScanner() {
     const auto token = juce::Uuid().toString();
     scanStatus_ = statusFile(token);
     auto process = std::make_unique<juce::ChildProcess>();
-    juce::StringArray command {juce::File::getSpecialLocation(juce::File::currentExecutableFile).getFullPathName(),
+    const auto scanner = studioToolsExecutable();
+    if (!scanner.existsAsFile()) {
+        status_.setText(TRANS("Install OSTF Studio to scan new plug-ins."), juce::dontSendNotification);
+        return false;
+    }
+    juce::StringArray command {scanner.getFullPathName(),
                                "--scan-vst3", token};
     if (scanTarget_.isNotEmpty()) command.add(scanTarget_);
     if (!process->start(command, 0)) {
@@ -361,7 +366,7 @@ void PluginBrowser::registerBundledPlugins() {
     for (const auto& instrument : ostfstudio::stockInstruments) registerBundledVst3(plugins_, juce::String(instrument.name) + ".vst3");
     for (const auto& fx : ostfstudio::stockEffects) registerBundledVst3(plugins_, juce::String(fx.name) + ".vst3");
     catalog_ = pluginCatalog(plugins_.getTypes(),
-        juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory());
+        studioBundleDirectory(juce::File::getSpecialLocation(juce::File::currentExecutableFile)));
 }
 
 void PluginBrowser::refreshTree() {

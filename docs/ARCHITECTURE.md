@@ -1,5 +1,13 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+## Studio as a hosted instrument
+
+`OSTFStudioPlugin_VST3` shares the standalone `MainComponent` and `PreviewTransport`. Each processor owns its workspace for the lifetime of the instance. An editor window can detach while playback continues. A virtual stereo output feeds Studio's existing audio callbacks from the host's process block. Host MIDI events retain their sample offsets. The hosted device manager bypasses hardware setup. The instrument catalog excludes Studio itself to prevent recursive loading.
+
+The optional transport follower observes play, stop and position discontinuities on the audio thread. A message-thread timer applies transport changes and interprets elapsed seconds using the score tempo map. Start and seek have message-thread latency. Sample-accurate starts, host tempo automation, multi-output routing and offline bounce remain future work.
+
+DAW state contains a private versioned wrapper around an OSTFP session with packaged assets, nested instrument/effect state and the follow preference. These bytes are specific to the plug-in and add no fields to the portable OSTF format. The standalone executable provides new plug-in scanning and PDF import for the hosted workspace.
+
 ## OSTF 5.2 score and audio projection
 
 Studio and the bundled plug-in editors resolve the stored `workspaceTheme` against the same console finishes. Each plug-in window owns its JUCE look-and-feel and reads the view preference when constructed. The Scale Editor embeds colours from that finish in its HTML and gives the detached instrument picker its own look-and-feel. Theme selection stays in local view preferences.

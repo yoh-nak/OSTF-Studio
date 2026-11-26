@@ -10,6 +10,12 @@ OSTF Studio is a desktop music workstation for arranging, playing and editing Op
 
 ## OSTF 5.2 studio preview
 
+### Run Studio inside another DAW (development build)
+
+Load **OSTF Studio** on a stereo instrument track and open an `.ostf` or `.ostfp` in its editor. The arrangement, live session, piano roll and mixer use the same project as the standalone application. **Follow DAW transport** starts and stops the song with the host and follows its timeline position in seconds. The OSTF tempo map controls the song's tempo. Turn follow off to audition Studio independently.
+
+Saving the host project stores the Studio session, packaged audio and instrument/effect settings. The host receives the stereo mix and supplies MIDI input. Use real-time playback for this preview. The workstation VST3 is available in builds after Public Alpha 1.
+
 Scale Editor pairs short labels with action icons. Hover over a toolbar button or use Tab to read its description, including which score or file it changes. Press Escape to dismiss the hint.
 
 Bundled VST3 editors read Studio’s saved colour theme when their windows open. Their controls use the same console knobs and faders as Studio. Choose **Colour theme** in Studio, then reopen an editor to use the new finish. In Scale Editor’s instrument search, use the arrow keys to select a result, **Enter** to load it, or **Shift+Enter** to load it and hear C4 while keeping the list open.

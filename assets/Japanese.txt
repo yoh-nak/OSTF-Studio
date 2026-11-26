@@ -1285,3 +1285,7 @@ countries: jp
 "The score has changed. Read the Studio score again in Scale Editor." = "編集中の曲と読み込み時の版が一致しません。Scale Editorで現在の曲を読み直してください。"
 "Scale assignments updated." = "スケールを反映しました。"
 "No scale changes." = "スケールの変更はありません。"
+"Follow DAW transport" = "DAWの再生に追従"
+"Audio and MIDI are supplied by the host DAW." = "オーディオとMIDIの入出力はホストDAWで設定します。"
+"Install OSTF Studio to scan new plug-ins." = "プラグインの新規スキャンにはOSTF Studio本体をインストールしてください。"
+"Install OSTF Studio to import PDF pages." = "PDFの読み込みにはOSTF Studio本体をインストールしてください。"

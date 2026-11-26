@@ -40,7 +40,11 @@
 class MainComponent final : public juce::Component, public juce::TooltipClient, public juce::DragAndDropContainer,
                             public juce::FileDragAndDropTarget, public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::MidiInputCallback, private juce::Timer, private juce::ScrollBar::Listener {
 public:
-    MainComponent();
+    explicit MainComponent(ostfstudio::HostAudio* host = nullptr);
+    bool saveHostProject(juce::MemoryBlock&);
+    bool restoreHostProject(const void*, size_t);
+    void setHostAudioFormat(double rate, int block);
+    bool followHostTransport(bool playing, double seconds);
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
     void openSongFile(const juce::File& file, std::function<void(bool)> finished = {});
@@ -61,6 +65,8 @@ public:
     void filesDropped(const juce::StringArray&, int x, int y) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 private:
+    ostfstudio::HostAudio* hostAudio_;
+    ostfstudio::SessionMix sessionMix();
     ostfstudio::console::LookAndFeel consoleStyle_;
     const ostfstudio::console::Finish& finish() const { return ostfstudio::console::finishFor(pianoInspector_.theme); }
     bool isInterestedInDragSource(const SourceDetails& details) override;
@@ -176,7 +182,8 @@ private:
     void menuItemSelected(int item, int topLevelMenuIndex) override;
     void inspectOSTF();
     void newProject();
-    void adoptProject(std::unique_ptr<ostfstudio::OstfpPreview>, const juce::String&, bool, const juce::File&);
+    void adoptProject(std::unique_ptr<ostfstudio::OstfpPreview>, const juce::String&, bool, const juce::File&,
+                      const juce::ValueTree& hostState = {});
     bool openPreview(juce::InputStream& input, const juce::String& filename, bool plainScore = false, const juce::File& sourceFolder = {});
     void editSongInformation();
     void updateDocumentLabel();

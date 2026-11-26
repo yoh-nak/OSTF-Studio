@@ -27,6 +27,7 @@ public:
         return juce::Result::fail("Select a VST3 instrument other than Scale Editor.");
     }
     juce::Result select(const juce::PluginDescription& type,const juce::XmlElement* missing=nullptr) {
+        if (isStudioWorkstation(type)) return juce::Result::fail("Choose an audition instrument instead of the workstation.");
         const auto current = description();
         if (current && current->isDuplicateOf(type)) return juce::Result::ok();
         juce::PluginDescription original;

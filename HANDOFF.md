@@ -1,5 +1,17 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — host the workstation as a VST3
+
+Branch `feat/hosted-studio` adds a stereo VST3 instrument with the standalone arrangement, live session, mixers and editors. Open a score or project inside the editor. The editor may close while the DAW continues playing. The host saves an OSTFP snapshot with instrument and effect state. Host MIDI is routed to the active Studio input. DAW transport follow is enabled by default and can be switched off. The workstation keeps the OSTF tempo map.
+
+On Windows x64, build `ostf_hosted_studio_tests` in Release and run `ctest -C Release -R ostf_studio_external_host --output-on-failure` in the build tree. This independent host loads the actual VST3 bundle, recalls Paper Lantern Replies in a second instance with the editor closed, detects audio on the stereo bus, stops the host and checks for silence. The installer-choice tests cover the new composition-tool entry for both installer definitions.
+
+Scale Editor now finds adjacent portable instruments from the Windows module inside a VST3 bundle. Studio, Scale Editor and the racks exclude the workstation from their own instrument choices. Formant Singer retains English dictionary timing with punctuated display lyrics and katakana readings. Tests cover both matched and ambiguous readings.
+
+Windows x64 Release passed all 45 CTest cases and both installer-choice checks. The local portable preview contains 39 catalogued VST3 bundles with module metadata and license files. The staged standalone passed its startup smoke test and the staged workstation bundle passed the external-host test from its portable location.
+
+This iteration targets local Windows development. Commercial DAW interoperability, audible singing quality and macOS remain unverified for this build. The current transport follower uses the message thread. Sample-accurate loop starts, host tempo automation and offline rendering need separate work.
+
 ## 2026-11-27 — Public Alpha 1
 
 The owner withdrew the three experimental GitHub Releases and their 12 attached files. The experimental tags remain available for source history. The candidate previously called alpha 4 is now **OSTF Studio Public Alpha 1**, with a fresh tag name reserved for publication, `v1.0.0-public-alpha.1`. PR builds show `1.0.0-public-alpha.1-dev` in Studio and in both installers. The package receipt version remains numeric for upgrades. Review the Windows and macOS checks in [draft PR 7](https://github.com/yoh-nak/OSTF-Studio/pull/7). Publishing still requires explicit authorization.

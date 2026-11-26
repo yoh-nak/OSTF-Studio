@@ -57,6 +57,7 @@ class InstallerChoices(unittest.TestCase):
         self.assertEqual(groups["OSTF GM Sound Module"], "instruments")
         self.assertEqual(groups["OSTF Reverb"], "effects")
         self.assertEqual(groups["OSTF Scale Editor"], "composition")
+        self.assertEqual(groups["OSTF Studio"], "composition")
         self.assertEqual(groups["OSTF Wave Analyzer"], "utilities")
         self.assertEqual(groups["OSTF Stem Separator"], "utilities")
         self.check_choices(plugins)

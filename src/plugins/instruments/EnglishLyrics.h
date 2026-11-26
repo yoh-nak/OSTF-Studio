@@ -160,6 +160,13 @@ inline bool matchSungSyllable(const std::vector<Phone>& word, size_t begin, size
     return true;
 }
 
+inline juce::String englishLyricWord(const juce::String& text) {
+    static const auto punctuation = juce::String(".,!?;:\"()") + juce::String::charToString(0x2026)
+        + juce::String::charToString(0x201c) + juce::String::charToString(0x201d);
+    return text.trim().trimCharactersAtStart(punctuation).trimCharactersAtEnd(punctuation)
+        .replaceCharacter(0x2019, '\'').toLowerCase();
+}
+
 inline std::vector<Phone> sungReading(const juce::String& text, const juce::String& reading) {
     const auto& written = reading.isEmpty() ? text : reading;
     auto kana = lyricPhones(written);
@@ -177,9 +184,10 @@ inline std::vector<Phone> sungReading(const juce::String& text, const juce::Stri
                 if (supportKana(p)) p.vowelTiming = VowelTiming::support;
         return kana;
     }
-    if (!text.containsOnly("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'-")) return kana;
+    const auto spelling = englishLyricWord(text);
+    if (spelling.isEmpty() || !spelling.containsOnly("abcdefghijklmnopqrstuvwxyz'-")) return kana;
     std::vector<Phone> word, result;
-    if (!englishWord(text.toLowerCase(), word)) return kana;
+    if (!englishWord(spelling, word)) return kana;
     const auto starts = englishSyllableBoundaries(word);
     size_t next = 0;
     for (size_t s = 1; s < starts.size(); ++s)

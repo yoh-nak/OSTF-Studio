@@ -16,7 +16,8 @@ GROUPS = {
 
 
 def catalog():
-    plugins = [{"code": "Ogm1", "name": "OSTF GM Sound Module", "group": "instruments"}]
+    plugins = [{"code": "Ogm1", "name": "OSTF GM Sound Module", "group": "instruments"},
+               {"code": "Osd1", "name": "OSTF Studio", "group": "composition"}]
     for group in ("effects", "instruments"):
         path = ROOT / "src/plugins" / group / "catalog.json"
         for item in json.loads(path.read_text(encoding="utf-8")):

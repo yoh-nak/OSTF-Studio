@@ -1,3 +1,4 @@
+#include "plugins/studio/HostAudio.h"
 #include "ui/Notation.h"
 #include "plugins/scale/ScoreExchange.h"
 #include "ui/MainComponent.h"
@@ -466,7 +467,7 @@ private:
 };
 }
 
-MainComponent::MainComponent() {
+MainComponent::MainComponent(ostfstudio::HostAudio* host) : hostAudio_(host) {
     stockEffectChanges_.changed = [this] { markSessionEdited(); };
     setWantsKeyboardFocus(true);
     viewPreferences_.setStorageParameters(ostfstudio::viewSettingsOptions());
@@ -477,7 +478,7 @@ MainComponent::MainComponent() {
         historyMemoryMiB_ = std::clamp(config->getIntValue("historyMemoryMiB", 32), 8, 64);
         meterRefreshHz_ = std::clamp(config->getIntValue("meterRefreshHz", 24), 6, 24);
         interfaceScale_ = std::clamp(config->getIntValue("interfaceScale", 100), minInterfaceScale, maxInterfaceScale);
-        juce::Desktop::getInstance().setGlobalScaleFactor(interfaceScale_ / 100.f);
+        if (!hostAudio_) juce::Desktop::getInstance().setGlobalScaleFactor(interfaceScale_ / 100.f);
         timelineLaneMask_ = static_cast<unsigned>(config->getIntValue("timelineLanesWithLyrics",
             config->getIntValue("timelineLanes", 0xff) | laneBit(TimelineLane::displayLyrics) | laneBit(TimelineLane::pronunciation)));
         pianoInspector_.theme = ostfstudio::console::themeForKey(config->getValue("workspaceTheme"));
@@ -1170,10 +1171,11 @@ MainComponent::MainComponent() {
     fetchModels_.onClick = [this] { refreshAiModels(); };
     aiModel_ = viewPreferences_.getUserSettings()->getValue("studioChatGptModel");
     displayAiState(TRANS("ChatGPT disconnected"), 0xff773d36);
+    if (!hostAudio_)
         juce::MessageManager::callAsync([safe = juce::Component::SafePointer<MainComponent>(this)] { if (safe) safe->openController(false); });
     aiButton_.onClick = [this] { aiConnectionMenu(); };
     aiButton_.setTooltip(TRANS("Connect ChatGPT or choose the analysis model."));
-    if (viewPreferences_.getUserSettings()->getBoolValue("studioChatGptBrowserLogin", false)) updateAiConnection(AccountAction::restore);
+    if (!hostAudio_ && viewPreferences_.getUserSettings()->getBoolValue("studioChatGptBrowserLogin", false)) updateAiConnection(AccountAction::restore);
     addChildComponent(audioEditor_);
     addChildComponent(tempoEditor_);
     tempoEditor_.visibleBars = [this] { return arrangementScroll_.getCurrentRange(); };
@@ -1522,7 +1524,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         case 5: {
             menu.addItem(showDevices, TRANS("Audio / MIDI Devices..."));
             menu.addItem(aiConnections, TRANS("AI connections..."));
-            menu.addItem(controllerSettings, "Mackie Control...");
+            menu.addItem(controllerSettings, "Mackie Control...", !hostAudio_);
             juce::PopupMenu performance, entries, memory, refresh;
             for (int i = 0; i < int(std::size(historyLimits)); ++i) {
                 entries.addItem(historyCountMenu + i, juce::String(historyLimits[i]), true, historyLimits[i] == historyLimit_);
@@ -1740,6 +1742,10 @@ void MainComponent::menuItemSelected(int item, int) {
             refreshEditor();
             break;
         case showDevices:
+            if (hostAudio_) {
+                statusLabel_.setText(TRANS("Audio and MIDI are supplied by the host DAW."), juce::dontSendNotification);
+                break;
+            }
             ensureDeviceSettings().devices();
             showStudioWindow(*deviceSettings_, *this);
             break;
@@ -1785,7 +1791,7 @@ void MainComponent::menuItemSelected(int item, int) {
 
 DeviceSettingsWindow& MainComponent::ensureDeviceSettings() {
     if (!deviceSettings_)
-        deviceSettings_ = std::make_unique<DeviceSettingsWindow>([this](int count) { mixer_.setActiveOutputCount(count); refreshHardwareOutputs(); });
+        deviceSettings_ = std::make_unique<DeviceSettingsWindow>([this](int count) { mixer_.setActiveOutputCount(count); refreshHardwareOutputs(); }, hostAudio_);
     return *deviceSettings_;
 }
 
@@ -3341,7 +3347,7 @@ void MainComponent::openImportedSong(std::unique_ptr<ostfstudio::OstfpPreview> d
 }
 
 void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next, const juce::String& filename,
-                                 bool plainScore, const juce::File& sourceFolder) {
+                                 bool plainScore, const juce::File& sourceFolder, const juce::ValueTree& hostState) {
     ++songRequest_;
     stopTransport();
     attachPadInput(false);
@@ -3354,7 +3360,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     midiOutputs_.clear();
     monitorPending_ = false;
     midiDocument_ = filename.isNotEmpty() && sourceFolder != juce::File{} ? sourceFolder.getChildFile(filename).getFullPathName() : juce::String{};
-    if (midiDocument_.isNotEmpty()) {
+    if (!hostAudio_ && midiDocument_.isNotEmpty()) {
         auto stored = viewPreferences_.getUserSettings()->getXmlValue("midiRoutes" + juce::String::toHexString(midiDocument_.hashCode64()));
         if (stored) for (auto* row : stored->getChildWithTagNameIterator("OUTPUT"))
             midiOutputs_[row->getStringAttribute("track")] = {row->getStringAttribute("name"), row->getStringAttribute("port")};
@@ -3442,6 +3448,13 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
             trackControls_[i]->midiChannel = saved->midiRoutes[i].channel;
             trackControls_[i]->outputTrack = saved->midiRoutes[i].destination;
         }
+        for (const auto& entry : hostState) {
+            if (!entry.hasType("Instrument")) continue;
+            const int index = project_->trackIds.indexOf(entry["track"].toString());
+            const auto bytes = entry.getProperty("data");
+            if (juce::isPositiveAndBelow(index, int(trackControls_.size())) && bytes.getBinaryData())
+                trackControls_[size_t(index)]->inactiveInstrumentState = *bytes.getBinaryData();
+        }
         restoreInstrumentAssignments(*saved);
         for (std::size_t i = 0; i < std::min(trackControls_.size(), saved->midiRoutes.size()); ++i)
             updatePresetLabel(i);
@@ -3475,6 +3488,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     }
     stockEffectChanges_.reset();
     sessionEdited_ = false;
+    if (hostAudio_ && hostAudio_->projectChanged) hostAudio_->projectChanged();
     refreshWindowTitle();
     loadingOverlay_.dismiss();
     statusLabel_.setText(project_->title + " / " + juce::String(project_->bars.endBar - 1) + TRANS(" bars") +
@@ -3484,6 +3498,136 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
                                   : " / OSTF " + project_->sourceVersion + TRANS(" (saves as 5.0.0)")),
                          juce::dontSendNotification);
     repaint();
+}
+
+ostfstudio::SessionMix MainComponent::sessionMix() {
+    auto mix = mixer_.snapshot();
+    mix.trackOrder = arrangementOrder_;
+    for (const auto& track : trackControls_) {
+        mix.midiRoutes.push_back({track->midiChannel, track->outputTrack});
+        mix.instruments.push_back(track->instrumentAssignment);
+    }
+    auto saveChain = [&](const EffectChain& chain, juce::StringArray& ids, bool output, std::size_t index) {
+        for (const auto& slot : chain.slots) {
+            const auto key = ostfstudio::SessionMix::effectSlot(output, index, ids.size());
+            ids.add(slot.id);
+            if (!slot.initialParameters.empty()) {
+                auto& values = mix.insertParameters[key];
+                values = slot.initialParameters;
+                if (slot.effect) for (auto* p : slot.effect->getParameters())
+                    if (auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*>(p))
+                        if (auto it=values.find(hosted->getParameterID()); it!=values.end()) it->second=p->getValue();
+            }
+            if (project_->trackIds.contains(slot.keyTrackId)) mix.sidechainTracks[key]=slot.keyTrackId;
+            for (const auto& fx : ostfstudio::stockEffects) if (slot.id == fx.chainId()) {
+                juce::MemoryBlock state;
+                if (slot.effect) slot.effect->getStateInformation(state);
+                auto encoded = state.isEmpty() ? slot.savedState : state.toBase64Encoding();
+                if (encoded.isNotEmpty()) mix.stockEffectStates[key] = encoded;
+                break;
+            }
+        }
+    };
+    for (std::size_t i = 0; i < outputControls_.size(); ++i)
+        saveChain(outputControls_[i].effects, mix.outputEffects[i], true, i);
+    mix.recordCycle = editorCycle_;
+    mix.cycleEnabled = cycleButton_.getToggleState();
+    mix.captureChannels = captureChannels_;
+    mix.audioInputs = audioInputs_;
+    for (const auto kind : project_->trackKinds) mix.audioTracks.push_back(kind == ostfstudio::TrackKind::audio);
+    mix.trackEffects.resize(trackControls_.size());
+    for (std::size_t i = 0; i < trackControls_.size(); ++i)
+        saveChain(trackControls_[i]->effects, mix.trackEffects[i], false, i);
+    return mix;
+}
+
+bool MainComponent::saveHostProject(juce::MemoryBlock& state) {
+    if (!project_) return false;
+    juce::MemoryOutputStream output;
+    if (ostfstudio::writeOstfpPreview(*project_, sessionMix(), output).failed()) return false;
+    juce::ValueTree session("StudioSession");
+    session.setProperty("package", output.getMemoryBlock(), nullptr);
+    for (size_t i = 0; i < trackControls_.size(); ++i) {
+        const auto& track = *trackControls_[i];
+        juce::MemoryBlock data = track.inactiveInstrumentState;
+        if (track.instance) track.instance->getStateInformation(data);
+        if (!data.isEmpty()) {
+            juce::ValueTree entry("Instrument");
+            entry.setProperty("track", project_->trackIds[int(i)], nullptr);
+            entry.setProperty("data", data, nullptr);
+            session.appendChild(entry, nullptr);
+        }
+    }
+    const auto saveEffects = [&](bool outputBus, size_t index, const EffectChain& chain) {
+        for (size_t i = 0; i < chain.slots.size(); ++i) {
+            const auto& slot = chain.slots[i];
+            // Stock effects already travel inside the OSTFP production session.
+            if (std::any_of(std::begin(ostfstudio::stockEffects), std::end(ostfstudio::stockEffects),
+                            [&](const auto& fx) { return slot.id == fx.chainId(); })) continue;
+            juce::MemoryBlock data;
+            if (slot.effect) slot.effect->getStateInformation(data);
+            else data.fromBase64Encoding(slot.savedState);
+            if (data.isEmpty()) continue;
+            juce::ValueTree entry("Effect");
+            entry.setProperty("slot", ostfstudio::SessionMix::effectSlot(outputBus, index, int(i)), nullptr);
+            entry.setProperty("data", data, nullptr);
+            session.appendChild(entry, nullptr);
+        }
+    };
+    for (size_t i = 0; i < trackControls_.size(); ++i) saveEffects(false, i, trackControls_[i]->effects);
+    for (size_t i = 0; i < outputControls_.size(); ++i) saveEffects(true, i, outputControls_[i].effects);
+    juce::MemoryOutputStream dest(state, false);
+    session.writeToStream(dest);
+    return true;
+}
+
+bool MainComponent::restoreHostProject(const void* data, size_t bytes) {
+    if (bytes < 4) return false;
+    juce::ValueTree session;
+    juce::var package;
+    if (std::memcmp(data, "PK", 2) != 0) {
+        session = juce::ValueTree::readFromData(data, bytes);
+        if (!session.hasType("StudioSession")) return false;
+        package = session.getProperty("package");
+        if (!package.getBinaryData()) return false;
+        data = package.getBinaryData()->getData();
+        bytes = package.getBinaryData()->getSize();
+    }
+    juce::MemoryInputStream stream(data, bytes, false);
+    std::unique_ptr<ostfstudio::OstfpPreview> restored;
+    if (ostfstudio::readOstfpPreview(stream, restored).failed()) return false;
+    if (restored->savedMix) for (const auto& entry : session) {
+        if (!entry.hasType("Effect")) continue;
+        const auto value = entry.getProperty("data");
+        if (const auto* block = value.getBinaryData())
+            restored->savedMix->stockEffectStates[entry["slot"].toString()] = block->toBase64Encoding();
+    }
+    adoptProject(std::move(restored), {}, false, {}, session);
+    return true;
+}
+
+void MainComponent::setHostAudioFormat(double rate, int block) {
+    if (!hostAudio_ || (rate == hostAudio_->rate && block == hostAudio_->block)) return;
+    const bool playing = transportActive_;
+    cellPlayers_.clear();
+    stopTransport();
+    {
+        const juce::ScopedLock lock(hostAudio_->lock);
+        hostAudio_->rate = rate;
+        hostAudio_->block = block;
+    }
+    if (playing) startTransport(false);
+    else restartInputMonitor();
+}
+
+bool MainComponent::followHostTransport(bool playing, double seconds) {
+    if (!playing) { if (transportActive_) stopTransport(); return true; }
+    if (!project_ || !canEditTracks()) return false;
+    auto tick = std::max<juce::int64>(0, std::llround(project_->clock.tickAt(seconds)));
+    if (tick >= project_->playbackEndTick()) { if (transportActive_) stopTransport(); return true; }
+    locateTransport(tick);
+    if (!transportActive_) startTransport(false);
+    return transportActive_;
 }
 
 void MainComponent::saveDocument(SaveFormat format) {
@@ -3528,43 +3672,7 @@ void MainComponent::saveDocument(SaveFormat format) {
                     result = ostfstudio::writeSongMidi(*safe->project_, format == SaveFormat::midi0
                         ? ostfstudio::SmfFormat::merged : ostfstudio::SmfFormat::multitrack, channels, output);
                 } else if (output.openedOk()) {
-                    auto mix = safe->mixer_.snapshot();
-                    mix.trackOrder = safe->arrangementOrder_;
-                    for (const auto& track : safe->trackControls_) {
-                        mix.midiRoutes.push_back({track->midiChannel, track->outputTrack});
-                        mix.instruments.push_back(track->instrumentAssignment);
-                    }
-                    auto saveChain = [&](const EffectChain& chain, juce::StringArray& ids, bool output, std::size_t index) {
-                        for (const auto& slot : chain.slots) {
-                            const auto key = ostfstudio::SessionMix::effectSlot(output, index, ids.size());
-                            ids.add(slot.id);
-                            if (!slot.initialParameters.empty()) {
-                                auto& values = mix.insertParameters[key];
-                                values = slot.initialParameters;
-                                if (slot.effect) for (auto* p : slot.effect->getParameters())
-                                    if (auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*>(p))
-                                        if (auto it=values.find(hosted->getParameterID()); it!=values.end()) it->second=p->getValue();
-                            }
-                            if (safe->project_->trackIds.contains(slot.keyTrackId)) mix.sidechainTracks[key]=slot.keyTrackId;
-                            for (const auto& fx : ostfstudio::stockEffects) if (slot.id == fx.chainId()) {
-                                juce::MemoryBlock state;
-                                if (slot.effect) slot.effect->getStateInformation(state);
-                                auto encoded = state.isEmpty() ? slot.savedState : state.toBase64Encoding();
-                                if (encoded.isNotEmpty()) mix.stockEffectStates[key] = encoded;
-                                break;
-                            }
-                        }
-                    };
-                    for (std::size_t i = 0; i < safe->outputControls_.size(); ++i)
-                        saveChain(safe->outputControls_[i].effects, mix.outputEffects[i], true, i);
-                    mix.recordCycle = safe->editorCycle_;
-                    mix.cycleEnabled = safe->cycleButton_.getToggleState();
-                    mix.captureChannels = safe->captureChannels_;
-                    mix.audioInputs = safe->audioInputs_;
-                    for (const auto kind : safe->project_->trackKinds) mix.audioTracks.push_back(kind == ostfstudio::TrackKind::audio);
-                    mix.trackEffects.resize(safe->trackControls_.size());
-                    for (std::size_t i = 0; i < safe->trackControls_.size(); ++i)
-                        saveChain(safe->trackControls_[i]->effects, mix.trackEffects[i], false, i);
+                    auto mix = safe->sessionMix();
                     result = package ? ostfstudio::writeOstfpPreview(*safe->project_, mix, output)
                                      : ostfstudio::writeOstfPreview(*safe->project_, mix, file, output);
                 }
@@ -3606,6 +3714,7 @@ void MainComponent::parentHierarchyChanged() {
 }
 
 void MainComponent::markSessionEdited() {
+    if (hostAudio_ && hostAudio_->projectChanged) hostAudio_->projectChanged();
     if (sessionEdited_) return;
     sessionEdited_ = true;
     refreshWindowTitle();
@@ -3659,14 +3768,15 @@ void MainComponent::refreshTrackActions() {
     busAdd_.setEnabled(ready && mixer_.routing().busCount < ostfstudio::maxMixerBuses);
     returnAdd_.setEnabled(ready && mixer_.returnCount() < ostfstudio::maxMixerReturns);
     mixer_.setAddOutputAvailability(busAdd_.isEnabled(), returnAdd_.isEnabled());
-    uiSmaller_.setEnabled(interfaceScale_ > minInterfaceScale);
-    uiLarger_.setEnabled(interfaceScale_ < maxInterfaceScale);
+    uiSmaller_.setEnabled(!hostAudio_ && interfaceScale_ > minInterfaceScale);
+    uiLarger_.setEnabled(!hostAudio_ && interfaceScale_ < maxInterfaceScale);
     const auto percent = " (" + juce::String(interfaceScale_) + "%)";
     uiLarger_.setTooltip(TRANS("Zoom in interface") + percent);
     uiSmaller_.setTooltip(TRANS("Zoom out interface") + percent);
 }
 
 void MainComponent::changeInterfaceScale(int step) {
+    if (hostAudio_) return;
     interfaceScale_ = std::clamp(interfaceScale_ + step * 25, minInterfaceScale, maxInterfaceScale);
     juce::Desktop::getInstance().setGlobalScaleFactor(interfaceScale_ / 100.f);
     viewPreferences_.getUserSettings()->setValue("interfaceScale", interfaceScale_);
@@ -4234,7 +4344,7 @@ void MainComponent::showTrackInput(std::size_t i, juce::Component* anchor) {
     if (!anchor) anchor = &trackControls_[i]->input;
     if (project_->trackKinds[i] == ostfstudio::TrackKind::audio) { showAudioInput(i,anchor); return; }
     const auto route = midiRoutes_[id];
-    const auto ports = juce::MidiInput::getAvailableDevices();
+    const auto ports = hostAudio_ ? juce::Array<juce::MidiDeviceInfo>{} : juce::MidiInput::getAvailableDevices();
     juce::PopupMenu menu, channels;
     menu.addSectionHeader(TRANS("MIDI input"));
     menu.addItem(1, TRANS("All enabled inputs"), true, route.enabled && route.port.isEmpty());
@@ -4609,7 +4719,7 @@ void MainComponent::showTrackPluginMenu(std::size_t index) {
         }
         outputs.addSubMenu("#" + juce::String(int(i + 1)) + " " + juce::String::fromUTF8(project_->trackLanes[i].label) + " / " + target.instance->getName(), parts);
     }
-    const auto ports = juce::MidiOutput::getAvailableDevices();
+    const auto ports = hostAudio_ ? juce::Array<juce::MidiDeviceInfo>{} : juce::MidiOutput::getAvailableDevices();
     const auto id = project_->trackIds[int(index)];
     const auto stored = midiOutputs_.find(id);
     juce::PopupMenu hardware;
@@ -4995,7 +5105,7 @@ void MainComponent::discoverTrackPlugin(std::size_t index) {
 void MainComponent::loadTrackPlugin(std::size_t index, const juce::PluginDescription& description, bool restoring, juce::MemoryBlock state) {
     auto& strip = *trackControls_[index];
     if (strip.loading) return;
-    if (isOstfGenerator(description) || isOstfArranger(description)) {
+    if (isOstfGenerator(description) || isOstfArranger(description) || isStudioWorkstation(description)) {
         statusLabel_.setText(TRANS("This preview plug-in has been retired. Choose another instrument."), juce::dontSendNotification);
         return;
     }
@@ -7288,7 +7398,10 @@ void MainComponent::refreshHistoryControls() {
 }
 
 void MainComponent::rememberScoreEdit(juce::MemoryBlock before, const char* label) {
-    if (before != project_->sourceScore) refreshScaleEditors();
+    if (before != project_->sourceScore) {
+        refreshScaleEditors();
+        if (hostAudio_ && hostAudio_->projectChanged) hostAudio_->projectChanged();
+    }
     while (noteHistory_.size() > noteHistoryCursor_) noteHistory_.pop_back();
     if (!noteHistory_.empty() && noteHistory_.back().after != before) noteHistory_.clear();
     noteHistory_.push_back({std::move(before), project_->sourceScore});

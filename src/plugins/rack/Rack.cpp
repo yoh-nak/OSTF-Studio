@@ -103,7 +103,7 @@ public:
         const bool synth=instrument && newLayer;
         juce::OwnedArray<juce::PluginDescription> types;
         formats.getFormat(0)->findAllTypesForFile(types,file.getFullPathName());
-        for(auto* type:types) if(type->isInstrument==synth) {
+        for(auto* type:types) if(type->isInstrument==synth && !(type->name=="OSTF Studio" && type->manufacturerName=="OSTF Studio")) {
             Device d{*type,{},{}};
             auto result=load(d);
             if(result.failed()) return result;
@@ -201,7 +201,7 @@ private:
     juce::Result load(Device& device) {
         locateDevice(device.type);
         const auto& type=device.type;
-        if(type.pluginFormatName!="VST3" || type.name.containsIgnoreCase("OSTF Instrument Rack")
+        if(type.pluginFormatName!="VST3" || (type.name=="OSTF Studio" && type.manufacturerName=="OSTF Studio") || type.name.containsIgnoreCase("OSTF Instrument Rack")
             || type.name.containsIgnoreCase("OSTF Effect Rack") || type.fileOrIdentifier.containsIgnoreCase("OSTF Instrument Rack.vst3")
             || type.fileOrIdentifier.containsIgnoreCase("OSTF Effect Rack.vst3")) return juce::Result::fail("A rack cannot host another OSTF rack.");
         juce::String error;

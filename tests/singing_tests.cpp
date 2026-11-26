@@ -315,6 +315,9 @@ int main(int argc, char** argv) {
     const auto lights = sungReading("lights",readingFor("lights"));
     const auto handsReading = readingFor("hands");
     const auto hands = sungReading("hands",handsReading);
+    const auto punctuated = sungReading("\"Hands!\"", handsReading);
+    if (punctuated.size() != hands.size() || punctuated.back().english != 38
+        || sungReading("hand,s",handsReading).back().english != 0) return 88;
     const auto literalHands = lyricPhones(handsReading);
     const auto explicitStop = sungReading("hands",juce::String::fromUTF8("ハンドズ"));
     if (hands.size()!=3 || literalHands.size()!=3 || hands.front().sampleKey()!=literalHands.front().sampleKey()
