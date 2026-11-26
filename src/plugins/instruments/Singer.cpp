@@ -14,8 +14,11 @@ class SyllableVoice {
         const bool connected = key >= 0 && channel == ch && envelope > .01;
         const auto targetHz = juce::MidiMessage::getMidiNoteInHertz(pitch);
         const bool openVowel = accentPhone ? (accentPhone & 63) <= 15 : p.onset == vowelOnly;
+        // A tightly gated short phrase can have a few milliseconds between
+        // adjacent vowels even though the singer is still in the same breath.
+        const double joinGap = p.durationMs > 0 && p.durationMs <= 150 ? .012 : .003;
         const bool joinPitch = connected && waveReady && openVowel && p.delivery != scoop
-            && key != pitch && (!released || releaseFrames <= sr * .003);
+            && key != pitch && (!released || releaseFrames <= sr * joinGap);
         const auto glideMs = p.durationMs > 0 ? std::min(22., p.durationMs * .25) : 22.;
         glideFrames = joinPitch ? std::max(1, juce::roundToInt(sr * glideMs * .001)) : 0;
         glideOctaves = joinPitch ? std::log2(nominalHz / targetHz) : 0.;
@@ -82,6 +85,7 @@ class SyllableVoice {
                     // silence first, then shorten only the remaining consonant.
                     const double budget = .5 * samples;
                     position = std::clamp(frames - budget * attackStep, 0., double(recorded->attackFirst));
+                    if (legato && p.durationMs <= 150) position = std::min(frames, double(recorded->attackFirst));
                     attackStep = std::max(attackStep, (frames - position) / budget);
                 }
             }
@@ -108,12 +112,19 @@ class SyllableVoice {
             res.b = -pole * pole; res.drive = (1 - pole) * (i == 0 ? 1.0 : .65);
         }
     }
-    void stopNote() { released = true; }
+    void stopNote() {
+        if (!released) releaseLevel = envelope;
+        released = true;
+    }
     bool endingOn(int ch) const { return channel == ch && released && envelope > 0; }
     float sample(double sr, double bendRatio, float expression, float deliveryDepth, const juce::dsp::FFT& fft) {
-        envelope = std::clamp(envelope + (released ? -36.0 : 110.0) / sr, 0.0, 1.0);
+        if (released) {
+            const double t = std::min(1., ++releaseFrames * 36. / sr);
+            envelope = releaseLevel * (1. - t*t*(3. - 2.*t));
+        } else {
+            envelope = std::min(1., envelope + 110. / sr);
+        }
         if (released && envelope == 0) { key = channel = -1; return 0; }
-        if (released) ++releaseFrames;
         const double time = age++ / sr, held = noteAge++ / sr;
         if (phone.onset == closure) return 0;
         const double strength = deliveryDepth * phone.intensity / 127.0;
@@ -344,6 +355,7 @@ class SyllableVoice {
     double hz{}, phase{}, gain{}, envelope{}, position{}, transition{}, previousNoise{};
     double nominalHz{}, glideOctaves{};
     int glideFrames{}, releaseFrames{};
+    double releaseLevel{};
     unsigned noise = 1397;
     uint64_t age = 0, noteAge = 0;
     bool released = false, nasal = false, stop = false, voiced = false, fricative = false, vowelSample = false;

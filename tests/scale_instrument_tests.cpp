@@ -2,7 +2,13 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <iostream>
 
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
+juce::AudioProcessor* createScaleEditorWithPreferences(const juce::File&);
+
+static const juce::File& testLanguageFile() {
+    static const juce::TemporaryFile preference(".txt");
+    return preference.getFile();
+}
+static juce::AudioProcessor* createTestFilter(){return createScaleEditorWithPreferences(testLanguageFile());}
 
 static int testLinkedSave(const juce::File& source) {
     juce::TemporaryFile copy(".ostf");
@@ -13,7 +19,7 @@ static int testLinkedSave(const juce::File& source) {
     production->setProperty("testDecimal","EXACT_DECIMAL_FIXTURE");
     const juce::String exactDecimal="0.123456789012345678901";
     if (!file.replaceWithText(juce::JSON::toString(fixture).replace("\"EXACT_DECIMAL_FIXTURE\"",exactDecimal))) return 70;
-    std::unique_ptr<juce::AudioProcessor> processor(createPluginFilter());
+    std::unique_ptr<juce::AudioProcessor> processor(createTestFilter());
     std::unique_ptr<juce::AudioProcessorEditor> editor(processor->createEditorAndMakeActive());
     auto* drop=dynamic_cast<juce::FileDragAndDropTarget*>(editor.get());
     if (!drop) return 71;
@@ -80,7 +86,7 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
     juce::WebBrowserComponent* browser=nullptr;
     auto open=[&](const juce::MemoryBlock& bytes) {
         editor.reset();
-        processor.reset(createPluginFilter());
+        processor.reset(createTestFilter());
         processor->setStateInformation(bytes.getData(),int(bytes.getSize()));
         editor.reset(processor->createEditorAndMakeActive());
         editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
@@ -89,6 +95,8 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
         return browser!=nullptr;
     };
     if (!open(initial)) return 50;
+    auto language=[&]{return dynamic_cast<juce::ComboBox*>(editor->findChildWithID("scale-language"));};
+    if (!language() || language()->getSelectedId()!=1 || testLanguageFile().existsAsFile()) return 75;
     struct Check : juce::Timer {
         std::function<void()> step;
         void timerCallback() override { step(); }
@@ -124,6 +132,11 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
                 return true;
             })())JS");
         } else if (stage==1) {
+            language()->setSelectedId(3,juce::sendNotificationSync);
+            checkPage(R"JS(document.documentElement.lang==='ja' && document.querySelector('#save').textContent==='\u4fdd\u5b58'
+                && document.querySelector('#songTitle').textContent==='Save'
+                && document.querySelector('#textArea').value==='\u672a\u78ba\u5b9a <draft> &')JS");
+        } else if (stage==2) {
             juce::MemoryBlock bytes;
             processor->getStateInformation(bytes);
             const auto xml=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
@@ -131,19 +144,22 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
             if (!draft || !juce::JSON::parse(draft->getAllSubText()).hasProperty("text")) return;
             if (!juce::JSON::parse(xml->getChildByName("Score")->getAllSubText())["harmony"]["scales"].size()) return;
             if (open(bytes)) ++stage;
-        } else if (stage==2) {
+        } else if (stage==3) {
             checkPage(R"JS((()=>{
                 const app=window.ScaleAdviserApp,s=app?.state;
-                return !!(s?.textDirty && s.view==='text' && s.doc.harmony.scales.length===0 &&
+                return !!(document.documentElement.lang==='ja' && s?.textDirty && s.view==='text' && s.doc.harmony.scales.length===0 &&
                     s.selected===s.doc.harmony.chords[1].id && s.reference && s.reference===s.scale &&
                     document.querySelector('#textArea').value==='\u672a\u78ba\u5b9a <draft> &');
             })())JS");
-        } else if (stage==3) {
+        } else if (stage==4) {
+            language()->setSelectedId(2,juce::sendNotificationSync);
+            checkPage("document.documentElement.lang==='en' && document.querySelector('#save').textContent==='Save'");
+        } else if (stage==5) {
             for (auto* child:editor->getChildren())
                 if (auto* b=dynamic_cast<juce::TextButton*>(child); b && b->getButtonText()=="Apply scales") {
                     b->onClick(); ++stage; break;
                 }
-        } else if (stage==4) {
+        } else if (stage==6) {
             juce::MemoryBlock bytes;
             processor->getStateInformation(bytes);
             const auto xml=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
@@ -152,7 +168,7 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
             if (!draft || juce::JSON::parse(draft->getAllSubText()).hasProperty("score")) return;
             draft->setAttribute("source","stale");
             juce::AudioProcessor::copyXmlToBinary(*xml,bytes);
-            std::unique_ptr<juce::AudioProcessor> stale(createPluginFilter());
+            std::unique_ptr<juce::AudioProcessor> stale(createTestFilter());
             stale->setStateInformation(bytes.getData(),int(bytes.getSize()));
             stale->getStateInformation(bytes);
             const auto checked=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
@@ -163,11 +179,12 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
             }
             processor->setStateInformation(initial.getData(),int(initial.getSize()));
             ++stage;
-        } else if (stage==5) {
+        } else if (stage==7) {
             browser=dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
             if (browser) checkPage("Boolean(window.ScaleAdviserApp?.state.doc?.harmony.scales.length && !window.ScaleAdviserApp.state.textDirty)");
         } else {
-            result=0;
+            language()->setSelectedId(1,juce::sendNotificationSync);
+            result=testLanguageFile().loadFileAsString()=="system" ? 0 : 76;
             juce::MessageManager::getInstance()->stopDispatchLoop();
         }
     };
@@ -180,6 +197,7 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     if(argc!=3 && argc!=4) return 1;
+    if (!(argc==4 && juce::String(argv[3])=="--recall") && !testLanguageFile().replaceWithText("en")) return 75;
     const juce::File file{juce::String::fromUTF8(argv[1])};
     juce::VST3PluginFormat format;
     juce::OwnedArray<juce::PluginDescription> types;
@@ -200,14 +218,20 @@ int main(int argc,char** argv) {
     }
     const bool auditionOnly=argc==4 && juce::String(argv[3])=="--audition";
     juce::XmlElement state("ScaleEditor");
-    state.createNewChildElement("Score")->addTextElement(juce::File(juce::String::fromUTF8(argv[2])).loadFileAsString());
+    auto fixtureText=juce::File(juce::String::fromUTF8(argv[2])).loadFileAsString();
+    if (argc==4 && juce::String(argv[3])=="--recall") {
+        auto fixture=juce::JSON::parse(fixtureText);
+        fixture["song"].getDynamicObject()->setProperty("title","Save");
+        fixtureText=juce::JSON::toString(fixture);
+    }
+    state.createNewChildElement("Score")->addTextElement(fixtureText);
     auto* nested=state.createNewChildElement("Instrument");
     nested->setAttribute("state",juce::MemoryBlock{}.toBase64Encoding());
     nested->addChildElement(instrument->createXml().release());
     juce::MemoryBlock bytes;
     juce::AudioProcessor::copyXmlToBinary(state,bytes);
     if (argc==4 && juce::String(argv[3])=="--recall") return testWorkspaceRecall(bytes);
-    std::unique_ptr<juce::AudioProcessor> processor(createPluginFilter());
+    std::unique_ptr<juce::AudioProcessor> processor(createTestFilter());
     if(!processor->acceptsMidi() || processor->getTotalNumInputChannels()!=0) return 3;
     processor->setStateInformation(bytes.getData(),int(bytes.getSize()));
     processor->setRateAndBufferSizeDetails(48000,256);
@@ -308,7 +332,7 @@ int main(int argc,char** argv) {
         const auto sized=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
         if (!sized || sized->getIntAttribute("editorWidth")!=920 || sized->getIntAttribute("editorHeight")!=640) return 47;
         {
-            std::unique_ptr<juce::AudioProcessor> recalled(createPluginFilter());
+            std::unique_ptr<juce::AudioProcessor> recalled(createTestFilter());
             recalled->setStateInformation(bytes.getData(),int(bytes.getSize()));
             std::unique_ptr<juce::AudioProcessorEditor> reopened(recalled->createEditorAndMakeActive());
             const auto* display=juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();

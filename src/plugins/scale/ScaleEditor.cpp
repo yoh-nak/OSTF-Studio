@@ -4,6 +4,7 @@
 #include "InstrumentRack.h"
 #include "InstrumentPicker.h"
 #include "ScaleAssets.h"
+#include "ui/StudioLanguage.h"
 #include <juce_javascript/juce_javascript.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -22,7 +23,8 @@ public:
 class Processor final : public juce::AudioProcessor, public juce::VST3ClientExtensions,
                         public juce::ChangeBroadcaster {
 public:
-    Processor() : AudioProcessor(BusesProperties().withOutput("Output",juce::AudioChannelSet::stereo(),true)), rack(*this) {}
+    explicit Processor(juce::File preferences) : AudioProcessor(BusesProperties().withOutput("Output",juce::AudioChannelSet::stereo(),true)), languageFile(std::move(preferences)), rack(*this) {}
+    const juce::File languageFile;
     const juce::String getName() const override { return "OSTF Scale Editor"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }
@@ -229,6 +231,19 @@ public:
 class Editor final : public juce::AudioProcessorEditor, public juce::FileDragAndDropTarget, private juce::ChangeListener, private juce::Timer {
 public:
     explicit Editor(Processor& p) : AudioProcessorEditor(p), proc(p) {
+        language.setComponentID("scale-language");
+        addAndMakeVisible(language);
+        languageChoice = proc.languageFile.loadFileAsString().trim();
+        if (languageChoice != "en" && languageChoice != "ja") languageChoice = "system";
+        language.onChange = [this] {
+            const auto id = language.getSelectedId();
+            const juce::String choice = id == 2 ? "en" : id == 3 ? "ja" : "system";
+            const bool saved = proc.languageFile.getParentDirectory().createDirectory().wasOk()
+                && proc.languageFile.replaceWithText(choice);
+            if (saved) languageChoice = choice;
+            applyLanguage();
+            if (!saved) status.setText(words("Could not save the language setting.", "言語設定を保存できませんでした。"),juce::dontSendNotification);
+        };
         for (juce::Component* c : std::initializer_list<juce::Component*>{&song,&chords,&roots,&modes,&apply,&open,&refresh,&save,&drag,&status,&back,&forward,&strategy,&lens,&genre,&choices,&details,&notes,&audition,&compare,&stop,&loadInstrument,&showInstrument})
             addAndMakeVisible(c);
         for (juce::Component* c : std::initializer_list<juce::Component*>{&mapView,&repeats,&rangeLabel,&undo})
@@ -280,7 +295,7 @@ public:
             const bool show=!source.isVisible();
             source.setVisible(show);
             if (show) { source.setText(proc.document.text,false); source.toFront(false); }
-            sourceToggle.setButtonText(show ? "Visual" : "OSTF text"); updateInspector(); resized();
+            sourceToggle.setButtonText(show ? words("Visual","ビジュアル") : words("OSTF text","OSTFテキスト")); updateInspector(); resized();
         };
         timeline.choose=[this](int i){chords.setSelectedItemIndex(i,juce::sendNotificationSync);};
         candidates.choose=[this](int i){choices.setSelectedItemIndex(i,juce::sendNotificationSync);};
@@ -370,6 +385,7 @@ public:
         };
         refresh.onClick = [this]{ requestLoad(proc.offered); };
         proc.addChangeListener(this);
+        applyLanguage();
         sync();
         juce::Point<int> size;
         { const juce::ScopedLock lock(proc.stateLock); size=proc.lastEditorSize; seenStateVersion=proc.restoredStateVersion; }
@@ -399,7 +415,7 @@ public:
             proc.lastEditorSize={getWidth(),getHeight()};
         }
         auto area=getLocalBounds().reduced(12);
-        auto head=area.removeFromTop(32); sourceToggle.setBounds(head.removeFromRight(95)); returnWorkspace.setBounds(head.removeFromRight(140).reduced(1)); fullWorkspace.setBounds(head.removeFromRight(145).reduced(1)); song.setBounds(head);
+        auto head=area.removeFromTop(32); language.setBounds(head.removeFromRight(145).reduced(1)); sourceToggle.setBounds(head.removeFromRight(95)); returnWorkspace.setBounds(head.removeFromRight(140).reduced(1)); fullWorkspace.setBounds(head.removeFromRight(145).reduced(1)); song.setBounds(head);
         auto files=area.removeFromTop(32);
         open.setBounds(files.removeFromLeft(100).reduced(1)); refresh.setBounds(files.removeFromLeft(145).reduced(1));
         save.setBounds(files.removeFromLeft(99).reduced(1)); redo.setBounds(files.removeFromRight(59).reduced(1));
@@ -439,6 +455,45 @@ public:
     }
     void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff111923));}
 private:
+    juce::String words(const char* en,const char* ja) const {
+        return juce::String::fromUTF8(japanese ? ja : en);
+    }
+    void applyLanguage() {
+        japanese = ostfstudio::resolvedLanguage(languageChoice,juce::SystemStats::getDisplayLanguage())=="ja";
+        language.clear(juce::dontSendNotification);
+        language.setTitle(words("Settings · Display language","設定・表示言語"));
+        language.setTooltip(language.getTitle());
+        language.getRootMenu()->addSectionHeader(language.getTitle());
+        language.addItem(words("Language: System","言語：OSに合わせる"),1);
+        language.addItem("Language: English",2); language.addItem(juce::String::fromUTF8("言語：日本語"),3);
+        language.setSelectedId(languageChoice=="en" ? 2 : languageChoice=="ja" ? 3 : 1,juce::dontSendNotification);
+        auto caption=[this](juce::Button& b,const char* en,const char* ja){ b.setButtonText(words(en,ja)); };
+        caption(open,"Open OSTF","OSTFを開く"); caption(refresh,"Read Studio score","Studioから読み込む");
+        caption(save,"Save OSTF...","OSTFを保存…"); caption(drag,"Drag OSTF to Studio","Studioへドラッグ");
+        caption(autoSet,"Auto-set song","曲全体に自動設定"); caption(undo,"Undo apply","適用を取り消す"); caption(redo,"Redo","やり直す");
+        caption(apply,"Assign scale","スケールを設定"); caption(nextUnassigned,"Next unassigned","次の未設定コード");
+        caption(loadInstrument,"Instruments...","音源を選択…"); caption(testSound,"Test sound","テスト発音"); caption(previewMidiOut,"Preview MIDI out","試聴をMIDI出力");
+        caption(audition,"Hear candidate","候補を試聴"); caption(compare,"A/B with reference","基準音と比較"); caption(stop,"Stop","停止");
+        caption(flowTab,"Scale Flow","スケールの流れ"); caption(connectionsTab,"Connections","つながり"); caption(reviewTab,"Review","確認");
+        caption(pin,"Pin A","Aを固定"); caption(resetA,"Reset A","Aをリセット"); caption(repeats,"Include matching progressions","同じ進行を含める");
+        fullWorkspace.setButtonText(workspace && workspace->isVisible() ? words("Native controls","簡易エディター") : words("Full editor","詳細エディター"));
+        returnWorkspace.setButtonText(workspaceFile && !workspace ? words("Import edited scales","編集結果を読み込む") : words("Apply scales","スケールを適用"));
+        sourceToggle.setButtonText(source.isVisible()?words("Visual","ビジュアル"):words("OSTF text","OSTFテキスト"));
+        timelineTitle.setText(words("Chord timeline","コード進行"),juce::dontSendNotification);
+        candidateTitle.setText(words("Compare scales","スケールを比較"),juce::dontSendNotification);
+        inspectorTitle.setText(words("Scale inspector","スケールの詳細"),juce::dontSendNotification);
+        auto items=[this](juce::ComboBox& box,std::initializer_list<const char*> en,std::initializer_list<const char*> ja){
+            int id=1;
+            for (auto label : japanese ? ja : en) box.changeItemText(id++,juce::String::fromUTF8(label));
+        };
+        items(inspectMode,{"Scale inspector","Compare A / B","Note Fit"},{"スケールの詳細","A / B 比較","音の適合度"});
+        items(scopeMode,{"Chord / drag range","Section","Whole song"},{"コード／選択範囲","構成","曲全体"});
+        items(strategy,{"Balanced","Smooth voice leading","Tension / resolution"},{"バランス","滑らかな声部進行","緊張と解決"});
+        items(lens,{"Chord scale","Key and mode","Performance"},{"コードスケール","調とモード","演奏"});
+        updateInstrument();
+        if (!chords.getNumItems()) status.setText(words("Open an OSTF score with a chord track.","コード進行を含むOSTFを開いてください。"),juce::dontSendNotification);
+        shownLanguage.clear();
+    }
     struct Drag final : juce::TextButton {
         Drag():TextButton("Drag OSTF to Studio"){}
         std::function<void()> beginExport;
@@ -468,7 +523,7 @@ private:
             redoDocument.reset();
             undo.setEnabled(false);
             redo.setEnabled(false);
-            fullWorkspace.setButtonText("Full editor");
+            fullWorkspace.setButtonText(words("Full editor","詳細エディター"));
             returnWorkspace.setEnabled(false);
         }
         sync(); showWorkspaceForFirstScore();
@@ -561,7 +616,7 @@ private:
         if(rows.size()) selectCandidate();
         else { notes.setText({},juce::dontSendNotification); details.setText("No ranked candidates for this chord.",juce::dontSendNotification); }
         audition.setEnabled(rows.size()>0); compare.setEnabled(rows.size()>0);
-        status.setText(lastError.isNotEmpty()?lastError:label.isEmpty() ? "Select a candidate or set a custom scale below." : "Assigned: "+label,juce::dontSendNotification);
+        status.setText(lastError.isNotEmpty()?lastError:label.isEmpty() ? words("Select a candidate or set a custom scale below.","候補を選ぶか、下でスケールを指定してください。") : words("Assigned: ","設定済み：")+label,juce::dontSendNotification);
     }
     juce::var call(const juce::Identifier& function,std::initializer_list<juce::var> args) {
         auto result=engineStatus;
@@ -649,11 +704,11 @@ private:
         auto events=juce::JSON::parse(call("listenTo",{choices.getSelectedItemIndex(),ab}).toString());
         if(!events.size()) { status.setText(lastError.isNotEmpty()?lastError:"No phrase for this chord.",juce::dontSendNotification); return; }
         proc.rack.audition(events);
-        status.setText(ab?"Playing reference, then candidate.":"Playing candidate.",juce::dontSendNotification);
+        status.setText(ab?words("Playing reference, then candidate.","基準音、候補の順に試聴中です。"):words("Playing candidate.","候補を試聴中です。"),juce::dontSendNotification);
     }
     void chooseInstrument() {
         if (pickerBox) { pickerBox->toFront(true); return; }
-        auto picker=std::make_unique<InstrumentPicker>(proc.rack.description());
+        auto picker=std::make_unique<InstrumentPicker>(proc.rack.description(),japanese);
         const auto self=juce::Component::SafePointer<Editor>(this);
         picker->onChoose=[self](InstrumentChoice c) {
             if (!self) return;
@@ -684,7 +739,7 @@ private:
             });
     }
     void updateInstrument() {
-        showInstrument.setButtonText(proc.rack.name());
+        showInstrument.setButtonText(proc.rack.hasInstrument() ? proc.rack.name() : words("Reference tone","基準音"));
         showInstrument.setEnabled(proc.rack.hasInstrument());
     }
     void sync() {
@@ -724,7 +779,7 @@ private:
         refresh.setEnabled(proc.offered.isNotEmpty()); save.setEnabled(!proc.document.text.isEmpty()); drag.setEnabled(save.isEnabled());
         back.setEnabled(false);forward.setEnabled(false);audition.setEnabled(ready);compare.setEnabled(ready);
         updateInstrument();
-        if(ready) selectChord(); else status.setText("Open an OSTF score with a chord track.",juce::dontSendNotification);
+        if(ready) selectChord(); else status.setText(words("Open an OSTF score with a chord track.","コード進行を含むOSTFを開いてください。"),juce::dontSendNotification);
         if(proc.rackError.isNotEmpty()) status.setText(proc.rackError,juce::dontSendNotification);
         drag.beginExport=[this] { beginStudioDrag(); };
     }
@@ -802,7 +857,12 @@ private:
     }
     int shownPitchClasses=-1, shownMidiRoute=-1;
     void timerCallback() override {
-        if (!workspace || !workspace->isShowing()) { shownPitchClasses=shownMidiRoute=-1; return; }
+        if (!workspace || !workspace->isShowing()) { shownPitchClasses=shownMidiRoute=-1; shownLanguage.clear(); return; }
+        const juce::String locale=japanese ? "ja" : "en";
+        if (locale!=shownLanguage) {
+            workspace->emitEventIfBrowserIsVisible("ostfScaleLanguage",locale);
+            shownLanguage=locale;
+        }
         const int route=proc.rack.previewMidiOut() ? 1 : 0;
         if (route!=shownMidiRoute) {
             workspace->emitEventIfBrowserIsVisible("ostfScaleMidiRoute",route);
@@ -817,7 +877,7 @@ private:
     void openFullWorkspace() {
         if (workspace && workspace->isVisible()) {
             workspace->setVisible(false);
-            fullWorkspace.setButtonText("Full editor");
+            fullWorkspace.setButtonText(words("Full editor","詳細エディター"));
             returnWorkspace.setEnabled(false);
             return;
         }
@@ -826,9 +886,10 @@ private:
         if(snapshot.isEmpty()) return;
         if (workspace && workspaceHash==digest(snapshot)) {
             workspace->setVisible(true); workspace->toFront(false);
-            fullWorkspace.setButtonText("Native controls"); returnWorkspace.setEnabled(true); return;
+            fullWorkspace.setButtonText(words("Native controls","簡易エディター")); returnWorkspace.setEnabled(true); return;
         }
         auto html=juce::String::fromUTF8(ScaleAssets::ScaleWorkspace_html,ScaleAssets::ScaleWorkspace_htmlSize)
+            .replace("<html lang=\"en\">",japanese ? "<html lang=\"ja\">" : "<html lang=\"en\">")
             .replace("<!--STUDIO_SCORE-->",juce::Base64::toBase64(snapshot));
         using Browser = juce::WebBrowserComponent;
         auto options = Browser::Options{}.withKeepPageLoadedWhenBrowserIsHidden();
@@ -850,7 +911,7 @@ private:
                     if (self && self->workspaceGeneration==page) self->rememberWorkspace(patch);
                 })
                 .withEventListener("ostfScaleInputReady", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
-                    if (self) self->shownPitchClasses=self->shownMidiRoute=-1;
+                    if (self) { self->shownPitchClasses=self->shownMidiRoute=-1; self->shownLanguage.clear(); }
                 })
                 .withEventListener("ostfScaleOpen", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
                     if (self) self->choose(false);
@@ -878,8 +939,8 @@ private:
             addAndMakeVisible(*workspace); resized();
             workspace->goToURL(Browser::getResourceProviderRoot());
             workspaceHash=digest(snapshot);
-            fullWorkspace.setButtonText("Native controls");
-            returnWorkspace.setButtonText("Apply scales"); returnWorkspace.setEnabled(true);
+            fullWorkspace.setButtonText(words("Native controls","簡易エディター"));
+            returnWorkspace.setButtonText(words("Apply scales","スケールを適用")); returnWorkspace.setEnabled(true);
             return;
         }
        #endif
@@ -888,7 +949,7 @@ private:
             status.setText("Could not open the local Scale Editor in your browser.",juce::dontSendNotification); return;
         }
         workspaceFile=std::move(file); workspaceHash=digest(snapshot);
-        returnWorkspace.setButtonText("Import edited scales");
+        returnWorkspace.setButtonText(words("Import edited scales","編集結果を読み込む"));
         returnWorkspace.setEnabled(true);
     }
     void importFullWorkspace() {
@@ -1017,6 +1078,9 @@ private:
     }
     using ChangeDetails = juce::AudioProcessorListener::ChangeDetails;
     Processor& proc;
+    juce::ComboBox language;
+    juce::String languageChoice,shownLanguage;
+    bool japanese=false;
     juce::JavascriptEngine js;
     juce::Result engineStatus=juce::Result::ok();
     juce::String loadedText,lastError;
@@ -1067,4 +1131,12 @@ private:
 };
 juce::AudioProcessorEditor* Processor::createEditor(){return new Editor(*this);}
 }
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter(){return new Processor;}
+juce::AudioProcessor* createScaleEditorWithPreferences(const juce::File& file){return new Processor(file);}
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter(){
+    juce::PropertiesFile::Options location;
+    location.applicationName="Scale Editor Language";
+    location.folderName="OSTF Studio";
+    location.filenameSuffix=".txt";
+    location.osxLibrarySubFolder="Application Support";
+    return createScaleEditorWithPreferences(location.getDefaultFile());
+}

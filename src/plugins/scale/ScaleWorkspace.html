@@ -2189,7 +2189,70 @@ function initSidebarResize(){
  });
  window.addEventListener('resize',()=>setSidebarWidth(state.sidebarWidth,false,true));
 }
-function status(s,kind=''){ $('status').textContent=s;$('status').className=kind;}
+// Capture only the original interface. Song titles, tracks, chord names and the
+// editable OSTF text are inserted later and never pass through this catalogue.
+const japaneseUI = {
+ 'Edit scales, keys and modes in OSTF.':'OSTFのスケール・調・モードを編集',
+ 'Open…':'開く…','Save':'保存','Save As…':'名前を付けて保存…','AUTO-SET SONG':'曲全体に自動設定',
+ 'Undo':'取り消す','Redo':'やり直す','Demos':'デモ','Help':'ヘルプ','VISUAL':'ビジュアル','OSTF TEXT':'OSTFテキスト',
+ '01 CHORD TIMELINE':'01 コード進行','Collapse others':'他を折りたたむ','Analyze':'分析',
+ 'Sections fold independently. Solid scales are assigned; suggestions remain uncommitted.':'構成ごとに開閉できます。実線は設定済み、点線は候補です。',
+ '✓ Assigned':'✓ 設定済み','·· Suggested only':'·· 候補','Drop a .ostf file anywhere':'ここにOSTFファイルをドロップ',
+ 'Write to':'書き込み先','Preferred':'推奨','Strict':'厳密','02 MUSICAL LENS':'02 分析の視点',
+ 'CHORD SCALE':'コードスケール','Chord tones · resolution':'コード構成音と解決','KEY & MODE':'調とモード',
+ 'Tonal center · continuity':'調の中心と連続性','PERFORMANCE':'演奏','Phrase vocabulary · color':'フレーズと色彩',
+ 'SONG STYLE':'曲のスタイル','Auto (OSTF)':'自動（OSTF）','General / neutral':'標準',
+ 'Playing direction':'演奏の方向性','Balanced':'バランス','Smooth':'滑らか','Color & Tension':'色彩と緊張',
+ 'Harmonic fit + useful resolution':'和声との適合と解決','Shared notes + gentle transitions':'共通音と滑らかな移行',
+ 'Deliberate color followed by resolution':'緊張から解決へ','03 COMPARE SCALES':'03 スケールの比較',
+ 'SET SCALE':'スケールを設定','All':'すべて','Inside':'調内','Color':'色彩','Tension':'テンション',
+ '▶ Scale':'▶ スケール','▶ Chord → next':'▶ 次のコードへ','▶ Resolve':'▶ 解決を試聴','LISTEN LAB':'試聴',
+ 'Same musical context · different pitch colors':'同じ進行で響きを比較','▶ A / B COMPARE':'▶ A / B 比較',
+ 'Find Contrast':'響きの異なる候補','■ Stop':'■ 停止','Apply B':'Bを適用','Pin B as A':'BをAに固定','Pin B as new A':'Bを新しいAに固定',
+ 'Reset A':'Aをリセット','Chord tone':'コード構成音','Color tone':'色彩音','Sustain / passing caution':'持続音・経過音に注意',
+ 'MELODIC CONNECTIONS · SELECTED → NEXT CHORD':'次のコードへの旋律のつながり','Why this choice?':'候補の理由','Possible voice leading':'声部進行の例',
+ 'More theory & analysis limits':'理論と分析の範囲','04 SCALE WORKSPACE':'04 スケール編集',
+ 'Harmonic reference · performance · song structure':'和声・演奏・曲構成','Next issue →':'次の確認箇所 →','Scale Map':'スケールマップ',
+ 'Scale Flow':'スケールの流れ','Connections':'つながり','Review':'確認','Note Fit':'音の適合度','Progressions':'進行',
+ 'SONG SCALE MAP':'曲のスケールマップ','Drag bars, choose a musical vocabulary, and preview exactly what OSTF will store.':'小節をドラッグし、選択範囲に書き込むスケールを確認できます。',
+ 'TIME SCOPE':'適用範囲','Whole song':'曲全体','Section':'構成','Chord':'コード','Drag range':'ドラッグで選択',
+ 'Key / modal context':'調・モード','Stored harmony / track':'設定済みの和声・トラック','Selected':'選択中','Planned write':'書き込み予定',
+ 'SELECTED SCALE':'選択したスケール','EXISTING ASSIGNMENTS':'既存の設定','Keep & fill gaps':'空き範囲に設定','Replace in selection':'選択範囲を置換',
+ 'Preview only until Apply; OSTF TEXT shows the precise tick ranges after applying.':'適用前に範囲を確認できます。適用後の位置はOSTFテキストで確認できます。',
+ 'Remove exact scope':'この範囲の設定を削除','SET SCALE TO RANGE':'選択範囲に設定',
+ 'WHOLE SONG · click to jump':'曲全体・クリックで移動','CHROMATIC RELATIONSHIP MATRIX':'半音ごとの関係',
+ '05 · NOTE FIT LAB':'05 音の適合度','SONG NOTE-FIT MAP':'曲全体の適合度','Inside selected scale':'スケール内','Possible chromatic approach':'半音のアプローチ候補',
+ 'Outside pitch class':'スケール外','Chord tone absent from scale':'スケールに含まれないコード構成音','No concrete notes':'ノートなし','TRACK NOTE MAP':'トラック別の音',
+ 'NOTES TO REVIEW':'確認するノート','PROGRESSION STUDIO':'コード進行の比較','REPEATED CONTEXTS':'繰り返す進行','MATCHED LOCATIONS':'一致する箇所',
+ 'Apply safe matches':'一致箇所に適用','Repeated patterns':'反復パターン','All events':'全イベント',
+ 'Remove assignment':'設定を削除','Next unassigned →':'次の未設定コード →','SET & NEXT →':'設定して次へ →',
+ 'Current song → text':'現在の曲をテキストに反映','Copy all':'すべてコピー','Check text':'テキストを検証','Import text':'テキストを読み込む',
+ 'Edit or paste a complete OSTF document, then choose Import text. Text edits alone do not change the current song. Invalid imports leave the current song untouched.':'OSTF全文を編集または貼り付けてから「テキストを読み込む」を押すと、検証後に曲に反映します。',
+ 'Ready.':'準備完了','DROP OSTF HERE':'ここにOSTFをドロップ','Cancel':'キャンセル','Continue':'続ける','OK':'OK',
+ 'Save linked file':'リンク先に保存','Choose file & save':'保存先を選んで保存','Harmony':'和声',
+ 'Not linked · Save As for new location':'未リンク・名前を付けて保存','Open a local OSTF file · Ctrl+O':'OSTFファイルを開く · Ctrl+O',
+ 'Always choose a destination · Ctrl+Shift+S':'保存先を選ぶ · Ctrl+Shift+S','Undo the last assignment':'直前の設定を取り消す',
+ 'Chord-tone and key context':'コード構成音と調','Dominant color / unresolved':'ドミナント・未解決','Possible tritone substitution':'裏コードの可能性','V7 → minor tonic / target':'V7から短調の主和音へ','V7 → resolving target':'V7から解決先へ','Key-aware chord context':'調に基づくコード分析','Compare melody emphasis and neighboring harmony.':'旋律の強調音と前後の和声を比較してください。','Functional harmony, chord-scale color and the next chord':'和声機能、スケールの色彩と次のコード','Reference color':'基準の響き','Same pitch collection':'構成音が共通','Core fit':'基本構成音に適合','Check voicing':'ボイシングを確認','Phrase':'フレーズ','Modal color':'モードの色彩','Close':'閉じる','Replace the current song?':'現在の曲を置き換えますか？','Remove this scale assignment?':'このスケール設定を削除しますか？','Set this scale anyway?':'このスケールを設定しますか？','Previous chord':'前のコード','Next chord':'次のコード','Stop audition':'試聴を停止','Unsaved changes':'未保存の変更',
+ 'Choose a scale card, then SET SCALE':'候補を選び「スケールを設定」を押してください。','No scale selected.':'スケールを選択してください。'
+};
+function translated(english) {
+ return document.documentElement.lang==='ja' && Object.prototype.hasOwnProperty.call(japaneseUI,english) ? japaneseUI[english] : english;
+}
+function languageText(english,japanese){return document.documentElement.lang==='ja'?japanese:english;}
+const interfaceText=[];
+const walker=document.createTreeWalker($('app'),NodeFilter.SHOW_TEXT);
+while(walker.nextNode()){
+ const node=walker.currentNode, english=node.nodeValue, key=english.trim().replace(/\s+/g,' ');
+ if(Object.prototype.hasOwnProperty.call(japaneseUI,key))interfaceText.push({node,english,key});
+}
+const interfaceTitles=[...$('app').querySelectorAll('[title]')].filter(el=>Object.prototype.hasOwnProperty.call(japaneseUI,el.title)).map(el=>[el,el.title]);
+function setDisplayLanguage(locale){
+ document.documentElement.lang=locale==='ja'?'ja':'en';
+ for(const {node,english,key} of interfaceText)if(node.isConnected)node.nodeValue=languageText(english,japaneseUI[key]);
+ for(const [el,title] of interfaceTitles)el.title=translated(title);
+ if(state.doc)render();
+}
+function status(s,kind=''){ $('status').textContent=translated(s);$('status').className=kind;}
 function error(e){status(e.message||String(e),'error');}
 function hostSend(){if(!native)return false;window.max.outlet.apply(window.max,arguments);return true;}
 function b64encode(text){const bytes=new TextEncoder().encode(text);let s='';for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));return btoa(s);}
@@ -2283,7 +2346,7 @@ function notifyState(){
  }
  stateTimer=setTimeout(flush,900);
 }
-function dialog(title,message,actions=[{label:'Close'}]){return new Promise(resolve=>{const overlay=document.createElement('div');overlay.className='modalShade';overlay.innerHTML='<div class="modal" role="dialog" aria-modal="true"><h2>'+esc(title)+'</h2><p>'+esc(message)+'</p><div class="actions"></div></div>';const holder=overlay.querySelector('.actions');for(const a of actions){const b=document.createElement('button');b.textContent=a.label;if(a.primary)b.className='primary';b.onclick=()=>{overlay.remove();resolve(a.value);};holder.appendChild(b);} $('modalRoot').appendChild(overlay);holder.lastChild.focus();});}
+function dialog(title,message,actions=[{label:'Close'}]){return new Promise(resolve=>{const overlay=document.createElement('div');overlay.className='modalShade';overlay.innerHTML='<div class="modal" role="dialog" aria-modal="true"><h2>'+esc(translated(title))+'</h2><p>'+esc(message)+'</p><div class="actions"></div></div>';const holder=overlay.querySelector('.actions');for(const a of actions){const b=document.createElement('button');b.textContent=translated(a.label);if(a.primary)b.className='primary';b.onclick=()=>{overlay.remove();resolve(a.value);};holder.appendChild(b);} $('modalRoot').appendChild(overlay);holder.lastChild.focus();});}
 function confirmAction(title,message){return dialog(title,message,[{label:'Cancel',value:false},{label:'Continue',value:true,primary:true}]);}
 function getChord(){return state.doc?.harmony.chords.find(c=>c.id===state.selected)||null;}
 function getFlowPlan(){if(!state.doc)return null;if(!state.flowPlan)state.flowPlan=SA.flow.plan(state.doc,state.target,state.strategy,true,state.approach,state.genreOverride);return state.flowPlan;}
@@ -2294,17 +2357,17 @@ function getScale(){return getAnalysis()?.items.find(s=>s.id===state.scale)||nul
 function savedLabel(x){if(x.type==='improvisation'){const p=x.parameters?.pitchSource;return x.label||p?.scale?.label||(p?.type==='explicitScale'?'Explicit scale':p?.type||'Track direction');}return x.label||(SA.pitchName(x.tonic)+' scale');}
 function matchSavedScale(a,existing){for(const x of existing){const s=x.type==='improvisation'?x.parameters?.pitchSource?.scale:x;if(!s?.intervals||!s.tonic)continue;const pcs=s.intervals.map(n=>SA.mod(SA.PC(s.tonic)+n)).sort((a,b)=>a-b).join(',');const item=a.items.find(z=>[...z.pcs].sort((a,b)=>a-b).join(',')===pcs);if(item)return item.id;}return null;}
 function selectChord(id){stop();state.reference=null;state.selected=id;state.patternKey=null;const selected=state.doc?.harmony.chords.find(x=>x.id===id);if(selected)state.expandedSections.add(sectionFor(selected));state.jumpToSelected=true;state.flowJump=true;state.scopeSectionId=null;state.filter='All';state.more=false;const a=getAnalysis();const c=getChord();state.scale=a?(matchSavedScale(a,SA.current(state.doc,c,state.target))||a.items[0]?.id):null;render();notifyState();}
-async function importString(text,name='Imported text.ostf',confirmDirty=true,fromNative=false){try{if(state.savePendingText){error(Error('Finish or cancel Save before importing a different song.'));return false;}const parsed=SA.parse(text);if(confirmDirty&&(state.dirty||state.textDirty)&&!await confirmAction('Replace the current song?','The current song has unsaved changes. Use Save or Save As first if you want to keep them.'))return false;stop();state.epoch++;state.doc=parsed.doc;state.sourceCore=SA.audit.snapshot(state.doc);state.savePendingText=null;state.reference=null;state.validation=parsed.validation;state.filename=name;state.fileBound=false;if(native&&!fromNative)hostSend('forgetfile');if(studioDraftReady)window.__JUCE__?.backend.emitEvent('ostfScaleForgetFile',{});invalidateAnalysis();state.expandedSections=new Set();state.history=[];state.future=[];state.dirty=false;state.textDirty=false;state.target='harmony';state.scopeMode='chord';state.scopeRange=null;state.scopeSectionId=null;state.scopePolicy='replace';state.patternKey=null;state.noteFitTrack='all';state.genreOverride='auto';state.selected=state.doc.harmony.chords[0]?.id||null;if(state.doc.harmony.chords[0])state.expandedSections.add(sectionFor(state.doc.harmony.chords[0]));state.jumpToSelected=true;state.flowJump=true;state.filter='All';state.more=false;let a=getAnalysis();state.scale=a?.items[0]?.id||null;render();if(state.view==='text')setText();status('Loaded '+name+' · '+state.doc.harmony.chords.length+' chords'+(!parsed.validation.writable?' · protected read-only version':''),'success');notifyState();return true;}catch(e){error(e);$('textFeedback').textContent=e.message;return false;}}
+async function importString(text,name='Imported text.ostf',confirmDirty=true,fromNative=false){try{if(state.savePendingText){error(Error('Finish or cancel Save before importing a different song.'));return false;}const parsed=SA.parse(text);if(confirmDirty&&(state.dirty||state.textDirty)&&!await confirmAction('Replace the current song?','The current song has unsaved changes. Use Save or Save As first if you want to keep them.'))return false;stop();state.epoch++;state.doc=parsed.doc;state.sourceCore=SA.audit.snapshot(state.doc);state.savePendingText=null;state.reference=null;state.validation=parsed.validation;state.filename=name;state.fileBound=false;if(native&&!fromNative)hostSend('forgetfile');if(studioDraftReady)window.__JUCE__?.backend.emitEvent('ostfScaleForgetFile',{});invalidateAnalysis();state.expandedSections=new Set();state.history=[];state.future=[];state.dirty=false;state.textDirty=false;state.target='harmony';state.scopeMode='chord';state.scopeRange=null;state.scopeSectionId=null;state.scopePolicy='replace';state.patternKey=null;state.noteFitTrack='all';state.genreOverride='auto';state.selected=state.doc.harmony.chords[0]?.id||null;if(state.doc.harmony.chords[0])state.expandedSections.add(sectionFor(state.doc.harmony.chords[0]));state.jumpToSelected=true;state.flowJump=true;state.filter='All';state.more=false;let a=getAnalysis();state.scale=a?.items[0]?.id||null;render();if(state.view==='text')setText();status(languageText('Loaded ','読み込み：')+name+' · '+state.doc.harmony.chords.length+languageText(' chords',' コード')+(!parsed.validation.writable?' · protected read-only version':''),'success');notifyState();return true;}catch(e){error(e);$('textFeedback').textContent=e.message;return false;}}
 function renderFileBinding(){
  const chip=$('fileBinding');if(!chip)return;
- chip.textContent=state.fileBound?'Linked: '+state.filename:'Not linked · Save As for new location';
+ chip.textContent=state.fileBound?languageText('Linked: ','リンク先：')+state.filename:translated('Not linked · Save As for new location');
  chip.className='chip '+(state.fileBound?'bound':'unbound');
  chip.title=state.fileBound?'Save will overwrite the linked file after safety checks. Save As always asks for a new name.':'No verified native file path. Save will ask for a location.';
  const b=$('save');if(b)b.title=state.fileBound?'Save to linked OSTF file · Ctrl+S':'Choose a file location (first save) · Ctrl+S';
 }
-function render(){const d=state.doc;if(!d)return;$('songTitle').textContent=d.song.title||'Untitled';$('songTitle').title=d.song.title;$('songKey').textContent=SA.labelKey(d,getChord()?.start||0);$('songVersion').textContent='OSTF '+d.version+(!state.validation.writable?' · READ ONLY':'');$('songVersion').classList.toggle('read-only',!state.validation.writable);$('dirty').textContent=(state.dirty||state.textDirty)?'● Unsaved changes':'';renderFileBinding();$('undo').disabled=!state.history.length;$('redo').disabled=!state.future.length;
+function render(){const d=state.doc;if(!d)return;$('songTitle').textContent=d.song.title||'Untitled';$('songTitle').title=d.song.title;$('songKey').textContent=SA.labelKey(d,getChord()?.start||0);$('songVersion').textContent='OSTF '+d.version+(!state.validation.writable?' · READ ONLY':'');$('songVersion').classList.toggle('read-only',!state.validation.writable);$('dirty').textContent=(state.dirty||state.textDirty)?'● '+translated('Unsaved changes'):'';renderFileBinding();$('undo').disabled=!state.history.length;$('redo').disabled=!state.future.length;
  renderTargets();renderTimeline();renderContext();renderApproaches();renderStrategies();renderCards();renderInspector();renderFlowWorkspace();renderApply();}
-function renderTargets(){const tracks=state.doc.tracks.filter(t=>t.trackType!=='drum'&&!['drums','drum','percussion'].includes(t.type)&&!['drums','drum','percussion'].includes(t.role));$('targets').innerHTML='<button data-target="harmony" class="'+(state.target==='harmony'?'active':'')+'" title="Write a shared timed harmony scale; song.key stays unchanged">Harmony</button>'+tracks.map(t=>'<button data-target="'+esc(t.id)+'" class="'+(state.target===t.id?'active':'')+'" title="Assign an improvisation scale only to this pitched track">'+esc(t.name||t.id)+'</button>').join('');$('adherence').hidden=state.target==='harmony';for(const b of $('adherence').querySelectorAll('button'))b.classList.toggle('active',b.dataset.adherence===state.adherence);}
+function renderTargets(){const tracks=state.doc.tracks.filter(t=>t.trackType!=='drum'&&!['drums','drum','percussion'].includes(t.type)&&!['drums','drum','percussion'].includes(t.role));$('targets').innerHTML='<button data-target="harmony" class="'+(state.target==='harmony'?'active':'')+'" title="Write a shared timed harmony scale; song.key stays unchanged">'+translated('Harmony')+'</button>'+tracks.map(t=>'<button data-target="'+esc(t.id)+'" class="'+(state.target===t.id?'active':'')+'" title="Assign an improvisation scale only to this pitched track">'+esc(t.name||t.id)+'</button>').join('');$('adherence').hidden=state.target==='harmony';for(const b of $('adherence').querySelectorAll('button'))b.classList.toggle('active',b.dataset.adherence===state.adherence);}
 function renderTimeline(){
  const box=$('timeline'),scroll=box.scrollTop,d=state.doc,all=SA.flow.sorted(d),flow=getFlowPlan(),seen=new Set();let html='';
  const sections=[...(d.timeline.sections||[])].sort((a,b)=>a.start-b.start);
@@ -2313,7 +2376,7 @@ function renderTimeline(){
  for(const g of groups){
   if(!g.chords.length)continue;
   const expanded=state.expandedSections.has(g.id),active=g.chords.some(c=>c.id===state.selected),assigned=g.chords.filter(c=>SA.current(d,c,state.target).length).length;
-  html+='<section class="section '+(active?'has-current':'')+'"><button class="section-title" data-section="'+esc(g.id)+'" aria-expanded="'+expanded+'"><span class="section-arrow">'+(expanded?'▾':'▸')+'</span><span class="section-name">'+esc(g.name)+' <span class="section-small">· '+g.chords.length+' chords</span></span><span class="section-completion">'+assigned+'/'+g.chords.length+' ✓</span></button>';
+  html+='<section class="section '+(active?'has-current':'')+'"><button class="section-title" data-section="'+esc(g.id)+'" aria-expanded="'+expanded+'"><span class="section-arrow">'+(expanded?'▾':'▸')+'</span><span class="section-name">'+esc(g.name)+' <span class="section-small">· '+g.chords.length+languageText(' chords',' コード')+'</span></span><span class="section-completion">'+assigned+'/'+g.chords.length+' ✓</span></button>';
   if(expanded){html+='<div class="section-content"><div class="chord-grid">';
    for(const c of g.chords){const pos=SA.position(d,c.start),assignedScale=SA.current(d,c,state.target),proposed=flow.chosen[c.id],label=assignedScale.length?assignedScale.map(savedLabel).join(' / '):proposed?.id.startsWith('__')?'Review':(!SA.effectiveKey(d,c.start)&&!SA.parseChord(c).intervals.some(n=>n===3||n===4))?'Mode unresolved':proposed?SA.pitchName(proposed.tonic)+' '+proposed.name:'Unresolved';
     html+='<button class="chord-tile '+(c.id===state.selected?'selected':'')+'" data-chord="'+esc(c.id)+'" aria-pressed="'+(c.id===state.selected)+'" title="'+esc(c.label+' — '+label+(assignedScale.length?' (assigned)':' (suggested)'))+'" aria-label="'+esc(c.label+', '+label+(assignedScale.length?', assigned':', suggested'))+'"><span class="loc">'+pos.bar+'.'+pos.beat+'</span><span class="chord-name">'+esc(c.label)+'</span>'+(assignedScale.length?'<span class="marker">✓</span><span class="assignment">'+esc(label)+'</span>':'<span class="suggestion">· '+esc(label)+'</span>')+'</button>';
@@ -2328,14 +2391,14 @@ function renderTimeline(){
 function renderContext(){
  const c=getChord(),a=getAnalysis();if(!c){$('currentChord').textContent='No chord selected';$('roman').textContent='—';$('neighbor').textContent='';$('contextDetail').textContent='Open a song with chord events to begin.';$('contextTrail').innerHTML='';$('contextRole').innerHTML='';return;}
  const x=a.context,flow=getFlowPlan(),cs=flow.chords,i=cs.findIndex(o=>o.id===c.id);$('currentChord').textContent=c.label;$('roman').textContent=x.roman;
- $('neighbor').innerHTML=(x.previous?'<b>'+esc(x.previous.label)+'</b> ← ':'')+'selected'+(x.nextEvent?' → <b>'+esc(x.nextEvent.label)+'</b>':'');
+ $('neighbor').innerHTML=(x.previous?'<b>'+esc(x.previous.label)+'</b> ← ':'') +languageText('selected','選択中')+(x.nextEvent?' → <b>'+esc(x.nextEvent.label)+'</b>':'');
  const functionText=x.blues?'Dominant-blues I7 / IV7 / V7 · hypothesis':x.cadence?(x.minorResolve?'V7 → minor tonic / target':'V7 → resolving target'):x.sub?'Possible tritone substitution':(x.cur.family==='dominant'?'Dominant color / unresolved':'Chord-tone and key context');
- $('contextDetail').textContent=functionText+' · '+(x.blues?'Scale choices still require checking melody and phrasing.':(x.reasons[1]||x.reasons[0]||'Key context unavailable'));
+ $('contextDetail').textContent=translated(functionText)+' · '+(x.blues?'Scale choices still require checking melody and phrasing.':(x.reasons[1]||x.reasons[0]||'Key context unavailable'));
  const role=SA.flow.harmonicRole(x);
- $('contextRole').innerHTML='<span class="role-tag '+role.level+'">'+esc(role.label)+'</span><span class="role-copy">'+esc(role.detail)+'</span>'+(x.estimatedKey?'<span class="key-hint" title="Read-only, based on nearby chord qualities; not stored in OSTF">Key hypothesis: '+esc(x.estimatedKey.name)+' · '+esc(x.estimatedKey.confidence)+' confidence · NOT SAVED</span>':'');
- $('contextTrail').innerHTML=[i>0?cs[i-1]:null,c,i+1<cs.length?cs[i+1]:null].map((ch,j)=>{if(!ch)return '<div class="trail"><div class="trail-top">'+['Previous','Selected','Next'][j]+'</div><div class="trail-chord">—</div></div>';
+ $('contextRole').innerHTML='<span class="role-tag '+role.level+'">'+esc(translated(role.label))+'</span><span class="role-copy">'+esc(translated(role.detail))+'</span>'+(x.estimatedKey?'<span class="key-hint" title="Read-only, based on nearby chord qualities; not stored in OSTF">Key hypothesis: '+esc(x.estimatedKey.name)+' · '+esc(x.estimatedKey.confidence)+' confidence · NOT SAVED</span>':'');
+ $('contextTrail').innerHTML=[i>0?cs[i-1]:null,c,i+1<cs.length?cs[i+1]:null].map((ch,j)=>{if(!ch)return '<div class="trail"><div class="trail-top">'+languageText(['Previous','Selected','Next'][j],['前のコード','選択中','次のコード'][j])+'</div><div class="trail-chord">—</div></div>';
   const saved=SA.current(state.doc,ch,state.target),choice=flow.chosen[ch.id];let sc=saved.length?saved.map(savedLabel).join(' / '):choice&&!choice.id.startsWith('__')?SA.pitchName(choice.tonic)+' '+choice.name:'Not analyzed';
-  return '<button class="trail '+(j===1?'current':'')+'" data-chord="'+esc(ch.id)+'"><div class="trail-top"><span>'+['Previous','Selected','Next'][j]+'</span><span>'+(saved.length?'✓ Set':'·· Idea')+'</span></div><div class="trail-chord">'+esc(ch.label)+'</div><div class="trail-scale">'+esc(sc)+'</div></button>';}).join('');
+  return '<button class="trail '+(j===1?'current':'')+'" data-chord="'+esc(ch.id)+'"><div class="trail-top"><span>'+languageText(['Previous','Selected','Next'][j],['前のコード','選択中','次のコード'][j])+'</span><span>'+(saved.length?languageText('✓ Set','✓ 設定済み'):languageText('·· Idea','·· 候補'))+'</span></div><div class="trail-chord">'+esc(ch.label)+'</div><div class="trail-scale">'+esc(sc)+'</div></button>';}).join('');
  $('prev').disabled=i<=0;$('next').disabled=i>=cs.length-1;
 }
 
@@ -2348,7 +2411,7 @@ function renderApproaches(){
  const tc=SA.universal.tonalContext(cx);
  const explanation=state.approach==='key'?(tc.status==='unresolved'?'Unresolved key · manual choice':tc.status==='hypothesis'?tc.label+' · unconfirmed hypothesis':tc.label+' · authored'):
   state.approach==='performance'?'Improvisation vocabulary · not a harmony definition':info.why;
- $('lensSummary').textContent=explanation;
+ $('lensSummary').textContent=translated(explanation);
  for(const b of $('approaches').querySelectorAll('[data-approach]')){const active=b.dataset.approach===state.approach;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}
 }
 function renderLensInsight(){
@@ -2375,7 +2438,7 @@ function renderLensInsight(){
 
 function renderStrategies(){
  const labels={balanced:'Harmonic fit + useful resolution',smooth:'Shared notes + gentle transitions',tension:'Deliberate color followed by resolution'};
- $('strategyHint').textContent=labels[state.strategy];for(const b of $('strategies').querySelectorAll('button'))b.classList.toggle('active',b.dataset.strategy===state.strategy);
+ $('strategyHint').textContent=translated(labels[state.strategy]);for(const b of $('strategies').querySelectorAll('button'))b.classList.toggle('active',b.dataset.strategy===state.strategy);
 }
 function pickReference(analysis,selected){const rank=analysis.items;const saved=SA.flow.savedInfo(state.doc,getChord(),state.target,analysis).scale;if(saved&&saved.id!==selected?.id)return saved;return rank.find(x=>x.group==='Inside'&&!x.missing?.length)||rank[0]||null;}
 function effectiveReference(analysis){return analysis?.items.find(x=>x.id===state.reference)||pickReference(analysis||{items:[]},null);}
@@ -2390,12 +2453,12 @@ function renderCards(){
   const rank=s.rankChange>0?'↑ '+s.rankChange:s.rankChange<0?'↓ '+Math.abs(s.rankChange):'—';
   const warning=s.missing.length||s.extra.length||s.melOutside.length;const tentative=a.context.cur.supported&&!a.context.key&&!a.context.cur.intervals.some(v=>v===3||v===4);
   return '<button class="scale-card '+(s.id===state.scale?'selected':'')+'" data-scale="'+esc(s.id)+'" aria-pressed="'+(s.id===state.scale)+'">'+
-   '<span class="rankbadge"><strong>'+(tentative?'TENTATIVE':('FLOW #'+s.position))+'</strong> <span>'+(!tentative?rank+' vs chord-only':'mode not determined')+'</span></span><span class="card-title">'+esc(SA.pitchName(s.tonic)+' '+s.name)+'</span>'+
-   '<span class="reference-mark">'+(s.id===baseline?.id?'A REFERENCE':s.id===state.scale?'B SELECTED':'')+'</span><span class="card-purpose">'+SA.universal.roles(s).map(role=>'<span class="purpose-tag '+(role==='Phrase'?'phrase':role==='Harmony'?'harmony':role==='Color'?'color':'')+'">'+esc(role)+'</span>').join('')+(s.id==='song_mode'&&!s.missing.length&&!s.extra.length?'<span class="purpose-tag harmony">Manual Harmony OK</span>':'')+'</span><span class="card-kind">'+esc(s.group)+' · '+esc(s.fit)+'</span>'+
+   '<span class="rankbadge"><strong>'+(tentative?languageText('TENTATIVE','暫定'):(languageText('FLOW #','進行順 #')+s.position))+'</strong> <span>'+(!tentative?rank+languageText(' vs chord-only',' コード単独比'):languageText('mode not determined','モード未確定'))+'</span></span><span class="card-title">'+esc(SA.pitchName(s.tonic)+' '+s.name)+'</span>'+
+   '<span class="reference-mark">'+(s.id===baseline?.id?languageText('A REFERENCE','A 基準'):s.id===state.scale?languageText('B SELECTED','B 選択中'):'')+'</span><span class="card-purpose">'+SA.universal.roles(s).map(role=>'<span class="purpose-tag '+(role==='Phrase'?'phrase':role==='Harmony'?'harmony':role==='Color'?'color':'')+'">'+esc(translated(role))+'</span>').join('')+(s.id==='song_mode'&&!s.missing.length&&!s.extra.length?'<span class="purpose-tag harmony">Manual Harmony OK</span>':'')+'</span><span class="card-kind">'+esc(translated(s.group))+' · '+esc(translated(s.fit))+'</span>'+
    '<span class="bar" aria-hidden="true">'+Array.from({length:12},(_,i)=>{const n=key.find(z=>z.interval===i);return '<i class="'+(n?(n.kind==='chord'?'on':n.kind==='caution'?'offscale':'other'):'')+'"></i>';}).join('')+'</span>'+
-   '<span class="deltatext" title="'+esc(dtext)+'">'+esc(dtext)+'</span><span class="card-listen">▶ Click to hear B</span><span class="card-foot '+(warning?'warn':'')+'">'+(warning?'△ Inspect melody / chord tones':s.flowRight?.dominant?'→ Resolving dominant':s.flowRight?.shared>=6?'Shared tones with next':'Preview · apply to commit')+'</span></button>';
+   '<span class="deltatext" title="'+esc(translated(dtext))+'">'+esc(dtext)+'</span><span class="card-listen">▶ Click to hear B</span><span class="card-foot '+(warning?'warn':'')+'">'+(warning?'△ Inspect melody / chord tones':s.flowRight?.dominant?'→ Resolving dominant':s.flowRight?.shared>=6?'Shared tones with next':'Preview · apply to commit')+'</span></button>';
  }).join('')||'<div class="empty" style="grid-column:1/-1">'+(a?.context.cur.supported?'No candidates in this filter.':'Chord symbol not analyzed; its OSTF data is kept.')+'</div>';
- $('candidateCount').textContent=all.length+' choices'+(selectedIndex>3&&!state.more?' · selected candidate kept in view':'')+' · ↓↑ reflects neighboring scale context';$('more').hidden=all.length<=6;$('more').textContent=state.more?'Show fewer':'Show all '+all.length;
+ $('candidateCount').textContent=all.length+languageText(' choices',' 候補')+(selectedIndex>3&&!state.more?languageText(' · selected candidate kept in view',' · 選択中の候補を表示'):'')+languageText(' · ↓↑ reflects neighboring scale context',' · ↓↑ は前後のコードを考慮した順位変動');$('more').hidden=all.length<=6;$('more').textContent=state.more?languageText('Show fewer','折りたたむ'):languageText('Show all '+all.length,all.length+'件すべて表示');
 }
 function keyboard(s,cur){const info=SA.noteInfo(s,cur),byPC=new Map(info.map(x=>[x.pc,x])),white=[0,2,4,5,7,9,11],black=[[1,1],[3,2],[6,4],[8,5],[10,6]],names=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'],w=100,colors={chord:'#7fe0c0',color:'#9caeff',caution:'#efc17c'};
  function mark(pc,x,y,isBlack){const n=byPC.get(pc),r=pc===s.root;return '<g pointer-events="none">'+(n?'<circle cx="'+x+'" cy="'+y+'" r="'+(r?9:6)+'" fill="'+colors[n.kind]+'"'+(r?' stroke="#ffffff" stroke-width="2"':'')+'/>':'')+'<text x="'+x+'" y="'+(isBlack?y-12:y-12)+'" font-size="11" fill="'+(isBlack?'#e8f0f6':'#263747')+'" text-anchor="middle">'+esc(n?.name||names[pc])+'</text></g>';}
@@ -2491,7 +2554,7 @@ function renderListenLab(){
  const changes=m.plans.a.line.filter((n,i)=>m.plans.b.line[i]?.note!==n.note);
  $('auditionRoll').innerHTML=comparisonSVG(m)+'<div id="playheadA" class="roll-playhead"></div><div id="playheadB" class="roll-playhead"></div>';
  $('hearReference').textContent='▶ A';$('hearCandidate').textContent='▶ B';
- $('pinReference').textContent=state.reference?'Pin B as new A':'Pin B as A';
+ $('pinReference').textContent=translated(state.reference?'Pin B as new A':'Pin B as A');
  $('resetReference').hidden=!state.reference;
  $('hearAB').disabled=false;
  $('hearAB').title=m.plans.different?'Compare the two scales in the same progression.':'A and B match. Compare automatically selects a contrasting B when available.';
@@ -2504,7 +2567,7 @@ function renderListenLab(){
   (!m.plans.different?'<span class="listen-help">Choose another B card or Find Contrast.</span>':'<span class="listen-help">'+changes.length+' different phrase notes · bass and chords identical</span>');
  for(const id of buttons)if(id!=='hearAB')$(id).disabled=false;
  $('listenContext').textContent=(pre?'Previous + ':'')+'Selected'+(next?' + Next':'')+' · '+m.plans.a.style+' · Illustrative A/B, not original OSTF MIDI';
- $('autoListen').textContent='▶ Audition on card select: '+(state.autoListen?'ON':'OFF');
+ $('autoListen').textContent=languageText('▶ Audition on card select: ','▶ 候補選択時の試聴：')+(state.autoListen?'ON':'OFF');
  $('autoListen').classList.toggle('active',state.autoListen);$('autoListen').setAttribute('aria-pressed',String(state.autoListen));
  if(!$('listenStatus').dataset.playing)$('listenStatus').textContent=native?'MIDI audition → following Instrument':window.__JUCE__?.backend?studioPreviewRoute+' · MIDI channel 1':'Browser audition';
 }
@@ -2835,14 +2898,14 @@ function renderScaleMap(){
   const info=handler(bar),selected=selectedBar(bar),piece=willWrite(bar),sec=tickToSection(bar.start),css=barCss(bar,selected,piece);
   return '<button type="button" class="'+css+' scope-cell-'+kind+'" data-map-bar="'+bar.index+'" style="--scope-fill:'+info.color+'" title="Bar '+bar.bar+' · '+esc(sec)+' · '+esc(info.label)+'">'+(kind==='numbers'?bar.bar%4===1?bar.bar:'':info.kind==='multiple'?'!':'')+'</button>';
  }).join('');}
- let sectionRow='<div class="scope-lane-label">STRUCTURE</div>';
+ let sectionRow='<div class="scope-lane-label">'+languageText('STRUCTURE','構成')+'</div>';
  for(const bar of b.bars){const sec=sections.find(s=>s.start<=bar.start&&bar.start<s.start+s.duration),first=!!sec&&(bar.start===sec.start||!b.bars.some(q=>q.start===sec.start&&q.index<bar.index));
   sectionRow+='<button class="scope-cell scope-cell-section '+(selectedBar(bar)?'range-on':'')+'" data-map-bar="'+bar.index+'" title="'+esc(sec?.name||'Unsectioned')+'" style="--scope-fill:'+(['#28697d','#36566f','#47617c','#52617a'][sections.indexOf(sec)%4]||'#334555')+'">'+(first?esc(sec.name.slice(0,8)):'')+'</button>';
  }
- const barRow=laneRow('BAR',bar=>({name:bar.bar,label:'Bar '+bar.bar,color:'#344a60'}),'numbers');
- const keyRow=laneRow('KEY / MODE',authoredKey,'key');
- const harmonyRow=laneRow('HARMONY',hLane,'harmony');
- const trackLabel='TRACK · '+esc(checkTrack?.name||'none');
+ const barRow=laneRow(languageText('BAR','小節'),bar=>({name:bar.bar,label:'Bar '+bar.bar,color:'#344a60'}),'numbers');
+ const keyRow=laneRow(languageText('KEY / MODE','調／モード'),authoredKey,'key');
+ const harmonyRow=laneRow(languageText('HARMONY','和声'),hLane,'harmony');
+ const trackLabel=languageText('TRACK · ','トラック · ')+esc(checkTrack?.name||'—');
  const trackRow=laneRow(trackLabel,tLane,'track');
  $('scopeGrid').innerHTML=sectionRow+barRow+keyRow+harmonyRow+trackRow;
  scroller.scrollLeft=oldScroll;
@@ -3014,14 +3077,14 @@ function nextUnassignedChord(after=state.selected){const all=SA.flow.sorted(stat
 function jumpNextUnassigned(){const c=nextUnassignedChord();if(c){selectChord(c.id);status('Next unassigned chord: '+c.label+'.');}else status('Every chord in the selected target has an assignment.','success');}
 function renderApply(){const c=getChord(),s=getScale(),old=c?SA.current(state.doc,c,state.target):[],all=SA.flow.sorted(state.doc),assigned=all.length-unassignedChords().length;
  $('apply').disabled=$('applyAndNext').disabled=$('quickSetScale').disabled=!c||!s||!state.validation.writable;
- $('quickSetScale').textContent=c?'SET SCALE · '+c.label:'SET SCALE';
+ $('quickSetScale').textContent=translated('SET SCALE')+(c?' · '+c.label:'');
  $('clear').disabled=!state.validation.writable||old.length!==1||old[0].start!==c?.start||old[0].duration!==c?.duration;
  $('nextOpen').disabled=assigned===all.length;
- $('assignmentCount').textContent=assigned+' / '+all.length+' assigned';
+ $('assignmentCount').textContent=assigned+' / '+all.length+languageText(' assigned',' 設定済み');
  const percent=all.length?Math.round(assigned/all.length*100):0;
  $('assignmentMeterFill').style.width=percent+'%';
  const meter=document.querySelector('.assignment-meter');if(meter)meter.setAttribute('aria-valuenow',String(percent));
- $('assignmentInfo').textContent=old.length?'Current: '+old.map(savedLabel).join(' / ')+' · Choose a card, then SET SCALE to replace this chord only.':s?'Choose a scale card, then SET SCALE':'No scale selected.';
+ $('assignmentInfo').textContent=old.length?languageText('Current: ','現在：')+old.map(savedLabel).join(' / ')+languageText(' · Choose a card, then SET SCALE to replace this chord only.',' · 候補を選んで、このコードのスケールを設定できます。'):translated(s?'Choose a scale card, then SET SCALE':'No scale selected.');
 }
 function commit(doc){if(state.sourceCore&&!SA.audit.unchanged(doc,state.sourceCore))throw Error('Scale assignment changed unrelated OSTF fields. Nothing committed.');state.history.push(SA.clone(state.doc));if(state.history.length>30)state.history.shift();state.future=[];state.doc=doc;state.dirty=true;invalidateAnalysis();state.validation=SA.validate(doc);state.epoch++;render();notifyState();}
 async function doApply(){
@@ -3055,7 +3118,7 @@ async function autoSetSong(){
  if(!state.validation.writable){await dialog('Read-only OSTF','This document version is preserved read-only.');return;}
  const overlay=document.createElement('div');overlay.className='modalShade';
  overlay.innerHTML='<div class="modal bulk-modal" role="dialog" aria-modal="true">'+
- '<h2>AUTO-SET · SONG SCALE FLOW</h2>'+
+ '<h2>'+languageText('AUTO-SET · SONG SCALE FLOW','曲全体のスケールを自動設定')+'</h2>'+
  '<p id="bulkGenreInfo" class="small muted"></p>'+
  '<p class="small">Find a coherent scale path through the song. Existing assignments are held fixed by default. Review suggestions before writing; chords, key and notes remain unchanged.</p>'+
  '<span class="label">ANALYSIS LENS · selects the ranking criteria</span><div class="bulk-strategy" id="bulkApproaches"><button data-approach="chord">Chord Scale</button><button data-approach="key">Key &amp; Mode</button><button data-approach="performance">Performance</button></div><p class="small muted">Harmony writes timed scale events; pitched tracks write track-specific improvisation directions. Phrase vocabularies may require opt-in or manual review; no key/mode is inferred.</p>'+
@@ -3064,7 +3127,7 @@ async function autoSetSong(){
  '<label class="bulk-expressive small" id="bulkExpressiveRow"><input id="bulkExpressive" type="checkbox"> Allow expressive phrase vocabularies on a pitched track (opt-in; may omit chord thirds; melody and explicit tensions remain protected)</label>'+
  '<div class="bulk-modehelp" id="bulkModeHelp"></div><div id="bulkSummary" class="bulk-summary"></div><div id="bulkPreviewMap" class="bulk-preview-map" aria-label="Planned scale colors across the song"></div><div class="overview-label"><span>SONG SCALE PATH · selected direction</span><span id="bulkMapLabel"></span></div>'+
  '<div id="bulkPlan" class="bulk-plan"></div><p id="bulkNote" class="bulk-note"></p>'+
- '<div class="actions"><button data-action="cancel">Cancel</button><button data-action="apply" class="primary">Apply reviewed scales</button></div></div>';
+ '<div class="actions"><button data-action="cancel">'+translated('Cancel')+'</button><button data-action="apply" class="primary">'+languageText('Apply reviewed scales','確認したスケールを適用')+'</button></div></div>';
  $('modalRoot').appendChild(overlay);
  let mode='fill',strategy=state.strategy,approach=state.approach,plan=null,flow=null,allowExpressive=false;
  function update(){try{
@@ -3131,8 +3194,8 @@ async function save(mode='save'){
   const selectingNew=mode==='saveas'||!(native||window.__JUCE__?.backend)||!state.fileBound;
   const action=selectingNew?'SAVE AS':'SAVE';
   const overlay=document.createElement('div');overlay.className='modalShade';
-  overlay.innerHTML='<div class="modal export-modal" role="dialog" aria-modal="true"><h2>EXPORT SAFETY REVIEW · '+action+'</h2>'+
-   '<p class="small">'+(selectingNew?'Choose a destination and file name. Existing unrelated files will not be silently overwritten.':'Overwrite the linked file after checking its original contents for external changes.')+' This checks local data preservation and JSON re-import, not full official schema conformance.</p>'+
+  overlay.innerHTML='<div class="modal export-modal" role="dialog" aria-modal="true"><h2>'+languageText('EXPORT SAFETY REVIEW','保存内容の確認')+' · '+action+'</h2>'+
+   '<p class="small">'+(selectingNew?languageText('Choose a destination and file name. Existing unrelated files will not be silently overwritten.','保存先とファイル名を選んでください。'):languageText('Overwrite the linked file after checking its original contents for external changes.','リンク先の変更を確認してから上書きします。'))+languageText(' This checks local data preservation and JSON re-import, not full official schema conformance.',' 元データの保持とJSONの再読み込みを検証します。')+'</p>'+
    '<div class="export-metrics">'+
    [['OSTF VERSION',report.version],['CHORDS',report.stats.chords],['SCALES',report.stats.harmonyScales],['TRACK DIRECTIONS',report.stats.trackDirections]]
     .map(([k,val])=>'<div class="export-stat"><span>'+esc(k)+'</span><strong>'+esc(val)+'</strong></div>').join('')+'</div>'+
@@ -3142,7 +3205,7 @@ async function save(mode='save'){
    (report.errors.length?'<div class="export-problems"><strong>BLOCKING ISSUES</strong>'+report.errors.map(x=>'<p>'+esc(x)+'</p>').join('')+'</div>':'')+
    '<details class="export-warnings"><summary>'+report.warnings.length+' cautions / scope limitations</summary>'+report.warnings.map(x=>'<p>'+esc(x)+'</p>').join('')+'</details>'+
    '<p class="small muted">Estimated UTF-8 size: '+(report.bytes/1024).toFixed(1)+' KiB · OSTF '+esc(report.version)+'</p>'+
-   '<div class="actions"><button data-export="cancel">Cancel</button><button data-export="confirm" class="primary" '+(!report.ok?'disabled':'')+'>'+(selectingNew?'Choose file & save':'Save linked file')+'</button></div></div>';
+   '<div class="actions"><button data-export="cancel">'+translated('Cancel')+'</button><button data-export="confirm" class="primary" '+(!report.ok?'disabled':'')+'>'+translated(selectingNew?'Choose file & save':'Save linked file')+'</button></div></div>';
   $('modalRoot').appendChild(overlay);
   overlay.onclick=e=>{
    const b=e.target.closest('[data-export]');if(!b)return;
@@ -3279,7 +3342,7 @@ function showDemos(){
  o.onclick=async e=>{const button=e.target.closest('[data-demo]');if(button){const id=button.dataset.demo,d=['major','minor'].includes(id)?SA.demo(id==='minor'):SA.universal.demoStyle(id);if(!d)return;const ok=await importString(JSON.stringify(d),'Demo_'+id+'.ostf');if(ok){o.remove();selectChord(d.harmony.chords[1]?.id||d.harmony.chords[0]?.id);view('visual');}}if(e.target.closest('[data-close]'))o.remove();};
  $('modalRoot').appendChild(o);
 }
-function help(){dialog('OSTF Scale Editor · v1.0 Scale Workflow',[
+function help(){if(document.documentElement.lang==='ja'){dialog('OSTF Scale Editor の使い方',['1. OSTFを開き、コード進行から編集するコードを選びます。','2. 書き込み先に「和声」またはトラックを選び、候補をA / Bで試聴します。「音源を選択」で音源を指定できます。','3. 「スケールを設定」で適用します。「曲全体に自動設定」では、適用前に候補を確認できます。','4. 「保存」でリンク先を更新し、「名前を付けて保存」で別のファイルに書き出します。','表示言語はプラグイン右上から変更できます。'].join('\n\n'));return;}dialog('OSTF Scale Editor · v1.0 Scale Workflow',[
 '1. Import OSTF via file, drag/drop, or OSTF TEXT.',
 'Progressions finds repeated chord + neighboring harmony + duration + key matches; select a scale card, preview each match, then Apply safe matches. Existing assignments are always protected. No concrete notes means a hearing check remains necessary.',
 '2. Choose Balanced / Smooth / Color & Tension. This recomputes suggestions only.',
@@ -3339,7 +3402,11 @@ function nativeInit(){if(nativeBound||!window.max||typeof window.max.outlet!=='f
 // Exposed, bounded test / host interface. Never eval imported data.
 window.ScaleAdviserApp={state,acceptStudioRevision,finishStudioSave,exportAudit:()=>SA.audit.inspect(state.doc,state.sourceCore),currentPatternModel,applyPatternMatches,renderPatternStudio,scopeSelection,doScopeApply,renderScaleMap,renderNoteFit,selectedCompatibility,importString,selectChord,render,apply:doApply,applyAndNext,jumpNextUnassigned,autoSetSong,view,save,saveAs,analyzeSong,stop,playCompare,compareModel,exportText:()=>JSON.stringify(state.doc,null,2),nativeInit};
 initSidebarResize();bind();
+setDisplayLanguage(document.documentElement.lang);
 if(window.__JUCE__?.backend){
+ window.__JUCE__.backend.addEventListener('ostfScaleLanguage',locale=>{
+  if(locale!==document.documentElement.lang)setDisplayLanguage(locale);
+ });
  const input=document.createElement('span');
  input.id='studioInput';
  input.title='Held MIDI input notes, across all octaves and channels';

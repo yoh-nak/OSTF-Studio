@@ -361,6 +361,36 @@ int main(int argc, char** argv) {
         return 48000./period;
     };
     const auto joined=vowelChange(true), detached=vowelChange(false);
+    // Four 72 ms sung notes with 8 ms of gate separation, followed by a real rest.
+    // Keep the exact same MIDI and gain for before/after listening renders.
+    singer->reset();
+    juce::AudioBuffer<float> shortPhrase(2, 4*3840+2400);
+    juce::MidiBuffer phraseEvents;
+    const int phraseKeys[]{60,64,62,60};
+    const Phone phrasePhones[]{{0,vowelOnly},{0,vowelOnly},{0,m},{1,vowelOnly}};
+    for (int i=0; i<4; ++i) {
+        phraseEvents.addEvent(phoneMessage(1,phraseKeys[i],phrasePhones[i],.072),i*3840);
+        phraseEvents.addEvent(juce::MidiMessage::noteOn(1,phraseKeys[i],juce::uint8(100)),i*3840);
+        phraseEvents.addEvent(juce::MidiMessage::noteOff(1,phraseKeys[i]),i*3840+3456);
+    }
+    for (int pos=0; pos<shortPhrase.getNumSamples(); pos+=256) {
+        const int size=std::min(256,shortPhrase.getNumSamples()-pos);
+        juce::AudioBuffer<float> part(shortPhrase.getArrayOfWritePointers(),2,pos,size);
+        juce::MidiBuffer events;
+        events.addEvents(phraseEvents,pos,size,-pos);
+        singer->processBlock(part,events);
+    }
+    const double shortOnset=measuredHz(shortPhrase,3840+50), shortSettled=measuredHz(shortPhrase,3840+1450);
+    const float nasalOnset=shortPhrase.getRMSLevel(0,7680,240);
+    std::cout << "Mei short phrase, onset / settled Hz: " << shortOnset << " / " << shortSettled << '\n';
+    if (shortOnset<255. || shortOnset>310. || std::abs(shortSettled-329.63)>5.
+        || nasalOnset<.085f || shortPhrase.getMagnitude(0,shortPhrase.getNumSamples()-960,960) != 0.f) return 63;
+    if (argc==4 && juce::String(argv[3])=="short-mei") {
+        juce::File output(juce::String::fromUTF8(argv[2]));
+        if (output.exists()) return 11;
+        auto writer=wavWriter(output,48000);
+        return writer && writer->writeFromAudioSampleBuffer(shortPhrase,0,shortPhrase.getNumSamples()) ? 0 : 13;
+    }
     const auto early=measuredHz(joined,50), settled=measuredHz(joined,1450), fresh=measuredHz(detached,50);
     std::cout<<"Mei C4 to E4, connected onset / settled / fresh onset Hz: "<<early<<" / "<<settled<<" / "<<fresh<<'\n';
     if (!(early>255. && early<310. && std::abs(settled-329.63)<5. && std::abs(fresh-329.63)<5.)) return 57;

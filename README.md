@@ -2,6 +2,10 @@
 
 ## OSTF 5.1 studio preview
 
+Scale Editor starts in the operating system's display language. The upper-right language menu offers **System**, **English** and **日本語**. System uses Japanese for Japanese locales and English for other locales. The choice is stored on this computer and also works when the VST3 runs in another DAW. Switching language keeps the selected chord and unfinished OSTF text. The native controls, instrument picker and main visual editing workflow support both languages. Some detailed theory explanations and diagnostics are still in English.
+
+Formant Singer now carries the pitch between short recorded vowels across brief MIDI gate gaps and trims the lead-in when a short sung consonant follows another note. The regression phrase uses four 72 ms notes with 8 ms gaps and a final rest.
+
 In **OSTF Scale Editor**, open a score with **Open OSTF** or drop it on the plug-in header. In the visual workspace, **Save** updates that file and **Save As** chooses a destination. If another program edits or moves the file, the editor keeps the local edits available for Save As. A recalled DAW project asks for a destination on its first save. Enable **Preview MIDI out** to send an audition or **Test sound** on channel 1 to a downstream instrument in hosts that route VST3 MIDI output. The default audition plays the internal instrument.
 
 **OSTF Formant Singer** connects adjoining recorded vowels with a short pitch transition. Adjust **Vibrato / scoop depth** to hear how much of the movement comes from the score. At 100% the instrument plays the written depth. At 40% it plays a gentler inflection, and at 0% it omits the two gestures. The host can automate the control and recall it with the instrument.

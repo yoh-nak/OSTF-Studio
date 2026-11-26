@@ -74,10 +74,14 @@ class InstrumentPicker final : public juce::Component, private juce::ListBoxMode
 public:
     std::function<void(InstrumentChoice)> onChoose;
     std::function<void()> onBrowse,onReference;
-    explicit InstrumentPicker(const std::optional<juce::PluginDescription>& current) : choices(availableInstruments(current)) {
+    InstrumentPicker(const std::optional<juce::PluginDescription>& current,bool japanese) : choices(availableInstruments(current)), ja(japanese) {
         for (juce::Component* c:std::initializer_list<juce::Component*>{&search,&list,&hint,&load,&browse,&reference,&unlisted})
             addAndMakeVisible(*c);
-        search.setTextToShowWhenEmpty("Search instruments by name or manufacturer",juce::Colours::lightgrey);
+        search.setTextToShowWhenEmpty(juce::String::fromUTF8(ja ? "音源名・メーカーで検索" : "Search instruments by name or manufacturer"),juce::Colours::lightgrey);
+        if (ja) {
+            load.setButtonText(juce::String::fromUTF8("読み込む")); browse.setButtonText(juce::String::fromUTF8("VST3を参照…"));
+            reference.setButtonText(juce::String::fromUTF8("基準音")); unlisted.setButtonText(juce::String::fromUTF8("未スキャンも表示"));
+        }
         search.setTitle("Search instruments");
         list.setComponentID("matching-instruments");
         list.setModel(this); list.setRowHeight(26);
@@ -113,7 +117,8 @@ private:
         }
         list.deselectAllRows(); list.updateContent();
         if (!visible.empty()) list.selectRow(0);
-        hint.setText(visible.empty()?"No matching instruments":juce::String(int(visible.size()))+" matches",juce::dontSendNotification);
+        hint.setText(visible.empty() ? juce::String::fromUTF8(ja ? "該当する音源がありません" : "No matching instruments")
+            : juce::String(int(visible.size()))+juce::String::fromUTF8(ja ? " 件" : " matches"),juce::dontSendNotification);
         load.setEnabled(!visible.empty()); list.repaint();
     }
     int getNumRows() override {return int(visible.size());}
@@ -124,12 +129,13 @@ private:
         g.setColour(juce::Colours::white);
         g.drawFittedText(c.name,6,0,2*w/3-9,h,juce::Justification::centredLeft,1);
         g.setColour(juce::Colour(0xffb8ced6));
-        g.drawFittedText(c.needsInspection?"Unscanned":c.vendor,2*w/3,0,w/3-6,h,juce::Justification::centredLeft,1);
+        g.drawFittedText(c.needsInspection ? juce::String::fromUTF8(ja ? "未スキャン" : "Unscanned") : c.vendor,2*w/3,0,w/3-6,h,juce::Justification::centredLeft,1);
     }
     void choose(){const int row=list.getSelectedRow(); if (onChoose && juce::isPositiveAndBelow(row,getNumRows())) onChoose(choices[visible[size_t(row)]]);}
     void listBoxItemDoubleClicked(int,const juce::MouseEvent&) override {choose();}
     void returnKeyPressed(int) override {choose();}
     std::vector<InstrumentChoice> choices;
+    bool ja;
     std::vector<size_t> visible;
     juce::TextEditor search;
     juce::ListBox list;

@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## Scale Editor language and short sung phrases
+
+Branch `feat/scale-language-short-phrase`. Scale Editor's upper-right menu starts on System and allows English and Japanese overrides. Its per-user setting works across host launches. The embedded editor changes language in place. Some detailed musical analysis, tooltips and diagnostic messages remain in English. Windows tests exercise a real WebView2 page with an unfinished JSON draft and a song titled “Save” to check that changing the UI language preserves both.
+
+The Mei regression sends four 72 ms notes with 8 ms gate gaps. The early C4-to-E4 estimate moved from 328.8 to 275.9 Hz, reaching 328.8 Hz later in the same note. The first 5 ms RMS of the following /ma/ changed from 0.064 to 0.115. The phrase ends in silence. Reproduce with `ostf_singing_tests <paper-lantern-replies.ostf> <unused-output.wav> short-mei`.
+
+Windows Release passed all ten tests selected by `ctest -C Release -R "scale|singing|^ostf_studio_(core_tests|open_score|languages)$" --output-on-failure`. The Windows development portable with 38 VST3 bundles and eight demo projects passed both `--vocal-track-smoke` and `--plugin-focus-smoke`. No macOS build, external DAW session or physical speaker listening was verified for this change.
+
 ## Linked scale files, audition MIDI output and singer pitch depth
 
 Windows Release passed all nine targeted CTests. Reproduce with `ctest -C Release -R "scale|singing|^ostf_studio_core_tests$|^ostf_studio_open_score$" --output-on-failure` in the GUI build directory.
