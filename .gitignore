@@ -38,5 +38,6 @@ secrets.json
 *.ostfp
 !tests/fixtures/*.ostfp
 !tests/fixtures/legacy/4.3.0.ostfp
+!tests/fixtures/ostf52/*.ostfp
 !examples/demo-songs/*.ostfp
 *.zip

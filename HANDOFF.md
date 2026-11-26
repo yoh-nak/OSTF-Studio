@@ -10,7 +10,9 @@ The Singer's English syllable matcher handles the final /ndz/ written as n-zu in
 
 The image is on public main through [PR 6](https://github.com/yoh-nak/OSTF-Studio/pull/6). [Draft PR 7](https://github.com/yoh-nak/OSTF-Studio/pull/7) builds the candidate for Windows x64 and macOS arm64. Its first macOS run caught the demo verifier applying the 5.1 version constraint to the empty 5.2 score. The verifier now checks the startup document against the pinned 5.2 schema bundled with Studio, resolves companion schemas offline, and still uses the official 5.1 validator for all eight existing demo packages. All eight passed locally. Build, test and installer results for the candidate are recorded in the PR checks.
 
-The offline English/Japanese A/B from the Pre-Chorus first differs at 9.811 s, on the “hands” onset at 9.808 s. Both renders have the same duration. Real-device listening remains open. The local Windows Release build completed; the first full test run passed 43 of 44 and a subsequent three-run check of the asynchronous waveform test passed.
+The offline English/Japanese A/B from the Pre-Chorus first differs at 9.811 s, on the “hands” onset at 9.808 s. Both renders have the same duration. Real-device listening remains open. The local Windows Release build passed all 44 tests on the full rerun, after a transient waveform timeout and three successful focused repeats. The extracted Portable passed the Live Session smoke and all 39 executable and VST3 hashes matched the build outputs.
+
+Windows CI on a clean checkout exposed missing OSTF 5.2 package fixtures. The 16 files under `tests/fixtures/ostf52` match the official release byte-for-byte; the package test now checks their presence before exercising imports and round trips. Studio smoke test failures include the check number in the CI log.
 
 ## 2026-11-27 — Scale Editor score exchange, text workflow and sung ノット
 

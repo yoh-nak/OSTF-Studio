@@ -4,6 +4,7 @@
 #include "ui/StudioLanguage.h"
 #include "ui/PluginLibrary.h"
 #include <cmath>
+#include <iostream>
 
 int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance>, std::unique_ptr<juce::AudioPluginInstance>);
 
@@ -347,6 +348,8 @@ public:
         }
     }
     void shutdown() override {
+        if (getApplicationReturnValue() != 0 && getCommandLineParameterArray()[0].endsWith("-smoke"))
+            std::cerr << getCommandLineParameterArray()[0] << " failed at check " << getApplicationReturnValue() << '\n';
         windowCheck_.reset();
         startup_.reset();
         mainWindow_.reset();

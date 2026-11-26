@@ -716,7 +716,12 @@ static int checkOstf52(const juce::File& fixtures) {
             if(p->selectScoreComps({*alternative},undo).failed() || p->sourceVersion!="5.2.0") return 8;
         }
     }
-    for(const auto& package:fixtures.findChildFiles(juce::File::findFiles,false,"*.ostfp")) {
+    const auto packages = fixtures.findChildFiles(juce::File::findFiles, false, "*.ostfp");
+    if (packages.size() < 16) {
+        std::cerr << "Expected the 16 official OSTF 5.2 package fixtures in " << fixtures.getFullPathName() << '\n';
+        return 1;
+    }
+    for(const auto& package:packages) {
         juce::FileInputStream in(package); std::unique_ptr<OstfpPreview> project;
         const auto opened=readOstfpPreview(in,project);
         const auto name = package.getFileName();
