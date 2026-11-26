@@ -299,6 +299,19 @@ int main(int argc, char** argv) {
         if (std::abs(edges[1]*.12-.088)>.0001 || edges.back()!=1.) return 85;
         if (sungReading(reading,reading).size()!=literal.size() || sungReading("stay",reading).size()!=literal.size()) return 85;
     }
+    const auto notReading = readingFor("not");
+    const auto notPhones = sungReading("not", notReading);
+    const auto literalNot = lyricPhones(notReading);
+    if (literalNot.size()!=3 || notPhones.size()!=2 || notPhones[0].sampleKey()!=literalNot[0].sampleKey()
+        || notPhones[0].vowel!=4 || (notPhones[1].english & 63)!=33) return 86;
+    const auto clockPhones = sungReading("clock", juce::String::fromUTF8("クロック"));
+    if (clockPhones.size()!=3 || (clockPhones.front().english & 63)!=24 || clockPhones[1].onset!=r
+        || clockPhones[1].vowel!=4 || (clockPhones.back().english & 63)!=24) return 86;
+    const auto customNot = sungReading("not",juce::String::fromUTF8("ネット"));
+    if (customNot.size()!=3 || customNot[0].vowel!=3 || customNot[1].onset!=closure
+        || sungReading(notReading,notReading).size()!=literalNot.size()) return 86;
+    const auto notEdges = articulationPositions(notPhones,.120);
+    if (std::abs(notEdges[1]*.120-.088)>.0001) return 86;
     const auto lights = sungReading("lights",readingFor("lights"));
     if (lights.size()!=4 || lights[0].onset!=r || lights[1].vowelTiming!=VowelTiming::offglide
         || lights[2].english!=33 || lights[3].english!=31) return 78;

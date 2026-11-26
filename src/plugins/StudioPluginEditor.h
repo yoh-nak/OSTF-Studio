@@ -8,11 +8,9 @@ inline void setPluginControlColours(console::LookAndFeel& style, const console::
     const juce::Colour panel(face.panel), background(face.background), accent(face.accent);
     style.setColour(juce::TextButton::buttonColourId, panel);
     style.setColour(juce::TextButton::buttonOnColourId, panel.interpolatedWith(accent,.36f));
-    style.setColour(juce::ComboBox::backgroundColourId, panel);
     style.setColour(juce::ListBox::backgroundColourId, background);
     style.setColour(juce::TextEditor::backgroundColourId, background);
     style.setColour(juce::TextEditor::focusedOutlineColourId, accent);
-    style.setColour(juce::PopupMenu::backgroundColourId, background);
 }
 
 class StudioPluginEditor : public juce::AudioProcessorEditor {

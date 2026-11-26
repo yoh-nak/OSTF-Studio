@@ -1,5 +1,17 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — Scale Editor score exchange, text workflow and sung ノット
+
+Branch `feat/ostf-52-studio`. The header exposes the audition instrument, test note, language choices, Studio score input, clipboard and a separate drag grip. Studio score input is enabled only after the hosting instance supplies a score through the VST3 score interface. A recalled document or an OSTF file opened in another host does not enable it. Dragging captures the current assignments when the pointer crosses the threshold, even when the browser releases pointer capture during the gesture. The receiving Studio instance still checks the original score revision and supports Undo.
+
+The text view names the document open in the plug-in and distinguishes displaying it in the text box from loading the text box into the plug-in. Save As writes the edited OSTF to a file. Whole-song scale proposals have an explicit local apply step. The chord timeline reserves width for the section name, with its disclosure arrow on the left and its completion count on the right. Unnamed sections show just their chord count beside the arrow. The three language choices and the song style menu use the Studio palette. Coverage includes the seven native finishes and computed control colours in the embedded editor.
+
+Formant Singer accepts a written オ for the English dictionary AA vowel when the consonants and remaining katakana agree. In “not / ノット” it carries the ノ vowel into a single /t/ release. Tests also cover “clock / クロック”, the unmatched reading ネット and literal Japanese. An offline A/B from the Paper Lantern Replies bridge first differs at 1.54 s on the target note. Subjective checking on the user's audio output remains open.
+
+Windows x64 Release was built locally. The 44-test run passed 43 checks and exposed a recall test that still expected the old Save label. After updating its English and Japanese assertions and rebuilding, all nine affected Scale Editor and host checks passed, including session recall. The embedded editor was tested from an empty state and a recalled project. A separate Edge check exercised continuous pointer movement across a capture loss, Japanese text validation and import, unnamed sections and a 760-pixel window. The OS file-drop receiver and web drag gesture have separate coverage. A manual cross-DAW drag and the macOS build remain unverified for this change.
+
+The Portable under `E:/OSTF-Studio-build-cache/menu-contrast-sung-vowels/Portable` contains the Studio executable and 38 bundled VST3s. The executable and all 764 bundle files were hash-checked. The common Windows Scale Editor VST3 matches the Portable build.
+
 ## 2026-11-27 — Studio colour themes in plug-ins and short English releases
 
 Branch `feat/ostf-52-studio`. All bundled plug-in editor families share the Studio console theme and control rendering. A window reads the saved theme when it opens. The Scale Editor also applies it to its embedded workspace and independent instrument picker. In the search field, Up/Down selects an instrument, Enter loads it, and Shift+Enter loads and plays C4 with the search and manufacturer filters still in place.

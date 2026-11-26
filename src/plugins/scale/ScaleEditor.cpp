@@ -486,11 +486,11 @@ private:
         language.addItem("Language: English",2); language.addItem(juce::String::fromUTF8("言語：日本語"),3);
         language.setSelectedId(languageChoice=="en" ? 2 : languageChoice=="ja" ? 3 : 1,juce::dontSendNotification);
         auto caption=[this](juce::Button& b,const char* en,const char* ja){ b.setButtonText(words(en,ja)); };
-        caption(open,"Open OSTF","OSTFを開く"); caption(refresh,"Read Studio score","Studioから読み込む");
-        caption(save,"Save OSTF...","OSTFを保存…"); caption(drag,"Copy scales to Studio","Studio用にコピー");
+        caption(open,"Open OSTF","OSTFを開く"); caption(refresh,"Read from OSTF Studio","OSTF Studioから読み込む");
+        caption(save,"Save edited OSTF as…","編集中のOSTFを別名で保存…"); caption(drag,"Copy scales to Studio","Studio用にコピー");
         drag.setTooltip(words("Click to copy, then choose Edit > Paste scales from Scale Editor in Studio. You can also drag to Studio.",
             "クリックでコピーし、Studioの「編集」→「Scale Editorのスケールを貼り付け」で反映します。Studioへドラッグすることもできます。"));
-        caption(autoSet,"Auto-set song","曲全体に自動設定"); caption(undo,"Undo apply","適用を取り消す"); caption(redo,"Redo","やり直す");
+        caption(autoSet,"Set scales in editor","エディター内の全曲に設定"); caption(undo,"Undo apply","適用を取り消す"); caption(redo,"Redo","やり直す");
         caption(apply,"Assign scale","スケールを設定"); caption(nextUnassigned,"Next unassigned","次の未設定コード");
         caption(loadInstrument,"Instruments...","音源を選択…"); caption(testSound,"Test sound","テスト発音"); caption(previewMidiOut,"Preview MIDI out","試聴をMIDI出力");
         caption(midiThru,"MIDI thru","MIDIスルー");
@@ -832,31 +832,25 @@ private:
         drag.beginExport=[this](bool dragFile) { beginStudioReturn(dragFile); };
     }
     void beginStudioReturn(bool dragFile) {
-        if (!workspace || !workspace->isVisible()) {
-            Document snapshot;
-            { const juce::ScopedLock guard(proc.stateLock); snapshot=proc.document; }
-            returnDocument(snapshot,dragFile);
+        Document snapshot;
+        { const juce::ScopedLock guard(proc.stateLock); snapshot=proc.document; }
+        returnDocument(snapshot,dragFile);
+    }
+    void returnWorkspaceScales(const juce::var& value,bool dragFile) {
+        if (!value["score"].isString() || workspaceHash.isEmpty()) return;
+        Document snapshot;
+        {
+            const juce::ScopedLock guard(proc.stateLock);
+            if (seenStateVersion!=proc.restoredStateVersion) return;
+            snapshot=proc.document;
+        }
+        const auto result=snapshot.importWorkspaceScales(value["score"].toString(),workspaceHash);
+        if (result.failed()) { status.setText(result.getErrorMessage(),juce::dontSendNotification); return; }
+        if (dragFile && !juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown()) {
+            status.setText(words("Hold the drag handle until you reach the scale track.","スケールトラックまでボタンを押したままドラッグしてください。"),juce::dontSendNotification);
             return;
         }
-        const auto hash=workspaceHash;
-        workspace->evaluateJavascript("({draft:window.ScaleAdviserApp.state.textDirty,score:window.ScaleAdviserApp.exportText()})",
-            [self=juce::Component::SafePointer<Editor>(this),page=workspaceGeneration,hash,dragFile](auto evaluated) {
-                if (!self || page!=self->workspaceGeneration) return;
-                const auto* value=evaluated.getResult();
-                if (!value || !(*value)["score"].isString() || bool((*value)["draft"])) {
-                    self->status.setText(self->words("Apply pending text edits before returning scales.","テキストの編集を適用してからスケールを戻してください。"),juce::dontSendNotification);
-                    return;
-                }
-                Document snapshot;
-                {
-                    const juce::ScopedLock guard(self->proc.stateLock);
-                    if (self->seenStateVersion!=self->proc.restoredStateVersion) return;
-                    snapshot=self->proc.document;
-                }
-                const auto result=snapshot.importWorkspaceScales((*value)["score"].toString(),hash);
-                if (result.failed()) self->status.setText(result.getErrorMessage(),juce::dontSendNotification);
-                else if (!dragFile || juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown()) self->returnDocument(snapshot,dragFile);
-            });
+        returnDocument(snapshot,dragFile);
     }
     void returnDocument(const Document& document,bool dragFile) {
         if (!dragFile) {
@@ -868,7 +862,8 @@ private:
         juce::File file;
         const auto result=document.exportForStudio(dir,file);
         if (result.failed()) status.setText(result.getErrorMessage(),juce::dontSendNotification);
-        else juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()},false,this);
+        else if (!juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()},false,this))
+            status.setText(words("Could not start the drag. Use Copy scales to paste in OSTF Studio.","ドラッグを開始できませんでした。「スケールをコピー」でOSTF Studioに貼り付けられます。"),juce::dontSendNotification);
     }
     void requestLoad(juce::String source, LinkedScoreFile link={}) {
         if (workspace && workspace->isVisible() && workspaceSource.isNotEmpty()) {
@@ -914,7 +909,7 @@ private:
         const auto action=request["action"].toString();
         const auto value=request["value"];
         if (action=="read" && refresh.isEnabled()) refresh.onClick();
-        else if ((action=="copy" || action=="drag") && drag.isEnabled()) beginStudioReturn(action=="drag");
+        else if ((action=="copy" || action=="drag") && drag.isEnabled()) returnWorkspaceScales(value,action=="drag");
         else if (action=="commit" && returnWorkspace.isEnabled()) importFullWorkspace();
         else if (action=="native") openFullWorkspace();
         else if (action=="instrument" && showInstrument.isEnabled()) showInstrument.onClick();
@@ -991,6 +986,8 @@ private:
                 +";--raised:#"+juce::Colour(face.panel).toDisplayString(false)
                 +";--panel:#"+juce::Colour(face.background).interpolatedWith(juce::Colour(face.panel),.5f).toDisplayString(false)
                 +";--line:#"+juce::Colour(face.panel).brighter(.16f).toDisplayString(false)
+                +";--control-text:#"+findColour(juce::ComboBox::textColourId).toDisplayString(false)
+                +";--menu-selection:#"+findColour(juce::PopupMenu::highlightedBackgroundColourId).toDisplayString(false)
                 +";--accent:#"+juce::Colour(face.accent).toDisplayString(false)+"}</style>")
             .replace("<html lang=\"en\">",japanese ? "<html lang=\"ja\">" : "<html lang=\"en\">")
             .replace("<!--STUDIO_SCORE-->",juce::Base64::toBase64(snapshot));
@@ -1170,7 +1167,7 @@ private:
             reply(result.wasOk(),file.getFileName(),result.getErrorMessage());
         };
         if (request["mode"]=="save") {write(proc.linkedFile.file); return;}
-        workspaceSaveChooser=std::make_unique<juce::FileChooser>("Save edited OSTF as",proc.linkedFile.file,"*.ostf");
+        workspaceSaveChooser=std::make_unique<juce::FileChooser>(words("Save edited OSTF as","編集中のOSTFを別名で保存"),proc.linkedFile.file,"*.ostf");
         workspaceSaveChooser->launchAsync(juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::warnAboutOverwriting,
             [self=juce::Component::SafePointer<Editor>(this),write,reply](const juce::FileChooser& fc) {
                 if (!self) return;
@@ -1186,7 +1183,7 @@ private:
         else status.setText(result.getErrorMessage(),juce::dontSendNotification);
     }
     void choose(bool writing) {
-        chooser=std::make_unique<juce::FileChooser>(writing?"Save OSTF":"Open OSTF",juce::File{},"*.ostf");
+        chooser=std::make_unique<juce::FileChooser>(writing?words("Save edited OSTF as","編集中のOSTFを別名で保存"):words("Open OSTF","OSTFを開く"),juce::File{},"*.ostf");
         using F=juce::FileBrowserComponent;
         chooser->launchAsync((writing?F::saveMode|F::warnAboutOverwriting:F::openMode)|F::canSelectFiles,
             [self=juce::Component::SafePointer<Editor>(this),writing](const auto& fc) {

@@ -157,7 +157,9 @@ static int testLinkedSave(const juce::File& source) {
         if (pending) return;
         if (stage==-2) {
             check(R"JS(Boolean(document.querySelector('body.studio-host.no-score #emptyScore')?.offsetHeight
-                && !window.ScaleAdviserApp.state.doc && !document.getElementById('demos')))JS");
+                && document.querySelector('header #hostRead:disabled')?.offsetWidth
+                && document.querySelector('header #studioInstrumentPicker')?.offsetWidth
+                && document.querySelector('header #hostDrag:disabled') && !window.ScaleAdviserApp.state.doc && !document.getElementById('demos')))JS");
         } else if (stage==-1) {
             drop->filesDropped({file.getFullPathName()},4,4);
             browser=dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
@@ -167,6 +169,12 @@ static int testLinkedSave(const juce::File& source) {
             check(R"JS((()=>{
                 const app=window.ScaleAdviserApp;
                 if(!app?.state.fileBound || !app.state.doc.harmony.chords.length)return false;
+                if(!document.querySelector('header #hostRead:disabled'))return false;
+                document.getElementById('textTab').click();
+                const source=document.getElementById('textSource'), text=document.getElementById('textArea');
+                if(!source.offsetWidth || !source.textContent.includes(app.state.doc.song.title)
+                   || JSON.parse(text.value).song.title!==app.state.doc.song.title)return false;
+                document.getElementById('visualTab').click();
                 app.selectChord(app.state.doc.harmony.chords[0].id);
                 app.apply();return true;
             })())JS");
@@ -257,7 +265,7 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
             })())JS");
         } else if (stage==1) {
             language()->setSelectedId(3,juce::sendNotificationSync);
-            checkPage(R"JS(document.documentElement.lang==='ja' && document.querySelector('#save').textContent==='\u4fdd\u5b58'
+            checkPage(R"JS(document.documentElement.lang==='ja' && document.querySelector('#save').textContent==='\u7de8\u96c6\u4e2d\u306eOSTF\u3092\u4fdd\u5b58'
                 && document.querySelector('#songTitle').textContent==='Save'
                 && document.querySelector('#textArea').value==='\u672a\u78ba\u5b9a <draft> &')JS");
         } else if (stage==2) {
@@ -277,7 +285,7 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
             })())JS");
         } else if (stage==4) {
             language()->setSelectedId(2,juce::sendNotificationSync);
-            checkPage("document.documentElement.lang==='en' && document.querySelector('#save').textContent==='Save'");
+            checkPage("document.documentElement.lang==='en' && document.querySelector('#save').textContent==='Save edited OSTF'");
         } else if (stage==5) {
             for (auto* child:editor->getChildren())
                 if (auto* b=dynamic_cast<juce::TextButton*>(child); b && b->getButtonText()=="Apply scales") {
@@ -564,9 +572,40 @@ int main(int argc,char** argv) {
                     const b=document.getElementById('studioInstrumentPicker');
                     if(!b || !b.textContent.includes(INSTRUMENT_NAME)) return false;
                     if(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().toLowerCase()!==STUDIO_BG) return false;
-                    if(document.getElementById('demos') || !b.closest('#hostAudition')
-                       || !document.querySelector('header #hostSettings #hostRead')
+                    const palette=getComputedStyle(document.documentElement);
+                    const rgb=key=>{
+                        const hex=palette.getPropertyValue(key).trim().slice(1);
+                        return 'rgb('+hex.match(/../g).map(v=>parseInt(v,16)).join(', ')+')';
+                    };
+                    if(!matchMedia('(forced-colors: active)').matches){
+                        for(const id of ['genreStyle']){
+                            const select=document.getElementById(id), field=getComputedStyle(select);
+                            if(field.colorScheme!=='dark' || field.color!==rgb('--control-text')
+                               || field.backgroundColor!==rgb('--raised')) return false;
+                            for(const option of select.options){
+                                const item=getComputedStyle(option);
+                                if(item.color!==rgb('--control-text')
+                                   || item.backgroundColor!==rgb(option.selected?'--menu-selection':'--bg')) return false;
+                            }
+                        }
+                    }
+                    const header=document.querySelector('header'), read=header.querySelector('#hostRead');
+                    const radios=[...header.querySelectorAll('#hostLanguage input[type=radio]')];
+                    if(!header.contains(b) || !b.offsetHeight || !read?.disabled || !read.offsetHeight
+                       || radios.length!==3 || !radios.some(r=>r.checked)
+                       || !header.querySelector('#hostDrag:not(:disabled)')?.offsetWidth
+                       || header.querySelector('details') || document.getElementById('demos')
                        || document.querySelectorAll('#open, #save, #saveAs').length!==3) return false;
+                    if(!matchMedia('(forced-colors: active)').matches && radios.some(r=>
+                        getComputedStyle(r.parentElement).color!==rgb('--control-text'))) return false;
+                    const sections=[...document.querySelectorAll('.section-title')];
+                    if(!sections.length || sections.some(section=>{
+                        const name=section.querySelector('.section-name'), range=document.createRange();
+                        range.selectNodeContents(name);
+                        return Math.abs(range.getBoundingClientRect().left-name.getBoundingClientRect().left)>2
+                            || name.getBoundingClientRect().left-section.getBoundingClientRect().left>40;
+                    })) return false;
+                    if(!document.getElementById('textSource').textContent.includes(window.ScaleAdviserApp.state.doc.song.title)) return false;
                     b.click();return true;
                 })())JS").replace("INSTRUMENT_NAME",juce::JSON::toString(juce::var(instrument->name)))
                     .replace("STUDIO_BG",juce::JSON::toString(juce::var("#"+editor->getLookAndFeel()
@@ -694,7 +733,7 @@ int main(int argc,char** argv) {
     juce::TextButton *redo=nullptr,*automatic=nullptr;
     for(auto* c:editor->getChildren()) if(auto* b=dynamic_cast<juce::TextButton*>(c)) {
         if(b->getButtonText()=="Redo") redo=b;
-        if(b->getButtonText()=="Auto-set song") automatic=b;
+        if(b->getButtonText()=="Set scales in editor") automatic=b;
     }
     if(!redo || !redo->isEnabled() || !automatic) return 22;
     redo->onClick(); if(!undo->isEnabled() || scales(scoreText())<scales(before)+2)return 23;

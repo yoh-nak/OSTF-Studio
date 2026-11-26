@@ -27,11 +27,22 @@ inline Theme themeForKey(const juce::String& key) {
     return Theme::studioBlue;
 }
 
+inline const juce::Colour controlText{0xffedf3f8};
+
 class LookAndFeel final : public juce::LookAndFeel_V4 {
 public:
     enum { panelColourId = 0x2f74100, accentColourId };
     explicit LookAndFeel(const Finish& finish = finishes[0]) { setFinish(finish); }
     void setFinish(const Finish& finish) {
+        const juce::Colour panel(finish.panel), background(finish.background), accent(finish.accent);
+        setColour(juce::ComboBox::backgroundColourId, panel);
+        setColour(juce::ComboBox::textColourId, controlText);
+        setColour(juce::ComboBox::arrowColourId, controlText);
+        setColour(juce::ComboBox::focusedOutlineColourId, accent);
+        setColour(juce::PopupMenu::backgroundColourId, background);
+        setColour(juce::PopupMenu::textColourId, controlText);
+        setColour(juce::PopupMenu::highlightedBackgroundColourId, panel.interpolatedWith(accent, .22f));
+        setColour(juce::PopupMenu::highlightedTextColourId, controlText);
         setColour(panelColourId, juce::Colour(finish.panel));
         setColour(accentColourId, juce::Colour(finish.accent));
         setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(finish.background));

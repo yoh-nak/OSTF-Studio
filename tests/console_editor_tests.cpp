@@ -6,6 +6,14 @@
 
 juce::AudioProcessor* makeStudioEffect(const char*, const char*);
 
+static double luminance(juce::Colour colour) {
+    const auto linear = [](double channel) {
+        return channel <= .04045 ? channel / 12.92 : std::pow((channel + .055) / 1.055, 2.4);
+    };
+    return .2126 * linear(colour.getFloatRed()) + .7152 * linear(colour.getFloatGreen())
+         + .0722 * linear(colour.getFloatBlue());
+}
+
 int main(int argc, char** argv) {
     ostfstudio::CompressorListen meter;
     for (float magnitude : {0.f, .1f, .5f}) {
@@ -18,8 +26,17 @@ int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     using namespace ostfstudio::console;
     if (themeForKey("unknown")!=Theme::studioBlue) return 9;
-    for (const auto& finish : finishes)
+    for (const auto& finish : finishes) {
         if (&finishFor(themeForKey(finish.key))!=&finish) return 9;
+        LookAndFeel style(finish);
+        const auto contrast = [&](int foreground, int background) {
+            auto a=luminance(style.findColour(foreground)), b=luminance(style.findColour(background));
+            return (std::max(a,b)+.05)/(std::min(a,b)+.05);
+        };
+        if (contrast(juce::ComboBox::textColourId,juce::ComboBox::backgroundColourId)<4.5
+            || contrast(juce::PopupMenu::textColourId,juce::PopupMenu::backgroundColourId)<4.5
+            || contrast(juce::PopupMenu::highlightedTextColourId,juce::PopupMenu::highlightedBackgroundColourId)<4.5) return 10;
+    }
     const juce::PropertiesFile settings(ostfstudio::viewSettingsOptions());
     const auto& finish=finishFor(themeForKey(settings.getValue("workspaceTheme")));
     for (const auto* type : {"Reverb", "Chorus", "EQ", "Compressor", "Limiter", "Phaser", "Flanger", "Distortion", "Amp"}) {

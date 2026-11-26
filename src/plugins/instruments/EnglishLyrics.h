@@ -124,7 +124,10 @@ inline bool matchSungSyllable(const std::vector<Phone>& word, size_t begin, size
     // A written "to-ru" can carry the unstressed /t ah l/ of "little".
     const bool syllabicL = enVowel == 3 && !(word[nucleus].english & 64) && nucleus+2 == end
         && (word[nucleus+1].english & 63) == 25 && onset == t && kana[next].vowel == 4;
-    if ((!syllabicL && kana[next].vowel != japaneseVowelForEnglish(enVowel))
+    // The dictionary uses AA for the LOT vowel in "not" and "clock".
+    // Keep the authored Japanese o while matching the rest of the syllable.
+    const bool writtenLotVowel = enVowel == 1 && kana[next].vowel == 4;
+    if ((!syllabicL && !writtenLotVowel && kana[next].vowel != japaneseVowelForEnglish(enVowel))
         || (kana[next].onset != onset && !(onset == sibilant && kana[next].vowel == 1 && kana[next].onset == sh))) return false;
     result.push_back(kana[next++]);
     if (useWordStress && (word[nucleus].english & 64)) result.back().vowelTiming = VowelTiming::stressed;
@@ -136,7 +139,7 @@ inline bool matchSungSyllable(const std::vector<Phone>& word, size_t begin, size
     }
     for (size_t i = nucleus + 1; i < end; ++i) {
         if (next == kana.size()) return false;
-        // In ルック and レット the small ッ closes the same final stop as ク or ト.
+        // A small tsu before the written final stop marks the same closure.
         // The English stop already supplies its own closure and release burst.
         const int en = word[i].english & 63;
         const bool stop = en == 16 || en == 18 || en == 21 || en == 24 || en == 29 || en == 33;
