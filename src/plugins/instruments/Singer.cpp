@@ -437,11 +437,10 @@ class Voice : public SyllableVoice {
         const int ms = p.durationMs > 0 ? p.durationMs : 195;
         if (bank && en) {
             // ARPAbet order in the bundled pronunciation dictionary.
-            constexpr int onsets[] = {b,ch,d,z,f,g,h,j,velar,r,m,n,moraN,pStop,r,sibilant,sh,t,sibilant,v,w,y,z,j};
             auto& first = segments[0];
             first.english = 0;
             first.vowel = en <= 15 ? japaneseVowelForEnglish(en) : p.vowel;
-            first.onset = en <= 15 ? vowelOnly : onsets[en-16];
+            first.onset = en <= 15 ? vowelOnly : japaneseOnsetForEnglish(en);
             const int offglide = en == 5 || en == 12 ? 2 : (en == 6 || en == 9 || en == 13 ? 1 : -1);
             if (offglide >= 0 && ms >= 24) {
                 segments[1] = first;

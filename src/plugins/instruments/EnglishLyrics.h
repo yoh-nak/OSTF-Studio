@@ -1,6 +1,7 @@
 #pragma once
 #include "JapaneseMora.h"
 #include "EnglishLexiconData.h"
+#include <algorithm>
 #include <cstring>
 
 namespace ostfstudio::singing {
@@ -50,6 +51,12 @@ inline bool englishWord(const juce::String& word, std::vector<Phone>& result) {
     return false;
 }
 
+inline int japaneseOnsetForEnglish(int consonant) {
+    // B CH D DH F G HH JH K L M N NG P R S SH T TH V W Y Z ZH
+    constexpr int onsets[] = {b,ch,d,z,f,g,h,j,velar,r,m,n,moraN,pStop,r,sibilant,sh,t,sibilant,v,w,y,z,j};
+    return onsets[consonant - 16];
+}
+
 inline std::vector<Phone> lyricPhones(const juce::String& reading) {
     std::vector<Phone> result;
     for (const auto& token : juce::StringArray::fromTokens(reading.toLowerCase(), " \t,.;:!?\r\n", {})) {
@@ -74,6 +81,71 @@ inline std::vector<Phone> lyricPhones(const juce::String& reading) {
     return result;
 }
 
+// Keep the written Japanese nucleus. Substituting a consonant-only phone
+// requires a complete match to the dictionary word, including its coda.
+inline std::vector<Phone> sungReading(const juce::String& text, const juce::String& reading) {
+    const auto& written = reading.isEmpty() ? text : reading;
+    auto kana = lyricPhones(written);
+    if (kana.size() < 2) return kana;
+    for (auto c : written)
+        if ((c < 0x30a1 || c > 0x30f6) && c != 0x30fc) return kana;
+    if (text.isEmpty() || text == written) {
+        // With only kana, preserve every recorded syllable. A single explicit
+        // long vowel surrounded by short support syllables identifies the hold.
+        auto supportKana = [](const Phone& p) {
+            if (p.glide || p.morae != 1) return false;
+            if (p.vowel == 4) return p.onset == t || p.onset == d;
+            return p.vowel == 2 && (p.onset == sibilant || p.onset == f || p.onset == velar
+                || p.onset == g || p.onset == b || p.onset == pStop || p.onset == m || p.onset == r);
+        };
+        if (std::count_if(kana.begin(), kana.end(), [](const Phone& p) { return p.morae > 1; }) == 1
+            && std::all_of(kana.begin(), kana.end(), [&](const Phone& p) { return p.morae > 1 || supportKana(p); }))
+            for (auto& p : kana)
+                if (supportKana(p)) p.vowelTiming = VowelTiming::support;
+        return kana;
+    }
+    if (!text.containsOnly("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'-")) return kana;
+    std::vector<Phone> word;
+    if (!englishWord(text.toLowerCase(), word)) return kana;
+    const auto isVowel = [](const Phone& p) { return (p.english & 63) <= 15; };
+    if (std::count_if(word.begin(), word.end(), isVowel) != 1) return kana;
+    const auto nucleus = size_t(std::find_if(word.begin(), word.end(), isVowel) - word.begin());
+    const auto main = nucleus ? nucleus - 1 : 0;
+    const int enVowel = word[nucleus].english & 63;
+    if (main >= kana.size() || kana[main].vowel != japaneseVowelForEnglish(enVowel)
+        || kana[main].onset != (nucleus ? japaneseOnsetForEnglish(word[nucleus-1].english & 63) : vowelOnly)) return kana;
+
+    auto support = [](const Phone& p, int en) {
+        if (p.morae != 1 || p.glide) return false;
+        if (p.onset == moraN) return en == 26 || en == 27 || en == 28;
+        return p.onset == japaneseOnsetForEnglish(en)
+            && (p.vowel == 2 || ((p.onset == t || p.onset == d) && p.vowel == 4));
+    };
+    std::vector<Phone> result;
+    for (size_t i = 0; i < main; ++i) {
+        if (!support(kana[i], word[i].english & 63)) return kana;
+        result.push_back(word[i]);
+    }
+    result.push_back(kana[main]);
+    size_t next = main + 1;
+    const int secondVowel = enVowel == 5 || enVowel == 12 ? 2
+                          : enVowel == 6 || enVowel == 9 || enVowel == 13 ? 1 : -1;
+    if (next < kana.size() && kana[next].onset == vowelOnly && kana[next].vowel == secondVowel) {
+        result.push_back(kana[next++]);
+        result.back().vowelTiming = VowelTiming::offglide;
+    }
+    for (size_t i = nucleus + 1; i < word.size(); ++i) {
+        if (next == kana.size()) return kana;
+        const auto& ending = kana[next++];
+        if (ending.onset == ts && ending.vowel == 2 && ending.morae == 1 && (word[i].english & 63) == 33
+            && i+1 < word.size() && (word[i+1].english & 63) == 31) {
+            result.push_back(word[i++]); // One written "tsu" in "lights" covers both /t/ and /s/.
+        } else if (!support(ending, word[i].english & 63)) return kana;
+        result.push_back(word[i]);
+    }
+    return next == kana.size() ? result : kana;
+}
+
 // Approximate articulation time at normal singing tempo, in seconds.
 inline double consonantSeconds(int phone) {
     switch (phone & 63) {
@@ -85,8 +157,16 @@ inline double consonantSeconds(int phone) {
 
 inline std::vector<double> articulationPositions(const std::vector<Phone>& phones, double seconds) {
     std::vector<double> edges{0.0};
-    auto vowelWeight = [](const Phone& p) {
+    int writtenMorae = 0;
+    for (const auto& p : phones) writtenMorae += p.morae;
+    // Literal support vowels keep their full time at 115 ms per mora and
+    // above. Compress them progressively on crowded notes, keeping them voiced.
+    const double msPerMora = 1000. * seconds / std::max(1, writtenMorae);
+    const double supportWeight = .4 + .6 * std::clamp((msPerMora - 45.) / 70., 0., 1.);
+    auto vowelWeight = [supportWeight](const Phone& p) {
         if (p.english) return (p.english & 64) ? 1.35 : 1.;
+        if (p.vowelTiming == VowelTiming::support) return p.morae * supportWeight;
+        if (p.vowelTiming == VowelTiming::offglide) return p.morae * .5;
         return p.morae * (p.onset == closure ? .48 : p.onset == moraN ? .72 : 1.);
     };
     double consonants = 0, nuclei = 0;

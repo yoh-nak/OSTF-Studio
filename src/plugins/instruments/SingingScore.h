@@ -16,7 +16,7 @@ inline Lyrics lyricsFor(const juce::var& score) {
     std::map<juce::String, std::vector<juce::var>> phraseUnits;
     for (const auto& unit : items(score["lyrics"]["units"])) {
         auto reading = unit["pronunciation"].toString().trim();
-        readings[unit["id"].toString()] = lyricPhones(reading.isEmpty() ? unit["text"].toString() : reading);
+        readings[unit["id"].toString()] = sungReading(unit["text"].toString().trim(), reading);
         phraseUnits[unit["phraseId"].toString()].push_back(unit);
     }
     // A word such as "city" can be written across the note units "ci" and "ty".

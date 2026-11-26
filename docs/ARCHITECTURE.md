@@ -2,6 +2,10 @@
 
 ## OSTF 5.2 score and audio projection
 
+Studio transport and the standalone Formant Singer score reader share the lyric-unit pronunciation pass. A complete match between an English monosyllable and its katakana reading lets the scheduler use timed consonants for the supporting kana, keep the written Japanese vowel and shorten the offglide of a diphthong. A partial match falls back to the entire supplied reading. For katakana-only units containing one marked long vowel and only short supporting kana around it, the scheduler gradually shortens those supporting syllables below 115 ms per mora. All syllables retain their Japanese phonemes. The mapping takes place during score preparation and preserves note endpoints and authored lyric data.
+
+Scale Editor keeps the filtered instrument picker open during repeated auditions. The test note goes to the hosted instrument even when preview MIDI is routed to another track. A successful explicit Load closes the picker.
+
 The arrangement always projects a Scale lane. A song-level scale fills gaps between timed regions, and a score with no scale assignments displays an empty lane. Adding a shared scale from the lane intersects the clicked bar with the gap between other shared assignments. Targeted scales retain their own scope. The edit and Undo use the same score transaction as the other global lanes.
 
 The Scale Editor instrument picker compares JUCE plug-in identities before replacing the hosted instance. Re-audition of the active instance preserves its live state and native editor. Formant Singer keeps a four-millisecond MIDI Expression ramp per channel during active voices and applies Expression immediately when a channel is silent.

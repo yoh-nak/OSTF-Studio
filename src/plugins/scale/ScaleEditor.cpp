@@ -725,8 +725,11 @@ private:
             if (!self) return;
             const auto result = c.scanned ? self->proc.rack.select(*c.scanned)
                 : self->proc.rack.choose(juce::File(c.path),c.needsInspection?juce::String{}:c.name);
-            if (result.failed() && panel) panel->showLoadError(result.getErrorMessage());
-            else if (self->pickerBox) self->pickerBox->dismiss();
+            if (result.failed()) {
+                if (panel) panel->showStatus(result.getErrorMessage());
+            } else if (audition) {
+                if (panel) panel->showStatus(c.name + self->words("  /  Playing C4","  /  C4を試聴中"));
+            } else if (self->pickerBox) self->pickerBox->dismiss();
             self->instrumentChanged(result,audition);
         };
         picker->onReference=[self] { if(self) { self->pickerBox->dismiss(); self->instrumentChanged(self->proc.rack.restore(nullptr)); } };

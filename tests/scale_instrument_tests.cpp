@@ -379,6 +379,11 @@ int main(int argc,char** argv) {
         auto* loadAndTest=dynamic_cast<juce::TextButton*>(picker->findChildWithID("load-instrument-and-audition"));
         if (!loadAndTest || !loadAndTest->isEnabled()) return 85;
         loadAndTest->onClick();
+        bool auditionShownInPicker=false;
+        for (auto* child : picker->getChildren())
+            if (auto* label=dynamic_cast<juce::Label*>(child); label && label->getText().contains(instrument->name)
+                && label->getText().contains("Playing C4")) auditionShownInPicker=true;
+        if (!auditionShownInPicker || search->getText()!=instrument->name+" "+instrument->manufacturerName) return 91;
         if (!auditionOnly && !hostedEditor) return 90;
         if (hostedEditor) hostedEditor->closeButtonPressed();
         float peak=0;
@@ -389,6 +394,9 @@ int main(int argc,char** argv) {
         }
         std::cout<<"Instrument picker / test note: "<<instrument->name<<" peak "<<peak<<"\n";
         if (peak<.001f) return 60;
+        auto* load=dynamic_cast<juce::TextButton*>(picker->findChildWithID("load-instrument"));
+        if (!load) return 92;
+        load->onClick();
         if (!route->getToggleState()) return 87;
         route->setToggleState(false,juce::dontSendNotification); route->onClick();
         if (auditionOnly) { editor.reset(); processor->releaseResources(); return 0; }

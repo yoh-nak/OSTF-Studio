@@ -8,11 +8,13 @@ namespace ostfstudio::singing {
 // Values 0–3 are used by the original Studio articulation messages.
 enum Onset { vowelOnly, sibilant, velar, moraN, g, z, t, d, n, h, b, pStop, m, r, y, w, sh, j, ch, ts, f, v, closure, lengthMark, onsetCount };
 enum Delivery { plain, vibrato, scoop };
+enum class VowelTiming { regular, offglide, support };
 struct Phone {
     int vowel = 0, onset = vowelOnly, glide = 0, delivery = plain, intensity = 0;
     int english = 0; // ARPAbet index, with bit 6 for primary stress.
     int durationMs = 0; // Optional playback timing, outside the score format.
     int morae = 1; // Length marks within one lyric unit extend its preceding vowel.
+    VowelTiming vowelTiming = VowelTiming::regular; // Used when allocating the lyric unit's time.
     int sampleKey() const { return (onset * 3 + glide) * 5 + vowel; }
 };
 

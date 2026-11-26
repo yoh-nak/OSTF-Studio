@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## 2026-11-26 — singing katakana on short notes and comparing hosted instruments
+
+Branch `feat/ostf-52-studio`. The Windows x64 development Portable is `E:/OSTF-Studio-build-cache/katakana-phrasing-52/Portable` (38 VST3 bundles, eight demo projects). The app and the contents of the Singer and Scale Editor bundles were checked against the Release build. All 44 Windows Release CTest cases passed. CI, installers, macOS hardware and an external DAW round trip were not exercised for this change.
+
+Use Paper Lantern Replies at its original 78 BPM, the Mei voice and the four bars of Pre-Chorus. With the score's English lyric and matching katakana reading, the 337 ms test note for “street” allocates 204 ms to the central written vowel, up from 134.8 ms. The test also covers “lights”, “flame”, unknown or deliberately different readings, and katakana-only input at two note lengths. Several syllables within one English word still require further work. The old and new mono excerpts each contain 591872 samples at 48 kHz. To reproduce, run `ostf_singing_tests <paper-lantern-replies.ostf> <new-output.wav> bilingual-mei` at each revision. The machine-local `prechorus-A-B.wav` next to Portable joins the two renders at matched RMS, with the new render starting at 13.08 seconds. A separate `--vocal-track-smoke` capture of the Japanese opening vocals through the new Portable was byte-identical to the previous Portable's capture. Audio renders and timing tests do not establish perceived vocal quality.
+
+In Scale Editor, search under **Instruments**, use **Load and audition** to hear C4 and compare additional results with the filter intact. **Load** finishes the selection. The Windows test exercised an installed FM8 instrument through the picker with a 0.07170 peak. Full M4L feature parity is still unverified. The Japanese take guide now distinguishes native 5.1/5.2 MIDI comps from the remaining audio-take, recording and live-edit milestones.
+
 ## 2026-11-26 — global Scale lane, short vowels and instrument audition
 
 Branch `feat/ostf-52-studio`. Open the Blue Hour Waltz demo: it has a key and no assigned scale. Its global Scale row now sits between Key and Meter. Double-click an unassigned bar to choose the tonic and mode. Use **Set scale for this bar** to override a song default. The row shows the inherited scale on either side of a timed assignment. Splitting an inherited interval respects nearby shared assignments, and a join can retain either side. The display alone does not create events in the score.

@@ -98,6 +98,7 @@ public:
         setSize(495,402);
         search.onTextChange=[this]{filter();};
         search.onReturnKey=[this]{choose();};
+        load.setComponentID("load-instrument");
         load.onClick=[this]{choose();};
         loadAndTest.setComponentID("load-instrument-and-audition");
         loadAndTest.onClick=[this]{choose(true);};
@@ -111,7 +112,7 @@ public:
         filter();
     }
     ~InstrumentPicker() override {list.setModel(nullptr);}
-    void showLoadError(const juce::String& message) {
+    void showStatus(const juce::String& message) {
         hint.setText(message, juce::dontSendNotification);
         hint.setTooltip(message);
     }

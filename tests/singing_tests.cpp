@@ -257,6 +257,39 @@ int main(int argc, char** argv) {
     })) return 41;
     const auto parts = readParts(demoScore);
     if (parts.empty() || parts.front().syllables.empty()) return 2;
+    auto readingFor = [&](const juce::String& word) {
+        for (const auto& unit : scoreUnits)
+            if (unit["text"].toString().equalsIgnoreCase(word)) return unit["pronunciation"].toString();
+        return juce::String{};
+    };
+    const auto streetReading = readingFor("street");
+    const auto street = sungReading("Street",streetReading);
+    if (street.size()!=4 || street[0].english!=31 || street[1].english!=33 || street[2].english
+        || street[2].onset!=r || street[2].vowel!=1 || street[2].morae!=2 || street[3].english!=33) return 77;
+    const auto streetEdges = articulationPositions(street,.337);
+    const auto literalEdges = articulationPositions(lyricPhones(streetReading),.337);
+    const auto nucleusMs = (streetEdges[3]-streetEdges[2])*337.;
+    std::cout << "Street at 337 ms, written vowel before / after (ms): "
+              << (literalEdges[3]-literalEdges[2])*337. << " / " << nucleusMs << '\n';
+    if (nucleusMs<200. || streetEdges.front()!=0. || streetEdges.back()!=1.) return 77;
+    const auto lights = sungReading("lights",readingFor("lights"));
+    if (lights.size()!=4 || lights[0].onset!=r || lights[1].vowelTiming!=VowelTiming::offglide
+        || lights[2].english!=33 || lights[3].english!=31) return 78;
+    const auto flame = sungReading("flame",readingFor("flame"));
+    if (flame.size()!=4 || flame[0].english!=20 || flame[1].onset!=r || flame[1].vowel!=3
+        || flame[2].vowelTiming!=VowelTiming::offglide || flame[3].english!=26) return 78;
+    for (const auto& onlyKana : {sungReading(streetReading,{}), sungReading({},streetReading)}) {
+        if (onlyKana.size()!=4 || onlyKana[0].vowelTiming!=VowelTiming::support
+            || onlyKana[3].vowelTiming!=VowelTiming::support || onlyKana[3].english) return 80;
+        const auto fast = articulationPositions(onlyKana,.337);
+        if ((fast[3]-fast[2])*.337 < .175 || fast[1] <= 0. || fast[3] >= 1.) return 80;
+        if (articulationPositions(onlyKana,.8)!=articulationPositions(lyricPhones(streetReading),.8)) return 80;
+    }
+    // Spelling alone cannot replace a different authored reading or rephrase Japanese lyrics.
+    for (const auto& written : {streetReading,juce::String("flame"),juce::String("inventedword")}) {
+        const auto literal=sungReading(written,streetReading);
+        if (literal.size()!=4 || literal.front().english || literal.back().english || literal[2].morae!=2) return 79;
+    }
     const auto kana = pronounce(juce::String::charToString(0x30ab) + juce::String::charToString(0x30bc));
     if (kana.size() != 2 || kana[0].vowel != 0 || kana[1].vowel != 3 || kana[1].onset != z) return 3;
     juce::String phrase;
