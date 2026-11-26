@@ -124,6 +124,8 @@ static int testLinkedSave(const juce::File& source) {
     auto fixture=juce::JSON::parse(source.loadFileAsString());
     auto* production=fixture["extensions"]["org.ostf.studio"]["data"].getDynamicObject();
     if (!production) return 70;
+    fixture["harmony"].getDynamicObject()->setProperty("scales",juce::Array<juce::var>{});
+    const auto firstChord=fixture["harmony"]["chords"][0];
     production->setProperty("testDecimal","EXACT_DECIMAL_FIXTURE");
     const juce::String exactDecimal="0.123456789012345678901";
     if (!file.replaceWithText(juce::JSON::toString(fixture).replace("\"EXACT_DECIMAL_FIXTURE\"",exactDecimal))) return 70;
@@ -150,24 +152,31 @@ static int testLinkedSave(const juce::File& source) {
         });
     };
     timer.step=[&] {
-        if (stage==5 || juce::Time::getMillisecondCounterHiRes()>deadline) {
+        if (stage==6 || juce::Time::getMillisecondCounterHiRes()>deadline) {
             juce::MessageManager::getInstance()->stopDispatchLoop(); return;
         }
         if (pending) return;
         if (stage==0) {
             check(R"JS((()=>{
                 const app=window.ScaleAdviserApp;
-                if(!app?.state.fileBound || !app.state.doc.harmony.scales.length)return false;
-                app.state.doc.harmony.scales=[];app.state.dirty=true;app.save();return true;
+                if(!app?.state.fileBound || !app.state.doc.harmony.chords.length)return false;
+                app.selectChord(app.state.doc.harmony.chords[0].id);
+                app.apply();return true;
             })())JS");
-        } else if (stage==1 || stage==3) {
+        } else if (stage==1) {
+            check(R"JS((()=>{const app=window.ScaleAdviserApp;
+                if(!app.state.dirty || app.state.doc.harmony.scales.length!==1)return false;
+                app.save();return true;})())JS");
+        } else if (stage==2 || stage==4) {
             check(R"JS((()=>{const b=document.querySelector('[data-export="confirm"]');
                 if(!b || b.disabled || b.textContent!=='Save linked file')return false;
                 b.click();return true;})())JS");
-        } else if (stage==2) {
+        } else if (stage==3) {
             if (!externallyEdited) {
                 const auto written=file.loadFileAsString();
-                if (juce::JSON::parse(written)["harmony"]["scales"].size()!=0 || !written.contains(exactDecimal)) return;
+                const auto scales=juce::JSON::parse(written)["harmony"]["scales"];
+                if (scales.size()!=1 || scales[0]["start"]!=firstChord["start"] || scales[0]["duration"]!=firstChord["duration"]
+                    || scales[0]["intervals"].size()<5 || !written.contains(exactDecimal)) return;
                 if (!file.replaceWithText("Externally edited")) return;
                 externallyEdited=true;
             }
@@ -182,7 +191,7 @@ static int testLinkedSave(const juce::File& source) {
     timer.startTimer(100);
     juce::MessageManager::getInstance()->runDispatchLoop();
     timer.stopTimer();
-    if (stage!=5 || file.loadFileAsString()!="Externally edited") {
+    if (stage!=6 || file.loadFileAsString()!="Externally edited") {
         std::cerr<<"Linked Save failed at stage "<<stage<<'\n'; return 73;
     }
     return 0;
