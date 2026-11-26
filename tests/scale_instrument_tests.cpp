@@ -133,7 +133,6 @@ static int testLinkedSave(const juce::File& source) {
     std::unique_ptr<juce::AudioProcessorEditor> editor(processor->createEditorAndMakeActive());
     auto* drop=dynamic_cast<juce::FileDragAndDropTarget*>(editor.get());
     if (!drop) return 71;
-    drop->filesDropped({file.getFullPathName()},4,4);
     editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
     editor->setVisible(true);
     auto* browser=dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
@@ -143,7 +142,7 @@ static int testLinkedSave(const juce::File& source) {
         void timerCallback() override {step();}
     } timer;
     const auto deadline=juce::Time::getMillisecondCounterHiRes()+45000.;
-    int stage=0; bool pending=false,externallyEdited=false;
+    int stage=-2; bool pending=false,externallyEdited=false;
     const auto check=[&](const juce::String& script) {
         pending=true;
         browser->evaluateJavascript(script,[&](auto result){
@@ -156,7 +155,15 @@ static int testLinkedSave(const juce::File& source) {
             juce::MessageManager::getInstance()->stopDispatchLoop(); return;
         }
         if (pending) return;
-        if (stage==0) {
+        if (stage==-2) {
+            check(R"JS(Boolean(document.querySelector('body.studio-host.no-score #emptyScore')?.offsetHeight
+                && !window.ScaleAdviserApp.state.doc && !document.getElementById('demos')))JS");
+        } else if (stage==-1) {
+            drop->filesDropped({file.getFullPathName()},4,4);
+            browser=dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
+            if (!browser) {juce::MessageManager::getInstance()->stopDispatchLoop();return;}
+            ++stage;
+        } else if (stage==0) {
             check(R"JS((()=>{
                 const app=window.ScaleAdviserApp;
                 if(!app?.state.fileBound || !app.state.doc.harmony.chords.length)return false;
@@ -502,12 +509,12 @@ int main(int argc,char** argv) {
         for (auto* child : editor->getChildren())
             if (auto* button = dynamic_cast<juce::TextButton*>(child); button && button->getButtonText() == "Apply scales")
                 applyScales = button;
-        if (!browser || !applyScales) return 43;
+        if (!browser || !applyScales || applyScales->isVisible()) return 43;
         if (!editor->isResizable()) return 45;
         editor->setSize(760,580);
         auto narrow = browser->getBounds();
         editor->setSize(1800,950);
-        if (browser->getWidth()-narrow.getWidth()!=1040 || browser->getHeight()-narrow.getHeight()!=370) return 46;
+        if (narrow!=juce::Rectangle<int>(760,580) || browser->getBounds()!=editor->getLocalBounds()) return 46;
         editor->setSize(920,640);
         processor->getStateInformation(bytes);
         const auto sized=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
@@ -553,6 +560,9 @@ int main(int argc,char** argv) {
                 const auto openPicker=juce::String(R"JS((()=>{
                     const b=document.getElementById('studioInstrumentPicker');
                     if(!b || !b.textContent.includes(INSTRUMENT_NAME)) return false;
+                    if(document.getElementById('demos') || !b.closest('#hostAudition')
+                       || !document.querySelector('header #hostSettings #hostRead')
+                       || document.querySelectorAll('#open, #save, #saveAs').length!==3) return false;
                     b.click();return true;
                 })())JS").replace("INSTRUMENT_NAME",juce::JSON::toString(juce::var(instrument->name)));
                 browser->evaluateJavascript(openPicker,[&](auto evaluation){
@@ -601,11 +611,12 @@ int main(int argc,char** argv) {
                     app.state.doc.harmony.scales = [];
                     document.querySelector('#targets button[data-target]:nth-child(2)').click();
                     document.getElementById('apply').click();
+                    document.getElementById('hostCommit').click();
                     return app.state.doc.song.title;
                 })())JS", [&](auto evaluated) {
                     pending = false;
                     const auto* value = evaluated.getResult();
-                    if (value && value->toString() == title) { applying = true; applyScales->onClick(); }
+                    if (value && value->toString() == title) applying = true;
                 });
             }
         };

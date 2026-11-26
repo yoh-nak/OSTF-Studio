@@ -403,7 +403,7 @@ public:
         }
         setResizable(true,true); setResizeLimits(740,550,8192,8192);
         setSize(std::max(740,size.x),std::max(550,size.y));
-        showWorkspaceForFirstScore();
+        showInitialWorkspace();
         startTimerHz(25);
     }
     ~Editor() override {
@@ -460,7 +460,12 @@ public:
         auto play=area.removeFromBottom(31); stop.setBounds(play.removeFromRight(60).reduced(1)); audition.setBounds(play.reduced(1));
         details.setBounds(area.reduced(3));
         compareText.setBounds(details.getBounds()); fitRows.setBounds(details.getBounds());
-        if (workspace) workspace->setBounds(getLocalBounds().reduced(12).withTrimmedTop(66).withTrimmedBottom(35));
+        const bool full=workspace && workspace->isVisible();
+        for (auto* control : std::initializer_list<juce::Component*>{&song,&language,&sourceToggle,&returnWorkspace,
+                &fullWorkspace,&open,&refresh,&save,&autoSet,&undo,&redo,&drag,&loadInstrument,&showInstrument,
+                &testSound,&previewMidiOut,&midiThru,&status})
+            control->setVisible(!full);
+        if (full) workspace->setBounds(getLocalBounds());
     }
     void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff111923));}
 private:
@@ -519,9 +524,9 @@ private:
         }
         bool started=false;
     };
-    void showWorkspaceForFirstScore() {
-        if (!openedFirstScore && proc.document.text.isNotEmpty()) {
-            openedFirstScore = true;
+    void showInitialWorkspace() {
+        if (!openedWorkspace) {
+            openedWorkspace = true;
             openFullWorkspace();
         }
     }
@@ -530,8 +535,9 @@ private:
         if (seenStateVersion!=proc.restoredStateVersion) {
             seenStateVersion=proc.restoredStateVersion;
             ++workspaceGeneration;
-            openedFirstScore=workspace && !workspace->isVisible();
+            openedWorkspace=workspace && !workspace->isVisible();
             workspace.reset();
+            resized();
             workspaceHash.clear();
             previousDocument.reset();
             redoDocument.reset();
@@ -540,7 +546,7 @@ private:
             fullWorkspace.setButtonText(words("Full editor","詳細エディター"));
             returnWorkspace.setEnabled(false);
         }
-        sync(); showWorkspaceForFirstScore();
+        sync(); showInitialWorkspace();
     }
     void updateScope() {
         const juce::ScopedLock lock(proc.stateLock);
@@ -720,7 +726,7 @@ private:
         proc.rack.audition(events);
         status.setText(ab?words("Playing reference, then candidate.","基準音、候補の順に試聴中です。"):words("Playing candidate.","候補を試聴中です。"),juce::dontSendNotification);
     }
-    void chooseInstrument() {
+    void chooseInstrument(juce::Rectangle<int> anchor={}) {
         if (pickerBox) { pickerBox->toFront(true); return; }
         auto picker=std::make_unique<InstrumentPicker>(proc.rack.description(),japanese);
         const auto self=juce::Component::SafePointer<Editor>(this);
@@ -736,7 +742,7 @@ private:
         };
         picker->onReference=[self] { if(self) { self->pickerBox->dismiss(); self->instrumentChanged(self->loadChoice({})); } };
         picker->onBrowse=[self] { if(self) { self->pickerBox->dismiss(); self->browseInstrument(); } };
-        pickerBox=&juce::CallOutBox::launchAsynchronously(std::move(picker),loadInstrument.getScreenBounds(),nullptr);
+        pickerBox=&juce::CallOutBox::launchAsynchronously(std::move(picker),anchor.isEmpty() ? loadInstrument.getScreenBounds() : anchor,nullptr);
     }
     juce::Result loadChoice(const InstrumentChoice& choice) {
         const juce::ScopedLock lock(proc.stateLock);
@@ -858,10 +864,10 @@ private:
         juce::File file;
         const auto result=document.exportForStudio(dir,file);
         if (result.failed()) status.setText(result.getErrorMessage(),juce::dontSendNotification);
-        else juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()},false,&drag);
+        else juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()},false,this);
     }
     void requestLoad(juce::String source, LinkedScoreFile link={}) {
-        if (workspace && workspace->isVisible()) {
+        if (workspace && workspace->isVisible() && workspaceSource.isNotEmpty()) {
             workspace->evaluateJavascript("Boolean(window.ScaleAdviserApp?.state.dirty || window.ScaleAdviserApp?.state.textDirty)",
                 [self=juce::Component::SafePointer<Editor>(this),source,link](auto result) {
                     if (self) self->confirmLoad(source,link,result.getResult() && bool(*result.getResult()));
@@ -893,13 +899,33 @@ private:
         previousDocument.reset(); undo.setEnabled(false); redoDocument.reset(); redo.setEnabled(false);
         if (workspace) {
             workspace.reset();
-            openedFirstScore = false;
         }
-        sync(); showWorkspaceForFirstScore();
+        openedWorkspace = false;
+        sync(); showInitialWorkspace();
         proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
-    int shownPitchClasses=-1, shownMidiRoute=-1;
-    juce::String shownInstrument;
+    int shownPitchClasses=-1, shownMidiRoute=-1, shownHostFlags=-1;
+    juce::String shownInstrument,shownLanguageChoice,shownStatus;
+    void handleHostAction(const juce::var& request) {
+        const auto action=request["action"].toString();
+        const auto value=request["value"];
+        if (action=="read" && refresh.isEnabled()) refresh.onClick();
+        else if ((action=="copy" || action=="drag") && drag.isEnabled()) beginStudioReturn(action=="drag");
+        else if (action=="commit" && returnWorkspace.isEnabled()) importFullWorkspace();
+        else if (action=="native") openFullWorkspace();
+        else if (action=="instrument" && showInstrument.isEnabled()) showInstrument.onClick();
+        else if (action=="test") testSound.onClick();
+        else if ((action=="preview" || action=="thru") && value.isBool()) {
+            auto& button=action=="preview" ? previewMidiOut : midiThru;
+            button.setToggleState(bool(value),juce::dontSendNotification);
+            button.onClick();
+        } else if (action=="language") {
+            const auto choice=value.toString();
+            if (choice=="system" || choice=="en" || choice=="ja")
+                language.setSelectedId(choice=="system" ? 1 : choice=="en" ? 2 : 3,juce::sendNotificationSync);
+            shownHostFlags=-1;
+        }
+    }
     void timerCallback() override {
         if (!workspace || !workspace->isShowing()) { shownPitchClasses=shownMidiRoute=-1; shownLanguage.clear(); return; }
         const juce::String locale=japanese ? "ja" : "en";
@@ -908,6 +934,24 @@ private:
             shownLanguage=locale;
         }
         const int route=proc.rack.previewMidiOut() ? 1 : 0;
+        const auto flags=int(refresh.isEnabled()) | (int(showInstrument.isEnabled())<<1)
+            | (route<<2) | (int(proc.rack.midiThruEnabled())<<3);
+        if (flags!=shownHostFlags || languageChoice!=shownLanguageChoice) {
+            juce::var state(new juce::DynamicObject());
+            auto& fields=*state.getDynamicObject();
+            fields.setProperty("read",refresh.isEnabled());
+            fields.setProperty("instrument",showInstrument.isEnabled());
+            fields.setProperty("preview",route!=0);
+            fields.setProperty("thru",proc.rack.midiThruEnabled());
+            fields.setProperty("language",languageChoice);
+            workspace->emitEventIfBrowserIsVisible("ostfScaleHostState",state);
+            shownHostFlags=flags;
+            shownLanguageChoice=languageChoice;
+        }
+        if (shownStatus!=status.getText()) {
+            shownStatus=status.getText();
+            workspace->emitEventIfBrowserIsVisible("ostfScaleHostStatus",shownStatus);
+        }
         const auto instrumentName=showInstrument.getButtonText();
         if (route!=shownMidiRoute || instrumentName!=shownInstrument) {
             juce::var destination(new juce::DynamicObject());
@@ -926,16 +970,17 @@ private:
     void openFullWorkspace() {
         if (workspace && workspace->isVisible()) {
             workspace->setVisible(false);
+            resized();
             fullWorkspace.setButtonText(words("Full editor","詳細エディター"));
             returnWorkspace.setEnabled(false);
             return;
         }
         const juce::ScopedLock lock(proc.stateLock);
         const auto snapshot=proc.document.text;
-        if(snapshot.isEmpty()) return;
         if (workspace && workspaceHash==digest(snapshot)) {
             workspace->setVisible(true); workspace->toFront(false);
-            fullWorkspace.setButtonText(words("Native controls","簡易エディター")); returnWorkspace.setEnabled(true); return;
+            resized();
+            fullWorkspace.setButtonText(words("Native controls","簡易エディター")); returnWorkspace.setEnabled(snapshot.isNotEmpty()); return;
         }
         auto html=juce::String::fromUTF8(ScaleAssets::ScaleWorkspace_html,ScaleAssets::ScaleWorkspace_htmlSize)
             .replace("<html lang=\"en\">",japanese ? "<html lang=\"ja\">" : "<html lang=\"en\">")
@@ -959,14 +1004,32 @@ private:
                 .withEventListener("ostfScaleDraft",[self=juce::Component::SafePointer<Editor>(this),page](juce::var patch){
                     if (self && self->workspaceGeneration==page) self->rememberWorkspace(patch);
                 })
-                .withEventListener("ostfScaleInputReady", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
-                    if (self) { self->shownPitchClasses=self->shownMidiRoute=-1; self->shownLanguage.clear(); }
+                .withEventListener("ostfScaleInputReady", [self=juce::Component::SafePointer<Editor>(this),page](juce::var) {
+                    if (self && self->workspaceGeneration==page) {
+                        self->shownPitchClasses=self->shownMidiRoute=self->shownHostFlags=-1;
+                        self->shownLanguage.clear();
+                    }
+                })
+                .withEventListener("ostfScaleHostAction", [self=juce::Component::SafePointer<Editor>(this),page](juce::var request) {
+                    if (self && self->workspaceGeneration==page && self->workspace && self->workspace->isVisible())
+                        self->handleHostAction(request);
                 })
                 .withEventListener("ostfScaleOpen", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
                     if (self) self->choose(false);
                 })
-                .withEventListener("ostfScaleChooseInstrument", [self=juce::Component::SafePointer<Editor>(this),page](juce::var) {
-                    if (self && self->workspaceGeneration==page) self->chooseInstrument();
+                .withEventListener("ostfScaleFirstDrop", [self=juce::Component::SafePointer<Editor>(this),page](juce::var text) {
+                    if (text.isString()) juce::MessageManager::callAsync([self,page,text] {
+                        if (self && self->workspaceGeneration==page && self->workspaceSource.isEmpty())
+                            self->requestLoad(text.toString());
+                    });
+                })
+                .withEventListener("ostfScaleChooseInstrument", [self=juce::Component::SafePointer<Editor>(this),page](juce::var pos) {
+                    if (!self || self->workspaceGeneration!=page || !self->workspace) return;
+                    const auto bounds=self->workspace->getScreenBounds();
+                    const auto x=juce::jlimit(0.0,1.0,double(pos["x"]));
+                    const auto y=juce::jlimit(0.0,1.0,double(pos["y"]));
+                    self->chooseInstrument({bounds.getX()+juce::roundToInt(bounds.getWidth()*x),
+                        bounds.getY()+juce::roundToInt(bounds.getHeight()*y),1,1});
                 })
                 .withEventListener("ostfScaleForgetFile", [self=juce::Component::SafePointer<Editor>(this),page](juce::var) {
                     if (!self || self->workspaceGeneration!=page) return;
@@ -992,10 +1055,11 @@ private:
             workspace->goToURL(Browser::getResourceProviderRoot());
             workspaceHash=digest(snapshot);
             fullWorkspace.setButtonText(words("Native controls","簡易エディター"));
-            returnWorkspace.setButtonText(words("Apply scales","スケールを適用")); returnWorkspace.setEnabled(true);
+            returnWorkspace.setButtonText(words("Apply scales","スケールを適用")); returnWorkspace.setEnabled(snapshot.isNotEmpty());
             return;
         }
        #endif
+        if (snapshot.isEmpty()) return;
         auto file=std::make_unique<juce::TemporaryFile>(".html");
         if(!file->getFile().replaceWithText(html) || !file->getFile().startAsProcess()) {
             status.setText("Could not open the local Scale Editor in your browser.",juce::dontSendNotification); return;
@@ -1149,7 +1213,7 @@ private:
     juce::String workspaceHash,workspaceSource;
     int workspaceGeneration=0;
     uint64_t seenStateVersion=0;
-    bool openedFirstScore = false;
+    bool openedWorkspace = false;
     std::unique_ptr<juce::TemporaryFile> workspaceFile;
     juce::Label flowKey;
     bool showConnections=false;

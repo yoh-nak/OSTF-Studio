@@ -544,10 +544,27 @@ body.sidebar-resizing,body.sidebar-resizing * {cursor:col-resize!important;user-
 .quick-set{font-size:12px;min-height:31px;margin-left:8px;padding:5px 14px;letter-spacing:.015em;white-space:normal}
 @media(max-width:740px){.quick-set{order:2;flex:1;margin-left:0}}
 #keyboard g.input-held > rect{stroke:#ffcc65;stroke-width:5px}
+#emptyScore{display:none}
+.no-score #emptyScore{display:grid;place-items:center;flex:1;color:var(--dim)}
+.no-score :is(.songline,#visual,#textView,#save,#saveAs,#autoSetSong,#undo,#redo,#hostReturn,#hostCommit,.head-actions .sep){display:none!important}
+.studio-only{display:none}
+.studio-host #hostSettings{display:block;position:relative}
+#hostSettings summary{cursor:pointer;list-style:revert;padding:5px 10px;border:1px solid var(--line);border-radius:5px;color:var(--text)}
+.host-menu{position:absolute;z-index:20;right:0;top:100%;min-width:195px;padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:5px;box-shadow:0 8px 18px #0006;display:grid;gap:5px}
+.host-menu button{text-align:left}.host-menu label{color:var(--dim);padding-top:4px}
+.studio-host #hostAudition{display:flex;align-items:center;flex-wrap:wrap;gap:5px 9px;padding:6px 0}
+#hostAudition label{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--dim);cursor:pointer}
+#hostAudition button{font-size:11px;padding:4px 7px}
 #studioInput{color:#ffdc93;font-variant-numeric:tabular-nums}
 </style><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script><script id="studio-draft" type="application/octet-stream"><!--STUDIO_DRAFT--></script><script id="studio-file" type="application/octet-stream"><!--STUDIO_FILE--></script></head><body>
 <div id="app">
-<header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Edit scales, keys and modes in OSTF.</div></div><span class="version">v1.0 · DIRECT SET</span></div><div class="head-actions"><button id="open" title="Open a local OSTF file · Ctrl+O">Open…</button><button id="save" title="Save to the currently linked file · Ctrl+S">Save</button><button id="saveAs" title="Always choose a destination · Ctrl+Shift+S">Save As…</button><button id="autoSetSong" class="primary" title="Preview the highest-ranked eligible scale for every chord, then apply all at once">AUTO-SET SONG</button><span class="sep"></span><button id="undo" title="Undo the last assignment" disabled>Undo</button><button id="redo" disabled>Redo</button><button id="demos">Demos</button><button id="help" class="quiet">Help</button></div></header>
+<header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Edit scales, keys and modes in OSTF.</div></div><span class="version">v1.0 · DIRECT SET</span></div><div class="head-actions"><button id="open" title="Open a local OSTF file · Ctrl+O">Open…</button><button id="save" title="Save to the currently linked file · Ctrl+S">Save</button><button id="saveAs" title="Always choose a destination · Ctrl+Shift+S">Save As…</button><button id="autoSetSong" class="primary" title="Preview the highest-ranked eligible scale for every chord, then apply all at once">AUTO-SET SONG</button><span class="sep"></span><button id="undo" title="Undo the last assignment" disabled>Undo</button><button id="redo" disabled>Redo</button><details id="hostSettings" class="studio-only"><summary>Studio / Settings</summary>
+<div class="host-menu"><button id="hostRead" disabled>Read Studio score</button>
+<button id="hostReturn" draggable="true" title="Click to copy, or drag the edited score to Studio">Copy scales to Studio</button>
+<button id="hostCommit">Apply to plug-in score</button>
+<label for="hostLanguage">Display language</label><select id="hostLanguage"><option value="system">System language</option><option value="en">English</option><option value="ja">日本語</option></select>
+<button id="hostNative">Simple editor</button></div></details><button id="help" class="quiet">Help</button></div></header>
+<div id="emptyScore">Open or drop an OSTF score to edit its scales.</div>
 <div class="songline"><span class="songtitle" id="songTitle"></span><span class="chip" id="songKey"></span><span class="chip" id="songVersion"></span><span class="chip" id="fileBinding" title="Save requires a linked file; imported text or drag-and-drop must use Save As">Not linked</span><span id="dirty"></span><div class="viewtabs"><button id="visualTab" class="active">VISUAL</button><button id="textTab">OSTF TEXT</button></div></div>
 <div id="visual">
 <aside class="left"><div class="pane-head"><h2>01 &nbsp; CHORD TIMELINE</h2><button class="tiny" id="collapseAll">Collapse others</button><button class="tiny" id="analyze">Analyze</button></div><div class="left-hint">Sections fold independently. Solid scales are assigned; suggestions remain uncommitted.</div><div id="timeline"></div><div class="left-foot"><span>✓ Assigned</span><span>·· Suggested only</span><span>Drop a .ostf file anywhere</span></div></aside>
@@ -567,7 +584,10 @@ body.sidebar-resizing,body.sidebar-resizing * {cursor:col-resize!important;user-
  <div class="listen-actions"><button id="hearReference">▶ A</button><button id="hearCandidate">▶ B</button><button id="hearAB" class="listen-primary">▶ A / B COMPARE</button><button id="autoListen" class="listen-toggle active" aria-pressed="true" title="Audition B when a candidate card is clicked">▶ Audition on card select: ON</button><button id="chooseContrast" title="Find a B scale with different pitch classes">Find Contrast</button><button id="stopCompare" class="quiet">■ Stop</button><button id="applyNear" class="primary" title="Assign B scale to the selected chord">Apply B</button><span id="listenStatus" class="listen-status">Ready to compare · Instrument after Scale Editor</span></div>
  <div id="internalTelemetry" hidden aria-hidden="true"><span id="midiLamp"></span><span id="previewStatus"></span><span id="midiTx"></span><span id="stageUi"></span><span id="stageMax"></span><span id="stagePacket"></span></div><div class="reference-controls"><button id="pinReference" title="Keep the selected scale as A while you browse B candidates">Pin selected as A</button><button id="resetReference" class="tiny quiet" hidden>Reset A</button><span id="listenContext" class="muted small">Previous → Selected → Next (where available)</span></div><div id="auditionRoll" class="audition-roll" role="img" aria-label="Reference and selected melodic note preview"></div>
  <div id="auditionDifference" class="audition-difference"></div>
-</div><div class="legend"><span><i class="a"></i>Chord tone</span><span><i class="b"></i>Color tone</span><span><i class="c"></i>Sustain / passing caution</span><span class="grow"></span><span id="audioLabel">MIDI / next instrument</span></div><div id="keyboard"></div><div id="noteRow"></div><div id="scaleDiff"></div><div class="resol-header"><span>MELODIC CONNECTIONS · SELECTED → NEXT CHORD</span><span id="connectionSubtitle"></span></div><div id="resolutionMap" class="resolution-map"></div><div class="details-grid"><div><h4>Why this choice?</h4><div id="why"></div><div id="flowRationale"></div><div id="warnings"></div></div><div><h4>Possible voice leading</h4><div id="leading"></div><div class="small muted" id="leadingNote"></div></div></div><details class="theoryextra"><summary>More theory &amp; analysis limits</summary><p id="theoryDescription"></p><p>These are rule-based options, not a single correct answer. Chord voicing, melody emphasis, rhythm and style matter. Warnings do not forbid deliberate passing notes. No notes are quantized or rewritten.</p><p>Melody checks inspect concrete, enabled notes in explicitly identified melody tracks. They do not expand generated, referenced or looping phrases. Voice-leading arrows illustrate nearest chord-tone possibilities, not a complete arranged voicing.</p></details></section>
+</div><div class="legend"><span><i class="a"></i>Chord tone</span><span><i class="b"></i>Color tone</span><span><i class="c"></i>Sustain / passing caution</span><span class="grow"></span><span id="audioLabel">MIDI / next instrument</span></div><div id="hostAudition" class="studio-only"><button id="studioInstrumentPicker">Instrument</button>
+<button id="hostInstrumentEditor" disabled>Instrument controls</button><button id="hostTest">Test note</button>
+<label><input id="hostPreviewOut" type="checkbox"> Send audition to MIDI out</label><label><input id="hostThru" type="checkbox"> MIDI thru</label></div>
+<div id="keyboard"></div><div id="noteRow"></div><div id="scaleDiff"></div><div class="resol-header"><span>MELODIC CONNECTIONS · SELECTED → NEXT CHORD</span><span id="connectionSubtitle"></span></div><div id="resolutionMap" class="resolution-map"></div><div class="details-grid"><div><h4>Why this choice?</h4><div id="why"></div><div id="flowRationale"></div><div id="warnings"></div></div><div><h4>Possible voice leading</h4><div id="leading"></div><div class="small muted" id="leadingNote"></div></div></div><details class="theoryextra"><summary>More theory &amp; analysis limits</summary><p id="theoryDescription"></p><p>These are rule-based options, not a single correct answer. Chord voicing, melody emphasis, rhythm and style matter. Warnings do not forbid deliberate passing notes. No notes are quantized or rewritten.</p><p>Melody checks inspect concrete, enabled notes in explicitly identified melody tracks. They do not expand generated, referenced or looping phrases. Voice-leading arrows illustrate nearest chord-tone possibilities, not a complete arranged voicing.</p></details></section>
 <section class="flow-workspace" id="flowWorkspace">
  <div class="workspace-header"><h2>04 &nbsp; SCALE WORKSPACE</h2><span class="workspace-sub">Harmonic reference · performance · song structure</span><button id="nextReview" class="tiny" title="Jump to the next chord needing review">Next issue →</button><div class="workspace-tabs" id="flowTabs"><button data-workspace="map" class="active">Scale Map</button><button data-workspace="flow">Scale Flow</button><button data-workspace="leading">Connections</button><button data-workspace="review">Review</button><button data-workspace="fit">Note Fit</button><button data-workspace="patterns">Progressions</button></div></div>
  <div class="flow-pane" id="scaleMapPanel">
@@ -2225,7 +2245,11 @@ function initSidebarResize(){
 const japaneseUI = {
  'Edit scales, keys and modes in OSTF.':'OSTFのスケール・調・モードを編集',
  'Open…':'開く…','Save':'保存','Save As…':'名前を付けて保存…','AUTO-SET SONG':'曲全体に自動設定',
- 'Undo':'取り消す','Redo':'やり直す','Demos':'デモ','Help':'ヘルプ','VISUAL':'ビジュアル','OSTF TEXT':'OSTFテキスト',
+ 'Undo':'取り消す','Redo':'やり直す','Open or drop an OSTF score to edit its scales.':'OSTFファイルを開くか、ここにドロップしてスケールを編集できます。',
+ 'Studio / Settings':'Studio・設定','Read Studio score':'Studioから読み込む','Copy scales to Studio':'Studio用にコピー',
+ 'Click to copy, or drag the edited score to Studio':'クリックでコピー、ドラッグでStudioに渡す','Apply to plug-in score':'プラグインの譜面に反映',
+ 'Display language':'表示言語','System language':'システムの言語','Simple editor':'簡易エディター','Instrument controls':'音源の設定','Test note':'テスト発音',
+ 'Send audition to MIDI out':'試聴をMIDI出力','MIDI thru':'MIDIスルー','Help':'ヘルプ','VISUAL':'ビジュアル','OSTF TEXT':'OSTFテキスト',
  '01 CHORD TIMELINE':'01 コード進行','Collapse others':'他を折りたたむ','Analyze':'分析',
  'Sections fold independently. Solid scales are assigned; suggestions remain uncommitted.':'構成ごとに開閉できます。実線は設定済み、点線は候補です。',
  '✓ Assigned':'✓ 設定済み','·· Suggested only':'·· 候補','Drop a .ostf file anywhere':'ここにOSTFファイルをドロップ',
@@ -2396,7 +2420,7 @@ function renderFileBinding(){
  chip.title=state.fileBound?'Save will overwrite the linked file after safety checks. Save As always asks for a new name.':'No verified native file path. Save will ask for a location.';
  const b=$('save');if(b)b.title=state.fileBound?'Save to linked OSTF file · Ctrl+S':'Choose a file location (first save) · Ctrl+S';
 }
-function render(){const d=state.doc;if(!d)return;$('songTitle').textContent=d.song.title||'Untitled';$('songTitle').title=d.song.title;$('songKey').textContent=SA.labelKey(d,getChord()?.start||0);$('songVersion').textContent='OSTF '+d.version+(!state.validation.writable?' · READ ONLY':'');$('songVersion').classList.toggle('read-only',!state.validation.writable);$('dirty').textContent=(state.dirty||state.textDirty)?'● '+translated('Unsaved changes'):'';renderFileBinding();$('undo').disabled=!state.history.length;$('redo').disabled=!state.future.length;
+function render(){const d=state.doc;if(!d)return;document.body.classList.remove('no-score');$('songTitle').textContent=d.song.title||'Untitled';$('songTitle').title=d.song.title;$('songKey').textContent=SA.labelKey(d,getChord()?.start||0);$('songVersion').textContent='OSTF '+d.version+(!state.validation.writable?' · READ ONLY':'');$('songVersion').classList.toggle('read-only',!state.validation.writable);$('dirty').textContent=(state.dirty||state.textDirty)?'● '+translated('Unsaved changes'):'';renderFileBinding();$('undo').disabled=!state.history.length;$('redo').disabled=!state.future.length;
  renderTargets();renderTimeline();renderContext();renderApproaches();renderStrategies();renderCards();renderInspector();renderFlowWorkspace();renderApply();}
 function renderTargets(){const tracks=state.doc.tracks.filter(t=>t.trackType!=='drum'&&!['drums','drum','percussion'].includes(t.type)&&!['drums','drum','percussion'].includes(t.role));$('targets').innerHTML='<button data-target="harmony" class="'+(state.target==='harmony'?'active':'')+'" title="Write a shared timed harmony scale; song.key stays unchanged">'+translated('Harmony')+'</button>'+tracks.map(t=>'<button data-target="'+esc(t.id)+'" class="'+(state.target===t.id?'active':'')+'" title="Assign an improvisation scale only to this pitched track">'+esc(t.name||t.id)+'</button>').join('');$('adherence').hidden=state.target==='harmony';for(const b of $('adherence').querySelectorAll('button'))b.classList.toggle('active',b.dataset.adherence===state.adherence);}
 function renderTimeline(){
@@ -2416,7 +2440,7 @@ function renderTimeline(){
   }
   html+='</section>';
  }
- box.innerHTML=html||'<div class="empty">No chord events. Open an OSTF or choose Demos.</div>';
+ box.innerHTML=html||'<div class="empty">No chord events in this score.</div>';
  if(state.jumpToSelected){const e=[...box.querySelectorAll('[data-chord]')].find(b=>b.dataset.chord===state.selected);if(e){box.scrollTop=Math.max(0,e.offsetTop-box.offsetTop-box.clientHeight/3);}state.jumpToSelected=false;}else{box.scrollTop=scroll;}
 }
 function renderContext(){
@@ -3221,8 +3245,11 @@ function openFile(){
  if(window.__JUCE__?.backend)window.__JUCE__.backend.emitEvent('ostfScaleOpen',{});
  else if(!hostSend('openfile'))$('fileInput').click();
 }
-async function handleFile(file){if(!file)return;if(file.size>24*1024*1024){error(Error('File is larger than 24 MB.'));return;}status('Reading '+file.name+'…');try{const ok=await importString(await file.text(),file.name);if(ok)await view('visual');}catch(e){error(e);}}
+async function handleFile(file){if(!file)return;if(file.size>24*1024*1024){error(Error('File is larger than 24 MB.'));return;}status('Reading '+file.name+'…');try{const text=await file.text();
+ if(!state.doc && window.__JUCE__?.backend){window.__JUCE__.backend.emitEvent('ostfScaleFirstDrop',text);return;}
+ const ok=await importString(text,file.name);if(ok)await view('visual');}catch(e){error(e);}}
 async function save(mode='save'){
+ if(!state.doc)return;
  try{
   if(!['save','saveas'].includes(mode))mode='save';
   if(state.savePendingText){status('A file save is still in progress. Complete or cancel the dialog first.');return;}
@@ -3365,20 +3392,6 @@ function hearContext(){
  if(n)notes.push(...n.intervals.map(i=>({at:780,note:48+n.root+i,velocity:65,ms:900,role:'chord',beat:2})));
  playSimplePreview(notes,'Chord → Next');
 }
-function showDemos(){
- const o=document.createElement('div');o.className='modalShade';
- o.innerHTML='<div class="modal"><h2>Explore musical approaches</h2><p>Offline OSTF 4.1 demonstrations. Changing the lens never edits the song; importing a demo replaces the current working song after unsaved-change confirmation.</p><div class="demo-buttons">'+
- '<button data-demo="major"><strong>Jazz · Major ii–V–I</strong><br><span class="small muted">Dm7 → G7 → Cmaj7 · resolving dominants</span></button>'+
- '<button data-demo="minor"><strong>Jazz · Minor iiø–V–i</strong><br><span class="small muted">Minor-function chord scale colors</span></button>'+
- '<button data-demo="pop"><strong>Pop · Shared Key</strong><br><span class="small muted">C → G → Am → F · C major reference</span></button>'+
- '<button data-demo="modal"><strong>Modal / Electronic</strong><br><span class="small muted">D Dorian groove · section continuity</span></button>'+
- '<button data-demo="power"><strong>Rock · Power Chords</strong><br><span class="small muted">E5 · G5 · D5 · key intentionally unresolved</span></button>'+
- '<button data-demo="blues"><strong>Blues · 12-bar Dominants</strong><br><span class="small muted">C7 · F7 · G7 · separate harmonic and phrase uses</span></button>'+
- '<button data-demo="trance"><strong>Trance · A-minor Loop</strong><br><span class="small muted">Am · F · C · G · shared key and repeated phrases</span></button>'+
- '</div><div class="actions"><button data-close>Close</button></div></div>';
- o.onclick=async e=>{const button=e.target.closest('[data-demo]');if(button){const id=button.dataset.demo,d=['major','minor'].includes(id)?SA.demo(id==='minor'):SA.universal.demoStyle(id);if(!d)return;const ok=await importString(JSON.stringify(d),'Demo_'+id+'.ostf');if(ok){o.remove();selectChord(d.harmony.chords[1]?.id||d.harmony.chords[0]?.id);view('visual');}}if(e.target.closest('[data-close]'))o.remove();};
- $('modalRoot').appendChild(o);
-}
 function help(){if(document.documentElement.lang==='ja'){dialog('OSTF Scale Editor の使い方',['1. OSTFを開き、コード進行から編集するコードを選びます。','2. 書き込み先に「和声」またはトラックを選び、候補をA / Bで試聴します。「音源を選択」で音源を指定できます。','3. 「スケールを設定」で適用します。「曲全体に自動設定」では、適用前に候補を確認できます。','4. 「保存」でリンク先を更新し、「名前を付けて保存」で別のファイルに書き出します。','表示言語はプラグイン右上から変更できます。'].join('\n\n'));return;}dialog('OSTF Scale Editor · v1.0 Scale Workflow',[
 '1. Import OSTF via file, drag/drop, or OSTF TEXT.',
 'Progressions finds repeated chord + neighboring harmony + duration + key matches; select a scale card, preview each match, then Apply safe matches. Existing assignments are always protected. No concrete notes means a hearing check remains necessary.',
@@ -3402,7 +3415,7 @@ function help(){if(document.documentElement.lang==='ja'){dialog('OSTF Scale Edit
  'AUTO-SET: the engine scores all eligible candidates using the selected style before shortlisting for song flow. Performance-track expressive phrase assignments are OFF by default and require deliberate opt-in; they never apply to shared Harmony. Authored melody and explicitly defined tensions remain protected. In twelve-bar-like Blues, the separate song-tonic minor-blues candidate keeps one tonic across I7 / IV7 / V7; it intentionally may omit IV/V chord tones and needs a pitched-track Performance opt-in. When an OSTF key is authored, the new song-key mode candidate can remain anchored across chord roots on Pop/Rock/Electronic loops. AUTO-SET never assigns a song-key mode to shared Harmony; however, manual SET SCALE can assign that pitch collection to an explicitly selected chord, warning if its required chord tones are omitted. Borrowed chords with missing tones still cannot receive automatic song-key Performance assignment. AUTO-SET keeps the song-tonic Blues palette on opted-in Performance tracks. Manual Harmony SET is permitted with a chord-tone warning. Fill mode always preserves existing exact-range assignments; replacing a Track Direction preserves unrelated performance parameters.',
  'Load and save are local; no external network connection is required.'
 ].join('\n'));}
-function bind(){for(const [id,fn] of Object.entries({open:openFile,save:()=>save('save'),saveAs,autoSetSong,undo:()=>undo(),redo:()=>undo(true),demos:showDemos,help,analyze:analyzeSong,apply:doApply,quickSetScale:doApply,clear:doClear,visualTab:()=>view('visual'),textTab:()=>view('text'),refreshText,copyText,validateText:checkText,importText:async()=>{if(await importString($('textArea').value,'Text_import.ostf')){await view('visual');}},hearScale,hearContext,hearResolution,hearReference:()=>playCompare('A'),hearCandidate:()=>playCompare('B'),hearAB:()=>playCompare('AB'),autoListen:()=>{state.autoListen=!state.autoListen;renderListenLab();notifyState();status('Audition on card selection: '+(state.autoListen?'on':'off')+'.');},pinReference,resetReference,chooseContrast,stopCompare:()=>{stop();status('A/B audition stopped.');},applyNear:doApply,applyAndNext, nextOpen:jumpNextUnassigned, nextReview,stop:()=>{stop();status('Audition stopped.');}})){const el=$(id);if(el)el.onclick=fn;}
+function bind(){for(const [id,fn] of Object.entries({open:openFile,save:()=>save('save'),saveAs,autoSetSong,undo:()=>undo(),redo:()=>undo(true),help,analyze:analyzeSong,apply:doApply,quickSetScale:doApply,clear:doClear,visualTab:()=>view('visual'),textTab:()=>view('text'),refreshText,copyText,validateText:checkText,importText:async()=>{if(await importString($('textArea').value,'Text_import.ostf')){await view('visual');}},hearScale,hearContext,hearResolution,hearReference:()=>playCompare('A'),hearCandidate:()=>playCompare('B'),hearAB:()=>playCompare('AB'),autoListen:()=>{state.autoListen=!state.autoListen;renderListenLab();notifyState();status('Audition on card selection: '+(state.autoListen?'on':'off')+'.');},pinReference,resetReference,chooseContrast,stopCompare:()=>{stop();status('A/B audition stopped.');},applyNear:doApply,applyAndNext, nextOpen:jumpNextUnassigned, nextReview,stop:()=>{stop();status('Audition stopped.');}})){const el=$(id);if(el)el.onclick=fn;}
  $('fileInput').onchange=e=>{handleFile(e.target.files[0]);e.target.value='';};$('textArea').oninput=()=>{state.textDirty=true;$('textFeedback').textContent='Edited text is not yet imported.';rememberStudioWorkspace();};
  $('timeline').onclick=e=>{const header=e.target.closest('[data-section]');if(header){const id=header.dataset.section;if(state.expandedSections.has(id))state.expandedSections.delete(id);else state.expandedSections.add(id);renderTimeline();return;}const b=e.target.closest('[data-chord]');if(b)selectChord(b.dataset.chord);};
  $('collapseAll').onclick=()=>{state.expandedSections=new Set(getChord()?[sectionFor(getChord())]:[]);renderTimeline();status('Showing the current section. Expand others as needed.');};
@@ -3448,10 +3461,31 @@ if(window.__JUCE__?.backend){
  input.id='studioInput';
  input.title='Held MIDI input notes, across all octaves and channels';
  $('audioLabel').before(input);
- const picker=document.createElement('button');
- picker.id='studioInstrumentPicker';picker.type='button';
- picker.onclick=()=>window.__JUCE__.backend.emitEvent('ostfScaleChooseInstrument',{});
- $('audioLabel').after(picker);
+ document.body.classList.add('studio-host');
+ const backend=window.__JUCE__.backend;
+ const menu=$('hostSettings');
+ const send=(action,value)=>backend.emitEvent('ostfScaleHostAction',{action,value});
+ for(const [id,action] of Object.entries({hostRead:'read',hostReturn:'copy',hostCommit:'commit',hostNative:'native',hostInstrumentEditor:'instrument',hostTest:'test'})){
+  $(id).onclick=()=>{menu.open=false;send(action);};
+ }
+ document.addEventListener('pointerdown',e=>{if(menu.open&&!menu.contains(e.target))menu.open=false;});
+ menu.addEventListener('keydown',e=>{if(e.key==='Escape'){menu.open=false;menu.querySelector('summary').focus();}});
+ $('hostReturn').ondragstart=e=>{e.preventDefault();send('drag');};
+ $('hostLanguage').onchange=e=>send('language',e.target.value);
+ $('hostPreviewOut').onchange=e=>send('preview',e.target.checked);
+ $('hostThru').onchange=e=>send('thru',e.target.checked);
+ $('studioInstrumentPicker').onclick=e=>{
+  const rect=e.currentTarget.getBoundingClientRect();
+  backend.emitEvent('ostfScaleChooseInstrument',{x:(rect.left+rect.width/2)/innerWidth,y:rect.bottom/innerHeight});
+ };
+ backend.addEventListener('ostfScaleHostState',host=>{
+  $('hostRead').disabled=!host.read;
+  $('hostInstrumentEditor').disabled=!host.instrument;
+  $('hostPreviewOut').checked=host.preview;
+  $('hostThru').checked=host.thru;
+  $('hostLanguage').value=host.language;
+ });
+ backend.addEventListener('ostfScaleHostStatus',message=>status(message));
  $('hostLabel').textContent='OSTF Scale Editor · VST3';
  window.__JUCE__.backend.addEventListener('ostfScaleMidiRoute',route=>{
   studioExternal=route.external;
@@ -3470,7 +3504,7 @@ const incoming = document.getElementById('studio-score');
 if (incoming && /^[A-Za-z0-9+/]+=*$/.test(incoming.textContent.trim())) {
   const bytes = Uint8Array.from(atob(incoming.textContent.trim()), c => c.charCodeAt(0));
   loadStudioWorkspace(new TextDecoder().decode(bytes));
-} else importString(JSON.stringify(SA.demo(false)), 'Demo_major.ostf', false);
+} else document.body.classList.add('no-score');
 })();
 
 </script>

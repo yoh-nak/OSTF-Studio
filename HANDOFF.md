@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — integrated Scale Editor workspace
+
+Branch `feat/ostf-52-studio`. The embedded Scale Editor opens directly to an empty file/drop prompt or the supplied score. File operations, assignment history, automatic assignment and OSTF text use the original workspace controls. Studio exchange, explicit apply to the plug-in score, language and the simple editor are in **Studio / Settings**. Instrument selection and editor, the test note and both MIDI switches are beside the audition keyboard. The development demo menu and automatic demo loading have been removed from the plug-in.
+
+Windows x64 Release passed all 44 CTest cases on the integrated toolbar build. After adding the empty startup screen, all eight Scale Editor and Studio plug-in focus tests passed again. The linked-save test opens an empty embedded editor before dropping a real score, saving a scale and detecting an external file change. The workspace test checks the full editor bounds and uses the embedded picker and apply action. The latest local Portable remains `E:/OSTF-Studio-build-cache/vocal-tempo-scale-relink/Portable` (38 VST3 bundles, eight demo projects). Both the Portable and registered common Scale Editor bundles matched the Release output. CI, macOS, installer regeneration, physical drag to another DAW and an interactive Ableton Live session were not exercised this round.
+
+The user removed REAPER from the development environment. Its five local test hosts, the installer, matching factory plug-ins/resources and the MIDI-through JSFX probe were moved to the Recycle Bin. Keep future verification on the Studio/JUCE test hosts or the user's designated DAW. Do not relaunch or reinstall REAPER for these checks.
+
 ## 2026-11-26 — connected sung syllables and Scale Editor instrument recovery
 
 Branch `feat/ostf-52-studio`. Windows x64 Release passed all 44 CTest cases. A previous run timed out in `ostf_studio_written_notation`; the full repeat passed this case in 3.14 seconds. The local development Portable is `E:/OSTF-Studio-build-cache/vocal-tempo-scale-relink/Portable` with 38 VST3 bundles and eight demo projects. The application and every file of both changed bundles matched the Release output. The common Windows VST3 location also contains this Scale Editor. CI, installer generation, macOS and a new Ableton Live set round trip were not verified.

@@ -4,7 +4,7 @@
 
 When a single lyric spans several pitches, Formant Singer sings the initial consonant once and releases the word on the last note. Its OSTF reader follows tempo changes inside a note when timing the consonants and vowels.
 
-In Scale Editor, the **Instrument** button beside the keyboard shows the audition destination and opens the instrument list. If a project loses a VST3 after moving a Portable folder, select the same instrument at its new location to recover its saved sound.
+Scale Editor opens with the same header for an empty workspace and a loaded song. Use **Open**, **Save** and **Save As** there. **Studio / Settings** contains the Studio score exchange, display language and simple editor. Beside the audition keyboard, **Instrument** opens the instrument list. You can open the selected instrument’s controls, play a test note, and switch preview MIDI output and MIDI thru independently. If a project loses a VST3 after moving a Portable folder, select the same instrument at its new location to recover its saved sound.
 
 Formant Singer matches complete multisyllable English words against their written katakana, within one note or across syllable-aligned notes. In the Paper Lantern Replies chorus this lets the short ending of **little** keep the time and pitch of its own note. In Scale Editor, click **Copy scales to Studio**, then **Edit → Paste scales from Scale Editor** in Studio with the same source score open. Dragging the same button also returns the scale assignments. Studio checks the source revision and provides Undo.
 
