@@ -1,5 +1,11 @@
 # OSTF Studio
 
+OSTF Studio is a desktop music workstation for arranging, playing and editing Open Song Timeline Format scores.
+
+![OSTF Studio Live Session showing the section queue, nine tracks and the vocal piano roll](docs/images/ostf-studio-live-session.png)
+
+*Development preview · Paper Lantern Replies.* The session grid shows which takes will play in each section. The chord guide shows the current and upcoming chords, and the piano roll follows the selected track.
+
 **English** · [日本語](README.ja.md)
 
 **Download 1.0.0 alpha 3** · [Windows x64 installer](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Setup.exe) · [Windows portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon Mac DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-alpha.3/OSTF_Studio_macOS_arm64.dmg)
