@@ -14,6 +14,8 @@ The offline English/Japanese A/B from the Pre-Chorus first differs at 9.811 s, o
 
 Windows CI on a clean checkout exposed missing OSTF 5.2 package fixtures. The 16 files under `tests/fixtures/ostf52` match the official release byte-for-byte; the package test now checks their presence before exercising imports and round trips. Studio smoke test failures include the check number in the CI log.
 
+The manufacturer filter smoke test seeds a temporary in-memory catalogue, so it also runs on machines with no installed instruments. The GM editor smoke waits for its asynchronous editor instead of assuming a fixed startup delay (12 consecutive Windows passes). macOS CI reproduced an invalid free in both the FM and Harmonizer VST3 editors while JUCE was constructing a slider. The macOS build now applies hidden visibility to the shared static module code and exports only the three VST3 entry points from each bundle. The same nested-editor tests exercise this boundary in CI.
+
 ## 2026-11-27 — Scale Editor score exchange, text workflow and sung ノット
 
 Branch `feat/ostf-52-studio`. The header exposes the audition instrument, test note, language choices, Studio score input, clipboard and a separate drag grip. Studio score input is enabled only after the hosting instance supplies a score through the VST3 score interface. A recalled document or an OSTF file opened in another host does not enable it. Dragging captures the current assignments when the pointer crosses the threshold, even when the browser releases pointer capture during the gesture. The receiving Studio instance still checks the original score revision and supports Undo.

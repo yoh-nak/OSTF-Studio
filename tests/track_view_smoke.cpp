@@ -207,8 +207,11 @@ int checkSharedPartEditing(std::unique_ptr<juce::AudioPluginInstance> instrument
     partProgram->beginChangeGesture();
     partProgram->setValueNotifyingHost(44.f / 127.f);
     partProgram->endChangeGesture();
-    juce::Thread::sleep(120);
-    juce::Timer::callPendingTimersSynchronously();
+    const auto deadline = juce::Time::getMillisecondCounterHiRes() + 3000.0;
+    while (!juce::Component::getCurrentlyModalComponent() && juce::Time::getMillisecondCounterHiRes() < deadline) {
+        juce::Timer::callPendingTimersSynchronously();
+        juce::Thread::sleep(10);
+    }
     auto* prompt = dynamic_cast<juce::AlertWindow*>(juce::Component::getCurrentlyModalComponent());
     if (!prompt) return 194;
     auto* tracks = prompt->getComboBoxComponent("track");
@@ -1678,11 +1681,21 @@ int checkTrackView(const juce::File& fixture) {
     const auto audioTrack = tracks->getSelectedId();
     auto* mixGain = findControl<juce::Slider>(main, tracks->getText() + " mixer input gain");
     auto* trackGain = findControl<juce::Slider>(main, tracks->getText() + " input gain");
-    if (!mixGain || !trackGain) return 264;
+    if (!mixGain || !trackGain) {
+        std::cerr << "Missing gain controls for " << tracks->getText() << " (mixer " << (mixGain != nullptr)
+                  << ", track " << (trackGain != nullptr) << ")\n";
+        return 264;
+    }
     mixGain->setValue(6.5,juce::sendNotificationSync);
-    if (trackGain->getValue()!=6.5) return 264;
+    if (std::abs(trackGain->getValue() - 6.5) > 0.000001) {
+        std::cerr << "Track gain after mixer change: " << trackGain->getValue() << '\n';
+        return 264;
+    }
     trackGain->setValue(0,juce::sendNotificationSync);
-    if (mixGain->getValue()!=0) return 264;
+    if (std::abs(mixGain->getValue()) > 0.000001) {
+        std::cerr << "Mixer gain after track change: " << mixGain->getValue() << '\n';
+        return 264;
+    }
     tracks->setSelectedId(1, juce::sendNotificationSync);
     if (audioEditor->isVisible()) return 52;
     tracks->setSelectedId(audioTrack, juce::sendNotificationSync);
@@ -1713,6 +1726,17 @@ int checkTrackView(const juce::File& fixture) {
     auto* search = dynamic_cast<juce::TextEditor*>(pane->findChildWithID("plugin-search"));
     auto* tree = descendant<juce::TreeView>(*pane);
     if (!search || !search->isVisible() || !tree || !tree->getRootItem()) return 362;
+    // Exercise multiple manufacturers even on a clean machine with no installed VST3s.
+    pane->catalog_.clear();
+    for (auto manufacturer : {"Fixture Audio", "Fixture Instruments"}) {
+        juce::PluginDescription instrument;
+        instrument.pluginFormatName = "VST3";
+        instrument.manufacturerName = manufacturer;
+        instrument.name = instrument.manufacturerName + " Piano";
+        instrument.isInstrument = true;
+        pane->catalog_.add(instrument);
+    }
+    pane->refreshTree();
     const auto makers = tree->getRootItem()->getNumSubItems();
     auto* vendor = dynamic_cast<juce::ComboBox*>(pane->findChildWithID("plugin-manufacturer"));
     if (!vendor || vendor->getNumItems()<2) return 365;
@@ -1881,7 +1905,10 @@ int checkTrackView(const juce::File& fixture) {
         const auto trackArea = mixer->getLocalArea(output->getParentComponent(),output->getParentComponent()->getLocalBounds());
         auto* masterOut=findControl<juce::TextButton>(*mixer,"Master hardware output");
         auto* cueOut=findControl<juce::TextButton>(*mixer,"Cue hardware output");
-        if (!masterOut || !cueOut || !masterOut->isVisible() || !cueOut->isVisible()) return 264;
+        if (!masterOut || !cueOut || !masterOut->isVisible() || !cueOut->isVisible()) {
+            std::cerr << "Missing Master or Cue hardware output selector\n";
+            return 264;
+        }
         auto* outputViewport = cueStatus->findParentComponentOfClass<juce::Viewport>();
         auto* sourceViewport = output->findParentComponentOfClass<juce::Viewport>();
         if (!sourceViewport || !outputViewport || masterArea.getWidth() <= trackArea.getWidth()

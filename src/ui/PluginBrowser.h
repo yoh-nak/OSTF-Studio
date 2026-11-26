@@ -18,6 +18,7 @@ public:
     static int runScanWorker(const juce::String& token, const juce::String& target = {});
 
 private:
+    friend int checkTrackView(const juce::File&);
     void timerCallback() override;
     void selectionChanged() override;
     void fileClicked(const juce::File&, const juce::MouseEvent&) override {}

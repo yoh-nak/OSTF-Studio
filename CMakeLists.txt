@@ -60,6 +60,17 @@ if (OSTF_STUDIO_BUILD_GUI)
         URL https://codeload.github.com/danielaparker/jsoncons/zip/refs/tags/v1.5.0
         URL_HASH SHA256=6de746d3fd381937c9fc58ed47df7404792881b9ba924d43124dc6fb7c22f741)
     FetchContent_MakeAvailable(jsoncons)
+    if(APPLE)
+        # Each VST3 owns its JUCE objects, including the immortal empty String.
+        # Apply the wrapper's visibility to the static libraries that supply its modules too.
+        set(CMAKE_C_VISIBILITY_PRESET hidden)
+        set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+        set(CMAKE_OBJCXX_VISIBILITY_PRESET hidden)
+        set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+        foreach(entry GetPluginFactory bundleEntry bundleExit)
+            add_link_options("$<$<STREQUAL:$<TARGET_PROPERTY:JUCE_TARGET_KIND_STRING>,VST3>:LINKER:-exported_symbol,_${entry}>")
+        endforeach()
+    endif()
     set(score_schemas)
     foreach(version 3.5.0 4.0.0 4.1.0 4.2.0 4.3.0 5.0.0 5.1.0 package-manifest-1.1 production-session-0.4
             5.2.0 package-manifest-1.2 production-session-0.5 common-1.0 special-tracks-1.0 notation-1.0 musical-model-1.0 interchange-1.0 audio-model-1.0)
