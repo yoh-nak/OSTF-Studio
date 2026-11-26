@@ -16,6 +16,8 @@ The transport, prompt guide and current vocal lyrics use black inset displays. S
 
 **OSTF Scale Editor** is a VST3 instrument. Open it on a Studio instrument track, or use **Open OSTF** in another host. Select a chord, analysis lens and flow strategy to compare ranked scales. **Hear candidate** and **A/B with reference** play the original device's contextual phrases through a reference tone or a VST3 instrument selected with **Load VST3 instrument**. **Assign scale**, **Save OSTF**, and **Drag OSTF to Studio** apply, export and return the assignment.
 
+Saving the project also saves work in progress in the embedded Scale Editor. Reopen it to resume on the selected chord and scale, with the pinned A reference, analysis settings and OSTF TEXT draft. Use **Apply scales** when the assignments are ready to return. A text draft can be resumed even halfway through typing a JSON value.
+
 Drag across the song scale map to select a chord range. **Include matching progressions** highlights its occurrences with the same chord sequence and timing. Assign applies the selected scale to the highlighted chords in a single edit. **Undo apply** restores the previous assignments.
 
 The lead sheet and part score offer an A4 print preview with page navigation, adjustable margins and explicit page breaks. Enter the one-based bar numbers which should start a new page. PDF export shares the preview renderer. The master strip displays a stereo waveform below its phase scope and has its mute directly below its fader.

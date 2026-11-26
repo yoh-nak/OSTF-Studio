@@ -89,7 +89,8 @@ public:
             if (source == owner.offered) return Steinberg::kResultOk;
             owner.offered = source;
             // Reopening an editor must preserve unreturned edits.
-            if (owner.document.text.isEmpty() || owner.document.baseHash == digest(owner.document.text)) {
+            if (owner.document.text.isEmpty() || (owner.document.baseHash == digest(owner.document.text)
+                    && !owner.hasWorkspaceEdits())) {
                 const auto r = owner.document.load(source);
                 if (r.failed()) return Steinberg::kResultFalse;
             }
@@ -109,6 +110,11 @@ public:
         xml.setAttribute("editorWidth",lastEditorSize.x);
         xml.setAttribute("editorHeight",lastEditorSize.y);
         xml.createNewChildElement("Score")->addTextElement(document.text);
+        if (workspaceSource == document.text && workspaceDraft.isObject()) {
+            auto* draft=xml.createNewChildElement("Workspace");
+            draft->setAttribute("source",digest(document.text));
+            draft->addTextElement(juce::JSON::toString(workspaceDraft,true));
+        }
         if (unavailableInstrument) xml.addChildElement(new juce::XmlElement(*unavailableInstrument));
         else rack.save(xml);
         copyXmlToBinary(xml,dest);
@@ -128,6 +134,17 @@ public:
             }
             sendChangeMessage();
             if (document.load(score ? score->getAllSubText() : xml->getAllSubText()).wasOk()) {
+                ++restoredStateVersion;
+                workspaceDraft=juce::var();
+                workspaceSource.clear();
+                if (auto* draft=xml->getChildByName("Workspace"); draft && draft->getStringAttribute("source")==digest(document.text)) {
+                    auto saved=juce::JSON::parse(draft->getAllSubText());
+                    if (saved["settings"].isObject() && saved["score"].toString().getNumBytesAsUTF8()<=maxBytes
+                            && saved["text"].toString().getNumBytesAsUTF8()<=maxBytes) {
+                        workspaceDraft=std::move(saved);
+                        workspaceSource=document.text;
+                    }
+                }
                 const auto hash = xml->getStringAttribute("baseHash");
                 if (hash.length()==64 && hash.containsOnly("0123456789abcdef")) document.baseHash = hash;
                 sendChangeMessage();
@@ -139,6 +156,12 @@ public:
     std::array<unsigned,128> heldChannels{};
     juce::Point<int> lastEditorSize{1120,800};
     Document document;
+    juce::String workspaceSource;
+    uint64_t restoredStateVersion=0;
+    juce::var workspaceDraft;
+    bool hasWorkspaceEdits() const {
+        return workspaceSource==document.text && (workspaceDraft.hasProperty("score") || workspaceDraft.hasProperty("text"));
+    }
     juce::String offered,rackError;
     InstrumentRack rack;
     std::unique_ptr<juce::XmlElement> unavailableInstrument;
@@ -331,7 +354,7 @@ public:
         proc.addChangeListener(this);
         sync();
         juce::Point<int> size;
-        { const juce::ScopedLock lock(proc.stateLock); size=proc.lastEditorSize; }
+        { const juce::ScopedLock lock(proc.stateLock); size=proc.lastEditorSize; seenStateVersion=proc.restoredStateVersion; }
         if (const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) {
             size.x = std::min(size.x,display->userArea.getWidth()-24);
             size.y = std::min(size.y,display->userArea.getHeight()-60);
@@ -407,7 +430,23 @@ private:
             openFullWorkspace();
         }
     }
-    void changeListenerCallback(juce::ChangeBroadcaster*) override { sync(); showWorkspaceForFirstScore(); }
+    void changeListenerCallback(juce::ChangeBroadcaster*) override {
+        const juce::ScopedLock lock(proc.stateLock);
+        if (seenStateVersion!=proc.restoredStateVersion) {
+            seenStateVersion=proc.restoredStateVersion;
+            ++workspaceGeneration;
+            openedFirstScore=workspace && !workspace->isVisible();
+            workspace.reset();
+            workspaceHash.clear();
+            previousDocument.reset();
+            redoDocument.reset();
+            undo.setEnabled(false);
+            redo.setEnabled(false);
+            fullWorkspace.setButtonText("Full editor");
+            returnWorkspace.setEnabled(false);
+        }
+        sync(); showWorkspaceForFirstScore();
+    }
     void updateScope() {
         const juce::ScopedLock lock(proc.stateLock);
         int first=std::min(map.anchor,map.end), last=std::max(map.anchor,map.end);
@@ -659,11 +698,14 @@ private:
                 [self=juce::Component::SafePointer<Editor>(this),source](auto result) {
                     if (self) self->confirmLoad(source,result.getResult() && bool(*result.getResult()));
                 });
-        } else confirmLoad(source,false);
+        } else {
+            const juce::ScopedLock lock(proc.stateLock);
+            confirmLoad(source,proc.hasWorkspaceEdits());
+        }
     }
     void confirmLoad(const juce::String& source,bool workspaceDirty) {
         const juce::ScopedLock lock(proc.stateLock);
-        if (!workspaceDirty && (proc.document.text.isEmpty() || proc.document.baseHash == digest(proc.document.text))) {
+        if (!workspaceDirty && !proc.hasWorkspaceEdits() && (proc.document.text.isEmpty() || proc.document.baseHash == digest(proc.document.text))) {
             load(source);
             return;
         }
@@ -677,8 +719,10 @@ private:
         const juce::ScopedLock lock(proc.stateLock);
         const auto r=proc.document.load(source);
         if(r.failed()) {status.setText(r.getErrorMessage(),juce::dontSendNotification); return;}
+        proc.workspaceDraft=juce::var();
+        proc.workspaceSource.clear();
         previousDocument.reset(); undo.setEnabled(false); redoDocument.reset(); redo.setEnabled(false);
-        if (workspace && workspace->isVisible()) {
+        if (workspace) {
             workspace.reset();
             openedFirstScore = false;
         }
@@ -701,13 +745,14 @@ private:
             returnWorkspace.setEnabled(false);
             return;
         }
+        const juce::ScopedLock lock(proc.stateLock);
         const auto snapshot=proc.document.text;
         if(snapshot.isEmpty()) return;
         if (workspace && workspaceHash==digest(snapshot)) {
             workspace->setVisible(true); workspace->toFront(false);
             fullWorkspace.setButtonText("Native controls"); returnWorkspace.setEnabled(true); return;
         }
-        const auto html=juce::String::fromUTF8(ScaleAssets::ScaleWorkspace_html,ScaleAssets::ScaleWorkspace_htmlSize)
+        auto html=juce::String::fromUTF8(ScaleAssets::ScaleWorkspace_html,ScaleAssets::ScaleWorkspace_htmlSize)
             .replace("<!--STUDIO_SCORE-->",juce::Base64::toBase64(snapshot));
         using Browser = juce::WebBrowserComponent;
         auto options = Browser::Options{}.withKeepPageLoadedWhenBrowserIsHidden();
@@ -718,7 +763,15 @@ private:
        #endif
        #if JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE
         if (Browser::areOptionsSupported(options)) {
+            const int page=++workspaceGeneration;
+            workspaceSource=snapshot;
+            const auto draft=proc.workspaceSource==snapshot && proc.workspaceDraft.isObject()
+                ? juce::Base64::toBase64(juce::JSON::toString(proc.workspaceDraft,true)) : juce::String{};
+            html=html.replace("<!--STUDIO_DRAFT-->",draft);
             options = options.withNativeIntegrationEnabled()
+                .withEventListener("ostfScaleDraft",[self=juce::Component::SafePointer<Editor>(this),page](juce::var patch){
+                    if (self && self->workspaceGeneration==page) self->rememberWorkspace(patch);
+                })
                 .withEventListener("ostfScaleInputReady", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
                     if (self) self->shownPitchClasses=-1;
                 })
@@ -759,18 +812,26 @@ private:
     void importFullWorkspace() {
         if(workspace && workspace->isVisible()) {
             const auto opened=workspaceHash;
-            workspace->evaluateJavascript("window.ScaleAdviserApp.exportText()",
-                [self=juce::Component::SafePointer<Editor>(this),opened](auto result){
-                    if(!self) return;
+            workspace->evaluateJavascript("({text:window.ScaleAdviserApp.exportText(),epoch:window.ScaleAdviserApp.state.epoch})",
+                [self=juce::Component::SafePointer<Editor>(this),page=workspaceGeneration,opened](auto result){
+                    if(!self || !self->workspace || page!=self->workspaceGeneration) return;
                     const auto* value=result.getResult();
-                    if(!value || !value->isString()) { self->status.setText("The full editor is still loading.",juce::dontSendNotification); return; }
+                    if(!value || !(*value)["text"].isString()) { self->status.setText("The full editor is still loading.",juce::dontSendNotification); return; }
                     const juce::ScopedLock lock(self->proc.stateLock);
+                    if (self->seenStateVersion!=self->proc.restoredStateVersion) return;
                     const auto before=self->proc.document;
-                    const auto r=self->proc.document.importWorkspaceScales(value->toString(),opened);
+                    const auto r=self->proc.document.importWorkspaceScales((*value)["text"].toString(),opened);
                     if(r.failed()){self->status.setText(r.getErrorMessage(),juce::dontSendNotification);return;}
                     self->previousDocument=before; self->undoAtText=self->proc.document.text;
                     self->undo.setEnabled(true); self->redoDocument.reset(); self->redo.setEnabled(false);
                     self->workspaceHash=digest(self->proc.document.text);
+                    self->workspaceSource=self->proc.document.text;
+                    self->proc.workspaceSource=self->workspaceSource;
+                    if (auto* draft=self->proc.workspaceDraft.getDynamicObject()) draft->removeProperty("score");
+                    const auto& score=self->proc.document.score;
+                    const auto metadata=score.hasProperty("document") ? juce::JSON::toString(score["document"],true) : juce::String("null");
+                    self->workspace->evaluateJavascript("window.ScaleAdviserApp.acceptStudioRevision("+metadata+","
+                        +juce::String(int((*value)["epoch"]))+")");
                     self->sync(); self->proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
                     self->status.setText("Scales applied to the plug-in score.",juce::dontSendNotification);
                 });
@@ -791,6 +852,25 @@ private:
                 self->sync(); self->returnWorkspace.setEnabled(false);
                 self->proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
             });
+    }
+    void rememberWorkspace(const juce::var& patch) {
+        if (!patch["settings"].isObject()) return;
+        if (patch["score"].toString().getNumBytesAsUTF8()>maxBytes || patch["text"].toString().getNumBytesAsUTF8()>maxBytes) {
+            status.setText("Workspace draft exceeds 24 MiB.",juce::dontSendNotification);
+            return;
+        }
+        {
+            const juce::ScopedLock lock(proc.stateLock);
+            if (seenStateVersion!=proc.restoredStateVersion || workspaceSource!=proc.document.text) return;
+            if (proc.workspaceSource!=workspaceSource || !proc.workspaceDraft.isObject())
+                proc.workspaceDraft=juce::var(new juce::DynamicObject());
+            proc.workspaceSource=workspaceSource;
+            for (const auto* key : {"settings","score","text"}) if (patch.hasProperty(key)) {
+                if (patch[key].isVoid()) proc.workspaceDraft.getDynamicObject()->removeProperty(key);
+                else proc.workspaceDraft.getDynamicObject()->setProperty(key,patch[key]);
+            }
+        }
+        proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
     void saveWorkspaceFile(const juce::var& request) {
         if (!workspace) return;
@@ -846,7 +926,9 @@ private:
     juce::TextButton fullWorkspace{"Full editor"}, returnWorkspace{"Apply scales"};
     std::unique_ptr<juce::WebBrowserComponent> workspace;
     std::unique_ptr<juce::FileChooser> workspaceSaveChooser;
-    juce::String workspaceHash;
+    juce::String workspaceHash,workspaceSource;
+    int workspaceGeneration=0;
+    uint64_t seenStateVersion=0;
     bool openedFirstScore = false;
     std::unique_ptr<juce::TemporaryFile> workspaceFile;
     juce::Label flowKey;

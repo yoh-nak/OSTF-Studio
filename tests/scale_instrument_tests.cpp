@@ -3,6 +3,110 @@
 #include <iostream>
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
+
+static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
+    std::unique_ptr<juce::AudioProcessor> processor;
+    std::unique_ptr<juce::AudioProcessorEditor> editor;
+    juce::WebBrowserComponent* browser=nullptr;
+    auto open=[&](const juce::MemoryBlock& bytes) {
+        editor.reset();
+        processor.reset(createPluginFilter());
+        processor->setStateInformation(bytes.getData(),int(bytes.getSize()));
+        editor.reset(processor->createEditorAndMakeActive());
+        editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
+        editor->setVisible(true);
+        browser=dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
+        return browser!=nullptr;
+    };
+    if (!open(initial)) return 50;
+    struct Check : juce::Timer {
+        std::function<void()> step;
+        void timerCallback() override { step(); }
+    } timer;
+    int stage=0,result=51;
+    bool pending=false;
+    auto checkPage=[&](const juce::String& script) {
+        pending=true;
+        browser->evaluateJavascript(script,[&](auto evaluated){
+            pending=false;
+            if (auto* value=evaluated.getResult(); value && value->isBool() && bool(*value)) ++stage;
+        });
+    };
+    const auto deadline=juce::Time::getMillisecondCounterHiRes()+35000.;
+    timer.step=[&] {
+        if (juce::Time::getMillisecondCounterHiRes()>deadline) {
+            std::cerr<<"Workspace recall timed out at stage "<<stage<<'\n';
+            juce::MessageManager::getInstance()->stopDispatchLoop();
+            return;
+        }
+        if (pending) return;
+        if (stage==0) {
+            checkPage(R"JS((()=>{
+                const app=window.ScaleAdviserApp;
+                if(!app?.state.doc?.harmony.scales.length)return false;
+                const edited=JSON.parse(app.exportText());edited.harmony.scales=[];
+                app.importString(JSON.stringify(edited),'Working.ostf',false);
+                app.selectChord(edited.harmony.chords[1].id);
+                document.querySelector('#pinReference').click();
+                app.view('text');
+                const field=document.querySelector('#textArea');field.value='\u672a\u78ba\u5b9a <draft> &';
+                field.dispatchEvent(new Event('input'));
+                return true;
+            })())JS");
+        } else if (stage==1) {
+            juce::MemoryBlock bytes;
+            processor->getStateInformation(bytes);
+            const auto xml=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
+            auto* draft=xml->getChildByName("Workspace");
+            if (!draft || !juce::JSON::parse(draft->getAllSubText()).hasProperty("text")) return;
+            if (!juce::JSON::parse(xml->getChildByName("Score")->getAllSubText())["harmony"]["scales"].size()) return;
+            if (open(bytes)) ++stage;
+        } else if (stage==2) {
+            checkPage(R"JS((()=>{
+                const app=window.ScaleAdviserApp,s=app?.state;
+                return !!(s?.textDirty && s.view==='text' && s.doc.harmony.scales.length===0 &&
+                    s.selected===s.doc.harmony.chords[1].id && s.reference && s.reference===s.scale &&
+                    document.querySelector('#textArea').value==='\u672a\u78ba\u5b9a <draft> &');
+            })())JS");
+        } else if (stage==3) {
+            for (auto* child:editor->getChildren())
+                if (auto* b=dynamic_cast<juce::TextButton*>(child); b && b->getButtonText()=="Apply scales") {
+                    b->onClick(); ++stage; break;
+                }
+        } else if (stage==4) {
+            juce::MemoryBlock bytes;
+            processor->getStateInformation(bytes);
+            const auto xml=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
+            if (juce::JSON::parse(xml->getChildByName("Score")->getAllSubText())["harmony"]["scales"].size()) return;
+            auto* draft=xml->getChildByName("Workspace");
+            if (!draft || juce::JSON::parse(draft->getAllSubText()).hasProperty("score")) return;
+            draft->setAttribute("source","stale");
+            juce::AudioProcessor::copyXmlToBinary(*xml,bytes);
+            std::unique_ptr<juce::AudioProcessor> stale(createPluginFilter());
+            stale->setStateInformation(bytes.getData(),int(bytes.getSize()));
+            stale->getStateInformation(bytes);
+            const auto checked=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
+            if (checked->getChildByName("Workspace")) {
+                result=52;
+                juce::MessageManager::getInstance()->stopDispatchLoop();
+                return;
+            }
+            processor->setStateInformation(initial.getData(),int(initial.getSize()));
+            ++stage;
+        } else if (stage==5) {
+            browser=dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
+            if (browser) checkPage("Boolean(window.ScaleAdviserApp?.state.doc?.harmony.scales.length && !window.ScaleAdviserApp.state.textDirty)");
+        } else {
+            result=0;
+            juce::MessageManager::getInstance()->stopDispatchLoop();
+        }
+    };
+    timer.startTimer(100);
+    juce::MessageManager::getInstance()->runDispatchLoop();
+    timer.stopTimer();
+    return result;
+}
+
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     if(argc!=3 && argc!=4) return 1;
@@ -18,6 +122,7 @@ int main(int argc,char** argv) {
     nested->addChildElement(types[0]->createXml().release());
     juce::MemoryBlock bytes;
     juce::AudioProcessor::copyXmlToBinary(state,bytes);
+    if (argc==4 && juce::String(argv[3])=="--recall") return testWorkspaceRecall(bytes);
     std::unique_ptr<juce::AudioProcessor> processor(createPluginFilter());
     if(!processor->acceptsMidi() || processor->getTotalNumInputChannels()!=0) return 3;
     processor->setStateInformation(bytes.getData(),int(bytes.getSize()));

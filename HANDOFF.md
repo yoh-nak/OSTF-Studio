@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## Sustained nasals and Scale Editor project recall
+
+Branch `feat/singer-nasals-scale-resume`. With Mei at fixed pitch, switching the following vowel between A and I changed the last 40 ms of isolated English M, N and NG. The previous RMS differences were 0.084, 0.134 and 0.111. All three differences now measure zero and all three sustains have a nonzero RMS of 0.116. Run `ostf_singing_tests` for this comparison and for Japanese length marks on successive notes after ん. For a listening comparison render the same `bilingual-mei` excerpt of Paper Lantern Replies with each binary and match RMS.
+
+Paper Lantern Replies has explicit katakana pronunciations. Its pre-chorus rendered identically after the English nasal fix alone. Japanese recorded morae now retain the duration of the voiced consonant-to-vowel transition on long notes. Tests cover long, short and open-ended MIDI notes.
+
+The hosted Scale Editor now saves draft assignments, raw text and analysis settings as part of VST3 state. The Windows `ostf_scale_workspace_recall` test edits a real embedded workspace, reopens it on a fresh plug-in, checks the independently saved score and draft, applies the assignments, rejects a mismatched score digest and restores the original state while the editor is open. Rebuild Studio, Singer and Scale Editor together. Hardware listening, macOS WebKit, macOS package testing and CI builds remain separate checks.
+
+Windows Release passed all seven focused CTests covering the core, Singer and Scale Editor. A development portable containing 38 VST3s passed Studio's plug-in window and vocal-track checks. The before/after pre-chorus is 12.33 s at 48 kHz. Both listening files have an RMS of −20 dBFS. The update changes the rendered katakana phrase. Perceived vocal quality still needs listening evaluation.
+
 ## Mei consonants and MIDI input in Scale Editor
 
 Branch `feat/singer-consonants-scale-midi`. An isolated English /s/ rendered with Mei at MIDI 45 and 69 had an RMS sample difference of 0.171 in the previous build. The CV renderer was including the following pitched vowel. `ostf_singing_tests` now checks a non-silent, pitch-independent /s/ and /t/, a voiced Japanese /sa/, and a 100 ms noise-to-vowel transition with a 45 ms nominal attack. For listening comparisons run `ostf_singing_tests <paper-lantern-replies.ostf> <new-file.wav> bilingual-mei` for the English pre-chorus or `bridge-mei` for the Japanese bridge, and match RMS between revisions.

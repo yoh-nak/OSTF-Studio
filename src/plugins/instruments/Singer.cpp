@@ -40,6 +40,23 @@ class SyllableVoice {
             recorded = bank->find({p.vowel, vowelOnly});
             vowelSample = recorded != nullptr;
         }
+        nasalBody = nullptr;
+        nasalAttack = nullptr;
+        if (bank && arpabet >= 26 && arpabet <= 28) {
+            // A CV contains both the nasal closure and an open vowel. Keep
+            // the distinctive /m/ or /n/ attack, then sustain the bank's /N/.
+            if (arpabet != 28 && recorded && !vowelSample
+                && recorded->consonantFrames - recorded->voicedStart >= 2 * recorded->period)
+                nasalAttack = recorded;
+            nasalBody = bank->find({2, moraN});
+            if (!nasalBody && !nasalAttack) {
+                // A bank with only open vowels can still model a closed nasal.
+                recorded = nullptr;
+                vowelSample = false;
+                p.onset = phone.onset = moraN;
+                p.vowel = phone.vowel = 2;
+            }
+        }
         // A connected vowel enters after the initial breath of the recording.
         // Consonant-led syllables still play the complete attack.
         position = legato && recorded && p.onset == vowelOnly && p.durationMs > 0
@@ -114,8 +131,19 @@ class SyllableVoice {
             }
             return float(level * tone);
         }
-        // In a Japanese CV bank the /s/ in "lights" comes from a complete
-        // mora. Singing the vowel portion adds a second, unintended syllable.
+        if (nasalBody || nasalAttack) {
+            const double duration = phone.durationMs > 0 ? phone.durationMs * .001 : .195;
+            const double prefix = std::min(.026, duration * .35);
+            if (nasalAttack && (time < prefix || !nasalBody)) {
+                const double at = std::min(nasalAttack->voicedStart + time * nasalAttack->rate,
+                                           nasalAttack->consonantFrames - nasalAttack->period);
+                return float(level * voicedSample(*nasalAttack, at, pitch, sr, fft));
+            }
+            const double progress = std::clamp(time / duration, 0., 1.);
+            const double at = std::lerp(double(nasalBody->vowelFirst), double(nasalBody->vowelLast), progress);
+            return float(level * voicedSample(*nasalBody, at, pitch, sr, fft));
+        }
+        // Use only the unvoiced portion of a CV for the /s/ in "lights".
         if (unvoicedEnglishConsonant)
             return float(level * unvoicedAttack(time,sr));
         float recording = 0;
@@ -134,15 +162,10 @@ class SyllableVoice {
             } else {
                 // Pitch analysis found a contiguous voiced region here. Marks in the
                 // breath or release can jump between harmonics on consecutive cycles.
-                const double low = phone.onset != vowelOnly && !vowelSample ? recorded->voicedStart : recorded->vowelFirst;
-                const double high = std::max(low,double(recorded->vowelLast));
-                // Advance once through the voiced recording over the scored duration.
-                // A live MIDI note has no known end, so approach its sustain gradually.
                 const double elapsed = time - onset;
-                const double fraction = phone.durationMs > 0
-                    ? std::min(1., elapsed / std::max(.020, phone.durationMs * .001 - onset))
-                    : elapsed / (elapsed + .23);
-                const auto sustained = voicedSample(*recorded, std::lerp(low, high, fraction), pitch, sr, fft);
+                const double duration = phone.durationMs > 0 ? std::max(.020, phone.durationMs * .001 - onset) : 0.;
+                const double at = recorded->sungPosition(elapsed, duration, phone.onset != vowelOnly && !vowelSample);
+                const auto sustained = voicedSample(*recorded, at, pitch, sr, fft);
                 // Join the unvoiced attack once. Mixing the raw pitched vowel and
                 // its retuned copy produces beating whenever their phases diverge.
                 if (!joinedRecording) { joinDelta = onset > 0 ? lastAttack-sustained : 0.f; joinedRecording = true; }
@@ -204,6 +227,8 @@ class SyllableVoice {
     std::array<Resonator, 3> resonators{};
     const RecordedMora* recorded = nullptr;
     const RecordedMora* englishSound = nullptr;
+    const RecordedMora* nasalAttack = nullptr;
+    const RecordedMora* nasalBody = nullptr;
     bool unvoicedEnglishConsonant = false;
     float unvoicedAttack(double time,double sr) {
         const double allotted = phone.durationMs>0 ? .001*phone.durationMs : .065;

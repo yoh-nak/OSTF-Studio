@@ -545,7 +545,7 @@ body.sidebar-resizing,body.sidebar-resizing * {cursor:col-resize!important;user-
 @media(max-width:740px){.quick-set{order:2;flex:1;margin-left:0}}
 #keyboard g.input-held > rect{stroke:#ffcc65;stroke-width:5px}
 #studioInput{color:#ffdc93;font-variant-numeric:tabular-nums}
-</style><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script></head><body>
+</style><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script><script id="studio-draft" type="application/octet-stream"><!--STUDIO_DRAFT--></script></head><body>
 <div id="app">
 <header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Edit scales, keys and modes in OSTF.</div></div><span class="version">v1.0 · DIRECT SET</span></div><div class="head-actions"><button id="open" title="Open a local OSTF file · Ctrl+O">Open…</button><button id="save" title="Save to the currently linked file · Ctrl+S">Save</button><button id="saveAs" title="Always choose a destination · Ctrl+Shift+S">Save As…</button><button id="autoSetSong" class="primary" title="Preview the highest-ranked eligible scale for every chord, then apply all at once">AUTO-SET SONG</button><span class="sep"></span><button id="undo" title="Undo the last assignment" disabled>Undo</button><button id="redo" disabled>Redo</button><button id="demos">Demos</button><button id="help" class="quiet">Help</button></div></header>
 <div class="songline"><span class="songtitle" id="songTitle"></span><span class="chip" id="songKey"></span><span class="chip" id="songVersion"></span><span class="chip" id="fileBinding" title="Save requires a linked file; imported text or drag-and-drop must use Save As">Not linked</span><span id="dirty"></span><div class="viewtabs"><button id="visualTab" class="active">VISUAL</button><button id="textTab">OSTF TEXT</button></div></div>
@@ -2192,7 +2192,82 @@ function hostSend(){if(!native)return false;window.max.outlet.apply(window.max,a
 function b64encode(text){const bytes=new TextEncoder().encode(text);let s='';for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));return btoa(s);}
 function b64decode(s){const b=atob(s),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new TextDecoder('utf-8',{fatal:true}).decode(a);}
 function chunks(kind,text){const b=b64encode(text);hostSend(kind+'Begin');for(let i=0;i<b.length;i+=6000)hostSend(kind+'Chunk',b.slice(i,i+6000));hostSend(kind+'End');}
+function restoreDeviceSettings(d){
+ state.target=state.doc.tracks.some(track=>track.id===d.target)?d.target:'harmony';
+ state.adherence=d.adherence==='strict'?'strict':'preferred';
+ state.dirty=!!d.dirty;
+ state.strategy=['balanced','smooth','tension'].includes(d.strategy)?d.strategy:'balanced';
+ state.approach=SA.universal.modeList.some(mode=>mode.id===d.approach)?d.approach:'chord';
+ state.genreOverride=SA.genre.styles.some(style=>style.id===d.genreOverride)?d.genreOverride:'auto';
+ state.workspace=['map','flow','leading','review','fit','patterns'].includes(d.workspace)?d.workspace:'map';
+ state.scopeMode=['song','section','chord','range'].includes(d.scopeMode)?d.scopeMode:'chord';
+ state.scopePolicy=d.scopePolicy==='fill'?'fill':'replace';
+ state.scopeRange=d.scopeRange&&Number.isSafeInteger(d.scopeRange.start)&&Number.isSafeInteger(d.scopeRange.end)?d.scopeRange:null;
+ if(Number.isFinite(d.sidebarWidth)&&d.sidebarWidth>=258&&d.sidebarWidth<=680)setSidebarWidth(d.sidebarWidth,false);
+ state.autoListen=d.autoListen!==false;
+ state.midiMode='standard';if(native)hostSend('midimode',state.midiMode);setMidiModeUI();
+ invalidateAnalysis();
+ const chord=state.doc.harmony.chords.find(c=>c.id===d.selected)||state.doc.harmony.chords[0];
+ selectChord(chord?.id);
+ const candidates=getAnalysis()?.items||[];
+ if(candidates.some(s=>s.id===d.scale))state.scale=d.scale;
+ if(candidates.some(s=>s.id===d.reference))state.reference=d.reference;
+ if(d.scopeSectionId)state.scopeSectionId=d.scopeSectionId;
+ render();
+}
+let studioDraftReady=false,studioBaseDoc,studioSentDoc,studioSentText=null,studioSentSettings='';
+function rememberStudioWorkspace(){
+ if(!studioDraftReady)return;
+ const settings={};
+ for(const key of ['selected','scale','reference','target','adherence','dirty','strategy','approach','genreOverride','workspace',
+   'scopeMode','scopePolicy','scopeRange','scopeSectionId','sidebarWidth','autoListen','view','filename'])settings[key]=state[key];
+ const patch={settings};
+ if(studioSentDoc!==state.doc){
+  patch.score=state.doc===studioBaseDoc?null:JSON.stringify(state.doc);
+  studioSentDoc=state.doc;
+ }
+ const text=state.textDirty?$('textArea').value:null;
+ if(studioSentText!==text){patch.text=text;studioSentText=text;}
+ const settingsText=JSON.stringify(settings);
+ if(studioSentSettings===settingsText&&!('score' in patch)&&!('text' in patch))return;
+ studioSentSettings=settingsText;
+ window.__JUCE__.backend.emitEvent('ostfScaleDraft',patch);
+}
+function acceptStudioRevision(metadata,epoch){
+ if(metadata){
+  for(const doc of [state.doc,...state.history,...state.future])doc.document=metadata;
+ }
+ studioBaseDoc=studioSentDoc=state.epoch===epoch?state.doc:null;
+ state.sourceCore=SA.audit.snapshot(state.doc);
+ rememberStudioWorkspace();
+}
+async function loadStudioWorkspace(score){
+ if(!await importString(score,'Studio.ostf',false))return;
+ studioBaseDoc=state.doc;
+ const encoded=$('studio-draft')?.textContent.trim();
+ if(encoded&&/^[A-Za-z0-9+/]+=*$/.test(encoded)){
+  try{
+   const draft=JSON.parse(b64decode(encoded)), settings=draft.settings;
+   if(draft.score){
+    if(!await importString(draft.score,settings.filename||'Studio.ostf',false))throw Error('Could not restore the edited score.');
+    if(settings.dirty&&SA.audit.unchanged(state.doc,SA.audit.snapshot(studioBaseDoc)))state.history=[studioBaseDoc];
+   }
+   restoreDeviceSettings(settings);
+   if(typeof draft.text==='string'){
+    $('textArea').value=draft.text;
+    state.textDirty=true;
+    $('textFeedback').textContent='Edited text is not yet imported.';
+   }
+   await view(settings.view==='text'?'text':'visual');
+   render();
+  }catch(e){error(e);}
+ }
+ studioSentDoc=state.doc;
+ studioSentText=state.textDirty?$('textArea').value:null;
+ studioDraftReady=!!window.__JUCE__?.backend;
+}
 function notifyState(){
+ rememberStudioWorkspace();
  if(!native)return;
  clearTimeout(stateTimer);
  // Large OSTF project snapshots can occupy MaxBridge's low-priority queue.
@@ -2299,8 +2374,8 @@ function renderStrategies(){
 }
 function pickReference(analysis,selected){const rank=analysis.items;const saved=SA.flow.savedInfo(state.doc,getChord(),state.target,analysis).scale;if(saved&&saved.id!==selected?.id)return saved;return rank.find(x=>x.group==='Inside'&&!x.missing?.length)||rank[0]||null;}
 function effectiveReference(analysis){return analysis?.items.find(x=>x.id===state.reference)||pickReference(analysis||{items:[]},null);}
-function pinReference(){const s=getScale();if(!s)return;stop();state.reference=s.id;renderCards();renderListenLab();status('Pinned A reference: '+SA.pitchName(s.tonic)+' '+s.name+'. Select another scale as B.','success');}
-function resetReference(){stop();state.reference=null;renderCards();renderListenLab();status('A reference reset to the conventional / existing assignment.');}
+function pinReference(){const s=getScale();if(!s)return;stop();state.reference=s.id;renderCards();renderListenLab();rememberStudioWorkspace();status('Pinned A reference: '+SA.pitchName(s.tonic)+' '+s.name+'. Select another scale as B.','success');}
+function resetReference(){stop();state.reference=null;renderCards();renderListenLab();rememberStudioWorkspace();status('A reference reset to the conventional / existing assignment.');}
 function chooseContrast(){const a=getAnalysis();if(!a)return;const ref=effectiveReference(a);if(!ref)return;const pick=a.items.find(s=>s.id!==ref.id&&SA.flow.differences(s,ref).added.length+SA.flow.differences(s,ref).removed.length>0);if(!pick){status('No contrasting pitch collection found for this chord.');return;}stop();state.scale=pick.id;renderCards();renderInspector();renderFlowWorkspace();renderApply();notifyState();status('B contrast selected: '+SA.pitchName(pick.tonic)+' '+pick.name+'. Listen A / B to compare.','success');if(state.autoListen)playCompare('B');}
 function renderCards(){
  const a=getAnalysis();for(const b of $('filters').querySelectorAll('button'))b.classList.toggle('active',b.dataset.filter===state.filter);
@@ -3023,8 +3098,8 @@ async function doClear(){try{const next=SA.remove(state.doc,state.selected,state
 function undo(redo=false){const from=redo?state.future:state.history,to=redo?state.history:state.future;if(!from.length)return;to.push(SA.clone(state.doc));state.doc=from.pop();state.validation=SA.validate(state.doc);invalidateAnalysis();state.dirty=true;state.epoch++;render();notifyState();status(redo?'Redone.':'Undone.');}
 async function analyzeSong(){const token=state.epoch;const cs=state.doc.harmony.chords;$('analyze').disabled=true;try{for(let i=0;i<cs.length;i++){if(token!==state.epoch)return;getAnalysis(cs[i]);if(i%8===0){status('Analyzing chord '+(i+1)+' / '+cs.length+'…');await new Promise(r=>setTimeout(r,0));}}renderTimeline();status('Analyzed '+cs.length+' chords. Suggestions only: no song data changed.','success');}catch(e){error(e);}finally{$('analyze').disabled=false;}}
 function setText(){ $('textArea').value=JSON.stringify(state.doc,null,2);state.textDirty=false;$('textFeedback').textContent='Current song document. '+state.validation.warnings.join('\n');}
-async function view(which){if(which==='text'&&state.view!=='text'&&!state.textDirty)setText();state.view=which;$('visual').hidden=which!=='visual';$('textView').hidden=which!=='text';$('visualTab').classList.toggle('active',which==='visual');$('textTab').classList.toggle('active',which==='text');}
-async function refreshText(){if(state.textDirty&&!await confirmAction('Replace edited text?','Text edits have not been imported. Replace them with the current song document?'))return;setText();}
+async function view(which){if(which==='text'&&state.view!=='text'&&!state.textDirty)setText();state.view=which;$('visual').hidden=which!=='visual';$('textView').hidden=which!=='text';$('visualTab').classList.toggle('active',which==='visual');$('textTab').classList.toggle('active',which==='text');rememberStudioWorkspace();}
+async function refreshText(){if(state.textDirty&&!await confirmAction('Replace edited text?','Text edits have not been imported. Replace them with the current song document?'))return;setText();rememberStudioWorkspace();}
 async function copyText(){try{const text=$('textArea').value;try{await navigator.clipboard.writeText(text);}catch(_){$('textArea').focus();$('textArea').select();if(!document.execCommand('copy'))throw Error('Clipboard access is unavailable. Text is selected; use Ctrl+C / Cmd+C.');}status('Copied the complete OSTF text.','success');}catch(e){error(e);}}
 function checkText(){try{const p=SA.parse($('textArea').value);$('textFeedback').textContent='Core structure check passed · '+p.doc.harmony.chords.length+' chords.\n'+p.validation.warnings.join('\n');status('Text checked. Current song not changed.','success');}catch(e){$('textFeedback').textContent=e.message;error(e);}}
 let studioSaveTicket=0;
@@ -3032,7 +3107,7 @@ function finishStudioSave(ticket,saved){
  if(ticket!==studioSaveTicket || !state.savePendingText)return;
  const unchanged=state.savePendingText===JSON.stringify(state.doc);
  state.savePendingText=null;
- if(saved && unchanged){state.dirty=false;render();}
+ if(saved && unchanged){state.dirty=false;render();rememberStudioWorkspace();}
  status(saved?'Saved edited OSTF.':'File was not saved.',saved?'success':'');
 }
 function openFile(){
@@ -3221,7 +3296,7 @@ function help(){dialog('OSTF Scale Editor · v1.0 Scale Workflow',[
  'Load and save are local; no external network connection is required.'
 ].join('\n'));}
 function bind(){for(const [id,fn] of Object.entries({open:openFile,save:()=>save('save'),saveAs,autoSetSong,undo:()=>undo(),redo:()=>undo(true),demos:showDemos,help,analyze:analyzeSong,apply:doApply,quickSetScale:doApply,clear:doClear,visualTab:()=>view('visual'),textTab:()=>view('text'),refreshText,copyText,validateText:checkText,importText:async()=>{if(await importString($('textArea').value,'Text_import.ostf')){await view('visual');}},hearScale,hearContext,hearResolution,hearReference:()=>playCompare('A'),hearCandidate:()=>playCompare('B'),hearAB:()=>playCompare('AB'),autoListen:()=>{state.autoListen=!state.autoListen;renderListenLab();notifyState();status('Audition on card selection: '+(state.autoListen?'on':'off')+'.');},pinReference,resetReference,chooseContrast,stopCompare:()=>{stop();status('A/B audition stopped.');},applyNear:doApply,applyAndNext, nextOpen:jumpNextUnassigned, nextReview,stop:()=>{stop();status('Audition stopped.');}})){const el=$(id);if(el)el.onclick=fn;}
- $('fileInput').onchange=e=>{handleFile(e.target.files[0]);e.target.value='';};$('textArea').oninput=()=>{state.textDirty=true;$('textFeedback').textContent='Edited text is not yet imported.';};
+ $('fileInput').onchange=e=>{handleFile(e.target.files[0]);e.target.value='';};$('textArea').oninput=()=>{state.textDirty=true;$('textFeedback').textContent='Edited text is not yet imported.';rememberStudioWorkspace();};
  $('timeline').onclick=e=>{const header=e.target.closest('[data-section]');if(header){const id=header.dataset.section;if(state.expandedSections.has(id))state.expandedSections.delete(id);else state.expandedSections.add(id);renderTimeline();return;}const b=e.target.closest('[data-chord]');if(b)selectChord(b.dataset.chord);};
  $('collapseAll').onclick=()=>{state.expandedSections=new Set(getChord()?[sectionFor(getChord())]:[]);renderTimeline();status('Showing the current section. Expand others as needed.');};
  $('contextTrail').onclick=e=>{const b=e.target.closest('[data-chord]');if(b)selectChord(b.dataset.chord);};
@@ -3248,14 +3323,14 @@ function bind(){for(const [id,fn] of Object.entries({open:openFile,save:()=>save
 }
 function nativeInit(){if(nativeBound||!window.max||typeof window.max.outlet!=='function'||typeof window.max.bindInlet!=='function')return false;native=true;nativeBound=true;
  window.max.bindInlet('saFileStart',(name,token)=>{loadChunks=[];loadName=name||'Imported.ostf';loadOpenToken=Number(token)||0;});window.max.bindInlet('saFileChunk',s=>loadChunks.push(String(s)));window.max.bindInlet('saFileEnd',()=>{const payload=loadChunks.join(''),name=loadName,token=loadOpenToken;loadChunks=[];try{importString(b64decode(payload),name,true,true).then(ok=>{if(ok){if(token)hostSend('fileaccepted',token);view('visual');}});}catch(e){error(e);}});
- window.max.bindInlet('saStateStart',()=>{loadChunks=[];});window.max.bindInlet('saStateChunk',s=>loadChunks.push(String(s)));window.max.bindInlet('saStateEnd',async()=>{try{const d=JSON.parse(b64decode(loadChunks.join('')));loadChunks=[];if(!d.doc)return;if(await importString(JSON.stringify(d.doc),d.filename||'Restored.ostf',false)){state.target=d.target||'harmony';if(state.target!=='harmony'&&!state.doc.tracks.some(t=>t.id===state.target))state.target='harmony';state.adherence=d.adherence==='strict'?'strict':'preferred';state.dirty=!!d.dirty;state.strategy=['balanced','smooth','tension'].includes(d.strategy)?d.strategy:'balanced';state.approach=SA.universal.modeList.some(m=>m.id===d.approach)?d.approach:'chord';state.genreOverride=SA.genre.styles.some(s=>s.id===d.genreOverride)?d.genreOverride:'auto';state.workspace=['map','flow','leading','review','fit','patterns'].includes(d.workspace)?d.workspace:'map';state.scopeMode=['song','section','chord','range'].includes(d.scopeMode)?d.scopeMode:'chord';state.scopePolicy=['fill','replace'].includes(d.scopePolicy)?d.scopePolicy:'replace';state.scopeRange=d.scopeRange&&Number.isSafeInteger(d.scopeRange.start)&&Number.isSafeInteger(d.scopeRange.end)?d.scopeRange:null;state.scopeSectionId=d.scopeSectionId||null;if(Number.isFinite(Number(d.sidebarWidth))&&Number(d.sidebarWidth)>=258&&Number(d.sidebarWidth)<=680){state.sidebarWidth=Number(d.sidebarWidth);setSidebarWidth(state.sidebarWidth,false,true);}state.autoListen=d.autoListen!==false;state.midiMode='standard';if(native)hostSend('midimode',state.midiMode);setMidiModeUI();invalidateAnalysis();selectChord(d.selected||state.doc.harmony.chords[0]?.id);if(getAnalysis()?.items.some(s=>s.id===d.scale))state.scale=d.scale;if(d.scopeSectionId)state.scopeSectionId=d.scopeSectionId;render();status('Restored the device document.','success');}}catch(e){error(e);}});
+ window.max.bindInlet('saStateStart',()=>{loadChunks=[];});window.max.bindInlet('saStateChunk',s=>loadChunks.push(String(s)));window.max.bindInlet('saStateEnd',async()=>{try{const d=JSON.parse(b64decode(loadChunks.join('')));loadChunks=[];if(!d.doc)return;if(await importString(JSON.stringify(d.doc),d.filename||'Restored.ostf',false)){restoreDeviceSettings(d);status('Restored the device document.','success');}}catch(e){error(e);}});
  window.max.bindInlet('saPreviewQueued',(count,duration)=>onPreviewQueued(count,duration));window.max.bindInlet('saPreviewTick',(tag,note,role,beat,ms,played,total)=>onPreviewTick(tag,note,role,beat,ms,played,total));window.max.bindInlet('saPreviewDone',(played,total)=>onPreviewDone(played,total));window.max.bindInlet('saPreviewError',message=>onPreviewError(message));
  window.max.bindInlet('saPhraseStage',(id,phase,count,total)=>phraseStage(id,phase,count,total));window.max.bindInlet('saPhraseTick',(id,tag,note,role,beat,ms,count,total)=>phraseTick(id,tag,note,role,beat,ms,count,total));window.max.bindInlet('saPhraseError',(id,message)=>phraseError(id,message));
  window.max.bindInlet('saMidiReceived',(pitch,velocity,count)=>onMidiReceived(pitch,velocity,count));window.max.bindInlet('saMidiTx',(pitch,velocity,count)=>onMidiTx(pitch,velocity,count));window.max.bindInlet('saMidiMode',mode=>{if(['direct','standard'].includes(String(mode))){state.midiMode=String(mode);setMidiModeUI();}});
  window.max.bindInlet('saFileBinding',(name,bound)=>{state.fileBound=Number(bound)===1;if(state.fileBound&&name)state.filename=String(name);renderFileBinding();});window.max.bindInlet('saSaved',name=>{const unchanged=state.savePendingText===JSON.stringify(state.doc);state.savePendingText=null;state.saveModePending=null;state.fileBound=true;if(unchanged){state.dirty=false;state.sourceCore=SA.audit.snapshot(state.doc);}if(name)state.filename=String(name);render();status('Saved OSTF: '+(name||'file')+(unchanged?' · verified on disk':' · document changed during save; newer changes remain unsaved'),'success');notifyState();});window.max.bindInlet('saSaveCanceled',()=>{state.savePendingText=null;state.saveModePending=null;status('Save As canceled. The current song and linked file were not changed.');});window.max.bindInlet('saOpenCanceled',()=>status('Open canceled. Current song unchanged.'));window.max.bindInlet('saError',message=>{state.savePendingText=null;state.saveModePending=null;error(Error(String(message)));});
  $('hostLabel').textContent='Max for Live · MIDI effect';$('audioLabel').textContent='MIDI OUT → following instrument';hostSend('ui_ready');hostSend('midimode',state.midiMode);setMidiModeUI();return true;}
 // Exposed, bounded test / host interface. Never eval imported data.
-window.ScaleAdviserApp={state,finishStudioSave,exportAudit:()=>SA.audit.inspect(state.doc,state.sourceCore),currentPatternModel,applyPatternMatches,renderPatternStudio,scopeSelection,doScopeApply,renderScaleMap,renderNoteFit,selectedCompatibility,importString,selectChord,render,apply:doApply,applyAndNext,jumpNextUnassigned,autoSetSong,view,save,saveAs,analyzeSong,stop,playCompare,compareModel,exportText:()=>JSON.stringify(state.doc,null,2),nativeInit};
+window.ScaleAdviserApp={state,acceptStudioRevision,finishStudioSave,exportAudit:()=>SA.audit.inspect(state.doc,state.sourceCore),currentPatternModel,applyPatternMatches,renderPatternStudio,scopeSelection,doScopeApply,renderScaleMap,renderNoteFit,selectedCompatibility,importString,selectChord,render,apply:doApply,applyAndNext,jumpNextUnassigned,autoSetSong,view,save,saveAs,analyzeSong,stop,playCompare,compareModel,exportText:()=>JSON.stringify(state.doc,null,2),nativeInit};
 initSidebarResize();bind();
 if(window.__JUCE__?.backend){
  const input=document.createElement('span');
@@ -3273,7 +3348,7 @@ if(window.__JUCE__?.backend){
 const incoming = document.getElementById('studio-score');
 if (incoming && /^[A-Za-z0-9+/]+=*$/.test(incoming.textContent.trim())) {
   const bytes = Uint8Array.from(atob(incoming.textContent.trim()), c => c.charCodeAt(0));
-  importString(new TextDecoder().decode(bytes), 'Studio.ostf', false);
+  loadStudioWorkspace(new TextDecoder().decode(bytes));
 } else importString(JSON.stringify(SA.demo(false)), 'Demo_major.ostf', false);
 })();
 

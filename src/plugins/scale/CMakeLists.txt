@@ -39,4 +39,7 @@ if(WIN32 OR APPLE)
     add_test(NAME ostf_scale_workspace COMMAND ostf_scale_instrument_tests
         "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF FM Synth.vst3"
         "${CMAKE_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostf" --workspace)
+    add_test(NAME ostf_scale_workspace_recall COMMAND ostf_scale_instrument_tests
+        "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF FM Synth.vst3"
+        "${CMAKE_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostf" --recall)
 endif()

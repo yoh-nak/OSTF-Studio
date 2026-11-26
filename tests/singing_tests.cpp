@@ -204,6 +204,15 @@ int main(int argc, char** argv) {
     nasal.preparePitchMarks();
     if(nasal.voicedStart<320 || nasal.voicedStart>560) return 41;
     if(nasal.vowelFirst>1750 || nasal.vowelLast<3600) return 42;
+    RecordedMora recordedCV;
+    recordedCV.rate=48000; recordedCV.voicedStart=480; recordedCV.vowelFirst=2400; recordedCV.vowelLast=17000;
+    // A 40 ms recorded mouth opening finishes at 40 ms for both long notes
+    // and live input. On a 20 ms note it reaches the vowel by 10 ms.
+    for (double length : {0., .25, 1.})
+        if (std::abs(recordedCV.sungPosition(.020,length,true)-1440.)>.001
+            || std::abs(recordedCV.sungPosition(.040,length,true)-2400.)>.001) return 53;
+    if (std::abs(recordedCV.sungPosition(.010,.020,true)-2400.)>.001
+        || recordedCV.sungPosition(0.,1.,false)!=2400. || recordedCV.sungPosition(1.,1.,true)!=17000.) return 53;
     RecordedMora fricative;
     fricative.rate=24000; fricative.period=120; fricative.consonantFrames=1080;
     fricative.loopStart=4500; fricative.loopEnd=5940;
@@ -246,6 +255,14 @@ int main(int argc, char** argv) {
     if (extended.size() != 2 || extended[0].morae != 2 || extended[1].onset != d) return 36;
     const auto kanaEdges = articulationPositions(extended, .45);
     if (std::abs(kanaEdges[1] - 2./3) > 1.e-8) return 37;
+    const auto holds=lyricsFor(juce::JSON::parse(R"({"lyrics":{
+      "units":[{"id":"a","text":"\u3048"},{"id":"n","text":"\u3093"},{"id":"h","text":"\u30fc"}],
+      "alignments":[{"unitIds":["a"],"noteIds":["1","5"]},{"unitIds":["n"],"noteIds":["2"]},
+                    {"unitIds":["h"],"noteIds":["3","4","6"]}]},
+      "tracks":[{"clips":[{"start":0,"notes":[{"id":"1","start":0},{"id":"2","start":1},{"id":"3","start":2},
+                   {"id":"4","start":3},{"id":"5","start":4},{"id":"6","start":5}]}]}]})"));
+    if (holds.at("3").front().onset!=moraN || holds.at("4").front().onset!=moraN
+        || holds.at("6").front().onset!=vowelOnly || holds.at("6").front().vowel!=3) return 52;
     const auto sing = lyricPhones("sing");
     if (sing.size() < 3 || sing.front().vowel != 1) return 38;
     if (!testRecordedVoice()) return 9;
@@ -299,6 +316,24 @@ int main(int argc, char** argv) {
     }
     const auto japaneseCV=renderPhone({0,sibilant},69);
     if (japaneseCV.getRMSLevel(0,5760,1920)<.01f) return 49;
+    // At the end of an English nasal the mouth is still closed. Changing the
+    // following vowel hint should not turn a held /m/, /n/ or /ng/ into it.
+    const auto* nasalSample=factory.find({2,moraN});
+    std::cout << "Mei recorded nasal: " << (nasalSample ? "available" : "absent") << '\n';
+    bool closedNasals=nasalSample!=nullptr;
+    for (int arpabet : {26,27,28}) {
+        Phone beforeA{0}, beforeI{1};
+        beforeA.english=beforeI.english=arpabet;
+        const auto a=renderPhone(beforeA,60), i=renderPhone(beforeI,60);
+        double difference=0;
+        for (int frame=5760;frame<7680;++frame)
+            difference+=std::pow(a.getSample(0,frame)-i.getSample(0,frame),2);
+        difference=std::sqrt(difference/1920);
+        std::cout << "Nasal " << arpabet << " sustained context difference " << difference
+                  << ", level " << a.getRMSLevel(0,5760,1920) << '\n';
+        closedNasals &= difference<.0005 && a.getRMSLevel(0,5760,1920)>.001f;
+    }
+    if (!closedNasals) return 51;
     auto accented = render({0,0,0,plain,0,65,250});
     auto unaccented = render({0,0,0,plain,0,1,250});
     if (!(accented.getRMSLevel(0,512,1536) > 1.04f * unaccented.getRMSLevel(0,512,1536))) return 30;

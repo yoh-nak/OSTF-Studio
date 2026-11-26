@@ -25,6 +25,7 @@ struct RecordedMora {
     std::vector<std::vector<float>> filtered;
     void preparePitchMarks();
     void prepareSpectra();
+    double sungPosition(double elapsed, double voicedDuration, bool consonantLed) const;
     void renderCycle(Wave& wave, const juce::dsp::FFT& fft, double position, double pitch, double outputRate) const;
     float cycleSample(double at, double step) const {
         if (step <= 1. || filtered.empty()) return sampleAt(at);

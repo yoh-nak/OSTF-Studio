@@ -239,6 +239,21 @@ void RecordedMora::preparePitchMarks() {
     prepareSpectra();
 }
 
+double RecordedMora::sungPosition(double elapsed, double voicedDuration, bool consonantLed) const {
+    const double first = consonantLed ? voicedStart : vowelFirst;
+    const double vowel = std::max(first, double(vowelFirst));
+    const double end = std::max(vowel, double(vowelLast));
+    // Opening the mouth takes the recorded time even on a long note. A short
+    // note can compress the transition so there is still a vowel to hear.
+    const double recordedOpening = (vowel - first) / rate;
+    const double opening = voicedDuration > 0 ? std::min(recordedOpening, .5 * voicedDuration) : recordedOpening;
+    if (elapsed < opening) return std::lerp(first, vowel, elapsed / opening);
+    const double held = elapsed - opening;
+    const double progress = voicedDuration > 0 ? std::clamp(held / (voicedDuration - opening), 0., 1.)
+                                               : held / (held + .23);
+    return std::lerp(vowel, end, progress);
+}
+
 void RecordedMora::prepareSpectra() {
     spectra.clear();
     if (rate <= 0 || pitchMarks.size() < 2) return;

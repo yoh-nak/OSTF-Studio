@@ -86,11 +86,15 @@ inline Lyrics lyricsFor(const juce::var& score) {
                 }
         }
         int lastVowel = 0;
+        Onset heldOnset = vowelOnly;
         for (const auto& [time, id] : ordered) {
             if (auto found = lyrics.find(id); found != lyrics.end()) {
                 for (auto& phone : found->second) {
-                    if (phone.onset == lengthMark) { phone.onset = vowelOnly; phone.vowel = lastVowel; }
-                    if (phone.onset != closure && phone.onset != moraN) lastVowel = phone.vowel;
+                    if (phone.onset == lengthMark) { phone.onset = heldOnset; phone.vowel = lastVowel; }
+                    if (phone.onset != closure) {
+                        heldOnset = phone.onset == moraN ? moraN : vowelOnly;
+                        lastVowel = phone.vowel;
+                    }
                 }
             }
         }

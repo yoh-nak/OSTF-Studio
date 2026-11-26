@@ -6,6 +6,12 @@ Studio validates Core 5.1.0, Production Session 0.4.0 and Manifest 1.1.0 with th
 
 Production device automation restores authored normalized parameters at tick zero on stock inserts. Instrument patches in the demos use score program changes. Scale Editor browser imports compare the score snapshot and accept only harmony scale changes. The native instrument can then return the change to the host. Recorded vowels supply short-time harmonic magnitudes measured over neighbouring pitch periods. A preallocated inverse FFT rebuilds band-limited cycles from the source envelope at the score harmonics every 5 ms. Adjacent voiced phones morph on one continuous phase clock. Unvoiced onsets retain their time-domain playback path.
 
+The Scale Editor keeps its embedded workspace draft in the VST3 state. A digest ties the draft to the plug-in score that opened it. The browser sends changed selections, assignments and text to the processor. Only explicit application copies validated scale assignments into the plug-in score. A fresh instance can recover text that has yet to become valid OSTF. Restoring a host preset also replaces the open browser and invalidates edits arriving from its old page.
+
+For English M, N and NG sung with a Japanese bank, the renderer sustains the recorded syllabic nasal. M and N can use the initial closed portion of the matching consonant-vowel recording for articulation. Banks without a syllabic nasal use a recorded closed attack when available, or a synthesized nasal resonance. The Japanese lyric alignment also carries a sustained nasal across notes with a length mark.
+
+For a recorded Japanese consonant-vowel syllable, voicing detection identifies the end of the raw attack. The renderer traverses the voiced opening into the vowel at its recorded rate and stretches the remaining vowel to the note duration. Very short notes compress the opening into at most half the available voiced time. Live MIDI input follows the same opening and then approaches the end of the recorded vowel gradually.
+
 ## Section performance and presentation
 
 A performance cue captures a section, pass count and source-track take ranges. Pending cues have distinct identities even if the section repeats. Queued MIDI and chase events are prepared on the message thread. The renderer switches them at the section boundary. The shared chord guide reads the same visit order as the transport. Studio keeps the queue in memory and uses the existing Studio take extension for 5.0 projects and native MIDI take groups for 5.1 projects.

@@ -70,7 +70,8 @@ inline std::vector<Phone> pronounce(const juce::String& text, bool strict = fals
     for (auto c : lower) {
         if (c >= 0x30a1 && c <= 0x30f6) c -= 0x60;
         if (c == U'ー') {
-            phones.push_back(phones.empty() ? Phone{0, lengthMark} : Phone{phones.back().vowel, vowelOnly});
+            phones.push_back(phones.empty() ? Phone{0, lengthMark}
+                : Phone{phones.back().vowel, phones.back().onset == moraN ? moraN : vowelOnly});
         } else if (c == U'ゃ' || c == U'ゅ' || c == U'ょ' || kanaVowel(c) >= 0) {
             const bool palatal = c == U'ゃ' || c == U'ゅ' || c == U'ょ';
             const int nucleus = palatal ? (c == U'ゃ' ? 0 : c == U'ゅ' ? 2 : 4) : kanaVowel(c);
