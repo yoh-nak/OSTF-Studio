@@ -2,6 +2,14 @@
 
 ## OSTF 5.2 score and audio projection
 
+For a lyric unit aligned to several pitches, the Singer orders referenced notes by absolute score tick. It carries the last vowel nucleus across pitches and schedules the offglide and final consonants on the last pitch. The Singer's OSTF reader integrates the shared tempo map between note endpoints, allocates articulation in seconds and maps inner edges back to host PPQ.
+
+Scale Editor keeps the missing child's plug-in description and opaque state in the host session. When the user reselects the same manufacturer and VST3 class, both the picker and file browser pass the stored state to the new instance. Choosing another instrument starts it with its own settings. The workspace keyboard route opens the same picker as the native controls.
+
+For a multisyllable English word, both vocal playback paths partition the pronunciation at its vowel nuclei. Where a word spans several lyric units, each syllable must fit its corresponding unit, including any explicitly written reading. The mapping is committed after all units match. On a single note, primary stress and shortened diphthong offglides affect relative time. Separate notes keep their authored boundaries.
+
+Scale Editor can return a snapshot via the operating system clipboard or via a temporary OSTF drag file. The clipboard header carries the original score digest and the body contains the edited score. Studio uses the same checked import and undo transaction for both routes in all workspace views. Full-editor text drafts must be applied before returning. The clipboard envelope is private to the two applications.
+
 Studio transport and the standalone Formant Singer score reader share the lyric-unit pronunciation pass. A complete match between an English monosyllable and its katakana reading lets the scheduler use timed consonants for the supporting kana, keep the written Japanese vowel and shorten the offglide of a diphthong. A partial match falls back to the entire supplied reading. For katakana-only units containing one marked long vowel and only short supporting kana around it, the scheduler gradually shortens those supporting syllables below 115 ms per mora. All syllables retain their Japanese phonemes. The mapping takes place during score preparation and preserves note endpoints and authored lyric data.
 
 Scale Editor keeps the filtered instrument picker open during repeated auditions. The test note goes to the hosted instrument even when preview MIDI is routed to another track. A successful explicit Load closes the picker.

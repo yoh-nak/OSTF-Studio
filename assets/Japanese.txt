@@ -1280,3 +1280,8 @@ countries: jp
 " / Playing the saved comp. Visit overrides and automatic live selection are unavailable." = " ／ 保存済みコンプを再生します。Visitごとの指定とライブ自動選択は未対応です。"
 "No scale assigned" = "スケール未指定"
 "Set scale for this bar" = "この小節にスケールを設定"
+"Paste scales from Scale Editor" = "Scale Editorのスケールを貼り付け"
+"Copy scales in Scale Editor first." = "先にScale Editorで「Studio用にコピー」を押してください。"
+"The score has changed. Read the Studio score again in Scale Editor." = "編集中の曲と読み込み時の版が一致しません。Scale Editorで現在の曲を読み直してください。"
+"Scale assignments updated." = "スケールを反映しました。"
+"No scale changes." = "スケールの変更はありません。"

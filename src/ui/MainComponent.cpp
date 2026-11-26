@@ -118,7 +118,7 @@ bool stackTimelineNavigation(int innerWidth, int workspaceHeight) {
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
                    exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, trackTakeMenu, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal, exportMusicXml, exportChordPro, showSamplesPane, moveRowUp, moveRowDown,
-                   printLeadSheet, printPartScore, openLiveSession };
+                   printLeadSheet, printPartScore, openLiveSession, pasteScaleReturn };
 constexpr struct { const char* name; const char* first; const char* second; const char* third; } studioModes[] {
     {"AI Arrangement Studio", "Keep just piano and bass in the verse. Suggest an eight-bar build into the chorus.",
                               "Suggest two bass lines with different rhythms over these chords.",
@@ -1510,6 +1510,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(undoScore, TRANS("Undo"), project_ && !recordTrack_ && noteHistoryCursor_ > 0);
             menu.addItem(redoScore, TRANS("Redo"), project_ && !recordTrack_ && noteHistoryCursor_ < noteHistory_.size());
             menu.addSubMenu(TRANS("Edit history"), editHistoryMenu(), project_ && !recordTrack_ && !noteHistory_.empty());
+            menu.addItem(pasteScaleReturn, TRANS("Paste scales from Scale Editor"), canEditTracks() && !recordTrack_);
             break;
         case 4:
             for (int i = 0; i < int(std::size(studioModes)); ++i)
@@ -1673,6 +1674,7 @@ void MainComponent::menuItemSelected(int item, int) {
     }
     switch (item) {
         case openFile: inspectOSTF(); break;
+        case pasteScaleReturn: pasteScaleChanges(juce::SystemClipboard::getTextFromClipboard()); break;
         case createProject:
             juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, TRANS("New project"),
                 TRANS("Start a new project? Unsaved changes in the open project will be lost."),
@@ -4708,46 +4710,65 @@ bool MainComponent::shouldDropFilesWhenDraggedExternally(const juce::DragAndDrop
 }
 
 bool MainComponent::isInterestedInFileDrag(const juce::StringArray& files) {
-    return project_ && !recordTrack_ && workspaceMode_ == WorkspaceMode::arrangement
-           && files.size() == 1 && PluginBrowser::supportsSample(juce::File::getCurrentWorkingDirectory().getChildFile(files[0]));
+    if (!project_ || recordTrack_ || files.size()!=1) return false;
+    const auto file=juce::File::getCurrentWorkingDirectory().getChildFile(files[0]);
+    return (file.hasFileExtension("ostf") && file.getFileName().startsWith("studio-scales-"))
+        || (workspaceMode_ == WorkspaceMode::arrangement && PluginBrowser::supportsSample(file));
+}
+
+void MainComponent::pasteScaleChanges(const juce::String& text) {
+    if (!canEditTracks() || recordTrack_ || chordReviewBlocksSwitch()) return;
+    const juce::String prefix=ostfstudio::scale::clipboardReturnPrefix;
+    const auto lineEnd=text.indexOfChar('\n');
+    const auto header=lineEnd>=0 ? text.substring(0,lineEnd).trimEnd() : juce::String{};
+    if (!header.startsWith(prefix) || header.length()!=prefix.length()+64 || text.getNumBytesAsUTF8()>24*1024*1024+128) {
+        statusLabel_.setText(TRANS("Copy scales in Scale Editor first."),juce::dontSendNotification);
+        return;
+    }
+    const auto score=text.substring(lineEnd+1);
+    juce::MemoryInputStream stream(score.toRawUTF8(),score.getNumBytesAsUTF8(),false);
+    receiveScaleReturn(header.substring(prefix.length()),stream);
+}
+
+void MainComponent::receiveScaleReturn(const juce::String& baseHash, juce::InputStream& stream) {
+    if (baseHash!=juce::SHA256(project_->sourceScore).toHexString()) {
+        statusLabel_.setText(TRANS("The score has changed. Read the Studio score again in Scale Editor."),juce::dontSendNotification);
+        return;
+    }
+    std::unique_ptr<ostfstudio::OstfpPreview> returned;
+    const auto result = ostfstudio::readOstfPreview(stream, returned);
+    if (result.failed()) { statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification); return; }
+    const bool playing = transportActive_;
+    if (playing) stopTransport();
+    juce::MemoryBlock before;
+    const auto imported = project_->importScaleAssignments(returned->sourceScore,before);
+    if (imported.wasOk() && !before.isEmpty()) {
+        rememberScoreEdit(std::move(before),"Edit scale assignments");
+        theory_.reset();
+        refreshTheory();
+        finishNoteEdit(playing);
+        statusLabel_.setText(TRANS("Scale assignments updated."),juce::dontSendNotification);
+    } else {
+        if (playing) startTransport(false);
+        statusLabel_.setText(imported.failed() ? imported.getErrorMessage() : TRANS("No scale changes."),juce::dontSendNotification);
+    }
+    repaint();
 }
 
 void MainComponent::filesDropped(const juce::StringArray& files, int x, int y) {
     if (!isInterestedInFileDrag(files) || chordReviewBlocksSwitch()) return;
+    const juce::File file(files[0]);
+    if (file.hasFileExtension("ostf") && file.getFileName().startsWith("studio-scales-")) {
+        if (!canEditTracks()) return;
+        juce::FileInputStream stream(file);
+        receiveScaleReturn(file.getFileName().fromFirstOccurrenceOf("studio-scales-",false,false).upToFirstOccurrenceOf("-",false,false),stream);
+        return;
+    }
     auto track = pluginDropTrack({x, y});
     if (audioEditor_.isVisible() && audioEditor_.getBounds().contains(x, y)) track = selectedTrack_;
-    const juce::File file(files[0]);
     const bool arrangement = rowOverlay_.getBounds().contains(x, y);
     const auto tickAtDrop = arrangement && x >= rowOverlay_.getX() + trackHeaderWidth
         ? arrangementTickAt(x) : std::max<juce::int64>(0, cursorTick_);
-    if (file.hasFileExtension("ostf") && file.getFileName().startsWith("studio-scales-")) {
-        if (!project_ || !arrangement || recordTrack_) return;
-        const auto expected = "studio-scales-" + juce::SHA256(project_->sourceScore).toHexString() + "-";
-        if (!file.getFileName().startsWith(expected)) {
-            statusLabel_.setText(TRANS("The score has changed. Read the Studio score again in Scale Editor."),juce::dontSendNotification);
-            return;
-        }
-        std::unique_ptr<ostfstudio::OstfpPreview> returned;
-        juce::FileInputStream stream(file);
-        const auto result = ostfstudio::readOstfPreview(stream, returned);
-        if (result.failed()) { statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification); return; }
-        const bool playing = transportActive_;
-        if (playing) stopTransport();
-        juce::MemoryBlock before;
-        const auto imported = project_->importScaleAssignments(returned->sourceScore,before);
-        if (imported.wasOk() && !before.isEmpty()) {
-            rememberScoreEdit(std::move(before),"Edit scale assignments");
-            theory_.reset();
-            refreshTheory();
-            finishNoteEdit(playing);
-            statusLabel_.setText(TRANS("Scale assignments updated."),juce::dontSendNotification);
-        } else {
-            if (playing) startTransport(false);
-            statusLabel_.setText(imported.failed() ? imported.getErrorMessage() : TRANS("No scale changes."),juce::dontSendNotification);
-        }
-        repaint();
-        return;
-    }
     if (file.hasFileExtension("mid;midi;ostf;ostfp")) {
         if (!arrangement) return;
         std::unique_ptr<ostfstudio::OstfpPreview> source;

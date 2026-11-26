@@ -2496,6 +2496,7 @@ function keyboard(s,cur){const info=SA.noteInfo(s,cur),byPC=new Map(info.map(x=>
  return '<svg viewBox="0 0 700 94" preserveAspectRatio="none" role="img" aria-label="Clickable piano keys: chord tones green, color tones blue, cautions amber">'+white.map((pc,i)=>'<g data-pitch="'+(60+pc)+'"><rect x="'+(i*w+.5)+'" y="1" width="99" height="92" rx="3" fill="'+(byPC.has(pc)?'#d9e8f0':'#a8bdcb')+'" stroke="#172838"/>'+mark(pc,i*w+50,79,false)+'</g>').join('')+black.map(([pc,i])=>'<g data-pitch="'+(60+pc)+'"><rect x="'+(i*w-30)+'" y="1" width="60" height="56" rx="3" fill="#1b2838" stroke="#6c7f94"/>'+mark(pc,i*w,43,true)+'</g>').join('')+'</svg>';}
 let studioHeldNotes=0;
 let studioPreviewRoute='Scale Editor instrument';
+let studioInstrument='', studioExternal=false;
 function showStudioInput(){
  const label=$('studioInput');
  if(!label)return;
@@ -2505,7 +2506,12 @@ function showStudioInput(){
  for(const key of $('keyboard').querySelectorAll('g[data-pitch]')){
   key.classList.toggle('input-held',Boolean(studioHeldNotes&(1<<(Number(key.dataset.pitch)%12))));
  }
- $('audioLabel').textContent=studioPreviewRoute;
+ const instrument=studioInstrument||languageText('Reference tone','基準音');
+ studioPreviewRoute=studioExternal?languageText('Host MIDI output · Ch 1','ホストMIDI出力 · Ch 1'):instrument;
+ const picker=$('studioInstrumentPicker');
+ picker.textContent=languageText('Instrument · ','音源 · ')+instrument+' ▾';
+ picker.title=languageText('Choose an instrument to load or audition','音源を選んで読み込み・試聴');
+ $('audioLabel').textContent=studioExternal?studioPreviewRoute:'';
 }
 function resolutionSVG(ch,s,next,nextS){
  if(!ch||!next||!s||!nextS)return '<div class="emptymap">Select a chord with a following harmony event.</div>';
@@ -2600,7 +2606,7 @@ function renderListenLab(){
  $('listenContext').textContent=(pre?'Previous + ':'')+'Selected'+(next?' + Next':'')+' · '+m.plans.a.style+' · Illustrative A/B, not original OSTF MIDI';
  $('autoListen').textContent=languageText('▶ Audition on card select: ','▶ 候補選択時の試聴：')+(state.autoListen?'ON':'OFF');
  $('autoListen').classList.toggle('active',state.autoListen);$('autoListen').setAttribute('aria-pressed',String(state.autoListen));
- if(!$('listenStatus').dataset.playing)$('listenStatus').textContent=native?'MIDI audition → following Instrument':window.__JUCE__?.backend?studioPreviewRoute+' · MIDI channel 1':'Browser audition';
+ if(!$('listenStatus').dataset.playing)$('listenStatus').textContent=native?'MIDI audition → following Instrument':window.__JUCE__?.backend?studioPreviewRoute:'Browser audition';
 }
 function renderDecisionEvidence(){
  const a=getAnalysis(),s=getScale(),ch=getChord(),flow=getFlowPlan();if(!s||!a||!ch){$('decisionEvidence').innerHTML='';return;}
@@ -3442,11 +3448,16 @@ if(window.__JUCE__?.backend){
  input.id='studioInput';
  input.title='Held MIDI input notes, across all octaves and channels';
  $('audioLabel').before(input);
+ const picker=document.createElement('button');
+ picker.id='studioInstrumentPicker';picker.type='button';
+ picker.onclick=()=>window.__JUCE__.backend.emitEvent('ostfScaleChooseInstrument',{});
+ $('audioLabel').after(picker);
  $('hostLabel').textContent='OSTF Scale Editor · VST3';
  window.__JUCE__.backend.addEventListener('ostfScaleMidiRoute',route=>{
-  studioPreviewRoute=Number(route)?'Host MIDI output':'Scale Editor instrument';
+  studioExternal=route.external;
+  studioInstrument=route.instrument;
   showStudioInput();
-  if(!$('listenStatus').dataset.playing)$('listenStatus').textContent=studioPreviewRoute+' · MIDI channel 1';
+  if(!$('listenStatus').dataset.playing)$('listenStatus').textContent=studioPreviewRoute;
  });
  window.__JUCE__.backend.addEventListener('ostfScaleInput',mask=>{
   studioHeldNotes=Number(mask)&4095;

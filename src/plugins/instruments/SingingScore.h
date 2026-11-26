@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "EnglishLyrics.h"
+#include "../../core/TempoMap.h"
 #include <map>
 #include <string_view>
 #include <vector>
@@ -9,6 +10,46 @@ using Lyrics = std::map<juce::String, std::vector<Phone>>;
 inline const juce::Array<juce::var>& items(const juce::var& v) {
     static const juce::Array<juce::var> empty;
     return v.isArray() ? *v.getArray() : empty;
+}
+// Carry the last sung nucleus through a melisma. Release consonants and the
+// written offglide on the final note, even when pitches change in between.
+inline void appendMelisma(Lyrics& lyrics, const std::vector<Phone>& phones,
+                          const juce::Array<juce::var>& ids, const std::map<juce::String,juce::int64>& starts) {
+    auto nucleus = std::find_if(phones.rbegin(), phones.rend(), [](const Phone& p) {
+        if (p.english) return (p.english & 63) <= 15;
+        return p.onset != closure && p.onset != moraN && p.onset != lengthMark
+            && p.vowelTiming != VowelTiming::support && p.vowelTiming != VowelTiming::offglide;
+    });
+    std::vector<juce::String> notes;
+    for (const auto& id : ids) notes.push_back(id.toString());
+    if (std::all_of(notes.begin(),notes.end(),[&](const auto& id){ return starts.contains(id); }))
+        std::stable_sort(notes.begin(),notes.end(),[&](const auto& a,const auto& b){ return starts.at(a)<starts.at(b); });
+
+    if (nucleus == phones.rend()) {
+        // A standalone length mark is resolved against the previous sung note below.
+        for (const auto& id : notes) lyrics[id].insert(lyrics[id].end(),phones.begin(),phones.end());
+        return;
+    }
+    const auto tail = nucleus.base();
+    Phone held = *nucleus;
+    held.onset = vowelOnly;
+    held.glide = 0;
+    for (size_t i=0; i<notes.size(); ++i) {
+        auto& dest = lyrics[notes[i]];
+        if (i==0) dest.insert(dest.end(),phones.begin(),tail-1);
+        auto body = i==0 ? *nucleus : held;
+        // A dictionary diphthong carries its glide internally. Sing just its
+        // opening vowel until the last note, which supplies the full release.
+        if (i+1<notes.size() && body.english) {
+            const int en = body.english & 63;
+            if (en==5 || en==6 || en==9 || en==12 || en==13) {
+                const int opening = en==9 ? 7 : en==12 || en==13 ? 4 : 1;
+                body.english = (body.english & 64) | opening;
+            }
+        }
+        dest.push_back(body);
+        if (i+1==notes.size()) dest.insert(dest.end(),tail,phones.end());
+    }
 }
 inline Lyrics lyricsFor(const juce::var& score) {
     Lyrics lyrics;
@@ -28,30 +69,43 @@ inline Lyrics lyricsFor(const juce::var& score) {
             if (word.isEmpty()) continue;
             juce::String joined;
             const auto begin = pos;
-            bool explicitReading = false;
             while (pos < units.size() && joined.length() < word.length()) {
                 const auto& unit = units[pos++];
                 joined += unit["text"].toString().toLowerCase();
-                explicitReading |= unit["pronunciation"].toString().trim().isNotEmpty();
             }
             if (joined != word) break;
-            if (pos - begin < 2 || explicitReading || !word.containsOnly("abcdefghijklmnopqrstuvwxyz'-")) continue;
+            if (pos - begin < 2 || !word.containsOnly("abcdefghijklmnopqrstuvwxyz'-")) continue;
             std::vector<Phone> pronunciation;
             if (!englishWord(word, pronunciation)) continue;
-            std::vector<size_t> starts;
-            for (size_t i = 0; i < pronunciation.size(); ++i) {
-                if ((pronunciation[i].english & 63) > 15) continue;
-                const bool hasOnset = i > 0 && (pronunciation[i - 1].english & 63) > 15;
-                starts.push_back(starts.empty() ? 0 : i - size_t(hasOnset));
+            const auto starts = englishSyllableBoundaries(pronunciation);
+            if (starts.size() != pos - begin + 1) continue;
+            std::vector<std::vector<Phone>> syllables(pos - begin);
+            bool matched = true;
+            for (size_t i = 0; i < syllables.size(); ++i) {
+                const auto reading = units[begin+i]["pronunciation"].toString().trim();
+                if (reading.isEmpty()) {
+                    syllables[i].assign(pronunciation.begin()+starts[i], pronunciation.begin()+starts[i+1]);
+                    continue;
+                }
+                const auto kana = lyricPhones(reading);
+                size_t next = 0;
+                if (!isKatakanaReading(reading)
+                    || !matchSungSyllable(pronunciation, starts[i], starts[i+1], kana, next, syllables[i], false)
+                    || next != kana.size()) { matched = false; break; }
             }
-            if (starts.size() != pos - begin) continue;
-            starts.push_back(pronunciation.size());
-            for (size_t i = 0; i < pos - begin; ++i)
-                readings[units[begin + i]["id"].toString()].assign(pronunciation.begin() + starts[i],
-                                                                   pronunciation.begin() + starts[i + 1]);
+            if (matched)
+                for (size_t i = 0; i < syllables.size(); ++i)
+                    readings[units[begin+i]["id"].toString()] = std::move(syllables[i]);
         }
     }
-    for (const auto& alignment : items(score["lyrics"]["alignments"])) {
+    std::map<juce::String,juce::int64> noteStarts;
+    const auto& alignments = items(score["lyrics"]["alignments"]);
+    if (std::any_of(alignments.begin(),alignments.end(),[](const auto& a){return a["unitIds"].size()==1 && a["noteIds"].size()>1;}))
+        for (const auto& track : items(score["tracks"]))
+            for (const auto& clip : items(track["clips"]))
+                for (const auto& note : items(clip["notes"]))
+                    noteStarts.emplace(note["id"].toString(),juce::int64(clip["start"])+juce::int64(note["start"]));
+    for (const auto& alignment : alignments) {
         std::vector<Phone> phones;
         for (const auto& id : items(alignment["unitIds"])) {
             const auto found = readings.find(id.toString());
@@ -60,7 +114,12 @@ inline Lyrics lyricsFor(const juce::var& score) {
             phones.insert(phones.end(), next.begin(), next.end());
         }
         if (phones.empty()) continue;
-        for (const auto& id : items(alignment["noteIds"])) {
+        const auto& ids = items(alignment["noteIds"]);
+        if (alignment["unitIds"].size()==1 && ids.size()>1) {
+            appendMelisma(lyrics,phones,ids,noteStarts);
+            continue;
+        }
+        for (const auto& id : ids) {
             auto& dest = lyrics[id.toString()];
             dest.insert(dest.end(), phones.begin(), phones.end());
         }
@@ -131,13 +190,19 @@ struct Part {
     std::vector<Syllable> syllables;
 };
 inline std::vector<Part> readParts(const juce::var& song) {
-    const auto ppq = double(song["ppq"]);
+    const auto ppq = juce::int64(song["ppq"]);
     std::vector<Part> parts;
     if (song["format"] != "OSTF" || !(ppq > 0))
         return parts;
     const auto lyrics = lyricsFor(song);
     const auto& tempos = items(song["timeline"]["tempoChanges"]);
-    const double bpm = tempos.isEmpty() ? 120. : std::max(1., double(tempos[0]["bpm"]));
+    TempoMap clock(ppq);
+    for (const auto& tempo : tempos) {
+        const auto tick = juce::int64(tempo["at"]);
+        if (clock.empty() && tick > 0) clock.append(0,120.);
+        clock.append(tick,double(tempo["bpm"]));
+    }
+    if (clock.empty()) clock.append(0,120.);
     for (const auto& track : items(song["tracks"])) {
         Part part{track["name"].toString(), {}};
         if (track["trackType"] == "drum")
@@ -148,21 +213,29 @@ inline std::vector<Part> readParts(const juce::var& song) {
             for (const auto& n : items(clip["notes"])) {
                 if (n["pitch"].isVoid() || !bool(n.getProperty("enabled", true)))
                     continue;
-                const auto first = (double(clip["start"]) + double(n["start"])) / ppq,
-                           length = double(n["duration"]) / ppq;
+                const auto clipStart = juce::int64(clip["start"]), offset = juce::int64(n["start"]),
+                           duration = juce::int64(n["duration"]);
                 const auto key = int(n["pitch"]), vel = std::clamp(int(n.getProperty("velocity", 92)), 0, 127);
-                if (!(length > 0) || key < 0 || key > 127)
+                if (clipStart < 0 || offset < 0 || duration <= 0 || key < 0 || key > 127
+                    || clipStart > std::numeric_limits<juce::int64>::max() - offset
+                    || clipStart + offset > std::numeric_limits<juce::int64>::max() - duration)
                     continue;
+                const auto start = clipStart + offset, end = start + duration;
+                const auto first = double(start) / ppq, last = double(end) / ppq;
                 const auto entry = lyrics.find(n["id"].toString());
                 if (entry == lyrics.end()) {
-                    part.syllables.push_back({first, first + length, key, vel, {}});
+                    part.syllables.push_back({first, last, key, vel, {}});
                     continue;
                 }
                 const auto& phones = entry->second;
-                const auto edges = articulationPositions(phones, length * 60. / bpm);
-                for (size_t i = 0; i < phones.size(); ++i)
-                    part.syllables.push_back({first + length * edges[i],
-                                              first + length * edges[i + 1], key, vel, phones[i], i > 0});
+                const auto startSeconds = clock.secondsAt(start), seconds = clock.secondsAt(end) - startSeconds;
+                const auto edges = articulationPositions(phones, seconds);
+                double from = first;
+                for (size_t i = 0; i < phones.size(); ++i) {
+                    const double to = i + 1 == phones.size() ? last : clock.tickAt(startSeconds + seconds * edges[i + 1]) / ppq;
+                    part.syllables.push_back({from, to, key, vel, phones[i], i > 0});
+                    from = to;
+                }
             }
         }
         std::stable_sort(part.syllables.begin(), part.syllables.end(),

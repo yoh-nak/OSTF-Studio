@@ -81,17 +81,76 @@ inline std::vector<Phone> lyricPhones(const juce::String& reading) {
     return result;
 }
 
-// Keep the written Japanese nucleus. Substituting a consonant-only phone
-// requires a complete match to the dictionary word, including its coda.
+inline bool isKatakanaReading(const juce::String& reading) {
+    for (auto c : reading)
+        if ((c < 0x30a1 || c > 0x30f6) && c != 0x30fc) return false;
+    return reading.isNotEmpty();
+}
+
+inline std::vector<size_t> englishSyllableBoundaries(const std::vector<Phone>& word) {
+    std::vector<size_t> starts;
+    for (size_t i = 0; i < word.size(); ++i) {
+        if ((word[i].english & 63) > 15) continue;
+        const bool hasOnset = i > 0 && (word[i-1].english & 63) > 15;
+        starts.push_back(starts.empty() ? 0 : i - size_t(hasOnset));
+    }
+    starts.push_back(word.size());
+    return starts;
+}
+
+// Use the written Japanese nucleus. Callers only use the result after the
+// entire reading has matched, so a custom pronunciation is never half converted.
+inline bool matchSungSyllable(const std::vector<Phone>& word, size_t begin, size_t end,
+                              const std::vector<Phone>& kana, size_t& next, std::vector<Phone>& result,
+                              bool useWordStress) {
+    size_t nucleus = begin;
+    while (nucleus < end && (word[nucleus].english & 63) > 15) ++nucleus;
+    if (nucleus == end) return false;
+    const auto main = nucleus > begin ? nucleus - 1 : begin;
+    const int enVowel = word[nucleus].english & 63;
+
+    auto support = [](const Phone& p, int en) {
+        if (p.morae != 1 || p.glide) return false;
+        if (p.onset == moraN) return en == 26 || en == 27 || en == 28;
+        return p.onset == japaneseOnsetForEnglish(en)
+            && (p.vowel == 2 || ((p.onset == t || p.onset == d) && p.vowel == 4));
+    };
+    for (size_t i = begin; i < main; ++i) {
+        if (next == kana.size() || !support(kana[next++], word[i].english & 63)) return false;
+        result.push_back(word[i]);
+    }
+    const auto onset = nucleus > begin ? japaneseOnsetForEnglish(word[nucleus-1].english & 63) : vowelOnly;
+    if (next == kana.size()) return false;
+    // A written "to-ru" can carry the unstressed /t ah l/ of "little".
+    const bool syllabicL = enVowel == 3 && !(word[nucleus].english & 64) && nucleus+2 == end
+        && (word[nucleus+1].english & 63) == 25 && onset == t && kana[next].vowel == 4;
+    if ((!syllabicL && kana[next].vowel != japaneseVowelForEnglish(enVowel))
+        || (kana[next].onset != onset && !(onset == sibilant && kana[next].vowel == 1 && kana[next].onset == sh))) return false;
+    result.push_back(kana[next++]);
+    if (useWordStress && (word[nucleus].english & 64)) result.back().vowelTiming = VowelTiming::stressed;
+    const int secondVowel = enVowel == 5 || enVowel == 12 ? 2
+                          : enVowel == 6 || enVowel == 9 || enVowel == 13 ? 1 : -1;
+    if (next < kana.size() && kana[next].onset == vowelOnly && kana[next].vowel == secondVowel) {
+        result.push_back(kana[next++]);
+        result.back().vowelTiming = VowelTiming::offglide;
+    }
+    for (size_t i = nucleus + 1; i < end; ++i) {
+        if (next == kana.size()) return false;
+        const auto& ending = kana[next++];
+        if (ending.onset == ts && ending.vowel == 2 && ending.morae == 1 && (word[i].english & 63) == 33
+            && i+1 < end && (word[i+1].english & 63) == 31) {
+            result.push_back(word[i++]); // One written "tsu" in "lights" covers both /t/ and /s/.
+        } else if (!support(ending, word[i].english & 63)) return false;
+        result.push_back(word[i]);
+    }
+    return true;
+}
+
 inline std::vector<Phone> sungReading(const juce::String& text, const juce::String& reading) {
     const auto& written = reading.isEmpty() ? text : reading;
     auto kana = lyricPhones(written);
-    if (kana.size() < 2) return kana;
-    for (auto c : written)
-        if ((c < 0x30a1 || c > 0x30f6) && c != 0x30fc) return kana;
+    if (kana.size() < 2 || !isKatakanaReading(written)) return kana;
     if (text.isEmpty() || text == written) {
-        // With only kana, preserve every recorded syllable. A single explicit
-        // long vowel surrounded by short support syllables identifies the hold.
         auto supportKana = [](const Phone& p) {
             if (p.glide || p.morae != 1) return false;
             if (p.vowel == 4) return p.onset == t || p.onset == d;
@@ -105,44 +164,12 @@ inline std::vector<Phone> sungReading(const juce::String& text, const juce::Stri
         return kana;
     }
     if (!text.containsOnly("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'-")) return kana;
-    std::vector<Phone> word;
+    std::vector<Phone> word, result;
     if (!englishWord(text.toLowerCase(), word)) return kana;
-    const auto isVowel = [](const Phone& p) { return (p.english & 63) <= 15; };
-    if (std::count_if(word.begin(), word.end(), isVowel) != 1) return kana;
-    const auto nucleus = size_t(std::find_if(word.begin(), word.end(), isVowel) - word.begin());
-    const auto main = nucleus ? nucleus - 1 : 0;
-    const int enVowel = word[nucleus].english & 63;
-    if (main >= kana.size() || kana[main].vowel != japaneseVowelForEnglish(enVowel)
-        || kana[main].onset != (nucleus ? japaneseOnsetForEnglish(word[nucleus-1].english & 63) : vowelOnly)) return kana;
-
-    auto support = [](const Phone& p, int en) {
-        if (p.morae != 1 || p.glide) return false;
-        if (p.onset == moraN) return en == 26 || en == 27 || en == 28;
-        return p.onset == japaneseOnsetForEnglish(en)
-            && (p.vowel == 2 || ((p.onset == t || p.onset == d) && p.vowel == 4));
-    };
-    std::vector<Phone> result;
-    for (size_t i = 0; i < main; ++i) {
-        if (!support(kana[i], word[i].english & 63)) return kana;
-        result.push_back(word[i]);
-    }
-    result.push_back(kana[main]);
-    size_t next = main + 1;
-    const int secondVowel = enVowel == 5 || enVowel == 12 ? 2
-                          : enVowel == 6 || enVowel == 9 || enVowel == 13 ? 1 : -1;
-    if (next < kana.size() && kana[next].onset == vowelOnly && kana[next].vowel == secondVowel) {
-        result.push_back(kana[next++]);
-        result.back().vowelTiming = VowelTiming::offglide;
-    }
-    for (size_t i = nucleus + 1; i < word.size(); ++i) {
-        if (next == kana.size()) return kana;
-        const auto& ending = kana[next++];
-        if (ending.onset == ts && ending.vowel == 2 && ending.morae == 1 && (word[i].english & 63) == 33
-            && i+1 < word.size() && (word[i+1].english & 63) == 31) {
-            result.push_back(word[i++]); // One written "tsu" in "lights" covers both /t/ and /s/.
-        } else if (!support(ending, word[i].english & 63)) return kana;
-        result.push_back(word[i]);
-    }
+    const auto starts = englishSyllableBoundaries(word);
+    size_t next = 0;
+    for (size_t s = 1; s < starts.size(); ++s)
+        if (!matchSungSyllable(word, starts[s-1], starts[s], kana, next, result, starts.size()>2)) return kana;
     return next == kana.size() ? result : kana;
 }
 
@@ -167,6 +194,7 @@ inline std::vector<double> articulationPositions(const std::vector<Phone>& phone
         if (p.english) return (p.english & 64) ? 1.35 : 1.;
         if (p.vowelTiming == VowelTiming::support) return p.morae * supportWeight;
         if (p.vowelTiming == VowelTiming::offglide) return p.morae * .5;
+        if (p.vowelTiming == VowelTiming::stressed) return p.morae * 1.35;
         return p.morae * (p.onset == closure ? .48 : p.onset == moraN ? .72 : 1.);
     };
     double consonants = 0, nuclei = 0;

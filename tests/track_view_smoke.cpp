@@ -1,6 +1,7 @@
 #include "ui/MainComponent.h"
 #include "ui/GlobalTimelineEdit.h"
 #include "ui/PluginRoles.h"
+#include "plugins/scale/ScoreExchange.h"
 #include "ui/SongMidi.h"
 #include "ui/MediaImport.h"
 #include <BinaryData.h>
@@ -412,6 +413,18 @@ private:
             if (project.sourceScore!=applied) return 35;
             studio.undoPianoEdit(false);
             if (project.sourceScore!=before) return 36;
+            const auto copy=ostfstudio::scale::clipboardReturnPrefix+juce::SHA256(before).toHexString()+"\r\n"+juce::JSON::toString(score);
+            studio.pasteScaleChanges("unrelated clipboard text");
+            if (project.sourceScore!=before) return 95;
+            studio.pasteScaleChanges(copy);
+            const auto newScore=project.sourceScore;
+            const auto copied=juce::JSON::parse(newScore.toString());
+            if (copied["harmony"]["scales"].size()!=scales.size()
+                || juce::JSON::toString(copied["tracks"][0]["directions"])!=juce::JSON::toString(directions)) return 96;
+            studio.pasteScaleChanges(copy);
+            if (project.sourceScore!=newScore) return 97;
+            studio.undoPianoEdit(false);
+            if (project.sourceScore!=before) return 98;
         }
         {
             const auto before = project.sourceScore;
@@ -1508,7 +1521,8 @@ int checkTrackView(const juce::File& fixture) {
     const auto edit = model.getMenuForIndex(2, {});
     juce::StringArray editActions;
     for (juce::PopupMenu::MenuItemIterator item(edit); item.next();) editActions.add(item.getItem().text);
-    if (editActions != juce::StringArray{TRANS("Undo"), TRANS("Redo"), TRANS("Edit history")}) return 246;
+    if (editActions != juce::StringArray{TRANS("Undo"), TRANS("Redo"), TRANS("Edit history"),
+                                         TRANS("Paste scales from Scale Editor")}) return 246;
     const auto settings = model.getMenuForIndex(5, {});
     juce::StringArray performanceOptions;
     for (juce::PopupMenu::MenuItemIterator item(settings, true); item.next();) performanceOptions.add(item.getItem().text);

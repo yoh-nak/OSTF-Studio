@@ -85,6 +85,39 @@ static bool testKeyboardAndPreview(juce::AudioProcessor& processor,juce::AudioPr
     return midi.isEmpty();
 }
 
+static bool testRelink(juce::AudioProcessor& editor,juce::VST3PluginFormat& format,
+                       const juce::PluginDescription& instrument,juce::Button& load) {
+    juce::String error;
+    auto synth=format.createInstanceFromDescription(instrument,48000,256,error);
+    if (!synth) return false;
+    const auto found=std::find_if(synth->getParameters().begin(),synth->getParameters().end(),
+        [](auto* parameter){return parameter->getName(32)=="Tone";});
+    if (found==synth->getParameters().end()) return false;
+    auto* tone=*found;
+    tone->setValueNotifyingHost(.19f);
+    juce::MemoryBlock preset,session;
+    synth->getStateInformation(preset);
+    editor.getStateInformation(session);
+    auto saved=juce::AudioProcessor::getXmlFromBinary(session.getData(),int(session.getSize()));
+    auto* entry=saved ? saved->getChildByName("Instrument") : nullptr;
+    if (!entry || !entry->getFirstChildElement()) return false;
+    juce::TemporaryFile missing(".vst3");
+    entry->getFirstChildElement()->setAttribute("file",missing.getFile().getFullPathName());
+    entry->setAttribute("state",preset.toBase64Encoding());
+    juce::AudioProcessor::copyXmlToBinary(*saved,session);
+    editor.setStateInformation(session.getData(),int(session.getSize()));
+    load.onClick();
+    editor.getStateInformation(session);
+    saved=juce::AudioProcessor::getXmlFromBinary(session.getData(),int(session.getSize()));
+    entry=saved ? saved->getChildByName("Instrument") : nullptr;
+    juce::PluginDescription relinked;
+    if (!entry || !entry->getFirstChildElement() || !relinked.loadFromXml(*entry->getFirstChildElement())
+        || !juce::File(relinked.fileOrIdentifier).exists() || !preset.fromBase64Encoding(entry->getStringAttribute("state"))) return false;
+    tone->setValueNotifyingHost(.8f);
+    synth->setStateInformation(preset.getData(),int(preset.getSize()));
+    return std::abs(tone->getValue()-.19f)<.001f;
+}
+
 static int testLinkedSave(const juce::File& source) {
     juce::TemporaryFile copy(".ostf");
     const auto file=copy.getFile();
@@ -283,6 +316,28 @@ int main(int argc,char** argv) {
         std::cerr<<"No instrument in "<<file.getFullPathName()<<" ("<<types.size()<<" classes)\n";
         return 2;
     }
+    // Interactive verification of the shipped VST3 in a host with no Studio
+    // score interface. Open an OSTF in the plug-in, edit and copy back to Studio.
+    if (argc==3 && juce::String(argv[2])=="--host-window") {
+        juce::String error;
+        auto plugin=format.createInstanceFromDescription(*instrument,48000,256,error);
+        if (!plugin) { std::cerr<<error<<'\n'; return 93; }
+        plugin->prepareToPlay(48000,256);
+        struct HostWindow final : juce::DocumentWindow {
+            HostWindow() : DocumentWindow("Scale Editor - VST3 host check",juce::Colours::black,closeButton) {}
+            void closeButtonPressed() override { juce::MessageManager::getInstance()->stopDispatchLoop(); }
+        } window;
+        auto* editor=plugin->createEditorIfNeeded();
+        if (!editor) return 94;
+        window.setUsingNativeTitleBar(true);
+        window.setContentOwned(editor,true);
+        window.centreWithSize(editor->getWidth(),editor->getHeight());
+        window.setVisible(true);
+        juce::MessageManager::getInstance()->runDispatchLoop();
+        window.clearContentComponent();
+        plugin->releaseResources();
+        return 0;
+    }
     if (argc==4 && juce::String(argv[3])=="--linked-save") {
         juce::String error;
         auto plugin=format.createInstanceFromDescription(*instrument,48000,256,error);
@@ -396,7 +451,8 @@ int main(int argc,char** argv) {
         if (peak<.001f) return 60;
         auto* load=dynamic_cast<juce::TextButton*>(picker->findChildWithID("load-instrument"));
         if (!load) return 92;
-        load->onClick();
+        if (auditionOnly) load->onClick();
+        else if (!testRelink(*processor,format,*instrument,*load)) return 95;
         if (!route->getToggleState()) return 87;
         route->setToggleState(false,juce::dontSendNotification); route->onClick();
         if (auditionOnly) { editor.reset(); processor->releaseResources(); return 0; }
@@ -460,6 +516,7 @@ int main(int argc,char** argv) {
         const auto title = juce::JSON::parse(juce::File(juce::String::fromUTF8(argv[2])).loadFileAsString())["song"]["title"].toString();
         bool pending = false, applying = false, heardPreview = false;
         int inputStage=0, sentStage=-1;
+        bool requestedPicker=false, checkedPicker=false;
         int result = 44;
         const auto deadline = juce::Time::getMillisecondCounterHiRes() + 45000.;
         struct Poll : juce::Timer {
@@ -482,6 +539,26 @@ int main(int argc,char** argv) {
                     && directions.size() > 0 && directions[directions.size()-1]["parameters"]["pitchSource"]["type"] == "explicitScale") {
                     result = 0; juce::MessageManager::getInstance()->stopDispatchLoop();
                 }
+            } else if (!pending && !requestedPicker) {
+                pending=true;
+                const auto openPicker=juce::String(R"JS((()=>{
+                    const b=document.getElementById('studioInstrumentPicker');
+                    if(!b || !b.textContent.includes(INSTRUMENT_NAME)) return false;
+                    b.click();return true;
+                })())JS").replace("INSTRUMENT_NAME",juce::JSON::toString(juce::var(instrument->name)));
+                browser->evaluateJavascript(openPicker,[&](auto evaluation){
+                    pending=false;
+                    if (const auto* value=evaluation.getResult()) requestedPicker=bool(*value);
+                });
+            } else if (!pending && !checkedPicker) {
+                auto& desktop=juce::Desktop::getInstance();
+                for (int i=0;i<desktop.getNumComponents();++i)
+                    if (auto* box=dynamic_cast<juce::CallOutBox*>(desktop.getComponent(i)))
+                        for (auto* child:box->getChildren()) if (child->findChildWithID("matching-instruments")) {
+                            box->dismiss();
+                            checkedPicker=true;
+                            return;
+                        }
             } else if (!pending && inputStage<3) {
                 if (sentStage!=inputStage) {
                     midi.clear();

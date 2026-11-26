@@ -317,6 +317,8 @@ private:
     std::vector<juce::int64> pianoMaxEnds_;
     void applyNoteGesture(const std::vector<ostfstudio::NoteEdit>&);
     void undoPianoEdit(bool redo);
+    void pasteScaleChanges(const juce::String&);
+    void receiveScaleReturn(const juce::String& baseHash, juce::InputStream&);
     void finishNoteEdit(bool playing);
     PianoNoteGrid pianoGrid_;
     VocalLane vocalLane_{pianoGrid_};

@@ -1,5 +1,6 @@
 #pragma once
 #include "MidiThru.h"
+#include "ui/PluginLibrary.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <cmath>
@@ -18,16 +19,24 @@ public:
         if (child) return child->getPluginDescription();
         return {};
     }
-    juce::Result choose(const juce::File& file,const juce::String& className={}) {
+    juce::Result choose(const juce::File& file,const juce::String& className={},const juce::XmlElement* missing=nullptr) {
         juce::OwnedArray<juce::PluginDescription> types;
         formats.getFormat(0)->findAllTypesForFile(types,file.getFullPathName());
         for (auto* type : types)
-            if (type->isInstrument && type->name != owner.getName() && (className.isEmpty() || type->name==className)) return select(*type);
+            if (type->isInstrument && type->name != owner.getName() && (className.isEmpty() || type->name==className)) return select(*type,missing);
         return juce::Result::fail("Select a VST3 instrument other than Scale Editor.");
     }
-    juce::Result select(const juce::PluginDescription& type) {
+    juce::Result select(const juce::PluginDescription& type,const juce::XmlElement* missing=nullptr) {
         const auto current = description();
         if (current && current->isDuplicateOf(type)) return juce::Result::ok();
+        juce::PluginDescription original;
+        if (missing && missing->getFirstChildElement() && original.loadFromXml(*missing->getFirstChildElement())
+            && sameVst3Class(type,original)) {
+            juce::MemoryBlock bytes;
+            if (!bytes.fromBase64Encoding(missing->getStringAttribute("state")))
+                return juce::Result::fail("Unable to read the saved instrument preset.");
+            return install(type,bytes);
+        }
         return install(type, {});
     }
     juce::Result install(const juce::PluginDescription& type,const juce::MemoryBlock& state) {

@@ -267,6 +267,23 @@ int main(int argc, char** argv) {
     if (street.size()!=4 || street[0].english!=31 || street[1].english!=33 || street[2].english
         || street[2].onset!=r || street[2].vowel!=1 || street[2].morae!=2 || street[3].english!=33) return 77;
     const auto streetEdges = articulationPositions(street,.337);
+    // The second beat starts at 240 BPM and slows to 120 BPM halfway through.
+    const auto acrossTempo = readParts(juce::JSON::parse(R"({"format":"OSTF","ppq":480,
+      "timeline":{"tempoChanges":[{"at":0,"bpm":60},{"at":480,"bpm":240},{"at":720,"bpm":120}]},
+      "lyrics":{"units":[{"id":"u","text":"street","pronunciation":"\u30b9\u30c8\u30ea\u30fc\u30c8"}],
+                "alignments":[{"unitIds":["u"],"noteIds":["n"]}]},
+      "tracks":[{"clips":[{"start":240,"notes":[{"start":240,"duration":480,"pitch":60,"id":"n"}]}]}]})"));
+    if (acrossTempo.size()!=1 || acrossTempo.front().syllables.size()!=street.size()) return 84;
+    const auto expectedEdges = articulationPositions(street,.375);
+    double previousBeat=1.;
+    for (size_t i=0; i<street.size(); ++i) {
+        const auto& syllable=acrossTempo.front().syllables[i];
+        const auto beat=syllable.end;
+        const auto elapsed=beat<=1.5 ? (beat-1.)*.25 : .125+(beat-1.5)*.5;
+        if (syllable.start!=previousBeat || beat<=previousBeat || std::abs(elapsed-expectedEdges[i+1]*.375)>1.e-8) return 84;
+        previousBeat=beat;
+    }
+    if (previousBeat!=2.) return 84;
     const auto literalEdges = articulationPositions(lyricPhones(streetReading),.337);
     const auto nucleusMs = (streetEdges[3]-streetEdges[2])*337.;
     std::cout << "Street at 337 ms, written vowel before / after (ms): "
@@ -278,6 +295,30 @@ int main(int argc, char** argv) {
     const auto flame = sungReading("flame",readingFor("flame"));
     if (flame.size()!=4 || flame[0].english!=20 || flame[1].onset!=r || flame[1].vowel!=3
         || flame[2].vowelTiming!=VowelTiming::offglide || flame[3].english!=26) return 78;
+    // The demo spells "paper" and "little" across two notes; those fragments
+    // also have unrelated pronunciations if looked up in isolation.
+    const auto paperReading=readingFor("pa")+readingFor("per");
+    const auto paper=sungReading("paper",paperReading);
+    if (paper.size()!=3 || paper[0].vowelTiming!=VowelTiming::stressed || paper[1].vowelTiming!=VowelTiming::offglide
+        || paper[2].onset!=pStop || paper[2].morae!=2) return 81;
+    const auto paperEdges=articulationPositions(paper,.240);
+    if (paperEdges.front()!=0. || paperEdges.back()!=1. || paperEdges[1]*240. < 82.) return 81;
+    const auto customPaper=sungReading("paper",readingFor("pa")+readingFor("flame"));
+    if (std::any_of(customPaper.begin(),customPaper.end(),[](auto& p){return p.vowelTiming!=VowelTiming::regular || p.english;})) return 81;
+    const auto lyrics=lyricsFor(demoScore);
+    auto sungUnit=[&](const juce::String& fragment) -> const std::vector<Phone>& {
+        for (const auto& unit : scoreUnits) if (unit["text"].toString()==fragment)
+            for (const auto& a : items(demoScore["lyrics"]["alignments"]))
+                if (a["unitIds"][0]==unit["id"]) return lyrics.at(a["noteIds"][0].toString());
+        throw std::runtime_error("Demo lyric unit missing");
+    };
+    const auto& firstPaper=sungUnit("pa");
+    const auto& endLittle=sungUnit("tle");
+    if (firstPaper.size()!=2 || firstPaper.back().vowelTiming!=VowelTiming::offglide
+        || endLittle.size()!=2 || endLittle.front().onset!=t || endLittle.front().vowel!=4 || endLittle.back().english!=25) return 82;
+    std::cout<<"paper at 240 ms, written first vowel before / after (ms): "
+             <<articulationPositions(lyricPhones(paperReading),.240)[1]*240.<<" / "<<paperEdges[1]*240.
+             <<"; little coda at 337 ms: "<<(1.-articulationPositions(endLittle,.337)[1])*337.<<'\n';
     for (const auto& onlyKana : {sungReading(streetReading,{}), sungReading({},streetReading)}) {
         if (onlyKana.size()!=4 || onlyKana[0].vowelTiming!=VowelTiming::support
             || onlyKana[3].vowelTiming!=VowelTiming::support || onlyKana[3].english) return 80;
@@ -309,6 +350,20 @@ int main(int argc, char** argv) {
                    {"id":"4","start":3},{"id":"5","start":4},{"id":"6","start":5}]}]}]})"));
     if (holds.at("3").front().onset!=moraN || holds.at("4").front().onset!=moraN
         || holds.at("6").front().onset!=vowelOnly || holds.at("6").front().vowel!=3) return 52;
+    // Even if the alignment lists notes out of order, the sung onset occurs
+    // once and the glide and final /m/ are released on the last pitch.
+    const auto melisma=lyricsFor(juce::JSON::parse(R"({"lyrics":{
+      "units":[{"id":"word","text":"flame","pronunciation":"\u30d5\u30ec\u30a4\u30e0"}],
+      "alignments":[{"unitIds":["word"],"noteIds":["end","begin","middle"]}]},
+      "tracks":[{"clips":[{"start":240,"notes":[{"id":"middle","start":0},{"id":"end","start":120}]},
+                          {"start":0,"notes":[{"id":"begin","start":0}]}]}]})"));
+    const auto& attack=melisma.at("begin");
+    const auto& hold=melisma.at("middle");
+    const auto& lastPhones=melisma.at("end");
+    if (attack.size()!=2 || attack.front().english!=20 || attack.back().onset!=r
+        || hold.size()!=1 || hold.front().onset!=vowelOnly || hold.front().vowel!=3
+        || lastPhones.size()!=3 || lastPhones.front().onset!=vowelOnly || lastPhones[1].vowelTiming!=VowelTiming::offglide
+        || lastPhones.back().english!=26) return 83;
     const auto sing = lyricPhones("sing");
     if (sing.size() < 3 || sing.front().vowel != 1) return 38;
     if (!testRecordedVoice()) return 9;

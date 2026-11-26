@@ -2,6 +2,12 @@
 
 ## OSTF 5.2 studio preview
 
+When a single lyric spans several pitches, Formant Singer sings the initial consonant once and releases the word on the last note. Its OSTF reader follows tempo changes inside a note when timing the consonants and vowels.
+
+In Scale Editor, the **Instrument** button beside the keyboard shows the audition destination and opens the instrument list. If a project loses a VST3 after moving a Portable folder, select the same instrument at its new location to recover its saved sound.
+
+Formant Singer matches complete multisyllable English words against their written katakana, within one note or across syllable-aligned notes. In the Paper Lantern Replies chorus this lets the short ending of **little** keep the time and pitch of its own note. In Scale Editor, click **Copy scales to Studio**, then **Edit → Paste scales from Scale Editor** in Studio with the same source score open. Dragging the same button also returns the scale assignments. Studio checks the source revision and provides Undo.
+
 In Formant Singer, the lyric **street** with the reading **ストリート** sustains the written vowel and fits the surrounding consonants within the same note. This applies to one-syllable dictionary words whose pronunciation matches the supplied katakana. With **ストリート** entered in katakana alone, the singer keeps every syllable and gives **リー** more time on short notes. In Scale Editor, **Load and audition** plays C4 and keeps the instrument list open. Use **Load** after comparing instruments to close the list.
 
 The arrangement keeps the **Scale** lane between Key and Meter even when the song has no assigned scale. Double-click an unassigned bar to choose a tonic and mode, or right-click and choose **Set scale for this bar** to override a song-wide scale. The assignment ends at the bar line or the next shared assignment. Undo restores the previous score.

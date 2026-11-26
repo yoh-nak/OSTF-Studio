@@ -8,7 +8,7 @@ namespace ostfstudio::singing {
 // Values 0–3 are used by the original Studio articulation messages.
 enum Onset { vowelOnly, sibilant, velar, moraN, g, z, t, d, n, h, b, pStop, m, r, y, w, sh, j, ch, ts, f, v, closure, lengthMark, onsetCount };
 enum Delivery { plain, vibrato, scoop };
-enum class VowelTiming { regular, offglide, support };
+enum class VowelTiming { regular, offglide, support, stressed };
 struct Phone {
     int vowel = 0, onset = vowelOnly, glide = 0, delivery = plain, intensity = 0;
     int english = 0; // ARPAbet index, with bit 6 for primary stress.
