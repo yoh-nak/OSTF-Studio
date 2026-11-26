@@ -292,6 +292,32 @@ void RecordedMora::prepareSpectra() {
     }
 }
 
+int RecordedMora::matchingPhaseOffset(const Wave& outgoing, const Wave& incoming) {
+    // A recorded vowel has its own glottal pulse phase. Align the two cycles
+    // once at a legato join so interpolation does not cancel the voiced sound.
+    constexpr int stride = 4;
+    auto correlation = [&](int shift, int step) {
+        double sum = 0;
+        for (int n=0; n<waveSize; n+=step)
+            sum += outgoing[n] * incoming[(n+shift) & (waveSize-1)];
+        return sum;
+    };
+    int best = 0;
+    double score = correlation(0,stride);
+    for (int shift=stride; shift<waveSize; shift+=stride) {
+        const double value = correlation(shift,stride);
+        if (value > score) { best = shift; score = value; }
+    }
+    const int coarse = best;
+    score = correlation(best,1);
+    for (int delta=1-stride; delta<stride; ++delta) {
+        const int shift = (coarse+delta+waveSize) % waveSize;
+        const double value = correlation(shift,1);
+        if (value > score) { best = shift; score = value; }
+    }
+    return best;
+}
+
 void RecordedMora::renderCycle(Wave& wave, const juce::dsp::FFT& fft, double at, double pitch, double outputRate) const {
     if (spectra.empty()) { wave.fill(0); return; }
     const auto upper = std::lower_bound(spectra.begin(), spectra.end(), at,

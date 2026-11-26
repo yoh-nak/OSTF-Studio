@@ -227,7 +227,9 @@ int main(int argc,char** argv) {
                 processor->getStateInformation(bytes);
                 const auto stateXml = juce::AudioProcessor::getXmlFromBinary(bytes.getData(), int(bytes.getSize()));
                 const auto doc = juce::JSON::parse(stateXml->getChildByName("Score")->getAllSubText());
-                if (heardPreview && doc["song"]["title"].toString() == title && doc["harmony"]["scales"].size() == 0) {
+                const auto directions = doc["tracks"][0]["directions"];
+                if (heardPreview && doc["song"]["title"].toString() == title && doc["harmony"]["scales"].size() == 0
+                    && directions.size() > 0 && directions[directions.size()-1]["parameters"]["pitchSource"]["type"] == "explicitScale") {
                     result = 0; juce::MessageManager::getInstance()->stopDispatchLoop();
                 }
             } else if (!pending && inputStage<3) {
@@ -261,6 +263,8 @@ int main(int argc,char** argv) {
                     if (!app?.state?.doc?.harmony?.scales?.length || !app.renderScaleMap || !app.renderNoteFit) return '';
                     app.playCompare('A');
                     app.state.doc.harmony.scales = [];
+                    document.querySelector('#targets button[data-target]:nth-child(2)').click();
+                    document.getElementById('apply').click();
                     return app.state.doc.song.title;
                 })())JS", [&](auto evaluated) {
                     pending = false;

@@ -1,5 +1,9 @@
 # OSTF Studio development handoff
 
+## Track-specific scale returns and recorded voice joins
+
+Branch `feat/track-scale-return-voiced-stops`. The embedded editor saves OSTF 5.0 and 5.1 explicit improvisation scales on pitched tracks. A Studio return applies these directions and shared scales together in one undo step, preserving other directions and checking the source digest. The Mei singer closes English B, D and G within their allotted duration and phase-aligns connected voiced cycles. Windows Release passed eight focused CTests and the portable vocal-track and FX-window smoke checks. REAPER 7.86 rendered four MIDI notes through the Scale Editor to a stereo WAV (peak 0.0945). The manual external-host edit/save/drop workflow was interrupted. macOS and physical monitoring are unverified.
+
 ## Scale Editor instrument selection and short sung morae
 
 Branch `feat/scale-instrument-browser-and-audition`. Build `OSTFStudio`, `OSTFSynthScaleEditor_VST3`, `OSTFSynthSinger_VST3`, `ostf_scale_instrument_tests`, `ostf_scale_editor_tests` and `ostf_singing_tests` in Release. The instrument picker reads the Studio scan and VST3 bundle metadata. Use Instruments → search by manufacturer/name → Enter, then Test sound. A missing score allows testing the audio path with a reference tone or nested instrument. Visual assignments can be dragged to the matching open Studio arrangement. The return file includes the digest of the opened score and unimported text is protected.

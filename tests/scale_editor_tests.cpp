@@ -59,5 +59,34 @@ int main(int argc, char** argv) {
     if (workspace.exportForStudio(copy.getFile().getParentDirectory(),returned).failed()) return 19;
     juce::ScopeGuard cleanup([&]{returned.deleteFile();});
     if (!returned.getFileName().startsWith("studio-scales-"+digest(input)+"-") || returned.loadFileAsString()!=workspace.text) return 20;
+    for (const auto* version : {"5.0.0","5.1.0"}) {
+        auto source = original.clone();
+        source.getDynamicObject()->setProperty("version",version);
+        const auto fixed = juce::JSON::parse(R"({"id":"keep-direction","start":0,"duration":960,"type":"improvisation","parameters":{"pitchSource":{"type":"songScale"},"adherence":"preferred"}})");
+        source["tracks"][0].getDynamicObject()->setProperty("directions",juce::Array<juce::var>{fixed});
+        const auto start = juce::JSON::toString(source);
+        Document local;
+        if (!check(local.load(start))) return 21;
+        auto proposal = source.clone();
+        const auto entry = juce::JSON::parse(R"({"id":"local-dorian","start":960,"duration":960,"type":"improvisation","parameters":{"pitchSource":{"type":"explicitScale","scale":{"tonic":{"step":"D","alter":0},"intervals":[0,2,3,5,7,9,10]}},"adherence":"strict"}})");
+        proposal["tracks"][0]["directions"].getArray()->add(entry);
+        if (!check(local.importWorkspaceScales(juce::JSON::toString(proposal),digest(start)))) return 22;
+        const auto& track = local.score["tracks"][0];
+        if (track["directions"].size()!=2 || track["directions"][1]["id"]!="local-dorian"
+            || juce::JSON::toString(track["directions"][0])!=juce::JSON::toString(fixed)) return 23;
+        const auto saved = local.text;
+        if (!check(local.importWorkspaceScales(juce::JSON::toString(local.score),digest(saved))) || local.text!=saved) return 26;
+        juce::TemporaryFile roundTrip(".ostf");
+        Document reopened;
+        if (!check(local.saveAs(roundTrip.getFile())) || !check(reopened.load(roundTrip.getFile().loadFileAsString()))
+            || reopened.text!=saved) return 27;
+        auto tampered = local.score.clone();
+        tampered["tracks"][0]["directions"][0]["parameters"].getDynamicObject()->setProperty("adherence","strict");
+        if (local.importWorkspaceScales(juce::JSON::toString(tampered),digest(saved)).wasOk() || local.text!=saved) return 24;
+        auto cleared = local.score.clone();
+        cleared["tracks"][0]["directions"].getArray()->remove(1);
+        if (!check(local.importWorkspaceScales(juce::JSON::toString(cleared),digest(saved)))
+            || local.score["tracks"][0]["directions"].size()!=1) return 25;
+    }
     return 0;
 }

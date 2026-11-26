@@ -8,6 +8,7 @@ namespace ostfstudio::singing {
 struct RecordedMora {
     static constexpr int waveOrder = 8, waveSize = 1 << waveOrder, partials = waveSize / 2;
     using Wave = std::array<float, waveSize + 1>;
+    static int matchingPhaseOffset(const Wave& outgoing, const Wave& incoming);
     struct Spectrum {
         int position{};
         float fundamental{};

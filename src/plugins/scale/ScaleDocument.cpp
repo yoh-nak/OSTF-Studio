@@ -45,18 +45,23 @@ juce::Result Document::importWorkspaceScales(const juce::String& edited, const j
     try {
         using Json = jsoncons::ojson;
         const auto options = jsoncons::json_options{}.lossless_number(true).bignum_format(jsoncons::bignum_format_kind::raw);
-        auto original=Json::parse(text.toStdString(),options);
-        const auto proposal=Json::parse(edited.toStdString(),options);
         const auto version=score["version"].toString().toStdString();
         validateScoreSchema(version,edited.toStdString());
-        auto compare=proposal;
-        compare.at("harmony")["scales"]=original.at("harmony").at("scales");
-        // The browser may reserialize harmless decimal numbers. Only import the scale list.
-        std::string normalized; compare.dump(normalized,options);
-        if (juce::JSON::toString(juce::JSON::parse(juce::String::fromUTF8(normalized.data(),int(normalized.size()))),true,17)
-            != juce::JSON::toString(score,true,17))
-            return juce::Result::fail("This export contains changes outside the open song's harmony scales.");
-        original.at("harmony")["scales"]=proposal.at("harmony").at("scales");
+        const auto merged=mergeScaleAssignments(text.toStdString(),edited.toStdString());
+        const auto mergedText=juce::String::fromUTF8(merged.data(),int(merged.size()));
+        auto normalized = [](const juce::String& value) {
+            auto doc = juce::JSON::parse(value);
+            // Setting and then clearing a track's first assignment leaves an empty JS array.
+            if (const auto* tracks = doc["tracks"].getArray())
+                for (const auto& track : *tracks)
+                    if (track["directions"].isArray() && track["directions"].size()==0)
+                        track.getDynamicObject()->removeProperty("directions");
+            return juce::JSON::toString(doc,true,17);
+        };
+        if (normalized(mergedText) != normalized(edited))
+            return juce::Result::fail("This export contains changes outside the open song's scale assignments.");
+        if (mergedText == text) return juce::Result::ok();
+        auto original=Json::parse(merged,options);
         if (original.contains("document")) {
             auto& meta=original.at("document");
             Json parent; parent["documentId"]=meta.at("id"); parent["revisionId"]=meta.at("revisionId"); parent["sha256"]=openedHash.toStdString();

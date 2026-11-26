@@ -190,6 +190,15 @@ int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     using namespace ostfstudio::singing;
     if (argc < 2 || argc > 4) return 1;
+    {
+        RecordedMora::Wave a{}, b{};
+        for (int i=0; i<RecordedMora::waveSize; ++i) {
+            const auto angle = juce::MathConstants<double>::twoPi * i / RecordedMora::waveSize;
+            a[i] = float(.8*std::sin(angle) + .2*std::sin(3*angle));
+            b[(i+123)%RecordedMora::waveSize] = a[i];
+        }
+        if (RecordedMora::matchingPhaseOffset(a,b) != 123 || RecordedMora::matchingPhaseOffset(a,a) != 0) return 56;
+    }
     // A bright upper partial above output Nyquist must not fold back into a second tone.
     RecordedMora bright;
     bright.period=64; bright.loopStart=256; bright.loopEnd=1024;
@@ -316,6 +325,18 @@ int main(int argc, char** argv) {
     }
     const auto japaneseCV=renderPhone({0,sibilant},69);
     if (japaneseCV.getRMSLevel(0,5760,1920)<.01f) return 49;
+    bool cleanStops = true;
+    for (int consonant : {16,18,21}) { // English B, D, G
+        Phone phone;
+        phone.english = consonant;
+        const auto sound = renderPhone(phone,60,.080);
+        const auto closureLevel = sound.getRMSLevel(0,960,1920);
+        const auto tailLevel = sound.getRMSLevel(0,5040,1920);
+        std::cout << "Mei voiced stop " << consonant << " closure/tail RMS "
+                  << closureLevel << " / " << tailLevel << '\n';
+        cleanStops &= closureLevel > .001f && tailLevel < .0001f;
+    }
+    if (!cleanStops) return 55;
     // A short Japanese syllable must reach its pitched vowel while the key is held.
     const auto shortLow=renderPhone({1,sh},55,.045), shortHigh=renderPhone({1,sh},67,.045);
     double shortPitchDifference=0.;

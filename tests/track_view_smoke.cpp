@@ -392,6 +392,11 @@ private:
             scale["targets"][0].getDynamicObject()->setProperty("id",chord["id"]);
             auto scales = score["harmony"]["scales"];
             scales.getArray()->add(scale);
+            auto track = score["tracks"][0];
+            auto direction = juce::JSON::parse(R"({"id":"direction-return-smoke","start":0,"duration":960,"type":"improvisation","parameters":{"pitchSource":{"type":"explicitScale","scale":{"tonic":{"step":"D","alter":0},"intervals":[0,2,3,5,7,9,10],"label":"D Dorian"}},"adherence":"preferred"}})");
+            auto directions = track.getProperty("directions",juce::Array<juce::var>{});
+            directions.getArray()->add(direction);
+            track.getDynamicObject()->setProperty("directions",directions);
             const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory);
             const auto file = dir.getChildFile("studio-scales-"+juce::SHA256(before).toHexString()+"-"+juce::Uuid().toString()+".ostf");
             juce::ScopeGuard cleanup([&]{ file.deleteFile(); });
@@ -400,7 +405,8 @@ private:
             drop();
             const auto applied = project.sourceScore;
             const auto loaded = juce::JSON::parse(applied.toString());
-            if (loaded["harmony"]["scales"].size()!=scales.size() || loaded["tracks"].size()!=score["tracks"].size()) return 34;
+            if (loaded["harmony"]["scales"].size()!=scales.size() || loaded["tracks"].size()!=score["tracks"].size()
+                || juce::JSON::toString(loaded["tracks"][0]["directions"])!=juce::JSON::toString(directions)) return 34;
             drop();
             if (project.sourceScore!=applied) return 35;
             studio.undoPianoEdit(false);

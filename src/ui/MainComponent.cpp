@@ -4690,21 +4690,21 @@ void MainComponent::filesDropped(const juce::StringArray& files, int x, int y) {
         juce::FileInputStream stream(file);
         const auto result = ostfstudio::readOstfPreview(stream, returned);
         if (result.failed()) { statusLabel_.setText(result.getErrorMessage(),juce::dontSendNotification); return; }
-        const auto current = juce::JSON::parse(project_->sourceScore.toString())["harmony"]["scales"];
-        const auto next = juce::JSON::parse(returned->sourceScore.toString())["harmony"]["scales"];
-        juce::Array<juce::var> removed, added;
-        const auto difference = [](const juce::var& a, const juce::var& b, juce::Array<juce::var>& diff) {
-            const auto* original = a.getArray(); const auto* other = b.getArray();
-            if (!original) return;
-            for (const auto& item : *original) {
-                const auto json = juce::JSON::toString(item,true,17);
-                if (!other || std::none_of(other->begin(),other->end(),[&](const auto& v){return juce::JSON::toString(v,true,17)==json;}))
-                    diff.add(item);
-            }
-        };
-        difference(current,next,removed); difference(next,current,added);
-        if (!removed.isEmpty() || !added.isEmpty()) applyGlobalChange(TimelineLane::scale,std::move(removed),std::move(added));
-        else statusLabel_.setText(TRANS("No scale changes."),juce::dontSendNotification);
+        const bool playing = transportActive_;
+        if (playing) stopTransport();
+        juce::MemoryBlock before;
+        const auto imported = project_->importScaleAssignments(returned->sourceScore,before);
+        if (imported.wasOk() && !before.isEmpty()) {
+            rememberScoreEdit(std::move(before),"Edit scale assignments");
+            theory_.reset();
+            refreshTheory();
+            finishNoteEdit(playing);
+            statusLabel_.setText(TRANS("Scale assignments updated."),juce::dontSendNotification);
+        } else {
+            if (playing) startTransport(false);
+            statusLabel_.setText(imported.failed() ? imported.getErrorMessage() : TRANS("No scale changes."),juce::dontSendNotification);
+        }
+        repaint();
         return;
     }
     if (file.hasFileExtension("mid;midi;ostf;ostfp")) {

@@ -225,6 +225,7 @@ struct OstfpPreview {
     juce::Result applySongInformation(const SongInformation&, juce::MemoryBlock* previous = nullptr);
     juce::Result drawTempo(juce::int64 start, double from, juce::int64 end, double to, juce::MemoryBlock& previous);
     juce::Result appendSection(juce::Range<juce::int64> range, const juce::String& name, bool duplicate, juce::MemoryBlock& previous);
+    juce::Result importScaleAssignments(const juce::MemoryBlock& returned, juce::MemoryBlock& before);
     juce::Result changeGlobalEvents(TimelineLane lane, const juce::Array<juce::var>& remove,
                                     const juce::Array<juce::var>& insert, juce::MemoryBlock& before);
     juce::Result applySongMusic(const SongMusicEdit&, juce::MemoryBlock& before);

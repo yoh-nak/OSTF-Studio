@@ -872,8 +872,10 @@ private:
                     const auto before=self->proc.document;
                     const auto r=self->proc.document.importWorkspaceScales((*value)["text"].toString(),opened);
                     if(r.failed()){self->status.setText(r.getErrorMessage(),juce::dontSendNotification);return;}
-                    self->previousDocument=before; self->undoAtText=self->proc.document.text;
-                    self->undo.setEnabled(true); self->redoDocument.reset(); self->redo.setEnabled(false);
+                    if (before.text!=self->proc.document.text) {
+                        self->previousDocument=before; self->undoAtText=self->proc.document.text;
+                        self->undo.setEnabled(true); self->redoDocument.reset(); self->redo.setEnabled(false);
+                    }
                     self->workspaceHash=digest(self->proc.document.text);
                     self->workspaceSource=self->proc.document.text;
                     self->proc.workspaceSource=self->workspaceSource;
@@ -897,8 +899,10 @@ private:
                 const auto before=self->proc.document;
                 const auto r=self->proc.document.importWorkspaceScales(f.loadFileAsString(),self->workspaceHash);
                 if(r.failed()){self->status.setText(r.getErrorMessage(),juce::dontSendNotification);return;}
-                self->previousDocument=before; self->undoAtText=self->proc.document.text;
-                self->undo.setEnabled(true); self->redoDocument.reset(); self->redo.setEnabled(false);
+                if (before.text!=self->proc.document.text) {
+                    self->previousDocument=before; self->undoAtText=self->proc.document.text;
+                    self->undo.setEnabled(true); self->redoDocument.reset(); self->redo.setEnabled(false);
+                }
                 self->sync(); self->returnWorkspace.setEnabled(false);
                 self->proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
             });

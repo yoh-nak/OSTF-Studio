@@ -26,6 +26,7 @@ class SyllableVoice {
         constexpr float bandwidth[3] = {90, 120, 175};
         englishSound = p.english ? &VoiceBank::english()[size_t(p.english & 63)] : nullptr;
         const int arpabet = accentPhone & 63;
+        voicedEnglishStop = bank && (arpabet == 16 || arpabet == 18 || arpabet == 21);
         // CH, F, HH, K, P, S, SH, T and TH have no sung fundamental.
         unvoicedEnglishConsonant = bank && (arpabet==17 || arpabet==20 || arpabet==22 || arpabet==24
             || arpabet==29 || arpabet==31 || arpabet==32 || arpabet==33 || arpabet==34);
@@ -163,6 +164,8 @@ class SyllableVoice {
         // Use only the unvoiced portion of a CV for the /s/ in "lights".
         if (unvoicedEnglishConsonant)
             return float(level * unvoicedAttack(time,sr));
+        if (voicedEnglishStop)
+            return float(level * stopClosure(time,pitch,sr));
         float recording = 0;
         if (recorded) {
             const double onset = attackSeconds;
@@ -244,6 +247,29 @@ class SyllableVoice {
     const RecordedMora* nasalAttack = nullptr;
     const RecordedMora* nasalBody = nullptr;
     bool unvoicedEnglishConsonant = false;
+    bool voicedEnglishStop = false;
+    float stopClosure(double time, double pitch, double sr) {
+        const double duration = phone.durationMs ? phone.durationMs * .001 : .065;
+        if (time >= duration) return 0;
+        const double burst = std::min(.009, duration * .25);
+        const double release = duration - burst;
+        if (time < release) {
+            // A closed mouth carries low-frequency voicing, without an open vowel.
+            const double level = std::min({1., time/.003, (release-time)/.003});
+            const double tone = std::sin(juce::MathConstants<double>::twoPi * phase);
+            phase += std::min(.45, pitch/sr);
+            phase -= std::floor(phase);
+            return float(.16 * level * tone);
+        }
+        const double fraction = (time-release)/burst;
+        const double level = std::min({1., (time-release)/.001, (duration-time)/.002});
+        if (recorded && !vowelSample && recorded->voicedStart > recorded->attackFirst + 2) {
+            const double frames = std::min(burst * recorded->rate, double(recorded->voicedStart-recorded->attackFirst-1));
+            return float(.65 * level) * recorded->sampleAt(recorded->voicedStart-1-frames*(1.-fraction));
+        }
+        noise = noise*1664525u+1013904223u;
+        return float(.05 * level * (1.-fraction) * (double(noise)/2147483648.-1.));
+    }
     float unvoicedAttack(double time,double sr) {
         const double allotted = phone.durationMs>0 ? .001*phone.durationMs : .065;
         if (recorded && !vowelSample && recorded->voicedStart-recorded->attackFirst >= .003*recorded->rate) {
@@ -269,6 +295,7 @@ class SyllableVoice {
     float lastAttack = 0.f, joinDelta = 0.f;
     RecordedMora::Wave previousWave{}, nextWave{};
     int frameAge = 0, frameLength = 1;
+    int pulseOffset = 0;
     float voicedSample(const RecordedMora& source, double at, double pitch, double sr, const juce::dsp::FFT& fft) {
         const int hop = std::max(1, juce::roundToInt(sr * .005));
         if (!waveReady || frameAge >= frameLength) {
@@ -280,6 +307,11 @@ class SyllableVoice {
                     previousWave[i] = std::lerp(previousWave[i], nextWave[i], blend);
             } else if (waveReady) previousWave = nextWave;
             source.renderCycle(nextWave, fft, at, pitch, sr);
+            if (!waveReady) pulseOffset = connected ? RecordedMora::matchingPhaseOffset(previousWave,nextWave) : 0;
+            if (pulseOffset) {
+                std::rotate(nextWave.begin(),nextWave.begin()+pulseOffset,nextWave.end()-1);
+                nextWave.back() = nextWave.front();
+            }
             if (!waveReady && !connected) previousWave = nextWave;
             waveReady = true;
             morphFromPrevious = false;

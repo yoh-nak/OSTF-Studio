@@ -2264,6 +2264,23 @@ juce::Result OstfpPreview::appendSection(juce::Range<juce::int64> range, const j
     return result;
 } catch (const std::exception& e) {return juce::Result::fail(e.what());}
 
+juce::Result OstfpPreview::importScaleAssignments(const juce::MemoryBlock& returned, juce::MemoryBlock& before) try {
+    const auto old = savedScore(*this);
+    const std::string_view source{static_cast<const char*>(old.getData()),old.getSize()};
+    const auto merged = mergeScaleAssignments(source, {static_cast<const char*>(returned.getData()),returned.getSize()});
+    if (merged == source) return juce::Result::ok();
+    juce::MemoryBlock bytes(merged.data(),merged.size());
+    auto score = parseObject(bytes);
+    reviseDocument(score,old,"scale-"+juce::Uuid().toString());
+    bytes = editedScoreBytes(bytes,score,{"document"});
+    validateVersion(score["version"].toString(),bytes);
+    const auto result = restoreNoteScore(bytes);
+    if (result.wasOk()) before = old;
+    return result;
+} catch (const std::exception& e) {
+    return juce::Result::fail(e.what());
+}
+
 juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Array<juce::var>& remove,
                                               const juce::Array<juce::var>& insert, juce::MemoryBlock& before) try {
     const auto source = globalSource(lane);
