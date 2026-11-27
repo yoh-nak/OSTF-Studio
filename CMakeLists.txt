@@ -161,6 +161,16 @@ if (OSTF_STUDIO_BUILD_GUI)
     elseif (APPLE)
         enable_language(OBJCXX)
     endif()
+    # The provider only uses JUCE core types. Each final binary supplies its own JUCE implementation.
+    add_library(ostf_analysis_provider STATIC src/ui/AnalysisService.cpp)
+    set_target_properties(ostf_analysis_provider PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+    target_include_directories(ostf_analysis_provider PRIVATE src "${JUCE_MODULES_DIR}")
+    target_compile_definitions(ostf_analysis_provider PRIVATE JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 JUCE_USE_CURL=0
+        "$<$<CONFIG:Debug>:DEBUG=1;_DEBUG=1>")
+    target_link_libraries(ostf_analysis_provider PRIVATE juce::juce_recommended_config_flags)
+
+    file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/studio-package-version.txt"
+        CONTENT "${PROJECT_VERSION}\n${OSTF_STUDIO_DISPLAY_VERSION}\n${CMAKE_OSX_ARCHITECTURES}\n")
     configure_file(cmake/StudioVersion.cpp.in generated/StudioVersion.cpp @ONLY)
     add_library(ostf_studio_version STATIC "${CMAKE_CURRENT_BINARY_DIR}/generated/StudioVersion.cpp")
     set_target_properties(ostf_studio_version PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
@@ -169,10 +179,10 @@ if (OSTF_STUDIO_BUILD_GUI)
         juce_generate_juce_header(${studio_target})
         target_sources(${studio_target} PRIVATE src/ui/MainComponent.cpp src/ui/SystemUsageMeter.cpp src/ui/ArrangementClipEdits.cpp src/ui/ChordReview.cpp src/ui/OstfpPreview.cpp
             src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
-            src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
+            src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
             src/ui/TheoryGuide.cpp src/ui/SynthVExport.cpp src/ui/AudioExport.cpp src/ui/RenderAudio.cpp)
         target_include_directories(${studio_target} PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
-        target_link_libraries(${studio_target} PRIVATE ostf_studio_version)
+        target_link_libraries(${studio_target} PRIVATE ostf_studio_version ostf_analysis_provider)
         target_compile_definitions(${studio_target} PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
         target_link_libraries(${studio_target} PRIVATE
             OSTFEnglishLexicon
@@ -231,10 +241,10 @@ if (OSTF_STUDIO_BUILD_GUI)
     add_test(NAME ostf_gm_channel_activity_tests COMMAND ostf_gm_channel_activity_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostfp")
 
-    add_executable(ostf_studio_chatgpt_tests tests/chatgpt_connection_tests.cpp src/ui/AnalysisService.cpp)
+    add_executable(ostf_studio_chatgpt_tests tests/chatgpt_connection_tests.cpp)
     target_include_directories(ostf_studio_chatgpt_tests PRIVATE src)
     target_compile_definitions(ostf_studio_chatgpt_tests PRIVATE JUCE_USE_CURL=0)
-    target_link_libraries(ostf_studio_chatgpt_tests PRIVATE juce::juce_core)
+    target_link_libraries(ostf_studio_chatgpt_tests PRIVATE ostf_analysis_provider juce::juce_core)
     add_test(NAME ostf_studio_chatgpt_connection COMMAND ostf_studio_chatgpt_tests)
 
     add_executable(ostf_pitch_probe tests/audio_pitch_probe.cpp)

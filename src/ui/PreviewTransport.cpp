@@ -91,6 +91,22 @@ bool PreviewTransport::supportsInsert(const juce::AudioPluginInstance& effect) {
         && effect.getTotalNumInputChannels()<=4;
 }
 
+static void appendMetronomeBeats(const ostfstudio::OstfpPreview& song, const ostfstudio::TempoMap& clock,
+                                 juce::int64 first, juce::int64 end, double rate,
+                                 std::vector<std::pair<int, bool>>& beats) {
+    auto number = song.measureNumber(first);
+    for (auto start = song.measureStart(number); start < end;) {
+        const auto stop = std::min(end, song.measureStart(++number));
+        const auto meter = ostfstudio::activeMeter(song.meters, double(start), {0, song.meterBeats, song.beatUnit});
+        for (int beat = 0; beat < meter.numerator; ++beat) {
+            const auto tick = start + std::llround(beat * 4.0 * song.ppq / meter.denominator);
+            if (tick >= stop) break;
+            if (tick >= first) beats.emplace_back(juce::roundToInt(clock.secondsAt(tick) * rate), beat == 0);
+        }
+        start = stop;
+    }
+}
+
 juce::Result PreviewTransport::start(juce::AudioDeviceManager &devices, const ostfstudio::OstfpPreview &project,
                                      bool record, std::span<const TrackSetup> tracks, const Inserts &inserts,
                                      juce::int64 startTick, int semitones, double tempoRate,
@@ -220,13 +236,7 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     midiInput_ = {};
     elapsed_ = countRemaining_ = 0;
     beatSamples_.clear();
-    for (juce::int64 bar = 0; !monitorOnly && bar < scoreTicks_; bar += project.ticksPerBar) {
-        const auto meter = ostfstudio::activeMeter(meters_, double(bar), {0, meterBeats_, beatUnit_});
-        for (int beat = 0; beat < meter.numerator; ++beat) {
-            const auto tick = bar + std::llround(beat * 4.0 * ppq_ / meter.denominator);
-            if (tick < scoreTicks_) beatSamples_.emplace_back(juce::roundToInt(clock_.secondsAt(tick) * sampleRate_), beat == 0);
-        }
-    }
+    if (!monitorOnly) appendMetronomeBeats(project, clock_, 0, scoreTicks_, sampleRate_, beatSamples_);
     lastSample_ = static_cast<juce::int64>(std::ceil(total));
     pendingNotes_ = false;
     int outputChannels = std::any_of(tracks.begin(),tracks.end(),[](const auto& t){return t.monitorInput>=0;})
@@ -510,13 +520,7 @@ juce::Result PreviewTransport::extendLiveSong(const ostfstudio::OstfpPreview& pr
     }
     auto meters = project.meters;
     auto beats = beatSamples_;
-    for (auto bar = (scoreTicks_/project.ticksPerBar)*project.ticksPerBar; bar < ticks; bar += project.ticksPerBar) {
-        const auto meter = ostfstudio::activeMeter(meters,double(bar),{0,meterBeats_,beatUnit_});
-        for (int beat = 0; beat < meter.numerator; ++beat) {
-            const auto tick = bar + std::llround(beat * 4.0 * ppq_ / meter.denominator);
-            if (tick >= scoreTicks_ && tick < ticks) beats.emplace_back(juce::roundToInt(nextClock->secondsAt(tick)*sampleRate_),beat==0);
-        }
-    }
+    appendMetronomeBeats(project, *nextClock, scoreTicks_, ticks, sampleRate_, beats);
     const auto install = [&] {
         for (size_t i=0; i<liveBoundaries_.size(); ++i) boundaries[i].remaining=liveBoundaries_[i].remaining;
         liveBoundaries_.swap(boundaries);

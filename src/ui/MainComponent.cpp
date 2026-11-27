@@ -1077,6 +1077,13 @@ MainComponent::MainComponent(ostfstudio::HostAudio* host) : hostAudio_(host) {
         ruler.setTitle(TRANS("Bar ruler"));
         ruler.setTooltip(TRANS("Click to position the playhead. Drag left or right to scroll."));
         ruler.visibleBars = [this, &ruler, &scroll] { return &ruler == &pianoRuler_ ? pianoBars() : scroll.getCurrentRange(); };
+        ruler.measureAt = [this](double axis) {
+            return project_ ? project_->measureNumber(std::llround((axis - 1.) * project_->ticksPerBar))
+                            : static_cast<juce::int64>(std::floor(axis));
+        };
+        ruler.measureAxis = [this](juce::int64 bar) {
+            return project_ ? 1. + double(project_->measureStart(bar)) / project_->ticksPerBar : double(bar);
+        };
         ruler.playheadBar = [this] { return project_ && project_->ticksPerBar > 0 && cursorTick_ >= 0
             ? project_->bars.firstBar + double(cursorTick_) / project_->ticksPerBar : -1.0; };
         ruler.locate = [this, &ruler, &scroll](double fraction) {
@@ -7918,7 +7925,7 @@ void MainComponent::refreshEditor() {
     const bool musical = editing && selectedGlobal_ && GlobalLaneEditor::supports(*selectedGlobal_);
     globalEditor_.setVisible(musical);
     if (musical) globalEditor_.bind(juce::JSON::parse(project_->sourceScore.toString()),*selectedGlobal_,
-        selectedGlobalTick_,project_->ticksPerBar,project_->durationTicks,project_->bars.firstBar,!recordTrack_);
+        selectedGlobalTick_, *project_, !recordTrack_);
     tempoEditor_.setVisible(tempo);
     if (tempo) tempoEditor_.bind(project_.get());
     deck_.record.setEnabled(project_ && (armedId_.isNotEmpty() || (selectedTrack_ && selectedGlobal_ != TimelineLane::tempo)));
@@ -8584,13 +8591,22 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
         const auto x = positionX(start, row);
         return juce::Rectangle<int>(x, row.getY(), positionX(end, row) - x, row.getHeight());
     };
-    const int tickStep = juce::jmax(1, static_cast<int>(widthInBars / (area.getWidth() < 420 ? 4 : 8)));
-    const auto firstBar = static_cast<int>(std::ceil(visible.start));
+    const auto measureAxis = [&](juce::int64 bar) {
+        return project_ ? 1. + double(project_->measureStart(bar)) / project_->ticksPerBar : double(bar);
+    };
+    const auto measureAt = [&](double axis) {
+        return project_ ? project_->measureNumber(std::llround((axis - 1.) * project_->ticksPerBar))
+                        : static_cast<juce::int64>(std::floor(axis));
+    };
+    auto firstBar = measureAt(visible.start);
+    if (measureAxis(firstBar) < visible.start - 1.0e-9) ++firstBar;
+    const auto lastBar = measureAt(visible.end);
+    const auto tickStep = std::max<juce::int64>(1, (lastBar - firstBar) / (area.getWidth() < 420 ? 4 : 8));
     const auto ruler = area.withHeight(laneHeight);
     if (!project_) {
         drawRow(TRANS("BARS"), area.getY());
-        for (int bar = firstBar; bar < visible.end; bar += tickStep) {
-            const int x = positionX(bar, ruler);
+        for (auto bar = firstBar; bar <= lastBar && measureAxis(bar) < visible.end; bar += tickStep) {
+            const int x = positionX(measureAxis(bar), ruler);
             g.setColour(juce::Colour(muted));
             g.drawText(juce::String(bar), ruler.withLeft(x).withWidth(std::min(36, ruler.getRight() - x)).withTrimmedLeft(3),
                        juce::Justification::centredLeft);
@@ -8608,8 +8624,8 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                     g.fillRect(grip.getCentreX() + dx - 1, grip.getCentreY() + dy - 1, 2, 2);
         }
         g.setColour(juce::Colour(0xff3a4e5e));
-        for (int bar = firstBar; bar < visible.end; bar += tickStep) {
-            g.drawVerticalLine(positionX(bar, row), static_cast<float>(row.getY()), static_cast<float>(row.getBottom()));
+        for (auto bar = firstBar; bar <= lastBar && measureAxis(bar) < visible.end; bar += tickStep) {
+            g.drawVerticalLine(positionX(measureAxis(bar), row), static_cast<float>(row.getY()), static_cast<float>(row.getBottom()));
         }
 
         if (lane.kind == TimelineLane::scale && lane.regions.empty()) {
@@ -9076,8 +9092,9 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     const auto bars = pianoBars();
     const ostfstudio::TimelineExtent visible{bars.getStart(), bars.getEnd()};
     const auto barLength = project_->ticksPerBar;
-    const auto firstBar = static_cast<juce::int64>(std::ceil(visible.start)) - 1;
-    const auto endBar = static_cast<juce::int64>(std::ceil(visible.end)) - 1;
+    auto firstBar = project_->measureNumber(std::llround((visible.start - 1.) * barLength));
+    if (double(project_->measureStart(firstBar)) < (visible.start - 1.) * barLength) ++firstBar;
+    const auto endBar = project_->measureNumber(std::llround((visible.end - 1.) * barLength)) + 1;
     const auto origin = (visible.start - 1.0) * barLength;
     const auto length = (visible.end - visible.start) * barLength;
     if (length <= 0.0) return;
@@ -9174,9 +9191,9 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
         for (auto line = juce::int64(std::ceil((origin - 0.5) / step)); line * step < origin + length; ++line)
             g.drawVerticalLine(juce::roundToInt(tickX(std::llround(line * step))), float(area.getY()), float(area.getBottom()));
     }
-    const auto barStep = std::max<juce::int64>(1, static_cast<juce::int64>((visible.end - visible.start) / (area.getWidth() < 420 ? 4 : 8)));
+    const auto barStep = std::max<juce::int64>(1, (endBar - firstBar) / (area.getWidth() < 420 ? 4 : 8));
     for (auto bar = firstBar; bar < endBar; bar += barStep) {
-        const auto x = juce::roundToInt(tickX(bar * barLength));
+        const auto x = juce::roundToInt(tickX(project_->measureStart(bar)));
         g.setColour(juce::Colour(0xff526578));
         g.drawVerticalLine(x, static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
     }
@@ -9277,7 +9294,7 @@ void MainComponent::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> area) 
     g.drawFittedText(laneName, title.reduced(4, 0), juce::Justification::centredLeft, 1);
     if (controllerEditor_.isVisible()) { drawCursor(title.getBottom()); return; }
     for (auto bar = firstBar; bar < endBar; bar += barStep)
-        g.drawVerticalLine(juce::roundToInt(tickX(bar * barLength)), static_cast<float>(lane.getY()),
+        g.drawVerticalLine(juce::roundToInt(tickX(project_->measureStart(bar))), static_cast<float>(lane.getY()),
                            static_cast<float>(lane.getBottom()));
     g.saveState();
     g.reduceClipRegion(lane);

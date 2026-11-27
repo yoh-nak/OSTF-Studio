@@ -21,7 +21,7 @@ The plug-in follows the host’s play, stop and time position. Studio reads temp
 
 <a name="scale-assignment"></a>
 
-## Edit a global lane boundary
+## Edit a global lane boundary (development build)
 
 Split a section, chord, key, scale or meter interval to expose a triangular handle. Drag it with the pointer or scissors tool. Sections and meters snap to bars, keys to beats, and chords and scales to half beats.
 

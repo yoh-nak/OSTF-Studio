@@ -57,7 +57,7 @@ struct MidiControl {
         return channel ? name + " / ch " + juce::String(channel) : name;
     }
 };
-struct MeterPoint { juce::int64 tick; int numerator, denominator; };
+struct MeterPoint { juce::int64 tick; int numerator, denominator; juce::int64 firstBar = 1; };
 inline MeterPoint activeMeter(const std::vector<MeterPoint>& meters, double tick, MeterPoint initial) {
     const auto next = std::upper_bound(meters.begin(), meters.end(), tick, [](double t, const auto& m){ return t < m.tick; });
     return next == meters.begin() ? initial : *std::prev(next);
@@ -230,6 +230,9 @@ struct OstfpPreview {
     TempoMap clock;
     int meterBeats = 4, beatUnit = 4;
     std::vector<MeterPoint> meters;
+    // Pixels and clips use linear source ticks; musical bar numbers follow the meter map.
+    juce::int64 measureNumber(juce::int64 tick) const;
+    juce::int64 measureStart(juce::int64 number) const;
     std::vector<std::pair<juce::int64,int>> camelotKeys;
     juce::String defaultScale;
     juce::StringArray trackIds;

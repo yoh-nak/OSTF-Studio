@@ -1,5 +1,6 @@
 #pragma once
 #include "ui/GlobalTimelineEdit.h"
+#include "ui/OstfpPreview.h"
 #include "ui/SongBasicsPanel.h"
 
 class GlobalLaneEditor final : public juce::Component, private juce::ListBoxModel {
@@ -63,12 +64,13 @@ public:
         root.setTextToShowWhenEmpty(TRANS("Tonic"),juce::Colours::lightgrey);
         steps.setTextToShowWhenEmpty(TRANS("Intervals in semitones"),juce::Colours::lightgrey);
     }
-    void bind(const juce::var& score,Lane selection,Tick tick,Tick bar,Tick songEnd,int firstBar,bool writable) {
+    void bind(const juce::var& score,Lane selection,Tick tick,const ostfstudio::OstfpPreview& project,bool writable) {
         using namespace ostfstudio;
+        const auto songEnd = project.durationTicks;
         lane=selection;
         const auto section=globalEventAt(score,Lane::section,tick), chord=globalEventAt(score,Lane::chord,tick);
         const auto span=[](const juce::var& item){ return juce::Range<Tick>::withStartAndLength(Tick(item["start"]),Tick(item["duration"])); };
-        auto location=[&](Tick t){return juce::String(firstBar+t/bar)+"  ·  ";};
+        auto location=[&](Tick t){return juce::String(project.measureNumber(t))+"  ·  ";};
         auto fill=[&](juce::ComboBox& box,std::vector<Tick>& ticks,juce::var entries,const juce::var& current,bool filter) {
             box.clear(juce::dontSendNotification); ticks.clear();
             if (auto* list=entries.getArray()) for (const auto& item:*list) {
@@ -114,7 +116,8 @@ public:
         }
         original=globalEventAt(score,lane,tick);
         draft=original.clone();
-        auto range=juce::Range<Tick>::withStartAndLength(tick-tick%bar,bar).getIntersectionWith({0,songEnd});
+        const auto number = project.measureNumber(tick);
+        auto range = juce::Range<Tick>(project.measureStart(number), project.measureStart(number + 1)).getIntersectionWith({0,songEnd});
         if (section.isObject()) range=range.getIntersectionWith(span(section));
         if (lane==Lane::scale && chord.isObject()) range=span(chord).getIntersectionWith({0,songEnd});
         if (original.isVoid()) {
@@ -146,10 +149,10 @@ public:
         chordOnly.setVisible(scale && !chordRange.isEmpty() && chordRange!=span(original));
         const auto name=juce::translate(scale?"Scale":key?"Key":lane==Lane::meter?"Meter":lane==Lane::section?"Section":"Chord");
         const auto start=Tick(draft[globalSource(lane).span?"start":"at"]);
-        auto barLabel=juce::String(firstBar+start/bar);
+        auto barLabel=juce::String(project.measureNumber(start));
         if (globalSource(lane).span && Tick(draft["duration"])>0) {
-            const auto last=(start+Tick(draft["duration"])-1)/bar;
-            if(last>start/bar)barLabel+=" - "+juce::String(firstBar+last);
+            const auto last=project.measureNumber(start+Tick(draft["duration"])-1);
+            if(last>project.measureNumber(start))barLabel+=" - "+juce::String(last);
         }
         title.setText(name+"    "+TRANS("Bar")+" "+barLabel,juce::dontSendNotification);
         value.setTitle(name); value.setTextToShowWhenEmpty(name,juce::Colours::lightgrey);

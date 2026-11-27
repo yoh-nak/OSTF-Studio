@@ -43,7 +43,11 @@ void MainComponent::rememberAudioEdit(std::vector<ProjectAudio> before, juce::Me
 
 void MainComponent::insertTimelineBars(Tick tick,int count) {
     if (!project_ || recordTrack_ || livePerformanceActive_ || chordReviewBlocksSwitch()) return;
-    const auto at=tick-tick%project_->ticksPerBar, delta=count*project_->ticksPerBar;
+    const auto at = project_->measureStart(project_->measureNumber(tick));
+    const auto meter = ostfstudio::activeMeter(project_->meters, double(at), {0, project_->meterBeats, project_->beatUnit});
+    const auto barLength = 4 * project_->ppq * meter.numerator / meter.denominator;
+    if (count < 1 || count > 128 || barLength > 0x0fffffff / count) return;
+    const auto delta = count * barLength;
     auto nextAudio=project_->audio;
     const auto fail=[this](const juce::String& reason){statusLabel_.setText(juce::translate(reason),juce::dontSendNotification);};
     for (size_t i=0;i<project_->audio.size();++i) {

@@ -5,6 +5,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -47,6 +48,23 @@ def parallel_jobs():
     return max(1, min(cpus, (available_memory() - GIB) // (2 * GIB)))
 
 
+def package(tree):
+    version, display, arch = (tree / "studio-package-version.txt").read_text().splitlines()
+    output = tree / "packages"
+    output.mkdir(exist_ok=True)
+    if os.name == "nt":
+        command = ["powershell.exe", "-NoProfile", "-File",
+                   str(ROOT / "packaging/windows/Package.ps1"), "-AppVersion", display, "-BinaryVersion", version,
+                   "-AppExe", str(tree / "OSTFStudio_artefacts/Release/OSTF Studio.exe"),
+                   "-GmBundle", str(tree / "OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3"),
+                   "-EffectsDir", str(tree / "StudioEffects/Release"), "-OutputDir", str(output), "-Python", sys.executable]
+    else:
+        arch = arch or platform.machine()
+        command = [sys.executable, "packaging/macos_package.py", version, "--display-version", display,
+                   "--arch", arch, "--build", str(tree), "--output", str(output / f"OSTF_Studio_macOS_{arch}.dmg")]
+    subprocess.run(command, cwd=ROOT, check=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["dev", "release", "clean"], default="dev")
@@ -63,6 +81,10 @@ def main():
         return
     if args.target and (args.test or args.mode == "release"):
         parser.error("Full testing and release builds require all targets.")
+    if args.mode == "release":
+        if args.core or platform.system() not in ("Windows", "Darwin"):
+            parser.error("Release packaging requires a complete native Windows or macOS build.")
+        subprocess.run([sys.executable, "packaging/prepare_fluid_r3.py"], cwd=ROOT, check=True)
     profile = "core" if args.core else "studio"
     tree = args.build_dir or ROOT / f"build-{args.mode}-{profile}"
     if args.mode == "clean":
@@ -86,6 +108,9 @@ def main():
     if args.test or args.mode == "release":
         subprocess.run(["ctest", "--test-dir", str(tree), "-C", "Release", "--output-on-failure",
                         "--no-tests=error"], cwd=ROOT, env=env, check=True)
+
+    if args.mode == "release":
+        package(tree)
 
 
 if __name__ == "__main__":

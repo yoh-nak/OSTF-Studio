@@ -1578,7 +1578,13 @@ int checkTrackView(const juce::File& fixture) {
             const int other = initial == 3 ? 4 : 3;
             meter.getDynamicObject()->setProperty("numerator", other);
             juce::MemoryBlock before, split;
-            if (song->changeGlobalEvents(TimelineLane::meter, {}, {meter}, before).failed()) return 403;
+            const auto edit = song->changeGlobalEvents(TimelineLane::meter, {}, {meter}, before);
+            if (edit.failed()) { std::cerr << edit.getErrorMessage() << '\n'; return 403; }
+            const auto thirdBar = tick + song->ppq * other;
+            if (song->measureStart(3) != thirdBar || song->measureNumber(thirdBar - 1) != 2 ||
+                song->measureNumber(thirdBar) != 3) return 408;
+            const auto notation = notationScore(*song);
+            if (notation.barStart(2) != thirdBar || notation.barAt(thirdBar) != 2) return 409;
             const auto withBoundary = juce::JSON::parse(song->sourceScore.toString());
             const auto& edges = song->globalEdges.at(TimelineLane::meter);
             if (!std::binary_search(edges.begin(), edges.end(), tick)) return 404;

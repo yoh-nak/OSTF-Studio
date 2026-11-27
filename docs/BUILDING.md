@@ -9,7 +9,7 @@ Run these commands from the repository root with CMake 3.22+, Ninja and Python 3
 | Work on the hosted workstation | `python tools/build.py --target OSTFStudioPlugin_VST3` |
 | Test the core without fetching JUCE | `python tools/build.py --core --test` |
 | Build and run the full test suite | `python tools/build.py --test` |
-| Validate the release configuration locally | `python tools/build.py --mode release` |
+| Test and package a native release candidate | `python tools/build.py --mode release` |
 | Diagnose a clean configure and build | `python tools/build.py --mode clean --test` |
 
 Development and release use separate persistent trees. Clean mode creates a new directory and prints its path. Use `--build-dir` for a persistent tree on another drive. Keep one generator, architecture, SDK and compiler per tree. An existing Visual Studio tree can still be built with its original CMake commands. To find a device target, run `cmake --build build-dev-studio --target help`.
@@ -18,7 +18,7 @@ The helper chooses up to one compiler process per available CPU, reserves 1 GiB 
 
 ## Dependencies and compiler caches
 
-The score model and audio pitch/warp processing live in `ostf_studio_core`. JSON schema validation owns its jsoncons dependency. Stock instrument and effect wrappers link the shared DSP library. The Scale Editor document model is shared separately. The workstation VST3 and standalone app compile their host-specific JUCE modules with distinct definitions. Keep future SDK and analysis code behind narrow target interfaces. Add a device through its catalogue and link its wrapper against the appropriate implementation. Avoid process-wide compile definitions for device parameters or display metadata.
+The score model and audio pitch/warp processing live in `ostf_studio_core`. JSON schema validation owns its jsoncons dependency. Stock instrument and effect wrappers link the shared DSP library. The Scale Editor document model is shared separately. The AI analysis provider compiles once and is linked by the desktop app, hosted workstation and connection test. The workstation VST3 and standalone app compile their host-specific JUCE modules with distinct definitions. Keep future SDK and analysis code behind narrow target interfaces. Add a device through its catalogue and link its wrapper against the appropriate implementation. Avoid process-wide compile definitions for device parameters or display metadata.
 
 The release display version is generated into one translation unit linked into both workstations. Changing it relinks the consumers. Binary plug-in IDs, architecture and compiler settings still affect the targets that use them.
 
@@ -28,4 +28,12 @@ Windows x64, Apple Silicon and Intel Mac CI jobs use Ninja and sccache. Compiler
 
 ## Release and verification
 
+Local release mode runs the full CTest suite and writes the native packages to the `packages` directory inside its build tree. Windows requires Inno Setup 6. macOS requires Xcode and the system package tools.
+
 Select **OSTF Studio cross-platform build → Run workflow → none** to run all targets, tests, native installer checks and packaging without publishing. The workflow produces the Windows installer and Portable ZIP and separate macOS DMGs. Publication is a separate, explicitly authorized operation documented in [Releasing](RELEASING.md). A successful compile or cache hit does not verify hardware I/O or DAW behavior.
+
+## Windows measurements
+
+A display-version-only change on the same warm Windows x64 Release tree (MSBuild, four jobs, `OSTFStudio` target) previously compiled 74 C/C++ sources in 466.88 seconds. With the generated version unit, the same operation compiled one file in 30.50 seconds, including relinking. An immediate repeat compiled zero files in 11.96 seconds. Times exclude configure. The one-time migration build took 653.80 seconds and compiled 77 sources, including changed application code and generated resources. A second invocation of the Ninja development helper on the core reported `no work to do` and passed both core tests.
+
+The precompiled-header experiment built the two production sources of `ostf_studio_core` in fresh Ninja Release trees using MSVC 19.44 and two compile jobs. Three runs without a PCH took 20.23, 6.02 and 10.02 seconds. With `<algorithm>`, `<cmath>` and `<vector>` precompiled they took 11.34, 9.77 and 11.84 seconds. Medians were 10.02 and 11.34 seconds respectively. Another workstation build was active during the experiment. The core keeps ordinary includes. Before introducing a GUI or device PCH, measure that target separately with its real compiler definitions.

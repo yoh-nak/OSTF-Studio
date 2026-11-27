@@ -173,7 +173,7 @@ juce::Result writeSynthV(const OstfpPreview& song, SynthVParts selection, juce::
         at = song.clock.nextChangeAfter(*at);
     }
     for (const auto& meter : song.meters)
-        meters.add(object({{"index",meter.tick / song.ticksPerBar},{"numerator",meter.numerator},{"denominator",meter.denominator}}));
+        meters.add(object({{"index",meter.firstBar - 1},{"numerator",meter.numerator},{"denominator",meter.denominator}}));
     const auto document = object({{"version",svpVersion},{"time",object({{"meter",meters},{"tempo",tempos}})},
                                   {"tracks",tracks},{"library",List{}},{"renderConfig",object({{"destination","./"},{"filename",juce::File::createLegalFileName(song.title)},
                                    {"numChannels",1},{"bitDepth",16},{"sampleRate",44100},{"aspirationFormat","noAspiration"},{"exportMixDown",true}})}});

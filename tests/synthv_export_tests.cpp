@@ -101,7 +101,7 @@ int checkSynthVExport(const File& root, const File& output) try {
     demo->clock = TempoMap(demo->ppq);
     demo->clock.append(0,78);
     demo->clock.append(demo->ppq,93);
-    demo->meters.push_back({demo->ticksPerBar * 2,8,8});
+    demo->meters.push_back({demo->ticksPerBar * 2,8,8,3});
     auto divided = render(*demo,SynthVParts::chorus);
     if (divided["tracks"].size()!=2 || int(divided["time"]["meter"][1]["index"])!=2
         || juce::int64(divided["time"]["tempo"][1]["position"])!=705600000 || int(divided["time"]["tempo"][1]["bpm"])!=93) return 9;

@@ -139,11 +139,12 @@ public:
     }
     static int panelHeight(int width) { return width < 1400 ? 101 : 65; }
     static juce::String musicalPosition(const ostfstudio::OstfpPreview& song, juce::int64 tick, ostfstudio::MeterPoint meter) {
-        const auto withinBar = tick % song.ticksPerBar;
+        const auto bar = song.measureNumber(tick);
+        const auto withinBar = tick - song.measureStart(bar);
         const double beatLength = song.ppq * 4.0 / meter.denominator;
         const auto beat = static_cast<int>(std::floor(withinBar / beatLength));
         const auto sub = static_cast<juce::int64>(std::floor(withinBar - beat * beatLength));
-        return padded(1 + tick / song.ticksPerBar, 3) + "." + padded(beat + 1, 2) + "." + padded(sub, 3);
+        return padded(bar, 3) + "." + padded(beat + 1, 2) + "." + padded(sub, 3);
     }
     void setPosition(const ostfstudio::OstfpPreview& song, juce::int64 tick, double seconds, int shift = 0, double rate = 1, double countInSeconds = 0.) {
         const auto meter = ostfstudio::activeMeter(song.meters, double(tick), {0, song.meterBeats, song.beatUnit});
