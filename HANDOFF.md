@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — Windows development UI and bilingual illustrated guides
+
+Documentation branch `codex/illustrated-guide-refresh` started at public main `eacc148`. The screen captures use the local Windows x64 Release build of `codex/timeline-snap-audition-controls` at `d433b0b`. The public download links still identify Public Alpha 1. Its 38 plug-ins predate the workstation VST3 and both SUPER KNOBBER devices shown in the development guide.
+
+The [Japanese manual](docs/manual/README.md) and [English manual](docs/manual/en.md) use Paper Lantern Replies for arrangement, Live Session and the part score with its matching piano editor. The chord and scale examples open the lower editor by clicking their respective global lanes. The scale example shows a Dorian preset ready to apply. The drum ruler and unassigned scale lane were captured from the GUI smoke tests. The [device guide](docs/plugins/en.md) pairs the 41 installer catalogue entries with their editor screenshots. The Scale Editor capture uses its embedded WebView and Neon Platforms. Wave Analyzer and SUPER KNOBBER REVERB were captured with stereo input.
+
+To verify a guide update, compare each catalogue name from the documented build with the four category pages in each language, follow the corresponding index anchors, and decode the PNGs in `docs/images`. Check every relative image and page link in the manuals, inventories and home pages. Windows verification on this revision covered all 48 CTest cases. The initial run passed 45. Both Scale Editor WebView tests and Stem Separator passed on retry with normal Windows file access and a dedicated WebView2 profile. The screenshots document Windows. macOS and external DAW operation were not retested for this documentation update.
+
 ## 2026-11-27 — illustrated manual and plug-in guide
 
 Branch `codex/illustrated-manual` contains documentation and screenshots. The Japanese and English READMEs link to `docs/manual/` and `docs/plugins/`. The guides distinguish Public Alpha 1 (38 VST3s) from the subsequent development build (39, including the hosted workstation). Update both languages when the installer catalogue changes.

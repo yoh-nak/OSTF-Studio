@@ -10,9 +10,13 @@ OSTF Studio is a desktop music workstation for arranging, playing and editing Op
 
 **Download Public Alpha 1** · [Windows x64 Setup](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Setup.exe) · [Windows Portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_macOS_arm64.dmg) · [Release notes and corresponding source](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1)
 
-![OSTF Studio Live Session showing the section queue, nine tracks and the vocal piano roll](docs/images/ostf-studio-live-session.png)
+**Public Alpha 1 includes 38 VST3s. The illustrated Windows development build includes 41.** The three additions are the OSTF Studio workstation VST3, SUPER KNOBBER LEAD and SUPER KNOBBER REVERB.
 
-*Development preview · Paper Lantern Replies.* The session grid shows which takes will play in each section. The chord guide shows the current and upcoming chords, and the piano roll follows the selected track.
+![Paper Lantern Replies in Live Session, with chord cues above the section and track grid and a MIDI editor below](docs/images/ostf-studio-live-session.png)
+
+*Paper Lantern Replies in the Windows development build.* Pick takes in the grid and follow the current and upcoming chords as the queued sections play.
+
+[Use Studio in another DAW](docs/manual/en.md#studio-vst3) · [Edit chords and scales](docs/manual/en.md#timeline-edit) · [Set a drum loop](docs/manual/en.md#drum-loop) · [Edit beside the score](docs/manual/en.md#score-piano) · [Export and bounce](docs/manual/en.md#audio-export)
 
 ## OSTF 5.2 studio preview
 
@@ -26,13 +30,13 @@ Formant Singer recognises the small ッ before a matching English final stop in 
 
 When a single lyric spans several pitches, Formant Singer sings the initial consonant once and releases the word on the last note. Its OSTF reader follows tempo changes inside a note when timing the consonants and vowels.
 
-Choose an audition instrument and play a test note from the Scale Editor header, including before loading a song. **Read score** under **OSTF Studio** becomes available when the hosting Studio instance supplies its song. **Save as…** writes the plug-in document to a file. **Suggest scales** previews assignments for that document. In **OSTF text**, the song name identifies the open document. You can display its JSON in the text box, validate pasted text, or load the text box back into the plug-in. The keyboard retains separate preview MIDI output and MIDI thru switches. If a project loses a VST3 after moving a Portable folder, select the same instrument at its new location to recover its saved sound.
+Scale Editor follows the project open in Studio. Choose **Harmony** or a pitched track, select a chord, and use **Set scale** to write the assignment back to that project. Choose the audition instrument in the header. [Assign and audition scales](docs/manual/en.md#scale-assignment)
 
-Formant Singer matches complete multisyllable English words against their written katakana, within one note or across syllable-aligned notes. In the Paper Lantern Replies chorus this lets the short ending of **little** keep the time and pitch of its own note. In Scale Editor, drag the header’s grip to the scale track in OSTF Studio with the same source score open. For a keyboard workflow, select **Copy scales**, then **Edit → Paste scales from Scale Editor** in Studio. Studio checks the source revision and provides Undo.
+Formant Singer matches complete multisyllable English words against their written katakana, within one note or across syllable-aligned notes. In the Paper Lantern Replies chorus this lets the short ending of **little** keep the time and pitch of its own note.
 
 In Formant Singer, the lyric **street** with the reading **ストリート** sustains the written vowel and fits the surrounding consonants within the same note. This applies to one-syllable dictionary words whose pronunciation matches the supplied katakana. With **ストリート** entered in katakana alone, the singer keeps every syllable and gives **リー** more time on short notes. In Scale Editor, **Load and audition** plays C4 and keeps the instrument list open. Use **Load** after comparing instruments to close the list.
 
-The arrangement keeps the **Scale** lane between Key and Meter even when the song has no assigned scale. Double-click an unassigned bar to choose a tonic and mode, or right-click and choose **Set scale for this bar** to override a song-wide scale. The assignment ends at the bar line or the next shared assignment. Undo restores the previous score.
+Click an interval in the **Scale** lane to edit its tonic and scale in the lower pane. Click the **Chord** lane to edit a chord’s root, quality and optional bass. Drag a shared edge to adjust the boundary. [Edit a chord or scale](docs/manual/en.md#timeline-edit)
 
 Scale Editor keeps the current instrument and its preset when you audition it again. If an instrument fails to load, the picker stays open with the search and manufacturer filter intact. In Formant Singer, a short recorded vowel or sustained nasal now advances through its recorded timbre at up to the original speed. Long notes still use the full sustain. Incoming MIDI Expression (CC11) changes use a 4 ms ramp while a voice is sounding.
 
@@ -56,17 +60,17 @@ In **OSTF Scale Editor**, turn on **MIDI thru** to send played notes to another 
 
 **OSTF Formant Singer** places the release of a scored English /p/, /t/ or /k/ immediately before its vowel when using the Mei voice. This closes an audible gap in short syllables such as /ta/.
 
-Scale Editor starts in the operating system's display language. The display language controls in the header offer **System**, **English** and **日本語**. System uses Japanese for Japanese locales and English for other locales. The choice is stored on this computer and also works when the VST3 runs in another DAW. Switching language keeps the selected chord and unfinished OSTF text. The native controls, instrument picker and main visual editing workflow support both languages. Some detailed theory explanations and diagnostics are still in English.
+Scale Editor starts in the operating system’s display language. Choose **System**, **English** or **日本語** in its header. System selects Japanese for Japanese locales and English for other locales. The preference is stored on this computer.
 
 Formant Singer now carries the pitch between short recorded vowels across brief MIDI gate gaps and trims the lead-in when a short sung consonant follows another note. The regression phrase uses four 72 ms notes with 8 ms gaps and a final rest.
 
-In **OSTF Scale Editor**, open a score with **Open OSTF** or drop it on the plug-in header. In the visual workspace, **Save** updates that file and **Save as…** chooses a destination. If another program edits or moves the file, the editor keeps the local edits available for Save As. A recalled DAW project asks for a destination on its first save. Enable **Preview MIDI out** to send an audition or **Test sound** on channel 1 to a downstream instrument in hosts that route VST3 MIDI output. The default audition plays the internal instrument.
+For another DAW, load the OSTF Studio instrument and open Scale Editor inside that workstation. Save the project in Studio or in the host DAW. [Workstation setup](docs/manual/en.md#studio-vst3)
 
 **OSTF Formant Singer** connects adjoining recorded vowels with a short pitch transition. Adjust **Vibrato / scoop depth** to hear how much of the movement comes from the score. At 100% the instrument plays the written depth. At 40% it plays a gentler inflection, and at 0% it omits the two gestures. The host can automate the control and recall it with the instrument.
 
 The eight gallery projects use Core 5.1.0 and include a shared-GM alternative. Open an OSTFP from File → Demo songs for its instrument patches, routing and insert settings. In the arrangement or live cell take menu, choose an authored comp to change the materialized performance. In Live Session, **Audition take** previews another comp independently. Queue the section to keep that combination, then choose **Adopt combination** to apply it to the arrangement. [Demo guide](examples/demo-songs/README.md)
 
-Scale Editor opens the original Max device’s scale workspace inside the VST3. Drag the window border or lower-right corner to resize the workspace. Saving the project stores that size with the instrument. Play notes into the track to see them outlined on the candidate scale keyboard. **MIDI IN** names the held notes across octaves and channels. **Open…** and **Save as…** use the system file chooser. Scale and A/B previews use the audition instrument selected in the header or the configured MIDI output. Drop **Drag scales** onto the scale track of the same source song to return the current assignments. In an OSTF 5.0 or 5.1 score, choose **Harmony** for a shared scale or a pitched track under **WRITE TO** for its own improvisation scale. Choose **Preferred** or **Strict**, then **SET SCALE**. Studio checks the source revision and imports shared and track-specific assignments together. Undo in Studio restores both. **Apply scales** also commits the assignments to the plug-in score. Windows uses the Edge WebView2 runtime and macOS uses the system WebKit view. When an embedded view is unavailable, the editor offers its browser and file workflow.
+Drag the Scale Editor window border to resize its workspace. The left pane shows each chord and its assigned scale. Choose a section in the header to hear how its scales change, or play the whole score.
 
 Choose **OSTF Instrument Rack** as the track sound, then **+ Instrument layer** for each VST3 that should play the incoming notes. Choose **OSTF Effect Rack** in an FX insert to process the incoming sound in parallel. In either rack, select a layer to set its level or add serial effects with **+ Insert effect**. **Open plug-in** edits the selected device. Saving the project stores the layers and nested plug-in settings.
 
@@ -76,9 +80,9 @@ The transport, prompt guide and current vocal lyrics use black inset displays. S
 
 **Paper Lantern Replies** displays its English lyrics in English and uses note-aligned katakana for the singer. Japanese verse text retains its original spelling.
 
-**OSTF Scale Editor** is a VST3 instrument. Open it on a Studio instrument track, or use **Open OSTF** in another host. Select a chord, analysis lens and flow strategy to compare ranked scales. **Hear candidate** and **A/B with reference** play the original device's contextual phrases through a reference tone or a VST3 instrument. Click **Instruments...**, search by instrument or manufacturer, and double-click a result. The picker reads the Studio VST3 library and discovers instruments in portable and system bundles. **Test sound** sends C4 on MIDI channel 1 and works before opening a score. Choose **Reference tone** in the picker to check the host audio path. **Assign scale**, **Save OSTF**, and **Drag OSTF to Studio** apply, export and return the assignment.
+In Scale Editor, choose the audition instrument in the header, search by name or manufacturer and play a test note. Use the reference tone to check the host audio path.
 
-Saving the project also saves work in progress in the embedded Scale Editor. Reopen it to resume on the selected chord and scale, with the pinned A reference, analysis settings and OSTF TEXT draft. Use **Apply scales** to commit the current assignments inside the plug-in. A text draft can be resumed even halfway through typing a JSON value.
+The project in Studio holds the global and track scale assignments. Reopening the song restores those assignments in the editor.
 
 Drag across the song scale map to select a chord range. **Include matching progressions** highlights its occurrences with the same chord sequence and timing. Assign applies the selected scale to the highlighted chords in a single edit. **Undo apply** restores the previous assignments.
 
@@ -132,7 +136,7 @@ In the upcoming release, mixer strips have metal-capped level faders and separat
 
 Choose AI Arrangement Studio, AI Lyric Studio or AI Vocal Studio from the **Mode** menu. The prompt guide beside the global timeline headings cycles through three example requests for the selected mode every 15 seconds. The previous and next buttons reset the reading time. The ChatGPT connection button sits at the right of the top toolbar, alongside the model selector and refresh button when signed in. Open **Settings → Mackie Control** to connect a control surface. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
 
-The **External connections** menu opens Splice, Melodyne and Ableton Link. Select an audio clip in the arrangement or the lower clip lane to open its source range in Melodyne. Opening Melodyne without a selection launches the standalone editor. Enable Link in both Live and Studio and enable Start Stop Sync in Live to share transport. The Link tempo menu shows the connected peer count. Audio capture holds its starting tempo for the duration of a take.
+In the development build, open Splice and Melodyne through the VST3 browser. To follow transport in another DAW, load the Studio VST3 and turn on **Follow DAW transport**. Match the starting downbeat, tempo and meter maps to align bar numbers.
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
 
@@ -164,9 +168,9 @@ Use **File → Import and transcription** to analyse audio, MIDI or a PDF score.
 
 ## Audio clip editing (development build)
 
-Select an audio track to open its waveform below the arrangement. Enable **Loop** and drag the clip’s amber right edge to repeat it. **Warp (re-pitch)** fits one cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker and drag it to move that point in time. Pitch follows the change in speed. Choose **External connections → Open Splice Sounds** to open the scanned Splice Sounds VST3 in its own window. Studio accepts a downloaded WAV on an audio track. [Splice plugin and plan details](https://support.splice.com/en/articles/12997860-splice-sounds-plugin-faq)
+Select an audio track to open its waveform below the arrangement. Enable **Loop** and drag the clip’s amber right edge to repeat it. **Warp (re-pitch)** fits one cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker and drag it to move that point in time. Pitch follows the change in speed in re-pitch mode.
 
-Press **Melodyne** in the waveform editor to open the selected source as a working WAV in Melodyne standalone. Use **Replace Audio** in Melodyne, then **Apply edited WAV** in Studio to keep the edited audio in your project. The Theory Guide groups cadences directly on the degree row. The function row stays available underneath.
+The lower audio editor supports warp markers and semitone edits for detected notes. [Audio editing and export](docs/manual/en.md)
 
 ## Wave Analyzer (development build)
 
