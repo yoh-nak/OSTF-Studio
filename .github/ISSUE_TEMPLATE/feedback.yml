@@ -1,0 +1,20 @@
+name: Feedback or feature request / ご意見・機能要望
+description: Share a workflow, an idea or a question in English or Japanese.
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Topic / 種類
+      options:
+        - Feedback / 使用感
+        - Feature request / 機能要望
+        - Question / 質問
+    validations:
+      required: true
+  - type: textarea
+    id: message
+    attributes:
+      label: What would you like to share? / ご意見をお聞かせください
+      description: Which part of Studio are you using, and what would help you make music?
+    validations:
+      required: true

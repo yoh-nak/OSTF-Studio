@@ -1,5 +1,9 @@
 # OSTF Studio
 
+**[Share feedback or request a feature](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml)** · [Report a bug](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml) · [Read existing feedback](https://github.com/yoh-nak/OSTF-Studio/issues)
+
+Posts are public. English and Japanese are welcome.
+
 OSTF Studio is a desktop music workstation for arranging, playing and editing Open Song Timeline Format scores.
 
 **[Illustrated user manual](docs/manual/en.md)** · **[Browse all plug-ins with screenshots](docs/plugins/en.md)** · [日本語マニュアル](docs/manual/README.md)
