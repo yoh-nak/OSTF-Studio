@@ -8,7 +8,7 @@
 
 ## 他のDAWでStudio本体を使う（開発版）
 
-WindowsのDAW用インストーラー `OSTF_Studio_VST3_Windows_x64_Setup.exe` は、**OSTF Studio (VST3)** とデモ曲「Paper Lantern Replies」の音源・エフェクトを初期選択します。インストール後、DAWでVST3を再スキャンし、インストゥルメントとして **OSTF Studio** を開きます。プラグイン内の **ファイル → デモソング → Paper Lantern Replies** を選び、DAWで再生してください。
+WindowsのDAW用インストーラー `OSTF_Studio_VST3_Windows_x64_Setup.exe` は、Studio本体と全プラグインにチェックが入った状態で開きます。Studio VST3とデモ曲用の音源・エフェクトだけを入れる場合は、「他のDAWで使う Studio VST3」を選んでください。インストール後、DAWでVST3を再スキャンし、インストゥルメントとして **OSTF Studio** を開きます。プラグイン内の **ファイル → デモソング → Paper Lantern Replies** を選び、DAWで再生してください。
 
 インストゥルメントトラックに **OSTF Studio** を挿し、プラグイン内で `.ostf` または `.ostfp` を開きます。アレンジ、ライブセッション、ピアノロール、ミキサーを操作でき、ステレオのミックスがDAWのトラックに返ります。**DAWの再生に追従** をオンにすると再生・停止とタイムラインの秒位置に追従します。テンポはOSTFのテンポマップを使います。単独で試聴したいときは追従をオフにします。
 

@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — all components selected on opening Setup
+
+Branch `codex/all-components-default`. Both Windows installer filenames now use the full preset on every ordinary launch, including upgrades. The DAW preset remains available by choice or via `/TYPE=daw`. Selecting a plug-in marked `requiresStudio` checks and locks the application until the last such plug-in is deselected. Independent VST3s and the standalone application can be deselected separately.
+
+The four installer catalogue tests passed. File-free native Inno Setup runs used the production choice declarations for both Windows variants, checked every row on launch, then exercised dependency locks, category clicks and explicit custom selections. The corrected VST3-named installer uses the same local path as the preview below. No installation on the user's machine was performed.
+
 ## 2026-11-27 — Windows installer for trying Studio in another DAW
 
 Branch `codex/studio-vst3-setup`. Pass `-ForDAW` to `packaging/windows/Package.ps1` with the usual Windows Release paths. The local output is `E:/OSTF-Studio-build-cache/studio-vst3-daw-installer/OSTF_Studio_VST3_Windows_x64_Setup.exe`. It starts with **OSTF Studio (VST3)** and the 15 bundled instruments and effects referenced by the embedded Paper Lantern Replies production session. The standalone application is optional. In an instrument track, open **OSTF Studio → File → Demo songs → Paper Lantern Replies** and start the host transport.

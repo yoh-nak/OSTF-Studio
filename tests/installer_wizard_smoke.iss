@@ -1,5 +1,7 @@
 ; Exercise the native component controls without installing any files or registry entries.
 #define StudioDependency Stage + "\studio-dependency.iss"
+#define GroupLabels Stage + "\groups.iss"
+#define PluginComponents Stage + "\components.iss"
 [Setup]
 AppName=Studio installer selection test
 AppVersion=1
@@ -9,22 +11,7 @@ CreateAppDir=no
 Uninstallable=no
 UsePreviousSetupType=no
 
-[Languages]
-Name: "en"; MessagesFile: "compiler:Default.isl"
-Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"
-
-[CustomMessages]
-#include Stage + "\groups.iss"
-
-[Types]
-Name: "full"; Description: "Full"
-Name: "apponly"; Description: "Application only"
-Name: "daw"; Description: "Workstation plug-in"
-Name: "custom"; Description: "Custom"; Flags: iscustom
-
-[Components]
-Name: "studio"; Description: "Studio"; Types: full apponly custom
-#include Stage + "\components.iss"
+#include Stage + "\product-choices.iss"
 
 [Code]
 #include ChoiceScript
@@ -46,9 +33,20 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  I: Integer;
 begin
   Result := '';
   UpdateStudioChoice;
+  if ExpandConstant('{param:DEFAULTS|0}') = '1' then begin
+    if WizardSetupType(False) <> 'full' then Errors := 'Expected full preset';
+    for I := 0 to WizardForm.ComponentsList.Items.Count - 1 do
+      if not WizardForm.ComponentsList.Checked[I] then
+        Errors := Errors + ' Unchecked: ' + WizardForm.ComponentsList.Items[I];
+    if Errors = '' then Errors := 'ok';
+    SaveStringToFile(ExpandConstant('{param:RESULT}'), AnsiString(Errors), False);
+    exit;
+  end;
   Expect('command line with dependent plug-in', True, False);
   Click('*utilities,!effects\Tx01');
   Expect('another dependent remains', True, False);
@@ -58,13 +56,13 @@ begin
   Expect('manual opt out', False, True);
   Click('*effects');
   Expect('select dependent category', True, False);
-  WizardForm.TypesCombo.ItemIndex := 1;
+  WizardForm.TypesCombo.ItemIndex := 2;
   WizardForm.TypesCombo.OnChange(WizardForm.TypesCombo);
   Expect('application-only preset', True, True);
   WizardForm.TypesCombo.ItemIndex := 0;
   WizardForm.TypesCombo.OnChange(WizardForm.TypesCombo);
   Expect('full preset', True, False);
-  WizardForm.TypesCombo.ItemIndex := 2;
+  WizardForm.TypesCombo.ItemIndex := 1;
   WizardForm.TypesCombo.OnChange(WizardForm.TypesCombo);
   Expect('DAW preset omits standalone application', False, True);
   if not WizardIsComponentSelected('effects\Fx01') or NeedsStudio then

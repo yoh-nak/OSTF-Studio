@@ -107,18 +107,25 @@ def wizard_fixture():
 
 def windows_wizard(iscc):
     tests = Path(__file__).resolve().parent
+    windows = tests.parent / "packaging/windows"
+    setup = (windows / "OSTFStudio.iss").read_text(encoding="utf-8-sig")
     with tempfile.TemporaryDirectory() as folder:
         stage = Path(folder)
-        windows_files(stage, wizard_fixture(), {"Fx01"})
-        subprocess.run([iscc, "/Q", f"/O{stage}", f"/DStage={stage}",
-                        f"/DChoiceScript={tests.parent / 'packaging/windows/StudioChoice.iss'}",
-                        str(tests / "installer_wizard_smoke.iss")], check=True)
+        declarations = setup[setup.index("[Languages]"):setup.index("[Tasks]")]
+        (stage / "product-choices.iss").write_text(declarations, encoding="utf-8-sig")
+        plugins = catalog()
+        windows_files(stage, plugins + wizard_fixture(), daw_demo_plugins(plugins) | {"Fx01"})
         result = stage / "result.txt"
-        subprocess.run([str(stage / "wizard-test.exe"), "/VERYSILENT", "/SP-", "/SUPPRESSMSGBOXES",
-                        "/TYPE=custom", r"/COMPONENTS=effects\Tx01", f"/RESULT={result}"],
-                       check=True, timeout=60)
-        if result.read_text() != "ok":
-            raise RuntimeError(result.read_text())
+        for defines in ([], ["/DDawFilename"]):
+            subprocess.run([iscc, "/Q", f"/O{stage}", f"/DStage={stage}", *defines,
+                            f"/DChoiceScript={windows / 'StudioChoice.iss'}",
+                            str(tests / "installer_wizard_smoke.iss")], check=True)
+            for selection in (["/DEFAULTS=1"], ["/TYPE=custom", r"/COMPONENTS=effects\Tx01"]):
+                result.unlink(missing_ok=True)
+                subprocess.run([str(stage / "wizard-test.exe"), "/VERYSILENT", "/SP-", "/SUPPRESSMSGBOXES",
+                                *selection, f"/RESULT={result}"], check=True, timeout=60)
+                if result.read_text() != "ok":
+                    raise RuntimeError(result.read_text())
 
 
 if __name__ == "__main__":

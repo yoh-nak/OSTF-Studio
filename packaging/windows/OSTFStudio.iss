@@ -6,6 +6,7 @@ VersionInfoVersion={#BinaryVersion}
 AppPublisher=OSTF
 DefaultDirName={localappdata}\Programs\OSTF Studio
 UsePreviousAppDir=yes
+UsePreviousSetupType=no
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -16,9 +17,8 @@ CloseApplications=yes
 RestartApplications=no
 ChangesAssociations=yes
 OutputDir={#OutputDir}
-#ifdef DawDefault
+#ifdef DawFilename
 OutputBaseFilename=OSTF_Studio_VST3_Windows_x64_Setup
-UsePreviousSetupType=no
 #else
 OutputBaseFilename=OSTF_Studio_Windows_x64_Setup
 #endif
@@ -55,13 +55,8 @@ en.ContinueAppOnly=Continue installing the Studio application now? To add plug-i
 ja.ContinueAppOnly=今回は Studio 本体のインストールを続けますか？ プラグインは、あとでこのインストーラーを再実行し、一覧から選んで追加できます。
 
 [Types]
-#ifdef DawDefault
-Name: "daw"; Description: "{cm:DawDemo}"
-#endif
 Name: "full"; Description: "{cm:AllPlugins}"
-#ifndef DawDefault
 Name: "daw"; Description: "{cm:DawDemo}"
-#endif
 Name: "apponly"; Description: "{cm:AppOnly}"
 Name: "custom"; Description: "{cm:ChoosePlugins}"; Flags: iscustom
 

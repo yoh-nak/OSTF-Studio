@@ -16,7 +16,7 @@ The transport retains the last key at the end of the score. Click its coloured C
 
 ### Run Studio inside another DAW (development build)
 
-The Windows DAW installer, `OSTF_Studio_VST3_Windows_x64_Setup.exe`, preselects **OSTF Studio (VST3)** and the instruments and effects used by **Paper Lantern Replies**. After installation, rescan VST3s in your DAW, load **OSTF Studio** as an instrument, then choose **File → Demo songs → Paper Lantern Replies** in the plug-in and press Play in the DAW.
+The Windows DAW installer, `OSTF_Studio_VST3_Windows_x64_Setup.exe`, initially selects the standalone Studio application and every bundled VST3. To install only the workstation plug-in and the devices used by **Paper Lantern Replies**, choose **Studio VST3 for another DAW**. After installation, rescan VST3s in your DAW, load **OSTF Studio** as an instrument, then choose **File → Demo songs → Paper Lantern Replies** in the plug-in and press Play in the DAW.
 
 Load **OSTF Studio** on a stereo instrument track and open an `.ostf` or `.ostfp` in its editor. The arrangement, live session, piano roll and mixer use the same project as the standalone application. **Follow DAW transport** starts and stops the song with the host and follows its timeline position in seconds. The OSTF tempo map controls the song's tempo. Turn follow off to audition Studio independently.
 
