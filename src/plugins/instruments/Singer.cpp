@@ -1,3 +1,4 @@
+#include "../PluginCcMap.h"
 #include "../StudioPluginEditor.h"
 #include "SingingScore.h"
 #include "VoiceBank.h"
@@ -496,6 +497,7 @@ class Editor final : public ostfstudio::StudioPluginEditor, private juce::Change
 
   private:
     Singer& singer;
+    ostfstudio::PluginCcButton ccButton;
     juce::TextButton open{"Load OSTF..."};
     juce::TextButton importVoice{"Load voice folder..."};
     juce::ComboBox voicePicker;
@@ -510,7 +512,8 @@ class Editor final : public ostfstudio::StudioPluginEditor, private juce::Change
     void changeListenerCallback(juce::ChangeBroadcaster*) override { refresh(); }
 };
 class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster {
-  public:
+public:
+    ostfstudio::PluginCcMap ccMap{*this};
     const bool studioHost = juce::File::getSpecialLocation(juce::File::hostApplicationPath)
         .getFileNameWithoutExtension().equalsIgnoreCase("OSTF Studio");
     Singer() : AudioProcessor(BusesProperties().withOutput("Voice", juce::AudioChannelSet::stereo(), true)) {
@@ -617,10 +620,12 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
             if (requestedVoice != juce::File{}) xml.setAttribute("voiceFolder", requestedVoice.getFullPathName());
             xml.addTextElement(text);
         }
+        ccMap.save(xml);
         copyXmlToBinary(xml, b);
     }
     void setStateInformation(const void* b, int n) override {
         if (auto xml = getXmlFromBinary(b, n); xml && xml->hasTagName("OSTFSinger")) {
+            ccMap.restore(*xml);
             *pitchDepth=juce::jlimit(0.f,100.f,float(xml->getDoubleAttribute("pitchExpressionDepth",100.)));
             const auto path = xml->getStringAttribute("voiceFolder");
             juce::String error;
@@ -639,6 +644,7 @@ class Singer final : public juce::AudioProcessor, public juce::ChangeBroadcaster
         }
     }
     void processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer& midi) override {
+        ccMap.process(midi);
         juce::ScopedNoDenormals quiet;
         b.clear();
         const juce::SpinLock::ScopedTryLockType guard(lock);
@@ -830,7 +836,8 @@ juce::Image loadPortrait(const juce::File& file) {
     }
     return img;
 }
-Editor::Editor(Singer& s) : StudioPluginEditor(s), singer(s) {
+Editor::Editor(Singer& s) : StudioPluginEditor(s), singer(s), ccButton(s.ccMap) {
+    addAndMakeVisible(ccButton);
     depthLabel.setText("Vibrato / scoop depth",juce::dontSendNotification);
     depthSlider.setTitle("Vibrato / scoop depth");
     depthSlider.setTextValueSuffix(" %");
@@ -911,7 +918,8 @@ void Editor::refresh() {
 void Editor::resized() {
     auto r = getLocalBounds().reduced(12);
     if (portrait.isVisible()) { portrait.setBounds(r.removeFromLeft(94)); r.removeFromLeft(8); }
-    status.setBounds(r.removeFromTop(32));
+    auto heading=r.removeFromTop(32); ccButton.setBounds(heading.removeFromRight(76).reduced(1));
+    status.setBounds(heading);
     r.removeFromTop(8);
     auto row = r.removeFromTop(singer.studioHost ? 0 : 32);
     open.setBounds(row.removeFromLeft(115));

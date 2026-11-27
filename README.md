@@ -14,6 +14,8 @@ In the development build, choose **File → Export mix as audio** to write the s
 
 [SUPER KNOBBER REVERB controls and analyzer](docs/plugins/space-and-tone.en.md#super-knobber-reverb)
 
+In the Windows development build, drag the edge between global clips to change their timing. Sections and meter snap to bars, keys to beats, and chords and scales to half beats. Use the drum ruler to draw a loop or drag either end. The Scale Editor names the scale sounding during section and song auditions.
+
 **Download Public Alpha 1** · [Windows x64 Setup](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Setup.exe) · [Windows Portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_macOS_arm64.dmg) · [Release notes and corresponding source](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1)
 
 ![OSTF Studio Live Session showing the section queue, nine tracks and the vocal piano roll](docs/images/ostf-studio-live-session.png)

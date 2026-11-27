@@ -21,6 +21,20 @@ public:
         progression.setTitle(TRANS("Chord progression"));
         progression.setRowHeight(26);
         progression.setColour(juce::ListBox::backgroundColourId,juce::Colour(0xff17232e));
+        addChildComponent(chordRoot); addChildComponent(chordQuality); addChildComponent(chordBass);
+        chordRoot.setTitle(TRANS("Root")); chordQuality.setTitle(TRANS("Chord")); chordBass.setTitle(TRANS("Bass"));
+        chordBass.addItem(TRANS("Root position"),1);
+        for (auto note : {"C","C#","Db","D","D#","Eb","E","F","F#","Gb","G","G#","Ab","A","A#","Bb","B","Cb","B#","E#","Fb"}) {
+            chordRoot.addItem(note,chordRoot.getNumItems()+1);
+            chordBass.addItem(note,chordBass.getNumItems()+1);
+        }
+        for (auto quality : {"major","m","5","dim","aug","sus2","sus4","6","m6","7","maj7","m7","m7b5","dim7","9","maj9","m9","add9","11","13","7(b9)"})
+            chordQuality.addItem(quality,chordQuality.getNumItems()+1);
+        chordRoot.onChange=chordQuality.onChange=chordBass.onChange=[this]{
+            if (chordRoot.getSelectedId() && chordQuality.getSelectedId())
+                value.setText(chordRoot.getText()+(chordQuality.getSelectedId()==1?juce::String{}:chordQuality.getText())
+                              +(chordBass.getSelectedId()>1?"/"+chordBass.getText():juce::String{}),false);
+        };
         addAndMakeVisible(chordOnly);
         chordOnly.setButtonText(TRANS("This chord only"));
         sections.setTitle(TRANS("Section")); chords.setTitle(TRANS("Chord"));
@@ -68,16 +82,35 @@ public:
         };
         fill(sections,sectionTicks,score["timeline"]["sections"],section,false);
         fill(chords,chordTicks,score["harmony"]["chords"],chord,true);
-        rowScales.clear();
-        for (const auto start : chordTicks) {
-            const auto assigned=globalEventAt(score,Lane::scale,start);
-            const auto scale=assigned.isObject()?assigned:score["song"]["scale"];
-            rowScales.add(scale.isObject()?scale["label"].toString():TRANS("No scale assigned"));
+        rowTicks=chordTicks;
+        rowNames.clear();
+        for (int i=0;i<chords.getNumItems();++i) rowNames.add(chords.getItemText(i));
+        int currentRow=chords.getSelectedItemIndex();
+        if (lane==Lane::scale) {
+            rowNames.clear(); rowTicks.clear(); currentRow=-1;
+            const auto whole=section.isObject()?span(section):juce::Range<Tick>{0,songEnd};
+            std::vector<Tick> edges{whole.getStart(),whole.getEnd()};
+            const auto scales=score["harmony"]["scales"];
+            if (const auto* list=scales.getArray()) for (const auto& s:*list) {
+                if(s.hasProperty("targets")) continue;
+                const auto region=whole.getIntersectionWith(span(s));
+                if (!region.isEmpty()) { edges.push_back(region.getStart()); edges.push_back(region.getEnd()); }
+            }
+            std::sort(edges.begin(),edges.end());
+            for (size_t i=1;i<edges.size();++i) {
+                const auto at=edges[i-1];
+                if (edges[i]==at) continue;
+                const auto s=globalEventAt(score,Lane::scale,at);
+                const auto scale=s.isObject()?s:score["song"]["scale"];
+                if(at<=tick && tick<edges[i]) currentRow=int(rowTicks.size());
+                rowTicks.push_back(at);
+                rowNames.add(location(at)+(scale.isObject()?scale.getProperty("label",scale["id"]).toString():TRANS("No scale assigned")));
+            }
         }
         {
             juce::ScopedValueSetter<bool> updating(binding,true);
             progression.updateContent();
-            progression.selectRow(chords.getSelectedItemIndex());
+            progression.selectRow(currentRow);
         }
         original=globalEventAt(score,lane,tick);
         draft=original.clone();
@@ -129,6 +162,16 @@ public:
         preset.setSelectedId(0,juce::dontSendNotification);
         value.setText(key?draft["key"]["mode"].toString():lane==Lane::meter?
             draft["numerator"].toString()+"/"+draft["denominator"].toString():draft[lane==Lane::section?"name":"label"].toString(),false);
+        for (auto* box : {&chordRoot,&chordQuality,&chordBass}) box->setVisible(lane==Lane::chord);
+        if (lane==Lane::chord) {
+            const auto rootName=pitchText(draft["root"]);
+            auto label=value.getText().upToFirstOccurrenceOf("/",false,false);
+            const auto quality=label.substring(rootName.length());
+            chordRoot.setText(rootName,juce::dontSendNotification);
+            chordQuality.setText(quality.isEmpty() || quality=="maj" ? "major" : quality=="min" ? "m" : quality,juce::dontSendNotification);
+            if (draft["bass"].isObject()) chordBass.setText(pitchText(draft["bass"]),juce::dontSendNotification);
+            else chordBass.setSelectedId(1,juce::dontSendNotification);
+        }
         steps.setText(intervalsText(draft),false); message.setText({},juce::dontSendNotification);
         apply.setEnabled(writable && tick>=0 && tick<songEnd && (original.isObject() || key || (!range.isEmpty() && globalSource(lane).span)));
         resized();
@@ -139,6 +182,8 @@ public:
         sections.setBounds(nav.removeFromLeft(std::min(260,nav.getWidth()/2)).reduced(2)); chords.setBounds(nav.removeFromLeft(std::min(260,nav.getWidth())).reduced(2));
         auto row=area.removeFromTop(34); apply.setBounds(row.removeFromRight(std::min(100,row.getWidth()/6)).reduced(2));
         if(chordOnly.isVisible()) chordOnly.setBounds(row.removeFromRight(std::min(146,row.getWidth()/4)).reduced(2));
+        if(chordRoot.isVisible()) for (auto* box : {&chordRoot,&chordQuality,&chordBass})
+            box->setBounds(row.removeFromLeft(std::min(112,row.getWidth()/3)).reduced(2));
         if(root.isVisible()) root.setBounds(row.removeFromLeft(std::min(72,row.getWidth()/5)).reduced(2));
         if(preset.isVisible()) preset.setBounds(row.removeFromLeft(std::min(140,row.getWidth()/4)).reduced(2));
         value.setBounds(row.removeFromLeft(std::min(270,steps.isVisible()?row.getWidth()/2:row.getWidth())).reduced(2));
@@ -147,19 +192,17 @@ public:
         progression.setBounds(area.reduced(2));
     }
 private:
-    int getNumRows() override { return chords.getNumItems(); }
+    int getNumRows() override { return rowNames.size(); }
     void paintListBoxItem(int index,juce::Graphics& g,int w,int h,bool selected) override {
         if(!juce::isPositiveAndBelow(index,getNumRows())) return;
         g.fillAll(selected?juce::Colour(0xff365867):juce::Colour(index%2?0xff202d37:0xff1a2833));
         g.setColour(juce::Colours::white);
-        g.drawText(chords.getItemText(index),10,0,w/3-12,h,juce::Justification::centredLeft,true);
-        g.setColour(juce::Colour(0xffa1dbcf));
-        g.drawText(rowScales[index],w/3,0,2*w/3-8,h,juce::Justification::centredLeft,true);
+        g.drawText(rowNames[index],10,0,w-20,h,juce::Justification::centredLeft,true);
     }
     void selectedRowsChanged(int row) override {
-        if(binding || !juce::isPositiveAndBelow(row,int(chordTicks.size()))) return;
-        chordOnly.setToggleState(true,juce::dontSendNotification);
-        if(navigate) navigate(chordTicks[size_t(row)]);
+        if(binding || !juce::isPositiveAndBelow(row,int(rowTicks.size()))) return;
+        chordOnly.setToggleState(false,juce::dontSendNotification);
+        if(navigate) navigate(rowTicks[size_t(row)]);
     }
     void choose(juce::ComboBox& box,const std::vector<Tick>& ticks) {
         const int i=box.getSelectedItemIndex();
@@ -192,7 +235,9 @@ private:
                 for(const auto& part:juce::StringArray::fromTokens(steps.getText()," ,","")) {
                     if(part.isEmpty())continue;
                     if(!part.containsOnly("0123456789")){invalid();return;}
-                    intervals.add(part.getIntValue());
+                    const int pitch=part.getIntValue();
+                    if(pitch<0 || pitch>11 || (intervals.isEmpty()?pitch!=0:pitch<=int(intervals.getLast()))){invalid();return;}
+                    intervals.add(pitch);
                 }
                 if(intervals.isEmpty()){invalid();return;}
                 obj->setProperty("tonic",tonic);obj->setProperty("label",text);obj->setProperty("intervals",intervals);
@@ -220,7 +265,9 @@ private:
     juce::var original,draft;
     std::vector<Tick> sectionTicks,chordTicks;
     juce::Range<Tick> chordRange;
-    juce::StringArray rowScales;
+    std::vector<Tick> rowTicks;
+    juce::StringArray rowNames;
+    juce::ComboBox chordRoot,chordQuality,chordBass;
     juce::String presetLabel;
     bool binding=false;
     juce::Label title,message;

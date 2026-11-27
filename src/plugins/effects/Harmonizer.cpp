@@ -5,6 +5,7 @@
 namespace {
 class Harmonizer final : public juce::AudioProcessor {
 public:
+    ostfstudio::PluginCcMap ccMap{*this};
     Harmonizer() : AudioProcessor(BusesProperties()
             .withInput("Input", juce::AudioChannelSet::stereo(), true)
             .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {
@@ -21,11 +22,11 @@ public:
     }
 
     const juce::String getName() const override { return JucePlugin_Name; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     bool hasEditor() const override { return true; }
-    juce::AudioProcessorEditor* createEditor() override { return new ostfstudio::EffectControlPanel(*this, controls, false); }
+    juce::AudioProcessorEditor* createEditor() override { return new ostfstudio::EffectControlPanel(*this, controls, false,ccMap); }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
@@ -60,16 +61,19 @@ public:
         wetGain.setCurrentAndTargetValue(mix->get() * 0.01f);
         voiceBlend.setCurrentAndTargetValue(balance->get() * 0.01f);
     }
-    void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer&) override { render(audio, false); }
+    void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer& midi) override {
+        ccMap.process(midi); midi.clear(); render(audio, false); }
     void processBlockBypassed(juce::AudioBuffer<float>& audio, juce::MidiBuffer&) override { render(audio, true); }
     void getStateInformation(juce::MemoryBlock& dest) override {
         juce::XmlElement state("Harmonizer");
         for (const auto* p : controls) state.setAttribute(p->paramID, p->get());
+        ccMap.save(state);
         copyXmlToBinary(state, dest);
     }
     void setStateInformation(const void* data, int size) override {
         auto state = getXmlFromBinary(data, size);
         if (!state || !state->hasTagName("Harmonizer")) return;
+        ccMap.restore(*state);
         for (auto* p : controls) {
             const float value = static_cast<float>(state->getDoubleAttribute(p->paramID, p->get()));
             if (std::isfinite(value)) p->setValueNotifyingHost(p->convertTo0to1(value));

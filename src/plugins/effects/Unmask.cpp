@@ -5,6 +5,7 @@
 namespace {
 class Unmask final : public juce::AudioProcessor {
 public:
+    ostfstudio::PluginCcMap ccMap{*this};
     Unmask() : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
                              .withInput("Sidechain", juce::AudioChannelSet::stereo(), true)
                              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {
@@ -19,11 +20,11 @@ public:
         release = add("release","Release (ms)",15,1500,150);
     }
     const juce::String getName() const override { return JucePlugin_Name; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     bool hasEditor() const override { return true; }
-    juce::AudioProcessorEditor* createEditor() override { return new ostfstudio::EffectControlPanel(*this, controls, false); }
+    juce::AudioProcessorEditor* createEditor() override { return new ostfstudio::EffectControlPanel(*this, controls, false,ccMap); }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
@@ -46,7 +47,8 @@ public:
     }
     void reset() override { filters={}; envelope={}; }
     void releaseResources() override {}
-    void processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer&) override {
+    void processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer& midi) override {
+        ccMap.process(midi); midi.clear();
         juce::ScopedNoDenormals noDenormals;
         const auto main=getMainBusNumOutputChannels(), keys=getChannelCountOfBus(true,1);
         if (!keys || buffer.getNumChannels()<main+keys) {reset(); return;}
@@ -77,11 +79,13 @@ public:
     void getStateInformation(juce::MemoryBlock& dest) override {
         juce::XmlElement state("Unmask");
         for (const auto* p : controls) state.setAttribute(p->paramID, p->get());
+        ccMap.save(state);
         copyXmlToBinary(state, dest);
     }
     void setStateInformation(const void* data, int size) override {
         auto state = getXmlFromBinary(data, size);
         if (!state || !state->hasTagName("Unmask")) return;
+        ccMap.restore(*state);
         for (auto* p : controls) {
             const float value = static_cast<float>(state->getDoubleAttribute(p->paramID, p->get()));
             if (std::isfinite(value)) p->setValueNotifyingHost(p->convertTo0to1(value));

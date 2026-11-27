@@ -1,13 +1,15 @@
 #pragma once
 #include "../StudioPluginEditor.h"
+#include "../PluginCcMap.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <vector>
 
 namespace ostfstudio {
 class EffectControlPanel final : public ostfstudio::StudioPluginEditor {
   public:
-    EffectControlPanel(juce::AudioProcessor& processor, const std::vector<juce::AudioParameterFloat*>& params, bool graphic)
-        : StudioPluginEditor(processor) {
+    EffectControlPanel(juce::AudioProcessor& processor, const std::vector<juce::AudioParameterFloat*>& params, bool graphic,PluginCcMap& map)
+        : StudioPluginEditor(processor),ccButton(map) {
+        addAndMakeVisible(ccButton);
         for (auto* p : params) {
             auto* slider = sliders.add(new juce::Slider);
             slider->setName(p->getName(64));
@@ -24,6 +26,7 @@ class EffectControlPanel final : public ostfstudio::StudioPluginEditor {
         setSize(30 + columns * 110, 58 + ((sliders.size() + columns - 1) / columns) * (graphic ? 185 : 112));
     }
     void resized() override {
+        ccButton.setBounds(getWidth()-94,8,82,28);
         auto area = getLocalBounds().reduced(12, 8).withTrimmedTop(40);
         const int rows = (sliders.size() + columns - 1) / columns;
         for (int i = 0; i < sliders.size(); ++i) {
@@ -46,6 +49,7 @@ class EffectControlPanel final : public ostfstudio::StudioPluginEditor {
     juce::OwnedArray<juce::Slider> sliders;
     juce::OwnedArray<juce::Label> labels;
     std::vector<std::unique_ptr<juce::SliderParameterAttachment>> attachments;
+    PluginCcButton ccButton;
     int columns = 1;
 };
 } // namespace ostfstudio

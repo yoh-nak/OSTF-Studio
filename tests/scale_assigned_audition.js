@@ -33,6 +33,9 @@ const selection=scope.range(doc,'section',null,null,section.id);
 const song=scope.range(doc,'song');
 const compact = p => Array.from(p.notes, n => [n.at,n.note]);
 const excerpt = assignedPreview(doc,'harmony',selection);
+assert.deepEqual(Array.from(excerpt.cues, c=>[c.at,c.end]),[[0,500],[1000,2750]]);
+assert.ok(excerpt.cues[0].label.includes('D'));
+assert.ok(candidatePlan.cues[0].label.includes('D'));
 assert.deepEqual(compact(excerpt),[[0,62],[250,64],[1000,65],[1250,67],[1750,68],[2250,70]]);
 assert.equal(excerpt.duration,2750);
 assert.deepEqual(compact(assignedPreview(doc,'bass',song)),

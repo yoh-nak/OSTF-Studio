@@ -41,6 +41,42 @@ void MainComponent::rememberAudioEdit(std::vector<ProjectAudio> before, juce::Me
     noteHistoryCursor_ = noteHistory_.size();
 }
 
+void MainComponent::insertTimelineBars(Tick tick,int count) {
+    if (!project_ || recordTrack_ || livePerformanceActive_ || chordReviewBlocksSwitch()) return;
+    const auto at=tick-tick%project_->ticksPerBar, delta=count*project_->ticksPerBar;
+    auto nextAudio=project_->audio;
+    const auto fail=[this](const juce::String& reason){statusLabel_.setText(juce::translate(reason),juce::dontSendNotification);};
+    for (size_t i=0;i<project_->audio.size();++i) {
+        const auto& region=project_->audio[i];
+        if(region.startTick>=at) { nextAudio[i].startTick+=delta; continue; }
+        const auto end=std::llround(waveforms_.endTick(region,project_->clock));
+        if(end<=at) continue;
+        if (project_->importedProduction) { fail("Cannot split an audio region owned by an imported Production companion.");return; }
+        const auto seconds=waveforms_.nativeSeconds(region);
+        if(seconds<=0 || nextAudio.size()>=project_->maxAudioRegions) {fail(seconds<=0?"Missing WAV":"Too many audio regions.");return;}
+        auto right=ostfstudio::rightSlice(region,at,end,project_->clock,seconds);
+        right.startTick+=delta;
+        nextAudio[i].durationTicks=at-region.startTick;
+        nextAudio.push_back(std::move(right));
+    }
+    auto beforePan=project_->panAutomation;
+    if (project_->importedProduction && !beforePan.empty()) {fail("Imported Production automation cannot be rewritten.");return;}
+    const bool playing=transportActive_;
+    if(playing) stopTransport();
+    juce::MemoryBlock before;
+    const auto result=project_->insertBars(at,count,before);
+    if(result.failed()) {fail(result.getErrorMessage());if(playing) startTransport(false);return;}
+    project_->audio.swap(nextAudio);
+    for(auto& [_,env]:project_->panAutomation) for(auto& point:env.points) if(point.tick>=at) point.tick+=delta;
+    rememberAudioEdit(std::move(nextAudio),std::move(before),"Insert bars");
+    noteHistory_.back().beforePan=std::move(beforePan);
+    noteHistory_.back().afterPan=project_->panAutomation;
+    waveforms_.load(project_->audio);
+    live_.bind(*project_,true);
+    theory_.reset(); refreshTheory(); refreshScaleEditors();
+    markSessionEdited(); finishNoteEdit(playing);
+}
+
 void MainComponent::clipCommand(ClipOp op, std::optional<ClipHit> hit, size_t destination, Tick tick) {
     if (!project_ || recordTrack_ || destination >= project_->sourceTrackCount() || (op != ClipOp::copy && chordReviewBlocksSwitch())) return;
     auto fail = [this](const juce::String& error) { statusLabel_.setText(juce::translate(error), juce::dontSendNotification); };
@@ -50,6 +86,50 @@ void MainComponent::clipCommand(ClipOp op, std::optional<ClipHit> hit, size_t de
         hit = current;
     }
     if (!hit && op != ClipOp::paste) return;
+    if (op == ClipOp::move && hit && destination == hit->track) {
+        const auto selected = bounceClipSelection(*hit);
+        if (selected.size() > 1) {
+            const auto first = std::min_element(selected.begin(), selected.end(), [](const auto& a, const auto& b) { return a.start < b.start; });
+            const auto delta = tick - first->start;
+            if (delta == 0) return;
+            std::set<std::pair<size_t, juce::String>> midiIds;
+            std::set<juce::String> audioIds;
+            Tick latestEnd = 0;
+            for (const auto& clip : selected) {
+                latestEnd = std::max(latestEnd, clip.end + delta);
+                if (clip.audio) audioIds.insert(clip.id);
+                else midiIds.emplace(clip.track, clip.id);
+            }
+            if (tick < 0) { fail("Invalid clip range."); return; }
+            auto movedAudio = project_->audio;
+            for (auto& region : movedAudio) if (audioIds.contains(region.regionId)) {
+                const auto end = std::llround(waveforms_.endTick(region, project_->clock));
+                const juce::Range<Tick> dest{region.startTick + delta, end + delta};
+                for (const auto& other : clipsOn(region.track))
+                    if (!audioIds.contains(other.id) && dest.intersects({other.start, other.end})) {
+                        fail("The destination contains another clip.");
+                        return;
+                    }
+                region.durationTicks = end - region.startTick;
+                region.startTick = dest.getStart();
+            }
+            const bool playing = transportActive_;
+            if (playing) stopTransport();
+            juce::MemoryBlock before;
+            const auto result = project_->moveArrangementClips(midiIds, delta, latestEnd, before);
+            if (result.failed()) { fail(result.getErrorMessage()); if (playing) startTransport(false); return; }
+            project_->audio.swap(movedAudio);
+            rememberAudioEdit(std::move(movedAudio), std::move(before), "Move selected clips");
+            waveforms_.load(project_->audio);
+            theory_.reset();
+            refreshTheory();
+            markSessionEdited();
+            selectEditorClip(1. + double(hit->start + delta) / project_->ticksPerBar, false);
+            finishNoteEdit(playing);
+            repaint();
+            return;
+        }
+    }
     auto& audio = project_->audio;
     auto lookup = [&](const juce::String& id) {
         return std::find_if(audio.begin(), audio.end(), [&](const auto& region) { return region.regionId == id; });

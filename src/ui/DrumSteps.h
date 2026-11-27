@@ -18,6 +18,7 @@ public:
     double grid = 1;
     std::function<void(std::vector<Edit>)> commit;
     std::function<void()> loopChanged;
+    std::function<juce::Range<double>()> visibleBars;
     std::function<void(int)> rowChanged;
     void flash(int pitch) { flashes[pitch] = juce::Time::getMillisecondCounter() + 150; repaint(); }
     void selectRow(int row) {
@@ -39,11 +40,17 @@ public:
         fill.setButtonText(TRANS("Fill every 2"));
         loop.setButtonText(TRANS("Loop"));
         addAndMakeVisible(loop);
-        loop.onClick = [this] { notifyRange(); };
+        loop.onClick = [this] {
+            if (song && visibleBars && !customLoop && loop.getToggleState()) {
+                const auto active=loopRange();
+                setLoopBars(1+int(active.getStart()/song->ticksPerBar),int(active.getLength()/song->ticksPerBar));
+            } else notifyRange();
+        };
         addAndMakeVisible(loopSettings);
         loopSettings.setTitle(TRANS("Loop range"));
         loopSettings.setTooltip(TRANS("Set the first bar and number of bars to loop"));
         loopSettings.onClick = [this] { showLoopSettings(); };
+        addChildComponent(loopCaption);
         for (int n : {1, 2, 4})
             bars.addItem(juce::String(n) + " " + TRANS("bars"), n);
         bars.setSelectedId(1);
@@ -72,13 +79,17 @@ public:
             }
         };
         fill.onClick = [this] { fillRow(); };
-        setTooltip(TRANS("Click a pad row to select it. Click a step to toggle its hits. Shift-click for an accent. Scroll "
+        loopSettings.setTooltip(TRANS("Drag across bar numbers to loop. Drag either end to resize."));
+        setTooltip(TRANS("Drag across bar numbers to loop. Drag either end to resize.")+"  "+TRANS("Click a pad row to select it. Click a step to toggle its hits. Shift-click for an accent. Scroll "
                          "for more slots."));
     }
     bool looping() const { return isVisible() && loop.getToggleState(); }
     juce::Range<Tick> loopRange() const {
         if (!song || song->ticksPerBar <= 0) return {};
-        if (!customLoop) return range();
+        if (!customLoop) {
+            const auto view=range();
+            return {barStart(view.getStart()),std::min(song->playbackEndTick(),barStart(std::max<Tick>(0,view.getEnd()-1))+song->ticksPerBar)};
+        }
         const Tick firstTick = Tick(loopFirst - 1) * song->ticksPerBar;
         return {firstTick, std::min(song->playbackEndTick(), firstTick + Tick(loopBars) * song->ticksPerBar)};
     }
@@ -95,10 +106,16 @@ public:
         notifyRange();
     }
     juce::Range<Tick> range() const {
+        if(song && visibleBars) {
+            const auto window=visibleBars();
+            return {std::clamp<Tick>(std::llround((window.getStart()-1)*song->ticksPerBar),0,song->playbackEndTick()),
+                    std::clamp<Tick>(std::llround((window.getEnd()-1)*song->ticksPerBar),0,song->playbackEndTick())};
+        }
         return song ? juce::Range<Tick>{start, std::min(song->playbackEndTick(), start + span())} : juce::Range<Tick>{};
     }
     void bind(const ostfstudio::OstfpPreview* project, size_t index, Tick at, double step) {
         if (song != project || track != index) {
+            rulerDrag=false;
             start = 0;
             selected = first = 0;
             customLoop = false;
@@ -122,13 +139,17 @@ public:
             first = std::min(first, std::max(0, int(song->slotsByTrack[track].size()) - visible));
             selectRow(selected);
         }
+        for (juce::Component* c : std::initializer_list<juce::Component*>{&back,&forward,&locate,&bars})
+            c->setVisible(!visibleBars);
         auto top = getLocalBounds().removeFromTop(25);
         for (auto* c : {static_cast<juce::Component*>(&back), static_cast<juce::Component*>(&forward)})
-            c->setBounds(top.removeFromLeft(27).reduced(1));
-        locate.setBounds(top.removeFromLeft(79).reduced(1));
-        bars.setBounds(top.removeFromLeft(80).reduced(1));
+            if (c->isVisible()) c->setBounds(top.removeFromLeft(27).reduced(1));
+        if(locate.isVisible()) locate.setBounds(top.removeFromLeft(79).reduced(1));
+        if(bars.isVisible()) bars.setBounds(top.removeFromLeft(80).reduced(1));
         loop.setBounds(top.removeFromLeft(64));
-        loopSettings.setBounds(top.removeFromLeft(140).reduced(1));
+        loopSettings.setVisible(!visibleBars); loopCaption.setVisible(bool(visibleBars));
+        const auto loopBounds=top.removeFromLeft(140).reduced(1);
+        loopCaption.setBounds(loopBounds); loopSettings.setBounds(loopBounds);
         repeats.setBounds(top.removeFromLeft(112).reduced(1));
         fill.setBounds(top.removeFromLeft(104).reduced(1));
     }
@@ -139,16 +160,28 @@ public:
         const auto& slots = song->slotsByTrack[track];
         g.setFont(juce::FontOptions(13.f, juce::Font::bold));
         g.setColour(juce::Colours::white);
-        g.drawText(TRANS("Bar") + " " + juce::String(1 + start / song->ticksPerBar), 6, 25, labelWidth - 6, 19,
+        g.drawText(TRANS("Bar") + " " + juce::String(1 + range().getStart() / song->ticksPerBar), 6, 25, labelWidth - 6, 19,
                    juce::Justification::centredLeft);
         const int steps = count();
         if (steps <= 0 || body.isEmpty()) return;
-        const float w = float(body.getWidth()) / steps;
-        for (int n = 0; n < steps; ++n) {
-            const int x = body.getX() + int(n * w);
-            if (w >= 24 || n % 4 == 0)
-                g.drawText(juce::String(n + 1), x, 25, std::max(16, int(w)), 19, juce::Justification::centredLeft);
+        const auto view=range(), loopTicks=loopRange();
+        if(view.isEmpty()) return;
+        const auto loopView=view.getIntersectionWith(loopTicks);
+        if (!loopView.isEmpty()) {
+            const int lo=xAt(loopView.getStart()), hi=xAt(loopView.getEnd());
+            g.setColour(juce::Colour(loop.getToggleState()?0xff336f70:0xff304958)); g.fillRect(lo,25,hi-lo,19);
+            g.setColour(juce::Colour(0xff8ee2cd));
+            if(view.contains(loopTicks.getStart())) g.fillRect(lo,25,3,19);
+            if(loopTicks.getEnd()<=view.getEnd()) g.fillRect(hi-3,25,3,19);
         }
+        g.setColour(juce::Colours::white);
+        const auto barTicks=song->ticksPerBar;
+        const auto stride=std::max<Tick>(1,std::ceil(36.*view.getLength()/(body.getWidth()*double(barTicks))));
+        for (Tick bar=(view.getStart()/barTicks+stride-1)/stride*stride; bar*barTicks<view.getEnd(); bar+=stride) {
+            const int x=xAt(bar*barTicks);
+            g.drawText(juce::String(bar+1),x+4,25,44,19,juce::Justification::centredLeft);
+        }
+        const int cellStride=std::max(1,int(std::ceil(double(steps)/body.getWidth())));
         for (int visual = first; visual < int(slots.size()); ++visual) {
             const int row = displayRow(visual);
             const int y = body.getY() + (visual - first) * rowHeight;
@@ -159,9 +192,10 @@ public:
             g.fillRect(0, y, labelWidth - 2, rowHeight - 1);
             g.setColour(juce::Colours::white);
             g.drawText(slots[row].name, 5, y, labelWidth - 9, rowHeight, juce::Justification::centredLeft);
-            for (int n = 0; n < steps; ++n) {
+            for (int n = 0; n < steps; n+=cellStride) {
                 g.setColour(juce::Colour((n / 4) % 2 ? 0xff35485a : 0xff283b4a));
-                g.fillRect(body.getX() + int(n * w), y, std::max(1, int((n + 1) * w) - int(n * w) - 1), rowHeight - 2);
+                const int x=xAt(boundary(n));
+                g.fillRect(x,y,std::max(1,xAt(boundary(std::min(steps,n+cellStride)))-x-1),rowHeight-2);
             }
         }
         for (const auto& hit : song->slotHits[track])
@@ -172,16 +206,16 @@ public:
                 int row = displayRow(int(slot - slots.begin())) - first;
                 if (row < 0 || body.getY() + row * rowHeight >= getHeight()) continue;
                 const int n = stepAt(hit.startTick);
-                const auto a = boundary(n), b = boundary(n + 1);
-                const auto x = body.getX() + (n + double(hit.startTick - a) / std::max<Tick>(1, b - a)) * w;
+                const auto b = boundary(n + 1);
+                const auto x = xAt(hit.startTick);
                 g.setColour(juce::Colour(hit.velocity.value_or(96) > 105 ? 0xffffc670 : 0xff61bade));
                 g.fillRect(float(x), float(body.getY() + row * rowHeight + 3),
-                           std::max(2.f, float(std::min(hit.endTick, b) - hit.startTick) / std::max<Tick>(1, b - a) * w - 1),
+                           std::max(2.f, float(xAt(std::min(hit.endTick,b))-x-1)),
                            float(rowHeight - 8));
             }
         if (range().contains(cursor)) {
             g.setColour(juce::Colour(0xfff7c36a));
-            g.drawVerticalLine(body.getX() + int((cursor - start) / grid * w), 25, float(getHeight()));
+            g.drawVerticalLine(xAt(cursor), 25, float(getHeight()));
         }
     }
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& wheel) override {
@@ -192,6 +226,17 @@ public:
         repaint();
     }
     void mouseDown(const juce::MouseEvent& e) override {
+        rulerDrag=false;
+        if (song && e.mods.isLeftButtonDown() && e.y>=25 && e.y<headerHeight && e.x>=labelWidth && !range().isEmpty()) {
+            const auto loopTicks=loopRange();
+            const bool left=std::abs(e.x-xAt(loopTicks.getStart()))<=6, right=std::abs(e.x-xAt(loopTicks.getEnd()))<=6;
+            dragEnd=right && (!left || std::abs(e.x-xAt(loopTicks.getEnd()))<std::abs(e.x-xAt(loopTicks.getStart())));
+            dragStart=left && !dragEnd;
+            fixedBar=dragStart ? int((loopTicks.getEnd()-1)/song->ticksPerBar) : dragEnd ? int(loopTicks.getStart()/song->ticksPerBar) : barAt(e.x);
+            rulerDrag=true;
+            if (!dragStart && !dragEnd) updateDrag(e.x);
+            return;
+        }
         if (!song || !e.mods.isLeftButtonDown() || e.y < headerHeight || track >= song->slotsByTrack.size()) return;
         const int visual = first + (e.y - headerHeight) / rowHeight;
         if (visual >= int(song->slotsByTrack[track].size())) return;
@@ -201,7 +246,7 @@ public:
             rowChanged(row);
         repaint();
         if (e.x < labelWidth || !commit || gridArea().getWidth() <= 0) return;
-        const int n = std::clamp((e.x - labelWidth) * count() / gridArea().getWidth(), 0, count() - 1);
+        const int n=std::clamp(stepAt(tickAt(e.x)),0,count()-1);
         std::vector<Edit> edits;
         const auto& slot = song->slotsByTrack[track][row];
         for (const auto& h : song->slotHits[track])
@@ -211,7 +256,29 @@ public:
         if (!edits.empty()) commit(std::move(edits));
     }
 
+    void mouseDrag(const juce::MouseEvent& e) override { if(rulerDrag && song) updateDrag(e.x); }
+    void mouseUp(const juce::MouseEvent&) override { rulerDrag=false; }
+    void mouseMove(const juce::MouseEvent& e) override {
+        setMouseCursor(e.y>=25 && e.y<headerHeight && e.x>=labelWidth ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
+    }
 private:
+    bool rulerDrag=false,dragStart=false,dragEnd=false;
+    int fixedBar=0;
+    int xAt(Tick tick) const {
+        const auto view=range(); const auto body=gridArea();
+        return body.getX()+juce::roundToInt(double(tick-view.getStart())*body.getWidth()/std::max<Tick>(1,view.getLength()));
+    }
+    Tick tickAt(int x) const {
+        const auto view=range(); const auto body=gridArea();
+        return std::clamp<Tick>(view.getStart()+std::llround(double(x-body.getX())*view.getLength()/std::max(1,body.getWidth())),0,song->playbackEndTick());
+    }
+    int barAt(int x) const { return int(std::min(song->playbackEndTick()-1,tickAt(x))/song->ticksPerBar); }
+    void updateDrag(int x) {
+        const int edge=juce::roundToInt(double(tickAt(x))/song->ticksPerBar);
+        const int bar=dragStart?std::min(fixedBar,edge):dragEnd?std::max(fixedBar,edge-1):barAt(x);
+        loop.setToggleState(true,juce::dontSendNotification);
+        setLoopBars(std::min(bar,fixedBar)+1,std::abs(bar-fixedBar)+1);
+    }
     int displayRow(int index) const {
         return song && track < song->slotsByTrack.size() ? std::max(0, int(song->slotsByTrack[track].size()) - 1 - index) : 0;
     }
@@ -220,13 +287,15 @@ private:
     juce::TextButton back, forward, locate, fill;
     juce::ToggleButton loop;
     juce::TextButton loopSettings;
+    juce::Label loopCaption;
     int loopFirst = 1, loopBars = 1;
     bool customLoop = false;
     void updateLoopCaption() {
         const auto ticks = loopRange();
-        if (ticks.isEmpty()) { loopSettings.setButtonText(TRANS("Loop range")); return; }
+        if (ticks.isEmpty()) { loopSettings.setButtonText(TRANS("Loop range")); loopCaption.setText({},juce::dontSendNotification); return; }
         const auto firstBar = 1 + ticks.getStart() / song->ticksPerBar;
         const auto lastBar = 1 + (ticks.getEnd() - 1) / song->ticksPerBar;
+        loopCaption.setText(TRANS("Loop range")+"  "+juce::String(firstBar)+" - "+juce::String(lastBar),juce::dontSendNotification);
         loopSettings.setButtonText(TRANS("Loop range") + "  " + juce::String(firstBar) + " - " + juce::String(lastBar)
                                    + "  " + juce::String::charToString(0x25be));
     }
@@ -284,10 +353,10 @@ private:
     int selected = 0, first = 0;
     Tick barStart(Tick t) const { return t / song->ticksPerBar * song->ticksPerBar; }
     Tick span() const { return song->ticksPerBar * std::max(1, bars.getSelectedId()); }
-    int count() const { return std::max(1, int(std::ceil(range().getLength() / grid))); }
-    Tick boundary(int i) const { return std::min(range().getEnd(), start + std::llround(i * grid)); }
+    int count() const { return std::max(1, int(std::ceil(range().getEnd()/grid)-std::floor(range().getStart()/grid))); }
+    Tick boundary(int i) const { const auto view=range(); return std::clamp<Tick>(std::llround((std::floor(view.getStart()/grid)+i)*grid),view.getStart(),view.getEnd()); }
     int stepAt(Tick t) const {
-        auto i = int((t - start) / grid);
+        auto i = int(std::floor(t/grid)-std::floor(range().getStart()/grid));
         return i + 1 < count() && boundary(i + 1) <= t ? i + 1 : i;
     }
     juce::Rectangle<int> gridArea() const { return getLocalBounds().withTrimmedTop(headerHeight).withTrimmedLeft(labelWidth); }

@@ -4,6 +4,10 @@ The [user manual](manual/en.md) covers the standalone workflow and the Windows d
 
 ## Offline arrangement rendering
 
+Global boundary edits run as one score transaction. Adjacent duration events share the edited edge, while key and meter use change points. Shared scale edits leave track-targeted assignments intact. The drum ruler uses the piano-roll viewport. Scale Editor audition cues use the audition audio sample counter, so its readout follows rendered audio through changes and rests.
+
+Bundled instruments and effects with exposed automation parameters use instance-local MIDI CC learning. Bindings persist by stable parameter ID and MIDI channel/controller in the plug-in state. Track inserts receive controller messages along with their audio input.
+
 Standalone Studio and the hosted workspace prepare a private PreviewTransport on the message thread. Each enabled instrument and insert gets its own instance and a snapshot of the live plug-in state. The worker renders stereo blocks from tick zero at the selected sample rate. Mix export follows arrangement playback, including adopted takes, audio edits, buses, sends, master inserts and the selected tail. File replacement follows successful encoding. Hardware MIDI instruments require an audio recording of their output.
 
 Single-track bounce renders the instrument, inserts and detector inputs before the strip fader. A group bounce sums the selected sources with their strip levels and pan. Selection uses track and clip IDs separately from piano roll focus. Excerpt renders filter source notes and regions by clip ID and seek a private transport to the first selected tick. The new muted audio track keeps the excerpt at its original position. WAV regions split at score ticks to fit the OSTFP media limits. Imported Productions that require the original track layout support mix export.

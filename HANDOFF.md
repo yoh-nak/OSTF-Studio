@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — Musical clip boundaries, drum loops and audition feedback
+
+Branch `codex/timeline-snap-audition-controls` starts at `d2ebb7c`. Drag a shared edge on the section, chord, key, scale or meter lane. Right-click the global lane to insert bars. In the arrangement, Ctrl/Cmd+A selects clips across source tracks. The clip context menu can move the selection together to the cursor in one undo step. The drum ruler follows the piano-roll viewport. Drag a new range or either end of the existing loop. Chord input offers root, quality and optional bass. Scale rows show the actual shared intervals and unassigned gaps.
+
+Scale Editor section/song auditions report the sounding scale on the audio sample clock. Bundled devices with exposed parameters share MIDI CC learn, channel-specific recall and unlearn controls. SUPER KNOBBER REVERB isolates preset selection from meter refresh, preserves low-level wet dynamics and meters wet RMS and stereo correlation. The tests cover preset selection, impulse responses, MIDI binding persistence, audition cues, neighbouring global spans, bar insertion, clip moves and drum ruler gestures.
+
+Moving a selected take group shifts its source takes, all comp outputs and their source ranges as a unit. The active comp and clip IDs survive the move. Blue Hour Waltz covers this case and rollback on an invalid selection.
+
+Windows x64 Release passed all 48 CTest cases, including the seven-song demo gallery and hosted Studio VST3 test. Windows Setup and Portable ZIP were built with the repository packaging script. ZIP CRC and SHA-256 against the freshly built executable and all 41 VST3 binaries passed. Local packages are under `E:/OSTF-Studio-build-cache/timeline-snap-audition`. The final track-view smoke additionally splits a chord, drags its boundary onto a half beat and checks exact undo. Bar insertion currently rejects authored notation/musical time maps and insertion inside a repeating MIDI clip. Split a repeated clip at the insertion boundary first. Imported Production automation and cross-boundary imported audio require companion editing support. macOS, physical MIDI controllers and listening comparisons in external DAWs remain unverified for this change.
+
 ## 2026-11-27 — Reverb metering, arrangement bounce and score editing
 
 Branch `codex/reverb-bounce-score-workspace` starts at `803c0f0`. Ctrl/Cmd-click track names, or Shift-click a range, and use the track context menu to render one summed audio track. Single-source bounce retains the earlier pre-fader behaviour. Ctrl/Cmd-click arrangement clips, then right-click a selected clip to render only those IDs between their original outer tick boundaries. The piano roll keeps its editing focus while building a bounce selection. Verify embedded WAV frame lengths, output level and start ticks in the track-view smoke test.

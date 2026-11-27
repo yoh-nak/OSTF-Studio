@@ -127,6 +127,7 @@ class Editor final : public ostfstudio::StudioPluginEditor, private Timer {
   public:
     explicit Editor(Lead &p)
         : StudioPluginEditor(p), lead(p), sections(p.state, face), mpeAttachment(p.state, "mpe", mpe) {
+        addAndMakeVisible(ccButton); ccButton.onClick=[this]{lead.ccMap.open(ccButton);};
         addAndMakeVisible(genre);
         addAndMakeVisible(preset);
         addAndMakeVisible(quality);
@@ -184,6 +185,7 @@ class Editor final : public ostfstudio::StudioPluginEditor, private Timer {
         mpe.setBounds(bar);
         area.removeFromTop(8);
         auto nav = area.removeFromTop(30);
+        ccButton.setBounds(nav.removeFromRight(80).reduced(2,0));
         const int width = nav.getWidth() / tabs.size();
         for (auto *tab : tabs)
             tab->setBounds(nav.removeFromLeft(width).reduced(2, 0));
@@ -193,6 +195,7 @@ class Editor final : public ostfstudio::StudioPluginEditor, private Timer {
     }
 
   private:
+    juce::TextButton ccButton{"MIDI CC"};
     void selectPage(int next) {
         page = next;
         for (int i = 0; i < tabs.size(); ++i)

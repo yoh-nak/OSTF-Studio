@@ -152,6 +152,51 @@ static int checkGallery(const juce::File& directory) {
                 || std::next(lane)==project->globalLanes.end() || std::prev(lane)->kind!=TimelineLane::key
                 || std::next(lane)->kind!=TimelineLane::meter || !lane->regions.empty()) return 131;
             const auto bar=project->ticksPerBar;
+            {
+                const auto originalBytes=project->sourceScore;
+                const auto duration=project->durationTicks;
+                auto old=juce::JSON::parse(originalBytes.toString());
+                const auto at=juce::int64(old["timeline"]["sections"][1]["start"]);
+                juce::MemoryBlock undo;
+                const auto inserted=project->insertBars(at,2,undo);
+                if(inserted.failed()){std::cerr<<"Insert bars: "<<inserted.getErrorMessage()<<'\n';return 183;}
+                auto moved=juce::JSON::parse(project->sourceScore.toString());
+                if(project->durationTicks!=duration+2*bar || juce::int64(moved["timeline"]["sections"][1]["start"])!=at+2*bar
+                    || juce::int64(moved["timeline"]["sections"][0]["duration"])!=at+2*bar
+                    || undo!=originalBytes || project->restoreNoteScore(undo).failed())return 184;
+            }
+            {
+                const auto initial = project->sourceScore;
+                const auto tracks = juce::JSON::parse(initial.toString())["tracks"];
+                std::set<std::pair<size_t, juce::String>> group;
+                juce::int64 last = 0;
+                for (int i = 0; i < tracks.size(); ++i) if (const auto* clips = tracks[i]["clips"].getArray()) {
+                    for (const auto& clip : *clips) {
+                        group.emplace(size_t(i), clip["id"].toString());
+                        last = std::max(last, juce::int64(clip["start"]) + juce::int64(clip["duration"]));
+                    }
+                }
+                juce::MemoryBlock undo;
+                const auto shifted = project->moveArrangementClips(group, bar, last + bar, undo);
+                if (group.size() < 2 || shifted.failed()) {
+                    std::cerr << "Group move (" << group.size() << " clips): " << shifted.getErrorMessage() << '\n';
+                    return 188;
+                }
+                const auto updated = juce::JSON::parse(project->sourceScore.toString())["tracks"];
+                for (int i = 0; i < tracks.size(); ++i) for (int j = 0; j < tracks[i]["clips"].size(); ++j) {
+                    const auto old = tracks[i]["clips"][j], now = updated[i]["clips"][j];
+                    if (old["id"] != now["id"] || juce::int64(now["start"]) != juce::int64(old["start"]) + bar) return 189;
+                }
+                const auto beforeGroup = juce::JSON::parse(initial.toString())["takeGroups"][0];
+                const auto newGroup = juce::JSON::parse(project->sourceScore.toString())["takeGroups"][0];
+                if (newGroup["activeCompId"] != beforeGroup["activeCompId"]
+                    || juce::int64(newGroup["startTick"]) != juce::int64(beforeGroup["startTick"]) + bar) return 191;
+                const auto after = project->sourceScore;
+                group.emplace(0, "missing-clip");
+                juce::MemoryBlock unused;
+                if (project->moveArrangementClips(group, bar, last + 2 * bar, unused).wasOk()
+                    || project->sourceScore != after || project->restoreNoteScore(undo).failed() || undo != initial) return 190;
+            }
             auto source=juce::JSON::parse(project->sourceScore.toString());
             auto range=ostfstudio::emptyScaleRange(source,bar+1,bar,project->durationTicks);
             if (range!=juce::Range<juce::int64>(bar,2*bar)) return 132;
@@ -183,6 +228,13 @@ static int checkGallery(const juce::File& directory) {
                 auto saved=result["tracks"][0]["directions"];
                 auto ids=saved[saved.size()-1]["parameters"]["pitchSource"]["scaleIds"];
                 if(ids.size()!=2 || ids[0]!=scale["id"] || ids[1]!=pieces[1]["id"])return 177;
+                removed.clear(); pieces.clear();
+                if (ostfstudio::snapGlobalTick(TimelineLane::meter,1640,0,480,3,4)!=1440 ||
+                    ostfstudio::snapGlobalTick(TimelineLane::chord,1640,0,480,3,4)!=1680 ||
+                    ostfstudio::moveGlobalBoundary(result,TimelineLane::scale,bar+240,bar+480,edited->durationTicks,removed,pieces).failed()
+                    || pieces.size()!=2 || pieces[0]["id"]!=ids[0] || pieces[1]["id"]!=ids[1]
+                    || juce::int64(pieces[0]["start"])+juce::int64(pieces[0]["duration"])!=juce::int64(pieces[1]["start"])
+                    || edited->changeGlobalEvents(TimelineLane::scale,removed,pieces,snapshot).failed())return 182;
             }
             auto songScale=scale.clone();
             songScale.getDynamicObject()->removeProperty("start");

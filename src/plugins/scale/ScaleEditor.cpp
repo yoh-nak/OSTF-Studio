@@ -835,6 +835,9 @@ private:
             shownHostFlags=flags;
             shownLanguageChoice=languageChoice;
         }
+        if (flags & 16) {
+            workspace->emitEventIfBrowserIsVisible("ostfScaleAuditionPosition",proc.rack.assignedPositionMs.load());
+        }
         if (shownStatus!=status.getText()) {
             shownStatus=status.getText();
             workspace->emitEventIfBrowserIsVisible("ostfScaleHostStatus",shownStatus);

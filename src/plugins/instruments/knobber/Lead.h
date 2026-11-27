@@ -1,4 +1,5 @@
 #pragma once
+#include "../../PluginCcMap.h"
 #include "Programs.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <atomic>
@@ -29,6 +30,7 @@ class Lead final : public juce::AudioProcessor {
     void getStateInformation(juce::MemoryBlock &) override;
     void setStateInformation(const void *, int) override;
     juce::AudioProcessorValueTreeState state;
+    ostfstudio::PluginCcMap ccMap{*this};
 
   private:
     struct Slot {

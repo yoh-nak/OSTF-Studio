@@ -117,6 +117,7 @@ public:
             return juce::Result::fail("Unable to restore the hosted instrument.");
         return install(type,bytes);
     }
+    std::atomic<int> assignedPositionMs{0};
     std::atomic<bool> playingAssigned{false};
     void audition(const juce::var& notes, bool localOnly=false, int assignedDurationMs=0) {
         std::vector<Event> next;
@@ -135,7 +136,7 @@ public:
     void stopPreview() {
         const juce::ScopedLock lock(owner.getCallbackLock());
         sequence.clear(); cursor=0; elapsed=0; flush=true;
-        assignedEndSample=0; playingAssigned.store(false);
+        assignedPositionMs.store(0); assignedEndSample=0; playingAssigned.store(false);
     }
     void setPreviewMidiOut(bool enabled) {
         const juce::ScopedLock lock(owner.getCallbackLock());
@@ -179,6 +180,7 @@ public:
             ++cursor;
         }
         if(cursor<sequence.size() || playingAssigned.load()) elapsed+=count;
+        if(assignedEndSample) assignedPositionMs.store(int(1000.*elapsed/rate), std::memory_order_relaxed);
         if(assignedEndSample && elapsed>=assignedEndSample) {
             assignedEndSample=0; playingAssigned.store(false);
         }

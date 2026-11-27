@@ -53,6 +53,7 @@ void Lead::setCurrentProgram(int index) {
 }
 void Lead::getStateInformation(juce::MemoryBlock &data) {
     auto tree = state.copyState();
+    ccMap.save(tree);
     tree.setProperty("program", program.load(), nullptr);
     if (auto xml = tree.createXml())
         copyXmlToBinary(*xml, data);
@@ -62,7 +63,8 @@ void Lead::setStateInformation(const void *data, int size) {
         auto tree = juce::ValueTree::fromXml(*xml);
         program.store(
             juce::jlimit(0, getNumPrograms() - 1, static_cast<int>(tree.getProperty("program", 0))));
-        state.replaceState(tree);
+        ccMap.restore(tree);
+    state.replaceState(tree);
     }
 }
 void Lead::prepareToPlay(double rate, int) {
@@ -193,6 +195,7 @@ Stereo Lead::voices(double rate) {
 }
 void Lead::processBlock(juce::AudioBuffer<float> &buffer, juce::MidiBuffer &midi) {
     juce::ScopedNoDenormals guard;
+    ccMap.process(midi);
     for (size_t i = 0; i < values.size(); ++i) {
         const auto &c = controls[i];
         parameters.*c.member = values[i]->load() * c.scale + c.offset;

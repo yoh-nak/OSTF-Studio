@@ -37,6 +37,7 @@ class Editor final : public ostfstudio::StudioPluginEditor,
                      private juce::Timer {
   Reverb &processor;
   juce::Label title;
+  juce::TextButton ccButton{"MIDI CC"};
   juce::ComboBox algorithm, source, style, view, analyzer;
   juce::Viewport scroll;
   juce::Component panel;
@@ -45,17 +46,20 @@ class Editor final : public ostfstudio::StudioPluginEditor,
   std::array<float, 3> peaks{};
   std::array<float, 96> envelope{};
   juce::Rectangle<int> graph;
+  std::array<int,3> observedBank{-1,-1,-1};
   static void fill(juce::ComboBox &box, auto &names) {
     for (const auto *n : names)
       box.addItem(n, box.getNumItems() + 1);
   }
   void timerCallback() override {
-    algorithm.setSelectedId(processor.getCurrentProgram() + 1,
-                            juce::dontSendNotification);
-    source.setSelectedId(processor.sourceIndex.load() + 1,
-                         juce::dontSendNotification);
-    style.setSelectedId(processor.styleIndex.load() + 1,
-                        juce::dontSendNotification);
+    // ComboBox delivers menu selections asynchronously. A meter tick must not
+    // overwrite a pending click while the processor still reports the old bank.
+    const std::array<int,3> bank{processor.getCurrentProgram(),processor.sourceIndex.load(),processor.styleIndex.load()};
+    std::array<juce::ComboBox*,3> boxes{&algorithm,&source,&style};
+    for(size_t i=0;i<bank.size();++i) if (bank[i]!=observedBank[i]) {
+      boxes[i]->setSelectedId(bank[i]+1,juce::dontSendNotification);
+      observedBank[i]=bank[i];
+    }
     processor.inputSpectrum.read(input);
     processor.preEqSpectrum.read(preEq);
     processor.wetSpectrum.read(spectrum);
@@ -73,6 +77,7 @@ public:
     title.setText("SUPER KNOBBER REVERB", juce::dontSendNotification);
     title.setFont(juce::Font(juce::FontOptions{21.f, juce::Font::bold}));
     addAndMakeVisible(title);
+    addAndMakeVisible(ccButton); ccButton.onClick=[this]{processor.ccMap.open(ccButton);};
     fill(algorithm, types);
     fill(source, sources);
     fill(style, styles);
@@ -85,7 +90,7 @@ public:
     fill(view, pages);
     view.setSelectedId(1, juce::dontSendNotification);
     const char *meters[] = {"Input / wet spectrum", "Post EQ: before / after",
-                            "Decay targets (RT60)", "Wet level history", "Input filter: before / after", "Wet waveform / tail"};
+                            "Decay targets (RT60)", "Wet level history", "Input filter: before / after", "Wet waveform / tail", "Wet stereo correlation / level"};
     fill(analyzer, meters);
     analyzer.setSelectedId(1, juce::dontSendNotification);
     for (auto *box : {&algorithm, &source, &style, &view, &analyzer})
@@ -93,6 +98,7 @@ public:
     algorithm.onChange = source.onChange = style.onChange = [this] {
       processor.select(algorithm.getSelectedId() - 1,
                        source.getSelectedId() - 1, style.getSelectedId() - 1);
+      observedBank={processor.getCurrentProgram(),processor.sourceIndex.load(),processor.styleIndex.load()};
     };
     view.onChange = [this] {
       scroll.setViewPosition(0, 0);
@@ -151,6 +157,22 @@ public:
     }
     r.removeFromRight(12);
     const int mode = analyzer.getSelectedId();
+    if (mode == 7) {
+      const auto db=processor.wetRmsDb.load();
+      g.setColour(juce::Colours::white);
+      g.drawText("Wet RMS   "+(db<=-84 ? juce::String("-inf") : juce::String(db,1))+" dBFS",r.removeFromTop(20),juce::Justification::centredLeft);
+      auto axis=r.removeFromBottom(20);
+      g.drawText("-1",axis,juce::Justification::centredLeft);
+      g.drawText("0",axis,juce::Justification::centred);
+      g.drawText("+1",axis,juce::Justification::centredRight);
+      const float y=r.getCentreY();
+      g.drawHorizontalLine(int(y),r.getX(),r.getRight());
+      if (db>-84) {
+        const float x=r.getX()+r.getWidth()*(1.f+processor.wetCorrelation.load())*.5f;
+        g.setColour(juce::Colour(face.accent)); g.fillEllipse(x-4,y-4,8,8);
+      }
+      return;
+    }
     if (mode == 6) {
       auto labels = r.removeFromBottom(16);
       g.setColour(juce::Colours::lightgrey);
@@ -251,7 +273,9 @@ public:
     auto mainRow = area.removeFromTop(std::clamp(getHeight()/6, 80, 118)).reduced(2);
     for(size_t i=0; i<primary.size(); ++i)
       dials[size_t(primary[i])]->setBounds(mainRow.removeFromLeft(mainRow.getWidth()/int(primary.size()-i)).reduced(4,2));
-    view.setBounds(area.removeFromTop(35).removeFromLeft(220).reduced(2));
+    auto detailRow=area.removeFromTop(35);
+    view.setBounds(detailRow.removeFromLeft(220).reduced(2));
+    ccButton.setBounds(detailRow.removeFromRight(84).reduced(2));
     scroll.setBounds(area);
     const int width =
         std::max(1, area.getWidth() - scroll.getScrollBarThickness());

@@ -151,6 +151,8 @@ static AudioProcessorParameter &param(AudioProcessor &p, String name) {
   throw std::runtime_error(("Missing " + name).toStdString());
 }
 static void reverbTests(const File &file, const File &samples) {
+  require(knobverb::Reverb::limitWet(.4f)==.4f && knobverb::Reverb::limitWet(-.7f)==-.7f
+          && knobverb::Reverb::limitWet(2.f)<=1.f,"Linear wet tail / bounded peaks");
   knobverb::WetWaveform waveform;
   waveform.prepare(48000);
   for (int i=0; i<960; ++i) waveform.push(i==2 ? -.3f : 0.f, i==8 ? .7f : 0.f);
@@ -186,7 +188,32 @@ static void reverbTests(const File &file, const File &samples) {
           "State recall");
   {
     auto dry=std::make_unique<knobverb::Reverb>();
-    dry->state.getParameter("mixamount")->setValueNotifyingHost(0);
+    {
+      std::unique_ptr<AudioProcessorEditor> editor(dry->createEditor());
+      ComboBox* algorithms=nullptr;
+      for(auto* child:editor->getChildren())
+        if(auto* combo=dynamic_cast<ComboBox*>(child); combo && combo->getNumItems()==dry->getNumPrograms())algorithms=combo;
+      require(algorithms!=nullptr,"Reverb type selector");
+      Thread::sleep(80);
+      algorithms->setSelectedId(8,sendNotificationAsync);
+      Timer::callPendingTimersSynchronously();
+      require(algorithms->getSelectedId()==8,"Meter tick replaced pending preset");
+      algorithms->onChange();
+      require(dry->getCurrentProgram()==7,"Pending preset did not reach DSP");
+    }
+    auto* wetControl=dry->state.getParameter("mixamount");
+    dry->ccMap.learn(wetControl->getParameterIndex());
+    MidiBuffer learn; learn.addEvent(MidiMessage::controllerEvent(3,74,100),0);
+    dry->ccMap.process(learn);
+    require(std::abs(wetControl->getValue()-100.f/127)<.01,"MIDI CC learn");
+    MemoryBlock saved; dry->getStateInformation(saved);
+    dry->ccMap.forget(wetControl->getParameterIndex());
+    dry->setStateInformation(saved.getData(),int(saved.getSize()));
+    learn.clear();learn.addEvent(MidiMessage::controllerEvent(2,74,0),0); dry->ccMap.process(learn);
+    require(wetControl->getValue()>.75f,"CC channels are independent");
+    learn.clear();learn.addEvent(MidiMessage::controllerEvent(3,74,0),0); dry->ccMap.process(learn);
+    require(wetControl->getValue()==0,"Restored CC map");
+    wetControl->setValueNotifyingHost(0);
     dry->setRateAndBufferSizeDetails(48000,256);
     dry->prepareToPlay(48000,256);
     AudioBuffer<float> audio(2,256);
@@ -196,7 +223,7 @@ static void reverbTests(const File &file, const File &samples) {
         for(int i=0;i<256;++i) audio.setSample(ch,i,.5f*std::sin((256*b+i)*.06f));
       dry->processBlock(audio,events);
     }
-    require(dry->wetPeak.load()==0 && dry->inputPeak.load()>.45f && dry->outputPeak.load()>.1f,
+    require(dry->wetPeak.load()==0 && dry->wetRmsDb.load()==-84 && dry->inputPeak.load()>.45f && dry->outputPeak.load()>.1f,
             "Dry-only mix must meter input and output but no audible wet signal");
   }
   if (samples != File{})

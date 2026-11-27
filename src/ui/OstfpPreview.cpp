@@ -2203,6 +2203,82 @@ juce::Result OstfpPreview::drawTempo(juce::int64 start, double from, juce::int64
     return result;
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
+juce::Result OstfpPreview::insertBars(juce::int64 at, int count, juce::MemoryBlock& previous) try {
+    require(count>0 && count<=128 && ticksPerBar>0 && at>=0 && at<=durationTicks && at%ticksPerBar==0,"Select a bar boundary.");
+    const auto length=ticksPerBar*count;
+    require(durationTicks<=0x0fffffff-length,"Song is too long.");
+    const auto original=savedScore(*this), base=savedScore(*this,true);
+    auto score=parseObject(base);
+    // These 5.2 profiles carry independent notation/clock coordinates that need their own time edit.
+    require(!score.hasProperty("notation") && !score.hasProperty("musicalModel"),"Bar insertion with authored notation or musical time maps is not supported.");
+    auto each=[](const juce::var& list,auto fn){if(auto* a=list.getArray())for(auto& item:*a)fn(item);};
+    auto move=[&](juce::int64 tick){return tick>=at ? tick+length : tick;};
+    auto span=[&](juce::var item,const char* start,const char* duration,juce::int64 oldOrigin=0,
+                  juce::int64 newOrigin=0,bool extendLeft=false) {
+        if (!item.hasProperty(start)) return;
+        auto* fields=item.getDynamicObject();
+        const auto old=oldOrigin+integer(item[start]);
+        const auto first=extendLeft && at==0 && old==0 ? old : move(old);
+        fields->setProperty(start,first-newOrigin);
+        if(item.hasProperty(duration)) {
+            const auto oldEnd=old+integer(item[duration]);
+            const auto end=oldEnd>at || (extendLeft && oldEnd==at && old<at) ? oldEnd+length : oldEnd;
+            fields->setProperty(duration,std::max<juce::int64>(0,end-first));
+        }
+    };
+    auto timeline=score["timeline"];
+    timeline.getDynamicObject()->setProperty("duration",durationTicks+length);
+    for (auto key:{"tempoChanges","meterChanges","keyChanges"}) each(timeline[key],[&](auto item){
+        const auto tick=integer(item["at"]);
+        if(tick>0) item.getDynamicObject()->setProperty("at",move(tick));
+    });
+    auto global=[&](auto item){span(item,"start","duration",0,0,true);};
+    each(timeline["sections"],global); each(score["harmony"]["chords"],global); each(score["harmony"]["scales"],global);
+    for (auto key:{"units","phrases"}) each(score["lyrics"][key],[&](auto item){span(item,"start","duration");});
+    each(score["ensembleInteractions"],[&](auto item){span(item,"start","duration");});
+    each(score["performancePlans"],[&](auto plan){
+        each(plan["visits"],[&](auto visit){span(visit["sourceRange"],"start","duration");});
+    });
+    each(score["takeGroups"],[&](auto group){
+        span(group,"startTick","durationTicks");
+        each(group["comps"],[&](auto comp){each(comp["compRegions"],[&](auto region){span(region,"startTick","durationTicks");});});
+    });
+    each(score["tracks"],[&](auto track) {
+        each(track["directions"],[&](auto item){span(item,"start","duration");span(item,"at","duration");});
+        each(track["clips"],[&](auto clip) {
+            const auto origin=integer(clip["start"]);
+            const auto oldEnd=origin+integer(clip["duration"]);
+            if(origin<at && at<oldEnd) {
+                auto period=score["extensions"][loopNamespace]["data"].getProperty(juce::Identifier(clip["id"].toString()),0);
+                require(integer(period)==0,"Split the looped MIDI clip before inserting bars inside it.");
+            }
+            span(clip,"start","duration");
+            auto relative=[&](auto ev){span(ev,"start","duration",origin,move(origin));};
+            each(clip["notes"],relative); each(clip["midiEvents"],relative);
+            each(clip["vocalPerformances"],[&](auto voice) {
+                for (auto key:{"techniques","breathEvents","phonemeEvents"}) each(voice[key],relative);
+                for (auto key:{"pitchCurves","expressionCurves"}) each(voice[key],[&](auto curve){
+                    each(curve["points"],[&](auto p){span(p,"at","duration",origin,move(origin));});
+                });
+            });
+        });
+    });
+    for(size_t i=0;i<sourceTrackCount();++i) if(takes(i).count>1) {
+        auto shifted=takes(i);
+        for(auto& region:shifted.spans) {
+            const auto a=region.ticks.getStart(),b=region.ticks.getEnd();
+            region.ticks={move(a),b>at?b+length:b};
+        }
+        writeTrackTakes(score,score["tracks"][int(i)],shifted);
+    }
+    reviseDocument(score,original,"insert-bars-"+juce::Uuid().toString());
+    const auto bytes=editedScoreBytes(base,score,{"timeline","harmony","tracks","lyrics","ensembleInteractions","performancePlans","takeGroups",StudioMidiTakes::extension,"document"});
+    validateVersion(parseObject(bytes)["version"].toString(),bytes);
+    auto result=restoreNoteScore(bytes);
+    if(result.wasOk()) previous=original;
+    return result;
+} catch(const std::exception& e) {return juce::Result::fail(e.what());}
+
 juce::Result OstfpPreview::appendSection(juce::Range<juce::int64> range, const juce::String& name,
                                          bool duplicate, juce::MemoryBlock& previous) try {
     const auto destination = playbackEndTick(), length = range.getLength();
@@ -2598,6 +2674,74 @@ juce::Result OstfpPreview::placeMidiClip(const MidiClipCopy& payload, size_t des
     if (tick + length > durationTicks) score["timeline"].getDynamicObject()->setProperty("duration", tick + length);
     reviseDocument(score, original, "clip-" + juce::Uuid().toString());
     auto bytes = editedScoreBytes(base, score, {"tracks", "timeline", "soundSlots", "drumKits", loopNamespace, "document"});
+    require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
+    validateVersion(parseObject(bytes)["version"].toString(), bytes);
+    auto result = restoreNoteScore(bytes);
+    if (result.wasOk()) before = original;
+    return result;
+} catch (const std::exception& e) { return juce::Result::fail(e.what()); }
+
+juce::Result OstfpPreview::moveArrangementClips(const std::set<std::pair<size_t, juce::String>>& midiClips,
+                                               juce::int64 delta, juce::int64 latestEnd, juce::MemoryBlock& before) try {
+    require(latestEnd > 0 && latestEnd <= 0x0fffffff, "Invalid clip range.");
+    const auto original = savedScore(*this);
+    if (midiClips.empty() && latestEnd <= durationTicks) { before = original; return juce::Result::ok(); }
+    const auto base = savedScore(*this, true);
+    auto score = parseObject(base);
+    auto selected = midiClips;
+    const auto groups = score["takeGroups"];
+    if (const auto* list = groups.getArray()) for (const auto& group : *list) {
+        const int track = trackIds.indexOf(group["trackId"].toString());
+        require(track >= 0, "Select a matching take track.");
+        std::set<std::pair<size_t, juce::String>> members;
+        for (const auto& take : array(group["takes"])) for (const auto& id : array(take["clipIds"]))
+            members.emplace(size_t(track), id.toString());
+        for (const auto& comp : array(group["comps"])) for (const auto& id : array(comp["outputClipIds"]))
+            members.emplace(size_t(track), id.toString());
+        if (std::none_of(members.begin(), members.end(), [&](const auto& member) { return midiClips.contains(member); })) continue;
+        selected.insert(members.begin(), members.end());
+        const auto start = integer(group["startTick"]) + delta;
+        const auto end = start + integer(group["durationTicks"]);
+        require(start >= 0 && end <= 0x0fffffff, "Invalid clip range.");
+        latestEnd = std::max(latestEnd, end);
+        group.getDynamicObject()->setProperty("startTick", start);
+        if (group.hasProperty("sectionId")) {
+            group.getDynamicObject()->removeProperty("sectionId");
+            for (const auto& section : array(score["timeline"]["sections"])) {
+                const auto sectionStart = integer(section["start"]);
+                if (sectionStart <= start && end <= sectionStart + integer(section["duration"])) {
+                    group.getDynamicObject()->setProperty("sectionId", section["id"]);
+                    break;
+                }
+            }
+        }
+        for (const auto& comp : array(group["comps"])) for (const auto& region : array(comp["compRegions"]))
+            region.getDynamicObject()->setProperty("startTick", integer(region["startTick"]) + delta);
+    }
+    size_t found = 0;
+    const auto tracks = score["tracks"];
+    for (size_t i = 0; i < sourceTrackCount(); ++i) {
+        const auto clips = tracks[int(i)]["clips"];
+        std::vector<juce::Range<juce::int64>> stationary, moving;
+        if (const auto* list = clips.getArray()) for (const auto& clip : *list) {
+            const auto range = juce::Range<juce::int64>::withStartAndLength(integer(clip["start"]), integer(clip["duration"]));
+            if (!selected.contains({i, clip["id"].toString()})) { stationary.push_back(range); continue; }
+            const auto dest = range + delta;
+            require(dest.getStart() >= 0 && dest.getEnd() <= latestEnd, "Invalid clip range.");
+            for (const auto key : {"notes", "midiEvents"}) if (const auto* events = clip[key].getArray()) {
+                for (const auto& event : *events) require(dest.getStart() + integer(event["start"]) >= 0, "Invalid clip range.");
+            }
+            moving.push_back(dest);
+            clip.getDynamicObject()->setProperty("start", dest.getStart());
+            ++found;
+        }
+        for (auto dest : moving) for (auto other : stationary)
+            require(!dest.intersects(other), "The destination contains another clip.");
+    }
+    require(found == selected.size(), "Select a MIDI clip.");
+    if (latestEnd > durationTicks) score["timeline"].getDynamicObject()->setProperty("duration", latestEnd);
+    reviseDocument(score, original, "move-clips-" + juce::Uuid().toString());
+    const auto bytes = editedScoreBytes(base, score, {"tracks", "timeline", "takeGroups", "document"});
     require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
     validateVersion(parseObject(bytes)["version"].toString(), bytes);
     auto result = restoreNoteScore(bytes);

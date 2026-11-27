@@ -10,6 +10,7 @@
 #include <juce_core/juce_core.h>
 #include <deque>
 #include <map>
+#include <set>
 #include <vector>
 
 namespace ostfstudio {
@@ -248,6 +249,7 @@ struct OstfpPreview {
     juce::Result applySongDetails(const SongInformation&, const SongMusicEdit&, juce::MemoryBlock& previous);
     juce::Result applySongInformation(const SongInformation&, juce::MemoryBlock* previous = nullptr);
     juce::Result drawTempo(juce::int64 start, double from, juce::int64 end, double to, juce::MemoryBlock& previous);
+    juce::Result insertBars(juce::int64 at, int count, juce::MemoryBlock& previous);
     juce::Result appendSection(juce::Range<juce::int64> range, const juce::String& name, bool duplicate, juce::MemoryBlock& previous);
     juce::Result importScaleAssignments(const juce::MemoryBlock& returned, juce::MemoryBlock& before);
     juce::Result changeGlobalEvents(TimelineLane lane, const juce::Array<juce::var>& remove,
@@ -313,6 +315,8 @@ struct OstfpPreview {
     MidiClipCopy copyMidiClip(size_t track, const juce::String& id) const;
     juce::Result placeMidiClip(const MidiClipCopy&, size_t destination, juce::int64 tick,
                                std::optional<size_t> moveFrom, const juce::String& joinTo, juce::MemoryBlock& before);
+    juce::Result moveArrangementClips(const std::set<std::pair<size_t, juce::String>>& midiClips,
+                                      juce::int64 delta, juce::int64 latestEnd, juce::MemoryBlock& before);
     static constexpr size_t maxAudioRegions = 256;
     enum class MidiClipEdit { split, toggleLoop, resizeLoop };
     juce::Result editMidiClip(size_t track, const juce::String& id, MidiClipEdit edit, juce::int64 tick, juce::MemoryBlock& before);

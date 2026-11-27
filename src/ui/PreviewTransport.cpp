@@ -1014,7 +1014,7 @@ void PreviewTransport::renderInstruments(float* const* output, int channels, int
         if (std::any_of(chain.begin(), chain.end(), [](auto* fx) { return fx && fx->acceptsMidi(); })) {
             for (const auto event : pluginMidi_) {
                 const auto msg = event.getMessage();
-                if (msg.isProgramChange() || msg.isControllerOfType(0) || msg.isControllerOfType(32))
+                if (msg.isProgramChange() || msg.isController())
                     patches.addEvent(msg, event.samplePosition);
             }
         }

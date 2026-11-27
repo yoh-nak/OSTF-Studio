@@ -1194,7 +1194,11 @@ int checkSamplePlacement(const juce::File& file) {
         using ostfstudio::TimelineLane;
         if (!main.splitTool_.getToggleState()) main.splitTool_.onClick();
         for (auto lane : {TimelineLane::section,TimelineLane::chord,TimelineLane::scale,TimelineLane::tempo,TimelineLane::key,TimelineLane::meter}) {
-            const int cutX=main.rowOverlay_.getX()+main.trackHeaderWidth+24;
+            const auto coarse = lane == TimelineLane::section || lane == TimelineLane::meter;
+            const auto target = coarse ? main.project_->ticksPerBar : main.project_->ppq;
+            int cutX = main.rowOverlay_.getX() + main.trackHeaderWidth;
+            while (cutX < main.rowOverlay_.getRight() && main.arrangementTickAt(cutX) < target) ++cutX;
+            if (cutX >= main.rowOverlay_.getRight()) return 337;
             int y=main.rowOverlay_.getY();
             while (y<main.rowOverlay_.getBottom() && main.globalLaneAt({cutX,y})!=lane) ++y;
             if(y==main.rowOverlay_.getBottom()) return 337;
@@ -1203,6 +1207,28 @@ int checkSamplePlacement(const juce::File& file) {
             const auto original=main.project_->sourceScore;
             main.mouseDown(drag({cutX,y},false));
             if(original==main.project_->sourceScore) {std::cerr<<"Scissors: "<<main.statusLabel_.getText()<<"\n"; return 339;}
+            if (lane == TimelineLane::chord) {
+                const auto split = main.project_->sourceScore;
+                main.splitTool_.onClick();
+                int movedX = cutX;
+                while (movedX > main.rowOverlay_.getX() + main.trackHeaderWidth
+                       && main.arrangementTickAt(movedX) > main.project_->ppq / 2) --movedX;
+                const auto now = juce::Time::getCurrentTime();
+                auto event = [&](int x) {
+                    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), {float(x),float(y)},
+                        juce::ModifierKeys::leftButtonModifier, 1, 0, 0, 0, 0, &main, &main, now,
+                        {float(cutX),float(y)}, now, 1, x != cutX);
+                };
+                main.mouseDown(event(cutX));
+                main.mouseDrag(event(movedX));
+                main.mouseUp(event(movedX));
+                const auto moved = juce::JSON::parse(main.project_->sourceScore.toString());
+                const auto chord = ostfstudio::globalEventAt(moved, lane, main.project_->ppq / 2);
+                if (juce::int64(chord["start"]) != main.project_->ppq / 2) return 395;
+                main.undoPianoEdit(false);
+                if (main.project_->sourceScore != split) return 396;
+                main.splitTool_.onClick();
+            }
             main.undoPianoEdit(false);
         }
         main.setWorkspaceMode(MainComponent::WorkspaceMode::live);

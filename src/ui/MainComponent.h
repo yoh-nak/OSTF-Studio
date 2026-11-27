@@ -60,6 +60,7 @@ public:
     void focusOfChildComponentChanged(FocusChangeType) override;
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent& event) override;
+    void mouseMove(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseUp(const juce::MouseEvent& event) override;
     bool isInterestedInFileDrag(const juce::StringArray&) override;
@@ -160,6 +161,10 @@ private:
     ViewButton splitTool_{ViewButton::Icon::scissors}, joinTool_{ViewButton::Icon::join};
     void placeResult(ImportResultRow&, std::optional<std::size_t> track, juce::int64 tick, bool replace,
                      std::shared_ptr<const ostfstudio::OstfpPreview> dropped = {}, bool review = false);
+    juce::int64 snapLaneTick(ostfstudio::TimelineLane, juce::int64, juce::int64 ignoredMeter = -1) const;
+    struct GlobalEdgeDrag { ostfstudio::TimelineLane lane; juce::int64 from, to; std::size_t generation; };
+    std::optional<GlobalEdgeDrag> globalEdgeDrag_;
+    void insertTimelineBars(juce::int64 at,int count);
     void applyGlobalChange(ostfstudio::TimelineLane, juce::Array<juce::var> remove, juce::Array<juce::var> insert);
     std::optional<ostfstudio::TimelineLane> selectedGlobal_, copiedLane_;
     juce::int64 selectedGlobalTick_ = 0, copiedPpq_ = 0;
@@ -385,6 +390,7 @@ private:
     std::size_t pianoGeneration_ = 0;
     struct NoteRevision { juce::MemoryBlock before, after; juce::String panTrack; ostfstudio::PanEnvelope oldPan, newPan;
         std::optional<std::vector<ostfstudio::ProjectAudio>> beforeAudio, afterAudio;
+        std::optional<ostfstudio::PanAutomation> beforePan,afterPan;
         std::optional<ostfstudio::ChordDecisions> reviewBefore, reviewAfter;
         std::optional<size_t> reviewTrack;
         juce::String label;

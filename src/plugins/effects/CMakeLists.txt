@@ -10,10 +10,14 @@ foreach(i RANGE 0 ${last_effect})
     endforeach()
     string(REGEX REPLACE "^OSTF " "" plugin_name "${name}")
     set(target "OSTFFx${type}")
+    set(midi_input TRUE)
+    if(type MATCHES "^(StemSeparator|EffectRack)$")
+        set(midi_input FALSE)
+    endif()
     juce_add_plugin(${target}
         COMPANY_NAME "OSTF Studio" BUNDLE_ID "org.ostf.fx.${code}"
         PLUGIN_MANUFACTURER_CODE Ostf PLUGIN_CODE "${code}" PRODUCT_NAME "${name}" PLUGIN_NAME "${plugin_name}"
-        FORMATS VST3 VST3_CATEGORIES Fx "${category}"
+        NEEDS_MIDI_INPUT ${midi_input} FORMATS VST3 VST3_CATEGORIES Fx "${category}"
         VST3_COPY_DIR "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>" COPY_PLUGIN_AFTER_BUILD FALSE)
     if(type STREQUAL "EffectRack")
         target_sources(${target} PRIVATE ../rack/Factory.cpp)

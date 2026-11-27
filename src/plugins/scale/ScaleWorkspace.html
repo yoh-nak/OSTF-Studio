@@ -1997,7 +1997,9 @@ SA.assignedPreview=function(doc,target,selection){
   const offsets=[...new Set(scale.intervals.filter(Number.isInteger).map(SA.mod))].sort((a,b)=>a-b);
   if(!offsets.length)return;
   const pitches=offsets.map(n=>60+root+n);
-  const span={pitches,start,fallback};
+  const known=Object.values(SA.scales||{}).find(s=>String(s.intervals)===String(offsets));
+  const label=scale.label || SA.pitchName(scale.tonic)+' '+(scale.name || known?.name || '['+offsets.join(' ')+']');
+  const span={pitches,start,fallback,label};
   changes.push({tick:start,add:true,span},{tick:finish,add:false,span});
  }
  if(target==='harmony')include(doc.song?.scale,selection.start,selection.end,true);
@@ -2056,7 +2058,7 @@ SA.assignedPreview=function(doc,target,selection){
  }
  const origin=millis(selection.start),duration=Math.round(millis(selection.end)-origin);
  if(duration>86400000)throw new RangeError('Audition is too long');
- const notes=[],active=new Set();
+ const notes=[],cues=[],active=new Set();
  let ambiguous=false;
  changes.sort((a,b)=>a.tick-b.tick);
  for(let i=0;i<changes.length;){
@@ -2067,6 +2069,8 @@ SA.assignedPreview=function(doc,target,selection){
   const span=timed[0]||active.values().next().value;
   if(timed.some(other=>String(other.pitches)!==String(span.pitches))){ambiguous=true;continue;}
   const finish=changes[i].tick,step=doc.ppq/2;
+  cues.push({at:Math.round(millis(start)-origin),end:Math.round(millis(finish)-origin),label:span.label,
+             tick:start, endTick:finish});
   for(let tick=start;tick<finish;tick+=step){
    if(notes.length>=100000)throw new RangeError('Audition is too long');
    const at=Math.round(millis(tick)-origin);
@@ -2076,7 +2080,7 @@ SA.assignedPreview=function(doc,target,selection){
    notes.push({at,note:span.pitches[degree],velocity:80,ms:Math.max(1,Math.round(available*.82))});
   }
  }
- return {notes,duration,ambiguous};
+ return {notes,cues,duration,ambiguous};
 };
 SA.auditionPlan=function(doc,target,selection,suggest){
  const assigned=SA.assignedPreview(doc,target,selection);
@@ -2085,7 +2089,7 @@ SA.auditionPlan=function(doc,target,selection,suggest){
  for(const chord of doc.harmony.chords){
   if(chord.start>=selection.end || end(chord)<=selection.start)continue;
   const candidate=suggest(chord);
-  if(candidate)scales.push({start:chord.start,duration:chord.duration,tonic:candidate.tonic,intervals:candidate.intervals});
+  if(candidate)scales.push({start:chord.start,duration:chord.duration,tonic:candidate.tonic,intervals:candidate.intervals,name:candidate.name,label:candidate.label});
  }
  const previewDoc={...doc,song:{},harmony:{...doc.harmony,scales}};
  return {...SA.assignedPreview(previewDoc,'harmony',selection),suggested:scales.length>0};
@@ -3668,7 +3672,9 @@ if(window.__JUCE__?.backend){
   $(id).onclick=()=>send(action);
  }
  $('hostLanguage').onchange=e=>{if(e.target.checked)send('language',e.target.value);};
+ let activePlan=null, cueIndex=0, lastCue;
  function assignedControls(kind){
+  if(!kind){activePlan=null;lastCue=undefined;}
   $('hearSection').setAttribute('aria-pressed',String(kind==='section'));
   $('hearSong').setAttribute('aria-pressed',String(kind==='song'));
   $('stopAssigned').disabled=!kind;
@@ -3691,6 +3697,7 @@ if(window.__JUCE__?.backend){
     languageText('No assigned scales in this lane and range.','この書き込み先の選択範囲には、試聴できる設定済みスケールがありません。'));return;
   }
   backend.emitEvent('ostfAssignedPreview',{notes:plan.notes,duration:plan.duration,scope:kind});
+  activePlan=plan;cueIndex=0;lastCue=undefined;
   assignedControls(kind);
   auditionStatus((plan.suggested?languageText('Previewing suggestions · no assignments','未設定のため候補を試聴中'):languageText('Playing assigned scales','設定済みスケールを試聴中'))+
    (plan.ambiguous?languageText(' · overlapping scales are silent',' · スケールが重複する区間は休符'):''));
@@ -3704,6 +3711,16 @@ if(window.__JUCE__?.backend){
   const rect=e.currentTarget.getBoundingClientRect();
   backend.emitEvent('ostfScaleChooseInstrument',{x:(rect.left+rect.width/2)/innerWidth,y:rect.bottom/innerHeight});
  };
+ backend.addEventListener('ostfScaleAuditionPosition',ms=>{
+  if(!activePlan)return;
+  const cues=activePlan.cues;
+  while(cueIndex<cues.length && ms>=cues[cueIndex].end)cueIndex++;
+  const cue=cues[cueIndex]?.at<=ms?cues[cueIndex]:null;
+  if(lastCue===cue)return;
+  lastCue=cue;
+  const prefix=activePlan.suggested?languageText('Suggestion','候補'):languageText('Assigned scale','設定済み');
+  auditionStatus(cue?prefix+' · '+cue.label:languageText('Rest','休符'));
+ });
  backend.addEventListener('ostfScaleHostState',host=>{
   if(!host.assignedScope&&!$('stopAssigned').disabled)
    auditionStatus(languageText('Scale audition ended.','スケールの試聴が終了しました。'));

@@ -72,6 +72,7 @@ void Reverb::select(int type, int source, int style) {
 }
 void Reverb::getStateInformation(juce::MemoryBlock &data) {
   auto tree = state.copyState();
+    ccMap.save(tree);
   tree.setProperty("source", sourceIndex.load(), nullptr);
   tree.setProperty("style", styleIndex.load(), nullptr);
   if (auto xml = tree.createXml())
@@ -84,7 +85,8 @@ void Reverb::setStateInformation(const void *data, int size) {
   auto tree = juce::ValueTree::fromXml(*xml);
   sourceIndex = juce::jlimit(0, 12, int(tree.getProperty("source", 0)));
   styleIndex = juce::jlimit(0, 9, int(tree.getProperty("style", 0)));
-  state.replaceState(tree);
+  ccMap.restore(tree);
+    state.replaceState(tree);
 }
 bool Reverb::isBusesLayoutSupported(const BusesLayout &b) const {
   const auto in = b.getMainInputChannelSet();
@@ -133,9 +135,12 @@ void Reverb::reset() {
   filteredSpectrum.prepare(getSampleRate());
   waveform.prepare(getSampleRate());
   wetPeak = 0; inputPeak = 0; outputPeak = 0;
+  wetL2=wetR2=wetLR=0; wetCorrelation=0; wetRmsDb=-84;
 }
 void Reverb::releaseResources() { engine.reset(); }
-void Reverb::processBlock(juce::AudioBuffer<float> &audio, juce::MidiBuffer &) {
+void Reverb::processBlock(juce::AudioBuffer<float> &audio, juce::MidiBuffer &midi) {
+  ccMap.process(midi);
+  midi.clear();
   juce::ScopedNoDenormals safe;
   if (!engine || !audio.getNumChannels() || !wet.getNumSamples())
     return;
@@ -151,6 +156,7 @@ void Reverb::processBlock(juce::AudioBuffer<float> &audio, juce::MidiBuffer &) {
   calibration.setTargetValue(float(trims[type]));
   for (int v = 0; v < 2; ++v)
     voices[v].setTransposeSemitones(float(values[51 + v]));
+  double sumL=0,sumR=0,sumLR=0;
   float peak = 0, inPeak = 0, outPeak = 0;
   for (int start = 0; start < audio.getNumSamples();) {
     const int count =
@@ -180,11 +186,13 @@ void Reverb::processBlock(juce::AudioBuffer<float> &audio, juce::MidiBuffer &) {
         const auto shifted =
             .5f * (shift[0].getSample(ch, i) + shift[1].getSample(ch, i));
         wetPair[ch] =
-            std::tanh(level * ((1 - sh) * wet.getSample(ch, i) + sh * shifted));
+            limitWet(level * ((1 - sh) * wet.getSample(ch, i) + sh * shifted));
         peak = std::max(peak, std::abs(out * mix * wetPair[ch]));
       }
       wetSpectrum.push(out * mix * wetPair[0], out * mix * wetPair[1]);
-      waveform.push(out * mix * wetPair[0], out * mix * wetPair[1]);
+      const double leftWet=out*mix*wetPair[0],rightWet=out*mix*wetPair[1];
+      waveform.push(float(leftWet),float(rightWet));
+      sumL+=leftWet*leftWet; sumR+=rightWet*rightWet; sumLR+=leftWet*rightWet;
       for (int ch = 0; ch < audio.getNumChannels(); ++ch) {
         const auto value =
             right ? wetPair[ch] : .5f * (wetPair[0] + wetPair[1]);
@@ -199,6 +207,14 @@ void Reverb::processBlock(juce::AudioBuffer<float> &audio, juce::MidiBuffer &) {
     auto previous = meter.load(std::memory_order_relaxed);
     while (previous < value && !meter.compare_exchange_weak(previous, value, std::memory_order_relaxed)) {}
   };
+  const int n=audio.getNumSamples();
+  if (n>0) {
+    const auto weight=-std::expm1(-double(n)/(.25*rate));
+    wetL2+=weight*(sumL/n-wetL2); wetR2+=weight*(sumR/n-wetR2); wetLR+=weight*(sumLR/n-wetLR);
+    const double norm=std::sqrt(wetL2*wetR2);
+    wetCorrelation.store(norm>1.e-12 ? float(std::clamp(wetLR/norm,-1.,1.)) : 0.f);
+    wetRmsDb.store(juce::Decibels::gainToDecibels(float(std::sqrt(.5*(wetL2+wetR2))),-84.f));
+  }
   publish(inputPeak, inPeak);
   publish(wetPeak, peak);
   publish(outputPeak, outPeak);
