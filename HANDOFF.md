@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — illustrated manual and plug-in guide
+
+Branch `codex/illustrated-manual` contains documentation and screenshots. The Japanese and English READMEs link to `docs/manual/` and `docs/plugins/`. The guides distinguish Public Alpha 1 (38 VST3s) from the subsequent development build (39, including the hosted workstation). Update both languages when the installer catalogue changes.
+
+Windows editor images came from Release builds. The workstation image uses the Paper Lantern Replies project, the analyzer uses a test signal, and the Scale Editor image shows its Japanese visual workspace. Check each catalogue entry against its gallery heading, image and index link in both languages. The external-host section documents the Windows playback, transport and recall checks from the hosted development build. Commercial-host and macOS playback were not tested for this documentation change.
+
 ## 2026-11-27 — Public Alpha 1
 
 The owner withdrew the three experimental GitHub Releases and their 12 attached files. The experimental tags remain available for source history. The candidate previously called alpha 4 is now **OSTF Studio Public Alpha 1**, with a fresh tag name reserved for publication, `v1.0.0-public-alpha.1`. PR builds show `1.0.0-public-alpha.1-dev` in Studio and in both installers. The package receipt version remains numeric for upgrades. Review the Windows and macOS checks in [draft PR 7](https://github.com/yoh-nak/OSTF-Studio/pull/7). Publishing still requires explicit authorization.
