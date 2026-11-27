@@ -45,7 +45,14 @@ def parallel_jobs():
             raise SystemExit("CMAKE_BUILD_PARALLEL_LEVEL must be a positive integer")
         return int(override)
     cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count() or 1
-    return max(1, min(cpus, (available_memory() - GIB) // (2 * GIB)))
+    if platform.system() == "Darwin" and os.getenv("RUNNER_ENVIRONMENT") == "github-hosted":
+        # A fresh hosted Mac is dedicated to this job. Its file cache can make
+        # the free-page count small even before any compiler has started.
+        physical = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True))
+        compile_memory = physical - 3 * GIB
+    else:
+        compile_memory = available_memory() - GIB
+    return max(1, min(cpus, compile_memory // (2 * GIB)))
 
 
 def package(tree):
