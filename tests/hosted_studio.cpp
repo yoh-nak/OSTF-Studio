@@ -1,6 +1,9 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../src/ui/StudioPaths.h"
 #include <iostream>
+#if JUCE_MAC
+#import <AppKit/NSApplication.h>
+#endif
 
 namespace {
 class PlayHead final : public juce::AudioPlayHead {
@@ -22,6 +25,9 @@ public:
     bool run() {
         startTimer(10);
         juce::MessageManager::getInstance()->runDispatchLoop();
+        if (!completed)
+            std::cerr << "Playback callbacks: " << blocks << ", audible: " << sounded
+                      << ", callbacks after stop: " << afterStop << '\n';
         return completed;
     }
 private:
@@ -50,6 +56,11 @@ private:
 }
 
 int main(int argc, char** argv) {
+#if JUCE_MAC
+    // A DAW already owns NSApp. This command-line host must create it before
+    // JUCE can dispatch transport timers and audio callbacks on the main loop.
+    [NSApplication sharedApplication];
+#endif
     juce::ScopedJuceInitialiser_GUI gui;
     if (argc != 3) return 1;
     const juce::File bundle(juce::String::fromUTF8(argv[1]));

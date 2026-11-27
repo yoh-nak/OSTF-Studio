@@ -4,6 +4,8 @@
 
 Release branch `codex/public-alpha-2` integrates the Windows-tested development snapshot `d433b0b` and the illustrated guide from public main `19e600a`. The release candidate uses version `1.0.0-public-alpha.2`. Build, install and test the same revision on Windows x64, Apple silicon and Intel macOS. The draft publisher validates names, lengths and digests before exposing downloads. Track runner results independently of physical hardware and external DAW verification. [Release notes](docs/releases/v1.0.0-public-alpha.2.md) · [Release procedure](docs/RELEASING.md)
 
+Local Windows Release passed 48/48 CTests. The first Apple silicon build passed 46/47 GUI-build tests. The external-host recall check returned before its 18-second playback window. The macOS command-line test host now creates the AppKit application before starting the same event loop a DAW provides and reports processed audio blocks on failure.
+
 ## 2026-11-27 — Windows development UI and bilingual illustrated guides
 
 Documentation branch `codex/illustrated-guide-refresh` started at public main `eacc148`. The screen captures use the local Windows x64 Release build of `codex/timeline-snap-audition-controls` at `d433b0b`. The public download links still identify Public Alpha 1. Its 38 plug-ins predate the workstation VST3 and both SUPER KNOBBER devices shown in the development guide.
