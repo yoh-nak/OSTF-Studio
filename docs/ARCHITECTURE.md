@@ -1,5 +1,7 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+The [user manual](manual/en.md) covers the standalone workflow and the subsequent Windows development build of the workstation VST3. The [illustrated plug-in guide](plugins/en.md) identifies the 38 instruments, effects and tools in Public Alpha 1 and the additional hosted workstation in development.
+
 ## OSTF 5.2 score and audio projection
 
 Studio and the bundled plug-in editors resolve the stored `workspaceTheme` against the same console finishes. Each plug-in window owns its JUCE look-and-feel and reads the view preference when constructed. The Scale Editor embeds colours from that finish in its HTML and gives the detached instrument picker its own look-and-feel. Theme selection stays in local view preferences.
