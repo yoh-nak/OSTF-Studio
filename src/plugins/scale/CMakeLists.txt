@@ -33,6 +33,7 @@ juce_enable_copy_plugin_step(OSTFSynthScaleEditor)
 
 find_program(OSTF_NODE_EXECUTABLE NAMES node nodejs)
 if(OSTF_NODE_EXECUTABLE)
+    add_test(NAME ostf_scale_assigned_audition COMMAND "${OSTF_NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/scale_assigned_audition.js")
     add_test(NAME ostf_scale_take_context COMMAND "${OSTF_NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/scale_take_context.js")
 endif()
 

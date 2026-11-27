@@ -252,7 +252,7 @@ public:
         : read_(std::move(read)), move_(std::move(move)) {
         title_.setText(track + TRANS(" / FX chain"), juce::dontSendNotification);
         title_.setFont(juce::FontOptions(16.0f, juce::Font::bold));
-        direction_.setText(TRANS("Drag handles or use Up / Down. Audio flows top to bottom."), juce::dontSendNotification);
+        direction_.setText(TRANS("Drag a handle to reorder. Audio flows from top to bottom."), juce::dontSendNotification);
         direction_.setFont(juce::FontOptions(12.0f));
         for (auto* component : std::array<juce::Component*, 4>{&title_, &direction_, &add_, &browser_})
             addAndMakeVisible(*component);
@@ -262,13 +262,12 @@ public:
             auto& row = rows_[i];
             const auto index = static_cast<int>(i);
             row.handle.setTitle("Drag effect " + juce::String(index + 1));
-            row.handle.setTooltip(TRANS("Drag to a new position in the chain"));
+            row.handle.setTooltip(TRANS("Drag or use the arrow keys to reorder"));
+            row.handle.setWantsKeyboardFocus(true);
             row.handle.setMouseCursor(juce::MouseCursor::DraggingHandCursor);
             row.handle.addMouseListener(this, false);
             row.key.onClick=[selectKey,index,button=&row.key]{selectKey(index,*button);};
             row.name.setJustificationType(juce::Justification::centredLeft);
-            row.up.setTitle("Move effect " + juce::String(index + 1) + " up");
-            row.down.setTitle("Move effect " + juce::String(index + 1) + " down");
             row.open.onClick = [this, edit, index] {
                 if (auto* popup = findParentComponentOfClass<juce::CallOutBox>()) {
                     popup->exitModalState(0);
@@ -278,9 +277,9 @@ public:
             };
             row.remove.onClick = [this, remove, index] { remove(index); refresh(); };
             row.bypass.setTooltip(TRANS("Pass audio through this slot without processing it"));
+            row.bypass.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffffbd45));
+            row.bypass.setColour(juce::TextButton::textColourOnId, juce::Colour(0xff211b0f));
             row.bypass.onClick = [this, bypass, index] { bypass(index); refresh(); };
-            row.up.onClick = [this, index] { moveRow(index, index - 1); };
-            row.down.onClick = [this, index] { moveRow(index, index + 1); };
             for (auto* component : row.components()) addChildComponent(component);
         }
         refresh();
@@ -298,8 +297,6 @@ public:
             row.bypass.setBounds(line.removeFromLeft(76).reduced(1, 0));
             row.remove.setBounds(line.removeFromRight(60).reduced(1, 0));
             row.open.setBounds(line.removeFromRight(48).reduced(1, 0));
-            row.down.setBounds(line.removeFromRight(54).reduced(1, 0));
-            row.up.setBounds(line.removeFromRight(42).reduced(1, 0));
             if (row.key.isVisible()) row.key.setBounds(line.removeFromRight(118).reduced(1,0));
             row.name.setBounds(line.reduced(4, 0));
         }
@@ -318,10 +315,10 @@ public:
 
 private:
     struct Row {
-        juce::TextButton handle {"::"}, up {TRANS("Up")}, down {TRANS("Down")}, open {TRANS("Edit")}, remove {TRANS("Remove")};
+        juce::TextButton handle {"::"}, open {TRANS("Edit")}, remove {TRANS("Remove")};
         juce::Label name;
         juce::TextButton key, bypass{TRANS("Bypass")};
-        std::array<juce::Component*, 8> components() { return {&handle, &name, &up, &down, &open, &remove,&key,&bypass}; }
+        std::array<juce::Component*, 6> components() { return {&handle, &name, &open, &remove, &key, &bypass}; }
     };
 
     void timerCallback() override { refresh(); }
@@ -340,11 +337,10 @@ private:
             row.key.setVisible(entry.key.isNotEmpty());
             row.bypass.setEnabled(!state.busy);
             row.bypass.setToggleState(entry.bypassed, juce::dontSendNotification);
+            row.bypass.setButtonText(entry.bypassed ? TRANS("Bypassed") : TRANS("Bypass"));
             row.key.setButtonText(entry.key);
             row.key.setTooltip(TRANS("Sidechain source") + " / " + entry.key);
             row.handle.setEnabled(!state.busy && count_ > 1);
-            row.up.setEnabled(!state.busy && i > 0);
-            row.down.setEnabled(!state.busy && i + 1 < count_);
             row.open.setEnabled(!state.busy && entry.editable);
             row.remove.setEnabled(!state.busy);
         }
@@ -361,6 +357,18 @@ private:
             move_(from, to);
             refresh();
         }
+    }
+
+    bool keyPressed(const juce::KeyPress& key) override {
+        if (key != juce::KeyPress::upKey && key != juce::KeyPress::downKey) return false;
+        for (int i = 0; i < count_; ++i) {
+            if (!rows_[i].handle.hasKeyboardFocus(false) || !rows_[i].handle.isEnabled()) continue;
+            const auto to = juce::jlimit(0, count_ - 1, i + (key == juce::KeyPress::upKey ? -1 : 1));
+            moveRow(i, to);
+            rows_[to].handle.grabKeyboardFocus();
+            return true;
+        }
+        return false;
     }
 
     void mouseDown(const juce::MouseEvent& event) override {

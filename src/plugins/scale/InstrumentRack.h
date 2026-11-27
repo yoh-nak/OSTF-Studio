@@ -117,21 +117,25 @@ public:
             return juce::Result::fail("Unable to restore the hosted instrument.");
         return install(type,bytes);
     }
-    void audition(const juce::var& notes, bool localOnly=false) {
+    std::atomic<bool> playingAssigned{false};
+    void audition(const juce::var& notes, bool localOnly=false, int assignedDurationMs=0) {
         std::vector<Event> next;
         if (const auto* items=notes.getArray()) for (const auto& item:*items) {
             const int key=item["note"], vel=item["velocity"], at=item["at"], ms=item["ms"];
-            if(key<0 || key>127 || vel<1 || vel>127 || at<0 || ms<1 || at+double(ms)>180000) continue;
+            if(key<0 || key>127 || vel<1 || vel>127 || at<0 || ms<1 || at+double(ms)>(assignedDurationMs>0 ? assignedDurationMs : 180000)) continue;
             next.push_back({at,key,vel}); next.push_back({at+ms,key,0});
         }
         std::stable_sort(next.begin(),next.end(),[](const Event& a,const Event& b){return a.ms<b.ms || (a.ms==b.ms && a.velocity<b.velocity);});
         const juce::ScopedLock lock(owner.getCallbackLock());
         stopPreview(); sequence.swap(next);
         auditionLocally=localOnly;
+        assignedEndSample=std::llround(assignedDurationMs * .001 * rate);
+        playingAssigned.store(assignedEndSample>0 && !sequence.empty());
     }
     void stopPreview() {
         const juce::ScopedLock lock(owner.getCallbackLock());
         sequence.clear(); cursor=0; elapsed=0; flush=true;
+        assignedEndSample=0; playingAssigned.store(false);
     }
     void setPreviewMidiOut(bool enabled) {
         const juce::ScopedLock lock(owner.getCallbackLock());
@@ -174,7 +178,10 @@ public:
             active=e.velocity ? active+1 : std::max(0,active-1);
             ++cursor;
         }
-        if(cursor<sequence.size()) elapsed+=count;
+        if(cursor<sequence.size() || playingAssigned.load()) elapsed+=count;
+        if(assignedEndSample && elapsed>=assignedEndSample) {
+            assignedEndSample=0; playingAssigned.store(false);
+        }
         if(child) {
             child->setPlayHead(owner.getPlayHead());
             const int channels=std::max(child->getTotalNumInputChannels(),child->getTotalNumOutputChannels());
@@ -233,6 +240,7 @@ private:
     std::vector<Event> sequence;
     size_t cursor=0;
     juce::int64 elapsed=0;
+    juce::int64 assignedEndSample=0;
     double rate=48000.;
     int blockSize=512;
     bool prepared=false,flush=false;

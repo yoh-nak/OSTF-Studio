@@ -2,6 +2,10 @@
 
 The [user manual](manual/en.md) covers the standalone workflow and the Windows development build of the workstation VST3. The [illustrated plug-in guide](plugins/en.md) covers the 38 instruments, effects and tools in Public Alpha 1 plus the hosted workstation and SUPER KNOBBER LEAD in development.
 
+## Assigned scale audition
+
+Scale Editor's project workspace builds read-only audition notes from harmony scale spans or the selected track's improvisation directions. It clips spans to the selected section or song and converts ticks through the tempo map. Distinct scales assigned simultaneously leave a rest. The instrument rack schedules the preview against its audio sample clock and releases notes on stop or project replacement. The native controls are a fallback when the system web view is unavailable.
+
 ## SUPER KNOBBER LEAD
 
 The independent instrument `Skl1` ports the supplied LEAD v1.2 voice, drive and wet-effects GenExpr to C++. Its three voices share the source patch’s audio routing. The dry stereo sum goes directly to the output and a parallel drive stage feeds chorus, flanger, phaser, delay and reverb. The optional 2x voice engine decimates through a 65-tap Blackman-windowed low-pass before the effects. Both modes report 16 samples of latency. The factory bank contains 188 programs in 37 genres. Stable VST3 parameter IDs expose the musical controls directly. DAW state stores the selected program, edited controls, MPE and quality per instance.

@@ -361,7 +361,9 @@
 .scope-current{padding:7px 11px;border:1px solid #3b7480;background:#234b53;border-radius:6px;font-size:12px;color:#e1fcf2;text-align:right;max-width:55%}
 .scope-set{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:11px}
 .scope-modes,.scope-policy>div{display:flex;flex-wrap:wrap;gap:5px}
-.scope-modes button{padding:9px 13px;font-size:12px;min-width:83px;flex:1;border-color:#46677d}
+.scope-modes{max-width:100%}
+.scope-modes button{padding:9px 13px;font-size:12px;min-width:max-content;flex:1 0 auto;white-space:nowrap;border-color:#46677d}
+#assignedTools button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 -3px var(--accent)}
 .scope-modes button.active,.scope-policy button.active,.scope-section-chip.active{border-color:#6dcbb6;background:#296154;color:#f4fffa;box-shadow:inset 0 0 0 1px #56a898}
 .scope-sections{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:9px 0}
 .scope-section-chip{border-radius:6px;font-size:10px;padding:6px 9px;background:#283e51;color:#bbd3e4}
@@ -621,11 +623,16 @@ body.studio-host .left-foot span:last-child {display:none!important}
 <header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Scales for the current OSTF Studio project.</div></div></div><div class="head-actions"><button id="open" data-hint="Open an OSTF file in this plug-in (Ctrl+O)." data-hint-ja="OSTFファイルをプラグインで開きます（Ctrl+O）。" data-label-ja="開く…"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-folder"/></svg><span class="tool-label">Open…</span></button><button id="save" data-hint="Save the plug-in’s edited OSTF to its linked file (Ctrl+S)." data-hint-ja="プラグインで編集中のOSTFをリンク先に保存します（Ctrl+S）。" data-label-ja="保存"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-save"/></svg><span class="tool-label">Save</span></button><button id="saveAs" data-hint="Choose a new file for the OSTF edited in this plug-in (Ctrl+Shift+S)." data-hint-ja="プラグインで編集中のOSTFを別のファイルに保存します（Ctrl+Shift+S）。" data-label-ja="別名保存…"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-save-as"/></svg><span class="tool-label">Save as…</span></button>
 <button id="autoSetSong" class="primary" data-hint="Preview scales for the whole song, then confirm to update the Studio project." data-hint-ja="曲全体の候補を確認し、確定したスケールをStudioのプロジェクトに反映します。" data-label-ja="全曲候補"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-suggest"/></svg><span class="tool-label">Suggest scales</span></button><span class="sep"></span><button id="undo" disabled data-hint="Undo the last scale assignment in this plug-in." data-hint-ja="プラグイン内で直前に行ったスケール設定を取り消します。" data-label-ja="戻す"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-undo"/></svg><span class="tool-label">Undo</span></button><button id="redo" disabled data-hint="Redo the last undone scale assignment." data-hint-ja="取り消したスケール設定をやり直します。" data-label-ja="やり直す"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-redo"/></svg><span class="tool-label">Redo</span></button><button id="help" class="quiet" data-hint="Open the Scale Editor guide." data-hint-ja="Scale Editorの操作ガイドを開きます。" data-label-ja="ヘルプ"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-help"/></svg><span class="tool-label">Help</span></button></div>
 <div id="hostTools" class="studio-only">
+<div class="tool-group" id="assignedTools">
+<button id="hearSection" aria-pressed="false" data-hint="Play the assigned scales in the selected section through the audition instrument." data-hint-ja="選択した構成に設定済みのスケールを試聴音源で演奏します。" data-label-ja="▶ 構成を試聴"><span class="tool-label">▶ Play section</span></button>
+<button id="hearSong" aria-pressed="false" data-hint="Play this lane’s assigned scales from the beginning of the song." data-hint-ja="書き込み先に設定済みのスケールを曲の先頭から順に演奏します。" data-label-ja="▶ 全曲を試聴"><span class="tool-label">▶ Play song</span></button>
+<button id="stopAssigned" disabled data-hint="Stop the scale audition." data-hint-ja="スケールの試聴を停止します。" data-label-ja="■ 停止"><span class="tool-label">■ Stop</span></button>
+</div>
 <div class="tool-group"><button id="studioInstrumentPicker" data-hint="Choose the instrument used for auditioning scales." data-hint-ja="スケールの試聴に使う音源を選びます。" data-label-ja="試聴音源"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-keys"/></svg><span class="tool-label">Sound</span><span class="tool-value"></span></button><button id="hostInstrumentEditor" disabled data-hint="Open the loaded instrument’s controls. Select a VST3 instrument to enable this." data-hint-ja="試聴用VST3音源の設定を開きます。音源を読み込むと使えます。" data-label-ja="音源設定"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-sliders"/></svg><span class="tool-label">Controls</span></button><button id="hostTest" data-hint="Play a test note through the audition instrument." data-hint-ja="選択中の試聴音源でテスト音を鳴らします。" data-label-ja="試聴"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-note"/></svg><span class="tool-label">Test note</span></button></div>
 
 <div class="tool-group"><div id="hostLanguage" role="radiogroup" aria-labelledby="languageLabel"><span id="languageLabel">Display language</span>
 <label><input name="host-language" type="radio" value="system" checked>System language</label><label><input name="host-language" type="radio" value="en">English</label><label><input name="host-language" type="radio" value="ja">日本語</label></div>
-<button id="hostNative" data-hint="Switch to the native Scale Editor controls." data-hint-ja="プラグインの簡易エディターに切り替えます。" data-label-ja="簡易表示"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-panel"/></svg><span class="tool-label">Simple view</span></button></div></div></header>
+</div></div></header>
 <div id="emptyScore">Waiting for a project from OSTF Studio.</div>
 <div class="songline"><span class="songtitle" id="songTitle"></span><span class="chip" id="songKey"></span><span class="chip" id="songVersion"></span><span class="chip" id="fileBinding" title="Save requires a linked file; imported text or drag-and-drop must use Save As">Not linked</span><span id="dirty"></span><div class="viewtabs"><button id="visualTab" class="active" data-hint="Edit scales on the chord timeline." data-hint-ja="コード進行を見ながらスケールを編集します。" data-label-ja="ビジュアル"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-grid"/></svg><span class="tool-label">Visual</span></button><button id="textTab" data-hint="Show the text of the score open in this plug-in." data-hint-ja="プラグインに読み込んでいる曲のOSTFテキストを表示します。" data-label-ja="OSTFテキスト"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-text"/></svg><span class="tool-label">OSTF text</span></button></div></div>
 <div id="visual">
@@ -1970,6 +1977,102 @@ function lane(doc,bar,target){
  return {kind:'assigned',label:hit[0].label||SA.pitchName(hit[0].tonic)||'Assigned',color:color(hit[0].type==='improvisation'?hit[0].parameters?.pitchSource?.scale:hit[0]),count:1};
 }
 SA.scope={version:'0.18',range,plan,remove,removable,bars,lane,color,summary,subtract,items,overlapsAt,maxTick,isPitched};
+// Audition authored spans, including scale changes between chords. All times in
+// the returned packet are relative to the start of the chosen playback range.
+SA.assignedPreview=function(doc,target,selection){
+ const scales=doc.harmony.scales||[];
+ const chords=new Map(doc.harmony.chords.map(ch=>[ch.id,ch]));
+ const sections=new Map((doc.timeline.sections||[]).map(s=>[s.id,s]));
+ const byId=new Map(scales.map(sc=>[sc.id,sc]));
+ const changes=[];
+ function include(scale,start,finish,fallback=false){
+  start=Math.max(selection.start,start);finish=Math.min(selection.end,finish);
+  const root=SA.PC(scale?.tonic);
+  if(!(finish>start)||root==null||!Array.isArray(scale.intervals))return;
+  const offsets=[...new Set(scale.intervals.filter(Number.isInteger).map(SA.mod))].sort((a,b)=>a-b);
+  if(!offsets.length)return;
+  const pitches=offsets.map(n=>60+root+n);
+  const span={pitches,start,fallback};
+  changes.push({tick:start,add:true,span},{tick:finish,add:false,span});
+ }
+ if(target==='harmony')include(doc.song?.scale,selection.start,selection.end,true);
+ const track=doc.tracks?.find(t=>t.id===target);
+ if(track && scales.some(s=>s.targets?.length)){
+  const clips=new Map(),notes=new Map();
+  for(const clip of track.clips||[]){
+   if(clip.enabled===false)continue;
+   clips.set(clip.id,clip);
+   for(const n of clip.notes||[]){
+    if(n.enabled!==false && n.probability!==0)notes.set(n.id,{start:clip.start+n.start,duration:n.duration});
+   }
+  }
+  for(const scale of scales)for(const ref of scale.targets||[]){
+   if(ref.type==='track' && ref.id===target)include(scale,scale.start,end(scale));
+   const region=ref.type==='clip'?clips.get(ref.id):ref.type==='note'?notes.get(ref.id):null;
+   if(region)include(scale,Math.max(scale.start,region.start),Math.min(end(scale),end(region)));
+  }
+ }
+ for(const item of items(doc,target)||[]){
+  if(target==='harmony'){
+   if(!item.targets?.length)include(item,item.start,end(item));
+   else for(const ref of item.targets){
+    const region=ref.type==='chord'?chords.get(ref.id):ref.type==='section'?sections.get(ref.id):null;
+    if(region)include(item,Math.max(item.start,region.start),Math.min(end(item),end(region)));
+   }
+  }else{
+   const source=item.parameters?.pitchSource;
+   if(source?.type==='explicitScale')include(source.scale,item.start,end(item));
+   if(source?.type==='songScale')include(doc.song?.scale,item.start,end(item));
+   if(source?.type==='effectiveKeyScale'){
+    const boundaries=[item.start,...(doc.timeline.keyChanges||[]).map(k=>k.at)
+     .filter(t=>t>item.start&&t<end(item)).sort((a,b)=>a-b),end(item)];
+    for(let i=0;i+1<boundaries.length;i++){
+     const key=SA.effectiveKey(doc,boundaries[i]);
+     if(key)include({tonic:key.tonic,intervals:key.pcs.map(pc=>SA.mod(pc-key.root))},boundaries[i],boundaries[i+1]);
+    }
+   }
+   if(source?.type==='harmonyScales')for(const id of source.scaleIds||[]){
+    const scale=byId.get(id);
+    if(scale)include(scale,Math.max(scale.start,item.start),Math.min(end(scale),end(item)));
+   }
+  }
+ }
+ const tempos=[{at:0,bpm:120,time:0}];
+ for(const t of [...(doc.timeline.tempoChanges||[])].sort((a,b)=>a.at-b.at)){
+  if(!(t.bpm>0)||!Number.isFinite(t.bpm))continue;
+  const prev=tempos[tempos.length-1];
+  tempos.push({at:t.at,bpm:t.bpm,time:prev.time+(t.at-prev.at)*60000/(doc.ppq*prev.bpm)});
+ }
+ function millis(tick){
+  let lo=0,hi=tempos.length;
+  while(lo+1<hi){const mid=Math.floor((lo+hi)/2);if(tempos[mid].at<=tick)lo=mid;else hi=mid;}
+  const t=tempos[lo];
+  return t.time+(tick-t.at)*60000/(doc.ppq*t.bpm);
+ }
+ const origin=millis(selection.start),duration=Math.round(millis(selection.end)-origin);
+ if(duration>86400000)throw new RangeError('Audition is too long');
+ const notes=[],active=new Set();
+ let ambiguous=false;
+ changes.sort((a,b)=>a.tick-b.tick);
+ for(let i=0;i<changes.length;){
+  const start=changes[i].tick;
+  do{const e=changes[i++];if(e.add)active.add(e.span);else active.delete(e.span);}while(i<changes.length&&changes[i].tick===start);
+  if(!active.size||i===changes.length)continue;
+  const timed=[...active].filter(s=>!s.fallback);
+  const span=timed[0]||active.values().next().value;
+  if(timed.some(other=>String(other.pitches)!==String(span.pitches))){ambiguous=true;continue;}
+  const finish=changes[i].tick,step=doc.ppq/2;
+  for(let tick=start;tick<finish;tick+=step){
+   if(notes.length>=100000)throw new RangeError('Audition is too long');
+   const at=Math.round(millis(tick)-origin);
+   const available=Math.round(millis(Math.min(tick+step,finish))-origin)-at;
+   if(available<1)continue;
+   const degree=Math.floor((tick-span.start)/step)%span.pitches.length;
+   notes.push({at,note:span.pitches[degree],velocity:80,ms:Math.max(1,Math.round(available*.82))});
+  }
+ }
+ return {notes,duration,ambiguous};
+};
 })(typeof globalThis!=='undefined'?globalThis:this);
 
 </script>
@@ -3535,10 +3638,36 @@ if(window.__JUCE__?.backend){
  document.body.classList.add('studio-host');
  const backend=window.__JUCE__.backend;
  const send=(action,value)=>backend.emitEvent('ostfScaleHostAction',{action,value});
- for(const [id,action] of Object.entries({hostNative:'native',hostInstrumentEditor:'instrument',hostTest:'test'})){
+ for(const [id,action] of Object.entries({hostInstrumentEditor:'instrument',hostTest:'test'})){
   $(id).onclick=()=>send(action);
  }
  $('hostLanguage').onchange=e=>{if(e.target.checked)send('language',e.target.value);};
+ function assignedControls(kind){
+  $('hearSection').setAttribute('aria-pressed',String(kind==='section'));
+  $('hearSong').setAttribute('aria-pressed',String(kind==='song'));
+  $('stopAssigned').disabled=!kind;
+ }
+ function playAssigned(kind){
+  stop();assignedControls('');
+  if(!state.doc)return;
+  let selection;
+  try{selection=SA.scope.range(state.doc,kind,getChord(),null,state.scopeSectionId);}
+  catch{status(languageText('Select a section first.','先に構成を選んでください。'));return;}
+  let plan;
+  try{plan=SA.assignedPreview(state.doc,state.target,selection);}
+  catch(e){if(!(e instanceof RangeError))throw e;status(languageText('Choose a shorter section to audition.','試聴の範囲を短くしてください。'));return;}
+  if(!plan.notes.length){
+   status(plan.ambiguous?languageText('Overlapping scales in this range.','選択範囲のスケールが重複しています。'):
+    languageText('No assigned scales in this lane and range.','この書き込み先の選択範囲には、試聴できる設定済みスケールがありません。'));return;
+  }
+  backend.emitEvent('ostfAssignedPreview',{notes:plan.notes,duration:plan.duration,scope:kind});
+  assignedControls(kind);
+  status(languageText('Playing assigned scales','設定済みスケールを試聴中')+
+   (plan.ambiguous?languageText(' · overlapping scales are silent',' · スケールが重複する区間は休符'):''));
+ }
+ $('hearSection').onclick=()=>playAssigned('section');
+ $('hearSong').onclick=()=>playAssigned('song');
+ $('stopAssigned').onclick=()=>{stop();assignedControls('');status(languageText('Stopped','停止しました'));};
  $('hostPreviewOut').onchange=e=>send('preview',e.target.checked);
  $('hostThru').onchange=e=>send('thru',e.target.checked);
  $('studioInstrumentPicker').onclick=e=>{
@@ -3546,6 +3675,9 @@ if(window.__JUCE__?.backend){
   backend.emitEvent('ostfScaleChooseInstrument',{x:(rect.left+rect.width/2)/innerWidth,y:rect.bottom/innerHeight});
  };
  backend.addEventListener('ostfScaleHostState',host=>{
+  if(!host.assignedScope&&!$('stopAssigned').disabled)
+   status(languageText('Scale audition ended.','設定済みスケールの試聴が終了しました。'));
+  assignedControls(host.assignedScope);
   $('hostInstrumentEditor').disabled=!host.instrument;
   $('hostPreviewOut').checked=host.preview;
   $('hostThru').checked=host.thru;

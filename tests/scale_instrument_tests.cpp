@@ -177,7 +177,14 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial,const juce::Stri
             })())JS");
         } else if (stage==1) {
             language()->setSelectedId(3,juce::sendNotificationSync);
-            checkPage("document.documentElement.lang==='ja' && document.querySelector('#songTitle').textContent==='Save'");
+            checkPage(R"JS((()=>{
+                if(document.documentElement.lang!=='ja' || document.querySelector('#songTitle').textContent!=='Save')return false;
+                const button=document.querySelector('#scopeModes [data-scope="range"]');
+                if(!button || button.textContent!=='\u30c9\u30e9\u30c3\u30b0\u3067\u9078\u629e')return false;
+                const range=document.createRange();range.selectNodeContents(button);
+                const label=range.getBoundingClientRect(),bounds=button.getBoundingClientRect();
+                return label.width>0 && label.left>=bounds.left && label.right<=bounds.right;
+            })())JS");
         } else if (stage==2) {
             juce::MemoryBlock bytes;
             processor->getStateInformation(bytes);
@@ -448,6 +455,7 @@ int main(int argc,char** argv) {
         bool pending = false, applying = false, heardPreview = false;
         int inputStage=0, sentStage=-1;
         bool requestedPicker=false, checkedPicker=false;
+        bool requestedSection=false, heardSection=false;
         int result = 44;
         const auto deadline = juce::Time::getMillisecondCounterHiRes() + 45000.;
         struct Poll : juce::Timer {
@@ -545,11 +553,28 @@ int main(int argc,char** argv) {
                     const int expectedMasks[]{17,1,0};
                     if (value && (value->isInt() || value->isDouble()) && int(*value)==expectedMasks[inputStage]) ++inputStage;
                 });
+            } else if (!pending && !requestedSection) {
+                pending=true;
+                browser->evaluateJavascript(R"JS((()=>{
+                    if(document.getElementById('hostNative'))return false;
+                    const button=document.getElementById('hearSection');
+                    if(!button)return false;
+                    button.click();
+                    return button.getAttribute('aria-pressed')==='true';
+                })())JS",[&](auto evaluation){
+                    pending=false;
+                    if(const auto* result=evaluation.getResult())requestedSection=bool(*result);
+                });
+            } else if (requestedSection && !heardSection) {
+                midi.clear(); block.clear(); processor->processBlock(block,midi);
+                heardSection=block.getMagnitude(0,block.getNumSamples())>0.0001f;
             } else if (!pending) {
                 pending = true;
                 browser->evaluateJavascript(R"JS((() => {
                     const app = window.ScaleAdviserApp;
                     if (!app?.state?.doc?.harmony?.scales?.length || !app.renderScaleMap || !app.renderNoteFit) return '';
+                    document.getElementById('stopAssigned').click();
+                    if(!document.getElementById('stopAssigned').disabled)return '';
                     app.playCompare('A');
                     app.state.doc.harmony.scales = [];
                     document.querySelector('#targets button[data-target]:nth-child(2)').click();

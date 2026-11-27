@@ -32,6 +32,8 @@ Saving the host project stores the Studio session, packaged audio and instrument
 
 Scale Editor pairs short labels with action icons. Hover over a toolbar button or use Tab to read its description, including which score or file it changes. Press Escape to dismiss the hint.
 
+In the development build, choose **Play section** or **Play song** in Scale Editor to hear the scales already assigned to the selected lane. The audition instrument plays ascending eighth notes at the song's tempo, including tempo changes. Unassigned spans are rests. **Stop** ends the audition independently of Studio playback.
+
 Bundled VST3 editors read Studio’s saved colour theme when their windows open. Their controls use the same console knobs and faders as Studio. Choose **Colour theme** in Studio, then reopen an editor to use the new finish. In Scale Editor’s instrument search, use the arrow keys to select a result, **Enter** to load it, or **Shift+Enter** to load it and hear C4 while keeping the list open.
 
 Scale Editor shows **Display language** as three labelled choices in the header. The **Song style** field and its menu use the Studio theme’s text and selection colours. Both controls support Windows contrast themes.

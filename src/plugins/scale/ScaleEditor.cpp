@@ -266,8 +266,6 @@ public:
         for (juce::Component* c : std::initializer_list<juce::Component*>{&inspectMode,&fitRows,&compareText,&scopeMode,&nextUnassigned,&resetA}) addAndMakeVisible(c);
         addAndMakeVisible(flowView);
         addAndMakeVisible(flowKey);
-        addAndMakeVisible(fullWorkspace);
-        fullWorkspace.onClick=[this]{openFullWorkspace();};
         addChildComponent(disconnected);
         disconnected.setJustificationType(juce::Justification::centred);
         disconnected.setColour(juce::Label::backgroundColourId,juce::Colour(0xff17232e));
@@ -413,7 +411,7 @@ public:
         }
         auto area=getLocalBounds().reduced(12);
         auto head=area.removeFromTop(32);
-        language.setBounds(head.removeFromRight(145).reduced(1)); fullWorkspace.setBounds(head.removeFromRight(145).reduced(1));
+        language.setBounds(head.removeFromRight(145).reduced(1));
         redo.setBounds(head.removeFromRight(60).reduced(1)); undo.setBounds(head.removeFromRight(95).reduced(1));
         autoSet.setBounds(head.removeFromRight(115).reduced(1)); song.setBounds(head);
         area.removeFromTop(8);
@@ -448,7 +446,7 @@ public:
         details.setBounds(area.reduced(3));
         compareText.setBounds(details.getBounds()); fitRows.setBounds(details.getBounds());
         const bool full=workspace && workspace->isVisible();
-        for (auto* control : std::initializer_list<juce::Component*>{&song,&language,&fullWorkspace,&autoSet,&undo,&redo,&loadInstrument,&showInstrument,
+        for (auto* control : std::initializer_list<juce::Component*>{&song,&language,&autoSet,&undo,&redo,&loadInstrument,&showInstrument,
                 &testSound,&previewMidiOut,&midiThru,&status})
             control->setVisible(!full);
         disconnected.setBounds(getLocalBounds());
@@ -481,7 +479,6 @@ private:
         caption(audition,"Hear candidate","候補を試聴"); caption(compare,"A/B with reference","基準音と比較"); caption(stop,"Stop","停止");
         caption(flowTab,"Scale Flow","スケールの流れ"); caption(connectionsTab,"Connections","つながり"); caption(reviewTab,"Review","確認");
         caption(pin,"Pin A","Aを固定"); caption(resetA,"Reset A","Aをリセット"); caption(repeats,"Include matching progressions","同じ進行を含める");
-        fullWorkspace.setButtonText(workspace && workspace->isVisible() ? words("Native controls","簡易エディター") : words("Full editor","詳細エディター"));
         timelineTitle.setText(words("Chord timeline","コード進行"),juce::dontSendNotification);
         candidateTitle.setText(words("Compare scales","スケールを比較"),juce::dontSendNotification);
         inspectorTitle.setText(words("Scale inspector","スケールの詳細"),juce::dontSendNotification);
@@ -508,7 +505,8 @@ private:
         if (seenStateVersion!=proc.restoredStateVersion) {
             seenStateVersion=proc.restoredStateVersion;
             ++workspaceGeneration;
-            openedWorkspace=workspace && !workspace->isVisible();
+            openedWorkspace=false;
+            proc.rack.stopPreview();
             workspace.reset();
             resized();
             workspaceHash.clear();
@@ -516,7 +514,6 @@ private:
             redoDocument.reset();
             undo.setEnabled(false);
             redo.setEnabled(false);
-            fullWorkspace.setButtonText(words("Full editor","詳細エディター"));
         }
         sync(); showInitialWorkspace();
     }
@@ -803,8 +800,7 @@ private:
     void handleHostAction(const juce::var& request) {
         const auto action=request["action"].toString();
         const auto value=request["value"];
-        if (action=="native") openFullWorkspace();
-        else if (action=="instrument" && showInstrument.isEnabled()) showInstrument.onClick();
+        if (action=="instrument" && showInstrument.isEnabled()) showInstrument.onClick();
         else if (action=="test") testSound.onClick();
         else if ((action=="preview" || action=="thru") && value.isBool()) {
             auto& button=action=="preview" ? previewMidiOut : midiThru;
@@ -826,13 +822,14 @@ private:
         }
         const int route=proc.rack.previewMidiOut() ? 1 : 0;
         const auto flags=(int(showInstrument.isEnabled())<<1)
-            | (route<<2) | (int(proc.rack.midiThruEnabled())<<3);
+            | (route<<2) | (int(proc.rack.playingAssigned.load())<<4) | (int(proc.rack.midiThruEnabled())<<3);
         if (flags!=shownHostFlags || languageChoice!=shownLanguageChoice) {
             juce::var state(new juce::DynamicObject());
             auto& fields=*state.getDynamicObject();
             fields.setProperty("instrument",showInstrument.isEnabled());
             fields.setProperty("preview",route!=0);
             fields.setProperty("thru",proc.rack.midiThruEnabled());
+            fields.setProperty("assignedScope",(flags & 16) != 0 ? assignedScope : juce::String{});
             fields.setProperty("language",languageChoice);
             workspace->emitEventIfBrowserIsVisible("ostfScaleHostState",state);
             shownHostFlags=flags;
@@ -858,12 +855,6 @@ private:
         }
     }
     void openFullWorkspace() {
-        if (workspace && workspace->isVisible()) {
-            workspace->setVisible(false);
-            resized();
-            fullWorkspace.setButtonText(words("Full editor","詳細エディター"));
-            return;
-        }
         const juce::ScopedLock lock(proc.stateLock);
         const auto snapshot=proc.document.text;
         if (workspace && workspaceHash==digest(snapshot)) {
@@ -916,8 +907,19 @@ private:
                     self->chooseInstrument({bounds.getX()+juce::roundToInt(bounds.getWidth()*x),
                         bounds.getY()+juce::roundToInt(bounds.getHeight()*y),1,1});
                 })
-                .withEventListener("ostfScalePreview", [self=juce::Component::SafePointer<Editor>(this)](juce::var notes) {
-                    if (!self || !notes.isArray() || notes.size() > 2048) return;
+                .withEventListener("ostfAssignedPreview", [self=juce::Component::SafePointer<Editor>(this),page](juce::var plan) {
+                    if (!self || self->workspaceGeneration!=page || !self->proc.connected.load()) return;
+                    const auto notes = plan["notes"];
+                    const auto duration = int(plan["duration"]);
+                    const auto scope = plan["scope"].toString();
+                    if (scope!="section" && scope!="song") return;
+                    if (!notes.isArray() || notes.size()==0 || notes.size()>100000 || duration<=0 || duration>86400000) return;
+                    self->assignedScope=scope;
+                    self->proc.rack.audition(notes, false, duration);
+                    self->shownHostFlags=-1;
+                })
+                .withEventListener("ostfScalePreview", [self=juce::Component::SafePointer<Editor>(this),page](juce::var notes) {
+                    if (!self || self->workspaceGeneration!=page || !notes.isArray() || notes.size() > 2048) return;
                     if (notes.size()) self->proc.rack.audition(notes);
                     else self->proc.rack.stopPreview();
                 });
@@ -931,11 +933,10 @@ private:
             addAndMakeVisible(*workspace); resized();
             workspace->goToURL(Browser::getResourceProviderRoot());
             workspaceHash=digest(snapshot);
-            fullWorkspace.setButtonText(words("Native controls","簡易エディター"));
             return;
         }
        #endif
-        status.setText(words("Using native scale controls.","簡易エディターでスケールを編集できます。"),juce::dontSendNotification);
+        status.setText(words("The system web view is unavailable. Basic scale controls are active.","システムのWeb表示を利用できないため、基本の編集機能を表示しています。"),juce::dontSendNotification);
     }
     void rememberWorkspace(const juce::var& patch) {
         const juce::ScopedLock lock(proc.stateLock);
@@ -970,9 +971,9 @@ private:
     ScaleRows reviewList;
     juce::Array<int> reviewIndices;
     bool showingReview=false;
-    juce::TextButton fullWorkspace{"Full editor"};
     std::unique_ptr<juce::WebBrowserComponent> workspace;
     juce::String workspaceHash,workspaceSource;
+    juce::String assignedScope;
     int workspaceGeneration=0;
     uint64_t seenStateVersion=0;
     bool openedWorkspace = false;
