@@ -12,6 +12,8 @@ The complete workstation on a stereo instrument track. Choose **OSTF Studio (VST
 
 ![OSTF Studio showing DAW transport follow above the arrangement and piano roll](../images/plugins/ostf-studio.png)
 
+[Signal path and controls](ostf-studio.en.md)
+
 ## OSTF Scale Editor
 
 In Public Alpha 2, load **OSTF Scale Editor** on an instrument track **inside OSTF Studio**. In another DAW, load **OSTF Studio (VST3)** first and open the project there. Choose a chord in the left pane, audition candidates, then choose **Set scale**. The check mark and scale name show the assignment for the selected target. **Harmony** updates Studio’s global scale lane. A pitched track receives its own scale direction. Save the project in Studio or in the DAW containing it.
@@ -71,5 +73,7 @@ Play the LEAD v1.2 instrument on a MIDI track in Studio or another VST3 host. Ch
 **Original rate** is the default. Try **2x oversampling** on a bright, driven lead and listen to the upper notes. Both modes report 16 samples of latency.
 
 ![SUPER KNOBBER LEAD showing oscillator and source mixer page with genre and preset selection](../images/plugins/super-knobber-lead.png)
+
+[Signal path and controls](super-knobber-lead.en.md)
 
 [Return to the plug-in guide](en.md)

@@ -88,4 +88,6 @@ For a tail comparison, play a short hit and stop the input. Select the wet RMS a
 
 ![SUPER KNOBBER REVERB showing input and wet spectrum, peak meters and reflection controls](../images/plugins/super-knobber-reverb.png)
 
+[Signal path and controls](super-knobber-reverb.en.md)
+
 [Return to the plug-in guide](en.md)

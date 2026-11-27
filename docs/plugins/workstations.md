@@ -12,6 +12,8 @@ MIDIトラックに挿し、曲全体を鳴らす、歌詞を歌わせる、ま�
 
 ![OSTF Studioの画面。ホスト追従ボタン、アレンジ、ピアノロール](../images/plugins/ostf-studio.png)
 
+[詳しい操作と入出力](ostf-studio.md)
+
 ## OSTF Scale Editor
 
 公開アルファ2では、**OSTF Studio内の音源トラック**に **OSTF Scale Editor** をセットします。他のDAWでは、先に **OSTF Studio (VST3)** を立ち上げ、その中で曲を開きます。左ペインでコードを選び、候補を試聴して **スケールを設定** を押すと、左のコードに確定したスケール名とチェックが付きます。書き込み先が **和声** ならStudioのグローバルスケールレーンに、トラックならそのトラックのスケール指定に反映されます。曲はStudioまたは親DAWで保存します。
@@ -71,5 +73,7 @@ M4L版LEAD v1.2の音色を、Studioや他のDAWのMIDIトラックで演奏で�
 **Original rate** が初期設定です。高音で歪みを使うときは **2x oversampling** に切り替えて響きを比べられます。どちらもホストに報告するレイテンシーは16サンプルです。
 
 ![SUPER KNOBBER LEADの画面。オシレーターとミキサー、ジャンルと音色の選択](../images/plugins/super-knobber-lead.png)
+
+[詳しい操作と入出力](super-knobber-lead.md)
 
 [プラグイン図鑑の目次に戻る](README.md)

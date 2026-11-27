@@ -27,6 +27,9 @@ tag_ref="refs/tags/$RELEASE_TAG"
 refs=$(gh api "$repo_api/git/matching-refs/tags/$RELEASE_TAG")
 existing_sha=$(jq -r --arg ref "$tag_ref" '.[] | select(.ref == $ref) | .object.sha' <<< "$refs")
 releases=$(gh api --paginate --slurp "$repo_api/releases")
+if [[ "$RELEASE_TYPE" == prerelease ]]; then
+  jq 'add // []' <<< "$releases" | python3 packaging/next_alpha.py "$RELEASE_TAG"
+fi
 entry=$(jq -c --arg tag "$RELEASE_TAG" '[.[][] | select(.tag_name == $tag)] | first // empty' <<< "$releases")
 if [[ -n "$entry" ]]; then
   jq -e '.draft == true' <<< "$entry" >/dev/null || { echo "Already published: $RELEASE_TAG" >&2; exit 1; }

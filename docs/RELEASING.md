@@ -19,6 +19,8 @@ The CMake project version is the numeric product version. The Git tag identifies
 | macOS Intel disk image | `OSTF_Studio_<version>_macOS_x86_64.dmg` |
 | Matching source and build inputs | `OSTF_Studio_<version>_Corresponding_Source.tar.gz` |
 
+The release guide checks run with `python tests/illustrated_guides.py` and `bash tests/release-version.sh`. The latter checks the alpha sequence against published release metadata and ignores drafts when calculating the next number.
+
 ## Windows install and upgrade
 
 Setup updates the current user's application in its previous directory using the existing Inno Setup `AppId`. Select the desired categories or individual VST3s on the components page. An administrator-approved helper installs the selection in `%CommonProgramFiles%\VST3\OSTF Studio`. Its uninstall entry is **OSTF Studio VST3 Plug-ins**. To add plug-ins later, rerun Setup. Previously installed plug-ins are retained when unchecked. Save and close a DAW before updating a changed binary it has loaded. Interactive Setup offers to continue with the application alone if elevation or shared installation fails.

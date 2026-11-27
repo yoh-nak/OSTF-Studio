@@ -234,9 +234,9 @@ New drum tracks have 16 GM assignments. In the drum editor, choose a pad and a M
 
 ## Install OSTF Studio
 
-On Windows, run the Setup executable or extract the portable ZIP. On an Apple silicon Mac, open the DMG and run **Install OSTF Studio and VST3.pkg**. Public installers and matching source archives are listed under **Assets** on each [GitHub Release](https://github.com/yoh-nak/OSTF-Studio/releases). Development packages are available for seven days under **Actions → build run → Artifacts**.
+On Windows, run the Setup executable or extract the portable ZIP. On a Mac, open the DMG for your Apple silicon or Intel processor and run **Install OSTF Studio and VST3.pkg**. Public installers and matching source archives are listed under **Assets** on each [GitHub Release](https://github.com/yoh-nak/OSTF-Studio/releases). Development packages are available for seven days under **Actions → build run → Artifacts**.
 
-Development builds of Windows Setup and the Apple silicon PKG let you uncheck individual VST3s or whole categories. On a fresh install all stock plug-ins are selected. Scale Editor appears under **Composition tools** and Wave Analyzer and Stem Separator under **Utilities**. To add a plug-in later, rerun the installer and select it. The Windows portable ZIP includes the full set.
+Windows Setup and both macOS packages let you uncheck individual VST3s or whole categories. On a fresh install all stock plug-ins are selected. Scale Editor appears under **Composition tools** and Wave Analyzer and Stem Separator under **Utilities**. To add a plug-in later, rerun the installer and select it. The Windows portable ZIP includes the full set.
 
 For use in another DAW, clear **OSTF Studio application** and select the VST3s you want. Selecting Scale Editor also selects the Studio application. Selecting a plug-in that requires the application automatically checks and locks Studio until the last such plug-in is deselected.
 
@@ -337,7 +337,7 @@ Windows Setup registers a document icon for `.ostf` and a package icon for `.ost
 
 In alpha 3, the shared VST3 task in Windows Setup requests administrator approval to install both instruments and all nine effects in `%CommonProgramFiles%\VST3\OSTF Studio`. Other DAWs can find them with their system-folder scan. Setup keeps matching, versioned plug-in binaries in place and installs missing files. If a DAW is using a binary that needs updating, you can install Studio first. Save your session, close the DAW, and rerun Setup with the shared VST3 task selected to finish the update. After a successful shared install, recognized copies from older per-user installs move to `%LOCALAPPDATA%\OSTF Studio\Previous VST3`. The shared plug-ins have their own uninstaller. The Portable ZIP keeps them beside the app.
 
-On macOS arm64, run **Install OSTF Studio and VST3.pkg** inside the DMG to install the plug-ins in `/Library/Audio/Plug-Ins/VST3`. Dragging just the app installs the application alone. Signing and notarization are pending.
+On either Mac architecture, run **Install OSTF Studio and VST3.pkg** inside the DMG to install the plug-ins in `/Library/Audio/Plug-Ins/VST3`. Dragging just the app installs the application alone. Signing and notarization are pending.
 - GitHub Actions Windows + macOS **preview** builds, unsigned
 - `AGENTS.md` instructions for continuing in Codex
 - Architecture/roadmap/checklists
@@ -390,7 +390,7 @@ Install CMake 3.22 or later and Git for the JUCE download. On Windows use MSVC w
 For Windows, use the `Visual Studio 17 2022` generator with `-A x64` for incremental builds, as in CI. When using MSVC/Ninja, check that `ninja -t deps` lists the project's headers before relying on incremental output. If localized compiler include lines are unrecognized, use the Visual Studio generator in a fresh directory. The Windows GUI CTest runs a startup smoke test through the splash screen.
 
 ## Build outputs
-The [build workflow](.github/workflows/build.yml) runs standalone core tests and builds the JUCE GUI on Windows x64 (Visual Studio 2022) and macOS arm64. Successful jobs upload a Windows installer and Portable ZIP, and a macOS DMG, under **Actions > run > Artifacts** for seven days. Publishing a stable release or pre-release requires an explicit workflow dispatch on `main`. See [Packaging and releases](docs/RELEASING.md) for version tags, installation behavior and macOS signing requirements. GUI interaction and audio-device behavior require separate real-device validation.
+The [build workflow](.github/workflows/build.yml) runs standalone core tests and builds the JUCE GUI on Windows x64 (Visual Studio 2022) and both macOS architectures. Successful jobs upload a Windows installer and Portable ZIP, and native Apple silicon and Intel DMGs, under **Actions > run > Artifacts** for seven days. Publishing a stable release or pre-release requires an explicit workflow dispatch on `main`. See [Packaging and releases](docs/RELEASING.md) for version tags, installation behavior and macOS signing requirements. GUI interaction and audio-device behavior require separate real-device validation.
 
 See the [development roadmap](docs/ARCHITECTURE.md#user-visible-milestones) for the official OSTF 5.0 intake requirements and the sequence for implementing DAW features.
 

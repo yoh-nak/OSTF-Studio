@@ -200,7 +200,7 @@ PDF楽譜の「ロジック解析」には、このコンピューターにイ�
 
 ## インストール
 
-Windows は Setup.exe を実行するか、Portable ZIP を展開してください。Apple silicon Mac は DMG を開き、中の **Install OSTF Studio and VST3.pkg** でアプリと VST3 をインストールします。macOS の Developer ID 署名・公証は未設定です。公開版のインストーラーと対応ソースは [GitHub Releases](https://github.com/yoh-nak/OSTF-Studio/releases) の各リリースの **Assets** にあります。
+Windows は Setup.exe を実行するか、Portable ZIP を展開してください。Mac はAppleシリコン用またはIntel用のDMGを選んで開き、中の **Install OSTF Studio and VST3.pkg** でアプリと VST3 をインストールします。macOS の Developer ID 署名・公証は未設定です。公開版のインストーラーと対応ソースは [GitHub Releases](https://github.com/yoh-nak/OSTF-Studio/releases) の各リリースの **Assets** にあります。
 
 開発ビルドは **Actions → 各ビルドの実行結果 → Artifacts** に7日間保存されます。公開版の履歴・配布ファイルは Releases から取得できます。
 
@@ -282,7 +282,7 @@ cmake --build build-core --config Release
 ctest --test-dir build-core -C Release --output-on-failure --no-tests=error
 ```
 
-GUI をビルドするには `build-core` を `build` に、`OSTF_STUDIO_BUILD_GUI=OFF` を `ON` に変更します。GUI の構成時に JUCE 9.0.5 を取得します。配布版と同じ GM 音源を使用する場合は先に `python packaging/prepare_fluid_r3.py` を実行してください。Windows x64 と macOS arm64 の CI がビルドと自動テストを行います。実機のオーディオ、外部プラグインとの連携は別途検証します。[ビルドと配布の手順](docs/RELEASING.md)
+GUI をビルドするには `build-core` を `build` に、`OSTF_STUDIO_BUILD_GUI=OFF` を `ON` に変更します。GUI の構成時に JUCE 9.0.5 を取得します。配布版と同じ GM 音源を使用する場合は先に `python packaging/prepare_fluid_r3.py` を実行してください。Windows x64・macOS arm64・macOS x86_64のCI がビルドと自動テストを行います。実機のオーディオ、外部プラグインとの連携は別途検証します。[ビルドと配布の手順](docs/RELEASING.md)
 
 ## ライセンス
 
