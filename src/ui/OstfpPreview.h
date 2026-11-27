@@ -57,7 +57,7 @@ struct MidiControl {
         return channel ? name + " / ch " + juce::String(channel) : name;
     }
 };
-struct MeterPoint { juce::int64 tick; int numerator, denominator; };
+struct MeterPoint { juce::int64 tick; int numerator, denominator; juce::int64 firstBar = 1; };
 inline MeterPoint activeMeter(const std::vector<MeterPoint>& meters, double tick, MeterPoint initial) {
     const auto next = std::upper_bound(meters.begin(), meters.end(), tick, [](double t, const auto& m){ return t < m.tick; });
     return next == meters.begin() ? initial : *std::prev(next);
@@ -230,6 +230,14 @@ struct OstfpPreview {
     TempoMap clock;
     int meterBeats = 4, beatUnit = 4;
     std::vector<MeterPoint> meters;
+    // Pixels and clips use linear source ticks; musical bar numbers follow the meter map.
+    juce::int64 measureNumber(juce::int64 tick) const;
+    juce::int64 measureStart(juce::int64 number) const;
+    juce::Range<juce::int64> measureRange(juce::int64 tick) const {
+        if (tick < 0 || tick >= durationTicks) return {};
+        const auto number = measureNumber(tick);
+        return {measureStart(number), std::min(durationTicks, measureStart(number + 1))};
+    }
     std::vector<std::pair<juce::int64,int>> camelotKeys;
     juce::String defaultScale;
     juce::StringArray trackIds;
@@ -256,6 +264,7 @@ struct OstfpPreview {
                                     const juce::Array<juce::var>& insert, juce::MemoryBlock& before);
     juce::Result applySongMusic(const SongMusicEdit&, juce::MemoryBlock& before);
     juce::Result checkAudition(int shift, double rate) const;
+    std::map<TimelineLane, std::vector<juce::int64>> globalEdges;
     std::vector<ArrangementLane> globalLanes, trackLanes;
     const char* displayLyricAt(size_t track, juce::int64 tick) const;
     std::map<size_t, std::vector<ArrangementLane>> partLyricLanes;

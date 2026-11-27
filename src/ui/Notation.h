@@ -55,6 +55,16 @@ struct NotationScore {
     juce::StringArray printCredits;
     int bars = 0, beats = 4, beatType = 4;
     juce::int64 ppq = 0, barTicks = 0;
+    std::vector<juce::int64> measureStarts; // Populated for variable-length measures.
+    juce::int64 barStart(int index) const {
+        return measureStarts.empty() ? juce::int64(index) * barTicks
+            : measureStarts[std::clamp(index, 0, int(measureStarts.size()) - 1)];
+    }
+    int barAt(juce::int64 at) const {
+        if (measureStarts.empty()) return int(at / std::max<juce::int64>(1, barTicks));
+        return std::clamp(int(std::upper_bound(measureStarts.begin(), measureStarts.end(), at) - measureStarts.begin()) - 1,
+                          0, bars - 1);
+    }
     std::vector<SheetMark> sections, chords, scales, lyrics, tempos, keys;
     std::vector<OstfpPreview::DisplayPhrase> displayPhrases;
     juce::String primaryDocument;

@@ -253,7 +253,7 @@ class ScoreView::Panel final : public juce::Component {
         tick = value;
         if (preview) return;
         if (tick >= 0 && follow.getToggleState() && score.barTicks > 0 &&
-            (tick < firstBar * score.barTicks || tick >= (firstBar + columns * rows) * score.barTicks))
+            (tick < score.barStart(firstBar) || tick >= score.barStart(firstBar + columns * rows)))
             updatePage();
         else {
             updatePosition();
@@ -366,7 +366,7 @@ class ScoreView::Panel final : public juce::Component {
         }
         const int count = columns * rows;
         const int anchor =
-            tick >= 0 && follow.getToggleState() && score.barTicks > 0 ? int(tick / score.barTicks) : firstBar;
+            tick >= 0 && follow.getToggleState() && score.barTicks > 0 ? score.barAt(tick) : firstBar;
         firstBar = std::clamp(anchor, 0, std::max(0, score.bars - 1)) / count * count;
         counter.setText(juce::String(firstBar + 1) + " - " + juce::String(std::min(firstBar + count, score.bars)) +
                             " / " + juce::String(score.bars),
@@ -380,7 +380,7 @@ class ScoreView::Panel final : public juce::Component {
         if (score.barTicks <= 0 || score.beats <= 0 || score.bars == 0)
             return;
         const auto at =
-            std::clamp<juce::int64>(tick >= 0 ? tick : firstBar * score.barTicks, 0, score.bars * score.barTicks - 1);
+            std::clamp<juce::int64>(tick >= 0 ? tick : score.barStart(firstBar), 0, score.barStart(score.bars) - 1);
         auto key = score.key;
         for (const auto& change : score.keys)
             if (change.at <= at)
@@ -396,8 +396,8 @@ class ScoreView::Panel final : public juce::Component {
         if (tempo.isNotEmpty())
             values.add(tempo + " BPM");
         if (tick >= 0)
-            values.add(TRANS("Bar ") + juce::String(1 + at / score.barTicks) + "." +
-                       juce::String(1 + at % score.barTicks * score.beats / score.barTicks));
+            values.add(TRANS("Bar ") + juce::String(1 + score.barAt(at)) + "." +
+                       juce::String(1 + (at - score.barStart(score.barAt(at))) * activeMeter(score.meters, double(at), {0,score.beats,score.beatType}).denominator / (4 * score.ppq)));
         position.setText(values.joinIntoString("   "), juce::dontSendNotification);
     }
     void save(bool asPdf) {

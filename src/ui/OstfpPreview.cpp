@@ -228,6 +228,28 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& core, bool retainVoi
     readCompChoices(score,*out);
     out->documentId = score["document"]["id"].toString();
     out->durationTicks = duration;
+    for (const auto lane : {TimelineLane::section, TimelineLane::chord, TimelineLane::key,
+                            TimelineLane::meter, TimelineLane::scale}) {
+        const auto source = globalSource(lane);
+        const auto events = score[source.group][source.events];
+        auto& edges = out->globalEdges[lane];
+        const bool sharedOnly = lane == TimelineLane::section || lane == TimelineLane::chord;
+        std::set<juce::int64> ends;
+        if (sharedOnly && events.isArray())
+            for (const auto& item : *events.getArray())
+                ends.insert(integer(item["start"]) + integer(item["duration"]));
+        if (const auto* list = events.getArray()) for (const auto& item : *list) {
+            if (lane == TimelineLane::scale && item.hasProperty("targets")) continue;
+            const auto at = integer(item[source.span ? "start" : "at"]);
+            if (at > 0 && at < duration && (!sharedOnly || ends.contains(at))) edges.push_back(at);
+            if (lane == TimelineLane::scale) {
+                const auto end = at + integer(item["duration"]);
+                if (end > 0 && end < duration) edges.push_back(end);
+            }
+        }
+        std::sort(edges.begin(), edges.end());
+        edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+    }
     out->ticksPerBar = ticksPerBar;
     out->ppq = ppq;
     require(denominator <= std::numeric_limits<int>::max(), "Unsupported meter denominator");
@@ -388,12 +410,22 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& core, bool retainVoi
         const auto end = i + 1 < meterEntries.size() ? integer(meterEntries[i+1]["at"]) : duration;
         require(n > 0 && n <= INT_MAX && d > 0 && d <= INT_MAX && at >= 0 && at < end && end <= duration, "Invalid meter change.");
         const bool sameMeter=i>0 && integer(meterEntries[i-1]["numerator"])==n && integer(meterEntries[i-1]["denominator"])==d;
-        require(n * denominator == numerator * d && (sameMeter || at % ticksPerBar == 0),
-                "Preview requires meter changes to preserve bar length at bar boundaries.");
-        // A cut creates an editable boundary. Starting a new metric clock there would move the downbeat.
-        if (!sameMeter || at % ticksPerBar == 0) out->meters.push_back({at,int(n),int(d)});
+        require(ppq <= std::numeric_limits<juce::int64>::max() / 4 / n &&
+                (4 * ppq * n) % d == 0, "Preview requires an integral number of ticks per bar");
+        // Splitting an unchanged meter does not create a new downbeat.
+        if (!sameMeter) {
+            juce::int64 firstBar = 1;
+            if (!out->meters.empty()) {
+                const auto& previous = out->meters.back();
+                const auto length = 4 * ppq * previous.numerator / previous.denominator;
+                firstBar = previous.firstBar + 1 + (at - previous.tick - 1) / length;
+            }
+            out->meters.push_back({at, int(n), int(d), firstBar});
+        }
         meterRegions.push_back(region(at, end, juce::String(n) + "/" + juce::String(d)));
     }
+    require(out->measureNumber(duration - 1) < std::numeric_limits<int>::max() - 1,
+            "The score exceeds the supported timeline range.");
     addLane(out->globalLanes, "METER", std::move(meterRegions), TimelineLane::meter);
 
     const auto tempo = timeline["tempoChanges"];
@@ -2204,8 +2236,11 @@ juce::Result OstfpPreview::drawTempo(juce::int64 start, double from, juce::int64
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
 juce::Result OstfpPreview::insertBars(juce::int64 at, int count, juce::MemoryBlock& previous) try {
-    require(count>0 && count<=128 && ticksPerBar>0 && at>=0 && at<=durationTicks && at%ticksPerBar==0,"Select a bar boundary.");
-    const auto length=ticksPerBar*count;
+    require(count>0 && count<=128 && ticksPerBar>0 && at>=0 && at<=durationTicks && measureStart(measureNumber(at))==at,"Select a bar boundary.");
+    const auto meter = activeMeter(meters, double(at), {0, meterBeats, beatUnit});
+    const auto barLength = 4 * ppq * meter.numerator / meter.denominator;
+    require(barLength <= 0x0fffffff / count, "Song is too long.");
+    const auto length = barLength * count;
     require(durationTicks<=0x0fffffff-length,"Song is too long.");
     const auto original=savedScore(*this), base=savedScore(*this,true);
     auto score=parseObject(base);
@@ -2454,6 +2489,21 @@ juce::Result OstfpPreview::importScaleAssignments(const juce::MemoryBlock& retur
     return result;
 } catch (const std::exception& e) {
     return juce::Result::fail(e.what());
+}
+
+juce::int64 OstfpPreview::measureNumber(juce::int64 tick) const {
+    const auto meter = activeMeter(meters, double(tick), {0, meterBeats, beatUnit});
+    const auto length = std::max<juce::int64>(1, 4 * ppq * meter.numerator / meter.denominator);
+    return meter.firstBar + (std::max(tick, meter.tick) - meter.tick) / length;
+}
+
+juce::int64 OstfpPreview::measureStart(juce::int64 number) const {
+    const auto next = std::upper_bound(meters.begin(), meters.end(), number,
+        [](juce::int64 n, const MeterPoint& m) { return n < m.firstBar; });
+    const auto meter = next == meters.begin() ? MeterPoint{0, meterBeats, beatUnit} : *std::prev(next);
+    const auto length = std::max<juce::int64>(1, 4 * ppq * meter.numerator / meter.denominator);
+    const auto count = std::max<juce::int64>(0, number - meter.firstBar);
+    return meter.tick + std::min(count, (std::numeric_limits<juce::int64>::max() - meter.tick) / length) * length;
 }
 
 juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Array<juce::var>& remove,

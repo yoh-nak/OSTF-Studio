@@ -32,7 +32,8 @@ jobs:
         include:
           - name: Windows-x64
             os: windows-2022
-            configure_args: '-G "Visual Studio 17 2022" -A x64 -DOSTF_STUDIO_ENABLE_ASIO=ON'
+            arch: x64
+            configure_args: '-DOSTF_STUDIO_ENABLE_ASIO=ON'
           - name: macOS-arm64
             os: macos-15
             arch: arm64
@@ -45,6 +46,46 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Set up the Windows compiler for Ninja
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+      - name: Identify the native toolchain and build budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "CMAKE_BUILD_PARALLEL_LEVEL=$(python tools/build.py --jobs-only)" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            compiler=$(python -c "import os; print(os.environ['VCToolsVersion'], os.environ['WindowsSDKVersion'])")
+          else
+            compiler="$(clang --version | head -1)-$(xcrun --show-sdk-version)"
+          fi
+          compiler_key=$(printf '%s' "$compiler" | git hash-object --stdin)
+          echo "SCCACHE_GHA_VERSION=studio-v1-${{ matrix.name }}-Release-$compiler_key-juce9.0.5-jsoncons1.5.0" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=on" >> "$GITHUB_ENV"
+      - name: Set up compiler cache
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        with:
+          version: v0.10.0
+      - name: Reuse pinned third-party downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            build-tools/vendor-cache
+            build-tools/fluid-soundfont-gm_3.1-6_all.deb
+          key: vendor-v1-${{ runner.os }}-juce-d60b7a78-jsoncons-6de746d3-${{ hashFiles('packaging/prepare_fluid_r3.py') }}
+      - name: Materialize the pinned JUCE source
+        shell: bash
+        run: |
+          set -euo pipefail
+          vendor=build-tools/vendor-cache/juce.git
+          mkdir -p build-tools/vendor-cache build/_deps
+          if [[ ! -d "$vendor" ]]; then
+            git clone --bare --depth 1 --branch 9.0.5 https://github.com/juce-framework/JUCE.git "$vendor"
+          fi
+          git clone --no-checkout "$vendor" build/_deps/juce-src
+          git -C build/_deps/juce-src checkout --detach d60b7a78030661574a615b586d9325ba7a7fa7dd
       - name: Resolve package version
         id: version
         shell: bash
@@ -63,12 +104,37 @@ jobs:
       - name: Check illustrated manuals and device inventory
         run: python tests/illustrated_guides.py
       - name: Configure standalone core
-        run: cmake -S . -B build-core ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=OFF
+        run: cmake -S . -B build-core -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=OFF
       - name: Build standalone core
-        run: cmake --build build-core --config Release --parallel 2
+        run: cmake --build build-core --config Release
+      - name: Verify an unchanged development build reuses the core
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess, sys
+          log = Path("build-core/.ninja_log")
+          before = log.read_bytes()
+          subprocess.run([sys.executable, "tools/build.py", "--core", "--build-dir", "build-core"], check=True)
+          if log.read_bytes() != before:
+              raise SystemExit("An unchanged core build executed Ninja build steps")
+          PY
       - name: Test standalone core
         run: ctest --test-dir build-core -C Release --output-on-failure --no-tests=error
-      - name: Check out the OSTF reference schemas
+      - name: Record the current official OSTF specification
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo=yoh-nak/Open-Song-Timeline-Format
+          revision=$(gh api "repos/$repo/commits/HEAD" --jq .sha)
+          echo "[Official OSTF status](https://github.com/$repo/blob/$revision/STATUS.json)" >> "$GITHUB_STEP_SUMMARY"
+          gh api "repos/$repo/contents/STATUS.json?ref=$revision" -H "Accept: application/vnd.github.raw+json" |
+            jq -r '.specification | "Baseline \(.sourceBaselineVersion), target \(.targetVersion), state \(.state)"' >> "$GITHUB_STEP_SUMMARY"
+      - name: Check out pinned OSTF 5.1 demo schemas
         if: runner.os == 'macOS'
         uses: actions/checkout@v4
         with:
@@ -86,12 +152,12 @@ jobs:
       - name: Prepare licensed FluidR3 GM bank
         run: python packaging/prepare_fluid_r3.py
       - name: Configure (JUCE pinned tag 9.0.5)
-        run: cmake -S . -B build ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=ON -DOSTF_STUDIO_DISPLAY_VERSION=${{ steps.version.outputs.display }}
+        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_OBJCXX_COMPILER_LAUNCHER=sccache -DFETCHCONTENT_SOURCE_DIR_JUCE="${{ github.workspace }}/build/_deps/juce-src" -DOSTF_DOWNLOAD_DIR="${{ github.workspace }}/build-tools/vendor-cache/downloads" ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=ON -DOSTF_STUDIO_DISPLAY_VERSION=${{ steps.version.outputs.display }}
       - name: Build
         shell: bash
         run: |
           test "$(git -C build/_deps/juce-src rev-parse HEAD)" = d60b7a78030661574a615b586d9325ba7a7fa7dd
-          cmake --build build --config Release --parallel 2
+          cmake --build build --config Release
       - name: Run tests
         id: tests
         run: ctest --test-dir build -C Release --output-on-failure --no-tests=error

@@ -171,6 +171,13 @@ NotationScore notationScore(const OstfpPreview& project) {
     s.meters = project.meters;
     s.barTicks = project.ticksPerBar;
     s.bars = project.bars.endBar - project.bars.firstBar;
+    if (std::any_of(s.meters.begin(), s.meters.end(), [&](const auto& m) {
+            return 4 * s.ppq * m.numerator / m.denominator != s.barTicks || m.tick % s.barTicks != 0;
+        })) {
+        s.bars = int(project.measureNumber(project.durationTicks - 1));
+        for (int bar = 1; bar <= s.bars; ++bar) s.measureStarts.push_back(project.measureStart(bar));
+        s.measureStarts.push_back(project.durationTicks);
+    }
     const auto doc = juce::JSON::parse(project.sourceScore.toString());
     s.displayPhrases = project.displayPhrases;
     s.primaryDocument = project.displayDocument;
@@ -199,7 +206,7 @@ NotationScore notationScore(const OstfpPreview& project) {
     if (s.scales.empty()) {
         const auto scale = doc["song"]["scale"]["label"].toString();
         if (scale.isNotEmpty())
-            s.scales.push_back({0, s.bars * s.barTicks, scale});
+            s.scales.push_back({0, s.barStart(s.bars), scale});
     }
     std::map<juce::String, juce::String> noteTracks;
     std::map<juce::String, std::pair<Tick, Tick>> noteTimes;
@@ -321,7 +328,7 @@ static MeasureNotes splitMeasures(const NotationScore& s, int index, StaffStyle 
 MeasureNotes partMeasures(const NotationScore &s, int index, StaffStyle style) {
     std::vector<Tick> starts;
     for (int i = 0; i <= s.bars; ++i)
-        starts.push_back(i * s.barTicks);
+        starts.push_back(s.barStart(i));
     return splitMeasures(s, index, style, starts);
 }
 
@@ -589,7 +596,8 @@ juce::Result exportXml(juce::OutputStream &stream, const NotationScore &s, int s
     field(*root.createNewChildElement("work"), "work-title", s.title);
     auto *list = root.createNewChildElement("part-list");
     std::vector<Tick> starts{0};
-    const Tick end = s.barTicks * s.bars;
+    if (!s.measureStarts.empty()) starts = s.measureStarts;
+    const Tick end = s.barStart(s.bars);
     while (starts.back() < end) {
         const auto at = starts.back();
         const auto meter = activeMeter(s.meters, double(at), {0, s.beats, s.beatType});
@@ -659,7 +667,7 @@ juce::Result writeChordPro(juce::OutputStream &out, const NotationScore &s) {
     }
     Tick previousBar = -1;
     for (const auto& [at, value] : lines) {
-        auto bar = at / std::max<Tick>(1,s.barTicks);
+        auto bar = s.barAt(at);
         if (bar != previousBar || sections.count(at)) text += "\n";
         if (auto it = sections.find(at); it != sections.end()) text += "{comment: " + it->second + "}\n";
         text += value;
@@ -716,7 +724,7 @@ void drawClef(juce::Graphics& g, StaffStyle style, float x, float top) {
     g.strokePath(path, juce::PathStrokeType(1.7f), juce::AffineTransform::translation(x, top));
 }
 void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const NotationScore& s, StaffStyle style,
-               float left, float right, float top) {
+               float left, float right, float top, Tick measureLength) {
     const bool tab = !tuning(style).empty();
     if (events.empty()) {
         g.setColour(ink);
@@ -726,7 +734,7 @@ void drawNotes(juce::Graphics& g, const std::vector<ScoreNote>& events, const No
     }
     std::map<int, int> accidentals;
     for (const auto& n : events) {
-        const float x = left + 8 + static_cast<float>(double(n.at) / s.barTicks) * (right - left - 16)
+        const float x = left + 8 + static_cast<float>(double(n.at) / measureLength) * (right - left - 16)
                       + (n.grace ? (n.graceAfter ? 6.f : -6.f) : 0.f);
         g.setColour(ink);
         if (tab) {
@@ -829,7 +837,7 @@ void drawLeadContents(juce::Graphics& g, const NotationScore& song, Tick from, j
                       const SheetOptions& options, bool live, Tick tick) {
     if (area.isEmpty() || song.barTicks <= 0)
         return;
-    const Tick to = from + song.barTicks;
+    const Tick to = song.barStart(song.barAt(from) + 1);
     const auto drawLane = [&](const std::vector<SheetMark>& marks, juce::Rectangle<float> lane, juce::Colour colour,
                               float size, bool bold) {
         for (const auto& mark : marks) {
@@ -838,7 +846,7 @@ void drawLeadContents(juce::Graphics& g, const NotationScore& song, Tick from, j
             if (mark.end <= from)
                 continue;
             const auto xAt = [&](Tick t) {
-                return lane.getX() + lane.getWidth() * float(double(t - from) / song.barTicks);
+                return lane.getX() + lane.getWidth() * float(double(t - from) / (to - from));
             };
             const float x = xAt(std::max(from, mark.at)), end = xAt(std::min(to, mark.end));
             if (tick >= from && tick < to && mark.at <= tick && tick < mark.end) {
@@ -863,8 +871,8 @@ void drawLeadContents(juce::Graphics& g, const NotationScore& song, Tick from, j
         for (const auto& phrase : song.displayPhrases) {
             if (phrase.start >= to) break;
             if (phrase.start < from || phrase.document != document) continue;
-            const float x = area.getX() + area.getWidth() * float(double(phrase.start-from)/song.barTicks);
-            const float w = area.getWidth() * float(double(std::min(to,phrase.end)-phrase.start)/song.barTicks);
+            const float x = area.getX() + area.getWidth() * float(double(phrase.start-from)/(to - from));
+            const float w = area.getWidth() * float(double(std::min(to,phrase.end)-phrase.start)/(to - from));
             auto wording = phrase.text;
             if (options.lyricDisplay == LyricDisplay::both && phrase.reading.isNotEmpty() && phrase.reading != wording)
                 wording += " (" + phrase.reading + ")";
@@ -902,25 +910,25 @@ void drawLeadContents(juce::Graphics& g, const NotationScore& song, Tick from, j
 }
 
 void staffChords(juce::Graphics& g, const NotationScore& song, Tick from, juce::Rectangle<float> row) {
-    const auto to = from + song.barTicks;
+    const auto to = song.barStart(song.barAt(from) + 1);
     g.setColour(ink);
     for (const auto& chord : song.chords) {
         if (chord.at >= to) break;
         if (chord.end <= from) continue;
-        const float x = row.getX() + row.getWidth() * float(std::max(from,chord.at)-from)/song.barTicks;
-        const float end = row.getX() + row.getWidth() * float(std::min(to,chord.end)-from)/song.barTicks;
+        const float x = row.getX() + row.getWidth() * float(std::max(from,chord.at)-from)/(to - from);
+        const float end = row.getX() + row.getWidth() * float(std::min(to,chord.end)-from)/(to - from);
         text(g,chord.text,x+2,row.getY(),std::max(1.f,end-x-3),row.getHeight(),13,true);
     }
 }
 
 void staffLyrics(juce::Graphics& g, const NotationScore& song, Tick from, juce::Rectangle<float> row,
                  const SheetOptions& options) {
-    const auto to = from + song.barTicks;
+    const auto to = song.barStart(song.barAt(from) + 1);
     const auto voice = song.voiceDocuments.find(options.lyricVoice);
     const auto& document = voice == song.voiceDocuments.end() ? song.primaryDocument : voice->second;
     const auto put = [&](const juce::String& label, Tick start, Tick end, juce::Rectangle<float> lane) {
-        const float x = lane.getX() + lane.getWidth() * float(start-from)/song.barTicks;
-        const float right = lane.getX() + lane.getWidth() * float(std::min(to,end)-from)/song.barTicks;
+        const float x = lane.getX() + lane.getWidth() * float(start-from)/(to - from);
+        const float right = lane.getX() + lane.getWidth() * float(std::min(to,end)-from)/(to - from);
         g.setFont(juce::FontOptions(10.f));
         g.drawFittedText(label, juce::Rectangle<float>(x+1,lane.getY(),std::max(1.f,right-x-2),lane.getHeight()).toNearestInt(),
                          juce::Justification::centredLeft,lane.getHeight() >= 20.f ? 2 : 1,0.45f);
@@ -966,7 +974,7 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
     const auto cursor = juce::Colour(0xffe9ae56);
     for (int i = 0; i < columns * rows && firstBar + i < song.bars; ++i) {
         const int bar = firstBar + i;
-        const Tick from = bar * song.barTicks, to = from + song.barTicks;
+        const Tick from = song.barStart(bar), to = song.barStart(bar + 1);
         const bool current = tick >= from && tick < to;
         const juce::Rectangle<float> cell(bounds.getX() + (i % columns) * cellWidth,
                                           bounds.getY() + (i / columns) * cellHeight, cellWidth - (lead ? 2 : 0),
@@ -1016,7 +1024,7 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
                 }
                 g.setColour(soft);
                 g.drawLine(width - 1, top, width - 1, top + (style == StaffStyle::grand ? 71 : 5 * (lines - 1)), .9f);
-                drawNotes(g, notes[bar], song, style, noteStart, width, top);
+                drawNotes(g, notes[bar], song, style, noteStart, width, top, to - from);
             }
             left += (noteStart + 8) * scale;
             right -= 8 * scale;
@@ -1024,7 +1032,7 @@ void drawReadingGrid(juce::Graphics& g, juce::Rectangle<int> bounds, const Notat
             if (!words.isEmpty()) staffLyrics(g,song,from,words.withX(left).withWidth(std::max(1.f,right-left)),options);
         }
         if (current) {
-            const float x = left + (right - left) * float(double(tick - from) / song.barTicks);
+            const float x = left + (right - left) * float(double(tick - from) / (to - from));
             g.setColour(cursor);
             g.fillRect(cell.getX(), cell.getY(), cell.getWidth(), 2.f);
             g.drawLine(x, body.getY(), x, body.getBottom(), 2.f);
@@ -1127,7 +1135,7 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
             if (bar >= endBar)
                 break;
             const float x = startX + c * width;
-            const Tick from = bar * s.barTicks, to = from + s.barTicks;
+            const Tick from = s.barStart(bar), to = s.barStart(bar + 1);
             juce::StringArray labels;
             for (const auto& section : s.sections)
                 if (options.showSections && section.at >= from && section.at < to)
@@ -1150,7 +1158,7 @@ void drawSheetPage(juce::Graphics& g, const NotationScore& s, int part, StaffSty
                 g.setColour(ink);
                 g.drawLine(x + width, top, x + width, top + (style == StaffStyle::grand ? 71 : 5 * (lines - 1)), .8f);
                 if (bar < static_cast<int>(notes.size()))
-                    drawNotes(g, notes[bar], s, style, x, x + width, top);
+                    drawNotes(g, notes[bar], s, style, x, x + width, top, to - from);
             }
         }
     }

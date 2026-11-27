@@ -21,6 +21,12 @@ The plug-in follows the host’s play, stop and time position. Studio reads temp
 
 <a name="scale-assignment"></a>
 
+## Edit a global lane boundary (development build)
+
+Split a section, chord, key, scale or meter interval to expose a triangular handle. Drag it with the pointer or scissors tool. Sections and meters snap to bars, keys to beats, and chords and scales to half beats.
+
+Right-click a boundary, or select it and press Delete. Choose **Keep earlier value** or **Keep later value**. For example, keeping the later value at a 4/4 to 3/4 boundary extends 3/4 into the preceding interval. Notes retain their tick positions and lengths. Audio placement and tempo events stay in place. The musical bar and beat count changes. Undo restores the boundary. Pasting into an existing section, chord, key, scale or meter interval replaces its value and keeps its two edges.
+
 ## Assign a scale to the project
 
 In Public Alpha 2, load **OSTF Scale Editor** on an instrument track **inside OSTF Studio**. In another DAW, load **OSTF Studio (VST3)** first and open the project there. Choose a chord in the left pane, audition candidates, then choose **Set scale**. The check mark and scale name show the assignment for the selected target. **Harmony** updates Studio’s global scale lane. A pitched track receives its own scale direction. Save the project in Studio or in the DAW containing it.

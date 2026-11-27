@@ -1,3 +1,4 @@
+#include "app/StudioVersion.h"
 #include <JuceHeader.h>
 #include <BinaryData.h>
 #include "ui/MainComponent.h"
@@ -204,7 +205,7 @@ public:
         g.drawText("OSTF Studio", 120, 34, 300, 39, juce::Justification::centredLeft);
         g.setFont(juce::FontOptions(13.0f));
         g.setColour(juce::Colour(0xffb1bfce));
-        g.drawText(OSTF_STUDIO_DISPLAY_VERSION, 121, 75, 300, 22, juce::Justification::centredLeft);
+        g.drawText(ostfstudio::displayVersion(), 121, 75, 300, 22, juce::Justification::centredLeft);
         g.drawText(stage_, 32, 126, 396, 23, juce::Justification::centredLeft);
         g.setColour(juce::Colour(0xff46545f));
         g.fillRoundedRectangle(32.0f, 162.0f, 396.0f, 4.0f, 2.0f);
@@ -234,7 +235,7 @@ int checkTransport(const juce::File&, const juce::File&);
 class OSTFStudioApplication final : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "OSTF Studio"; }
-    const juce::String getApplicationVersion() override { return OSTF_STUDIO_DISPLAY_VERSION; }
+    const juce::String getApplicationVersion() override { return ostfstudio::displayVersion(); }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise(const juce::String&) override {

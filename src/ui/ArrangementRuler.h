@@ -10,6 +10,8 @@ public:
     int headerWidth = 0, labelInset = 0;
     std::function<juce::Range<double>()> visibleBars;
     std::function<double()> playheadBar;
+    std::function<juce::int64(double)> measureAt;
+    std::function<double(juce::int64)> measureAxis;
     std::function<void(double)> locate, pan;
 
     std::function<void(double, double)> chooseCycle;
@@ -52,11 +54,15 @@ public:
                 g.fillRect(left, 0, std::max(1, right - left), 3);
             }
         }
-        const auto widest = juce::String(static_cast<int>(std::ceil(bars.getEnd())));
+        auto first = measureAt ? measureAt(bars.getStart()) : juce::int64(std::floor(bars.getStart()));
+        const auto last = measureAt ? measureAt(bars.getEnd()) : juce::int64(std::ceil(bars.getEnd()));
+        const auto axis = [&](juce::int64 n) { return measureAxis ? measureAxis(n) : double(n); };
+        if (axis(first) < bars.getStart() - 1.0e-9) ++first;
+        const auto widest = juce::String(last);
         const int labelWidth = juce::roundToInt(juce::GlyphArrangement::getStringWidth(rulerFont, widest)) + 12;
-        const int step = std::max(1, static_cast<int>(std::ceil(labelWidth * bars.getLength() / row.getWidth())));
-        for (int bar = static_cast<int>(std::ceil(bars.getStart())); bar < bars.getEnd(); bar += step) {
-            int x = xAt(bar);
+        const int step = std::max(1, static_cast<int>(std::ceil(double(labelWidth) * (last - first + 1) / row.getWidth())));
+        for (auto bar = first; bar <= last && axis(bar) < bars.getEnd(); bar += step) {
+            int x = xAt(axis(bar));
             g.setColour(juce::Colour(0xff526675));
             g.drawVerticalLine(x, static_cast<float>(row.getBottom() - 6), static_cast<float>(row.getBottom()));
             g.setColour(juce::Colour(0xffc7d2dc));

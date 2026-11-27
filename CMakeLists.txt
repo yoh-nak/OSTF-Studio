@@ -33,14 +33,25 @@ if (OSTF_STUDIO_BUILD_GUI)
         GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
         GIT_TAG 9.0.5
         GIT_SHALLOW TRUE
+        UPDATE_DISCONNECTED TRUE
     )
     FetchContent_MakeAvailable(JUCE)
+    if(EXISTS "${juce_SOURCE_DIR}/.git")
+        find_package(Git REQUIRED)
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${juce_SOURCE_DIR}" rev-parse HEAD
+            OUTPUT_VARIABLE juce_revision OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+        if(NOT juce_revision STREQUAL "d60b7a78030661574a615b586d9325ba7a7fa7dd")
+            message(FATAL_ERROR "JUCE checkout does not match the pinned 9.0.5 revision: ${juce_revision}")
+        endif()
+    endif()
 
     set(JSONCONS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if(POLICY CMP0135)
         cmake_policy(SET CMP0135 NEW)
     endif()
+    set(OSTF_DOWNLOAD_DIR "${CMAKE_BINARY_DIR}/downloads" CACHE PATH "Verified dependency archives")
     FetchContent_Declare(jsoncons
+        DOWNLOAD_DIR "${OSTF_DOWNLOAD_DIR}/jsoncons-v1.5.0"
         URL https://codeload.github.com/danielaparker/jsoncons/zip/refs/tags/v1.5.0
         URL_HASH SHA256=6de746d3fd381937c9fc58ed47df7404792881b9ba924d43124dc6fb7c22f741)
     FetchContent_MakeAvailable(jsoncons)
@@ -101,14 +112,23 @@ if (OSTF_STUDIO_BUILD_GUI)
     juce_add_binary_data(OSTFGMPreviewBank HEADER_NAME GMPreviewData.h NAMESPACE GMPreviewData SOURCES assets/StudioPreview.sf2)
     target_link_libraries(OSTFGMSoundModule PRIVATE OSTFGMPreviewBank juce::juce_audio_processors juce::juce_recommended_config_flags)
     set(OSTF_FLUID_R3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build-tools/fluid-r3")
-    if(EXISTS "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" AND EXISTS "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt")
+    file(GLOB fluid_payload CONFIGURE_DEPENDS "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt")
+    list(LENGTH fluid_payload fluid_file_count)
+    if(fluid_file_count EQUAL 2)
+        set_property(TARGET OSTFGMSoundModule_VST3 APPEND PROPERTY LINK_DEPENDS "${fluid_payload}")
         add_custom_command(TARGET OSTFGMSoundModule_VST3 POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources"
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt"
                 "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources")
+    else()
+        add_custom_command(TARGET OSTFGMSoundModule_VST3 POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E rm -f
+                "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources/FluidR3_GM.sf2"
+                "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources/FluidR3-License.txt")
     endif()
 
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/DocumentTypes.plist")
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/DocumentTypes.plist" ostf_document_types)
     if(MSVC)
         set_property(SOURCE tests/track_view_smoke.cpp tests/notation_smoke.cpp tests/ostfp_preview_tests.cpp
@@ -150,14 +170,28 @@ if (OSTF_STUDIO_BUILD_GUI)
     elseif (APPLE)
         enable_language(OBJCXX)
     endif()
+    # The provider only uses JUCE core types. Each final binary supplies its own JUCE implementation.
+    add_library(ostf_analysis_provider STATIC src/ui/AnalysisService.cpp)
+    set_target_properties(ostf_analysis_provider PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+    target_include_directories(ostf_analysis_provider PRIVATE src "${JUCE_MODULES_DIR}")
+    target_compile_definitions(ostf_analysis_provider PRIVATE JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 JUCE_USE_CURL=0
+        "$<$<CONFIG:Debug>:DEBUG=1;_DEBUG=1>")
+    target_link_libraries(ostf_analysis_provider PRIVATE juce::juce_recommended_config_flags)
+
+    file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/studio-package-version.txt"
+        CONTENT "${PROJECT_VERSION}\n${OSTF_STUDIO_DISPLAY_VERSION}\n${CMAKE_OSX_ARCHITECTURES}\n")
+    configure_file(cmake/StudioVersion.cpp.in generated/StudioVersion.cpp @ONLY)
+    add_library(ostf_studio_version STATIC "${CMAKE_CURRENT_BINARY_DIR}/generated/StudioVersion.cpp")
+    set_target_properties(ostf_studio_version PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+    target_include_directories(ostf_studio_version PRIVATE src)
     foreach(studio_target IN ITEMS OSTFStudio OSTFStudioPlugin)
         juce_generate_juce_header(${studio_target})
         target_sources(${studio_target} PRIVATE src/ui/MainComponent.cpp src/ui/SystemUsageMeter.cpp src/ui/ArrangementClipEdits.cpp src/ui/ChordReview.cpp src/ui/OstfpPreview.cpp
             src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
-            src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
+            src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
             src/ui/TheoryGuide.cpp src/ui/SynthVExport.cpp src/ui/AudioExport.cpp src/ui/RenderAudio.cpp)
         target_include_directories(${studio_target} PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
-        target_compile_definitions(${studio_target} PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
+        target_link_libraries(${studio_target} PRIVATE ostf_studio_version ostf_analysis_provider)
         target_compile_definitions(${studio_target} PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
         target_link_libraries(${studio_target} PRIVATE
             OSTFEnglishLexicon
@@ -216,10 +250,10 @@ if (OSTF_STUDIO_BUILD_GUI)
     add_test(NAME ostf_gm_channel_activity_tests COMMAND ostf_gm_channel_activity_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostfp")
 
-    add_executable(ostf_studio_chatgpt_tests tests/chatgpt_connection_tests.cpp src/ui/AnalysisService.cpp)
+    add_executable(ostf_studio_chatgpt_tests tests/chatgpt_connection_tests.cpp)
     target_include_directories(ostf_studio_chatgpt_tests PRIVATE src)
     target_compile_definitions(ostf_studio_chatgpt_tests PRIVATE JUCE_USE_CURL=0)
-    target_link_libraries(ostf_studio_chatgpt_tests PRIVATE juce::juce_core)
+    target_link_libraries(ostf_studio_chatgpt_tests PRIVATE ostf_analysis_provider juce::juce_core)
     add_test(NAME ostf_studio_chatgpt_connection COMMAND ostf_studio_chatgpt_tests)
 
     add_executable(ostf_pitch_probe tests/audio_pitch_probe.cpp)

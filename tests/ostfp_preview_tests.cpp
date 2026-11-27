@@ -128,9 +128,7 @@ static int checkGallery(const juce::File& directory) {
         juce::FileInputStream input(directory.getChildFile(expected.file));
         std::unique_ptr<ostfstudio::OstfpPreview> project;
         const auto result = ostfstudio::readOstfpPreview(input, project);
-        const bool matches = expected.bars == 0
-            ? result.getErrorMessage() == "Preview requires meter changes to preserve bar length at bar boundaries."
-            : result.wasOk() && project->bars.endBar == expected.bars + 1
+        const bool matches = result.wasOk() && project->bars.endBar == expected.bars + 1
               && project->sourceTrackCount() == static_cast<std::size_t>(expected.tracks)
               && project->chordVoicingTrack == static_cast<std::size_t>(expected.tracks)
               && project->previewBpm == expected.bpm && !project->pitchedNotes.front().empty()
@@ -553,7 +551,7 @@ static int checkGallery(const juce::File& directory) {
                 || juce::String::fromUTF8(restored->trackLanes[audioIndex].label) != newName) return 1;
             if (juce::JSON::toString(restoredScore["lyrics"]) != juce::JSON::toString(lyrics)) return 1;
         }
-        std::cout << expected.file << (expected.bars == 0 ? ": mixed meter rejected as expected" : ": preview opened") << '\n';
+        std::cout << expected.file << ": preview opened" << '\n';
     }
     return 0;
 }

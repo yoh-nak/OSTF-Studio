@@ -1,0 +1,5 @@
+#include "app/StudioVersion.h"
+
+const char* ostfstudio::displayVersion() noexcept {
+    return "@OSTF_STUDIO_DISPLAY_VERSION@";
+}

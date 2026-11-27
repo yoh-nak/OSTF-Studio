@@ -178,6 +178,34 @@ inline juce::Result globalBoundaryEdit(const juce::var& score, TimelineLane lane
     return juce::Result::ok();
 }
 
+inline juce::Result removeGlobalBoundary(const juce::var& score, TimelineLane lane, juce::int64 at,
+                                         juce::int64 songEnd, bool keepRight,
+                                         juce::Array<juce::var>& remove, juce::Array<juce::var>& insert) {
+    if (at <= 0 || at >= songEnd) return juce::Result::fail("Choose an interior boundary.");
+    const auto right = globalEventAt(score, lane, at);
+    const auto source = globalSource(lane);
+    const auto key = source.span ? "start" : "at";
+    const auto left = globalEventAt(score, lane, at - 1);
+    if (lane == TimelineLane::scale && left.isObject() != right.isObject()) {
+        const bool gapOnRight = !right.isObject();
+        const auto gap = sharedScaleGap(score, gapOnRight ? at : at - 1, {0, songEnd});
+        if (gap.isEmpty() || at != (gapOnRight ? gap.getStart() : gap.getEnd()))
+            return juce::Result::fail("Choose an interior boundary.");
+        const auto existing = gapOnRight ? left : right;
+        remove.add(existing);
+        if (gapOnRight != keepRight) {
+            auto extended = existing.clone();
+            extended.getDynamicObject()->setProperty("start", gapOnRight ? juce::int64(existing["start"]) : gap.getStart());
+            extended.getDynamicObject()->setProperty("duration", juce::int64(existing["duration"]) + gap.getLength());
+            insert.add(extended);
+        }
+        return juce::Result::ok();
+    }
+    if (!right.isObject() || juce::int64(right[key]) != at)
+        return juce::Result::fail("Choose an interior boundary.");
+    return globalBoundaryEdit(score, lane, at - 1, songEnd, false, keepRight, remove, insert);
+}
+
 inline juce::String pitchText(const juce::var& note) {
     const auto alter = std::clamp(int(note["alter"]), -2, 2);
     return note["step"].toString() + juce::String::repeatedString(alter < 0 ? "b" : "#", std::abs(alter));

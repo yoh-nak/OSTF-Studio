@@ -1209,7 +1209,7 @@ int checkSamplePlacement(const juce::File& file) {
             if(original==main.project_->sourceScore) {std::cerr<<"Scissors: "<<main.statusLabel_.getText()<<"\n"; return 339;}
             if (lane == TimelineLane::chord) {
                 const auto split = main.project_->sourceScore;
-                main.splitTool_.onClick();
+                // The new handle must be draggable with the scissors still active.
                 int movedX = cutX;
                 while (movedX > main.rowOverlay_.getX() + main.trackHeaderWidth
                        && main.arrangementTickAt(movedX) > main.project_->ppq / 2) --movedX;
@@ -1227,7 +1227,6 @@ int checkSamplePlacement(const juce::File& file) {
                 if (juce::int64(chord["start"]) != main.project_->ppq / 2) return 395;
                 main.undoPianoEdit(false);
                 if (main.project_->sourceScore != split) return 396;
-                main.splitTool_.onClick();
             }
             main.undoPianoEdit(false);
         }
@@ -1566,6 +1565,41 @@ int checkTrackView(const juce::File& fixture) {
             const auto after=juce::JSON::parse(song->sourceScore.toString());
             if(juce::int64(globalEventAt(after,lane,tick)[globalSource(lane).span?"start":"at"])!=tick ||
                song->restoreNoteScore(before).failed()) return 331;
+        }
+        // A meter boundary edits the grid; both choices preserve the authored performance.
+        for (const bool later : {false, true}) {
+            const auto original = song->sourceScore;
+            const auto tick = song->ticksPerBar;
+            const auto score = juce::JSON::parse(original.toString());
+            auto meter = globalEventAt(score, TimelineLane::meter, 0).clone();
+            if (meter.hasProperty("id")) meter.getDynamicObject()->setProperty("id", "test-meter-change");
+            meter.getDynamicObject()->setProperty("at", tick);
+            const int initial = int(meter["numerator"]);
+            const int other = initial == 3 ? 4 : 3;
+            meter.getDynamicObject()->setProperty("numerator", other);
+            juce::MemoryBlock before, split;
+            const auto edit = song->changeGlobalEvents(TimelineLane::meter, {}, {meter}, before);
+            if (edit.failed()) { std::cerr << edit.getErrorMessage() << '\n'; return 403; }
+            const auto thirdBar = tick + song->ppq * other;
+            if (song->measureStart(3) != thirdBar || song->measureNumber(thirdBar - 1) != 2 ||
+                song->measureNumber(thirdBar) != 3) return 408;
+            const auto notation = notationScore(*song);
+            if (notation.barStart(2) != thirdBar || notation.barAt(thirdBar) != 2) return 409;
+            const auto withBoundary = juce::JSON::parse(song->sourceScore.toString());
+            const auto& edges = song->globalEdges.at(TimelineLane::meter);
+            if (!std::binary_search(edges.begin(), edges.end(), tick)) return 404;
+            juce::Array<juce::var> removed, added;
+            if (removeGlobalBoundary(withBoundary, TimelineLane::meter, tick + 1, song->durationTicks,
+                                     later, removed, added).wasOk()) return 405;
+            if (removeGlobalBoundary(withBoundary, TimelineLane::meter, tick, song->durationTicks,
+                                     later, removed, added).failed() ||
+                song->changeGlobalEvents(TimelineLane::meter, removed, added, split).failed()) return 406;
+            const auto result = juce::JSON::parse(song->sourceScore.toString());
+            if (int(globalEventAt(result, TimelineLane::meter, 0)["numerator"]) != (later ? other : initial) ||
+                juce::JSON::toString(result["tracks"]) != juce::JSON::toString(score["tracks"]) ||
+                juce::JSON::toString(result["timeline"]["tempoChanges"]) != juce::JSON::toString(score["timeline"]["tempoChanges"]) ||
+                song->restoreNoteScore(split).failed() || song->restoreNoteScore(before).failed() ||
+                song->sourceScore != original) return 407;
         }
         const auto bar=song->ticksPerBar, end=song->playbackEndTick();
         const auto count = song->pitchedNotes;
