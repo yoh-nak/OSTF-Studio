@@ -416,6 +416,19 @@ private:
             if (project.sourceScore!=applied) return 35;
             studio.undoPianoEdit(false);
             if (project.sourceScore!=before) return 36;
+            const auto generation=studio.projectGeneration_;
+            const auto revision=juce::SHA256(before).toHexString();
+            const auto proposal=juce::JSON::toString(score);
+            auto assign=[&](std::size_t owner) { return studio.applyScaleEdit(owner,revision.toRawUTF8(),
+                proposal.toRawUTF8(),int(proposal.getNumBytesAsUTF8())); };
+            if (assign(generation+1) || project.sourceScore!=before || !assign(generation)) return 131;
+            const auto committed=project.sourceScore;
+            if (assign(generation) || project.sourceScore!=committed) return 132;
+            const auto syncScore=juce::JSON::parse(committed.toString());
+            if (syncScore["harmony"]["scales"].size()!=scales.size()
+                || juce::JSON::toString(syncScore["tracks"][0]["directions"])!=juce::JSON::toString(directions)) return 133;
+            studio.undoPianoEdit(false);
+            if (project.sourceScore!=before) return 134;
             const auto copy=ostfstudio::scale::clipboardReturnPrefix+juce::SHA256(before).toHexString()+"\r\n"+juce::JSON::toString(score);
             studio.pasteScaleChanges("unrelated clipboard text");
             if (project.sourceScore!=before) return 95;
@@ -809,85 +822,6 @@ std::unique_ptr<juce::Timer> startPluginFocusCheck(const juce::File& bundle, std
 
 // Optional integration check using the user's installed VST3 and its real native editor.
 // Exercise the same menu item twice, closing and reopening the independent window.
-std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)> finished) {
-    class Probe final : public juce::Timer {
-    public:
-        explicit Probe(std::function<void(int)> done) : finish(std::move(done)) {
-            studio.setBounds(-12000, -12000, 1440, 900);
-            studio.addToDesktop(juce::ComponentPeer::windowIsTemporary | juce::ComponentPeer::windowIgnoresKeyPresses);
-            studio.setVisible(true);
-            for (auto* child : studio.getChildren())
-                if (auto* bar = dynamic_cast<juce::MenuBarComponent*>(child)) menus = bar->getModel();
-            if (menus) {
-                const auto menu = menus->getMenuForIndex(6, {});
-                for (juce::PopupMenu::MenuItemIterator it(menu); it.next();)
-                    if (it.getItem().text == TRANS("Open Splice Sounds")) command = it.getItem().itemID;
-                if (auto* pane = descendant<PluginBrowser>(studio)) {
-                    browserBounds = pane->getBounds();
-                    browserVisible = pane->isVisible();
-                }
-                if (command) menus->menuItemSelected(command, 5);
-            }
-            startTimer(100);
-        }
-    private:
-        int inspect() {
-            if (!command) return 1;
-            PluginBrowser* pane = nullptr;
-            for (auto* child : studio.getChildren())
-                if (auto* p = dynamic_cast<PluginBrowser*>(child)) pane = p;
-            if (!pane || pane->isVisible() != browserVisible || (browserVisible && pane->getBounds() != browserBounds)) return 2;
-            juce::DocumentWindow* window = nullptr;
-            auto& desktop = juce::Desktop::getInstance();
-            for (int i = 0; i < desktop.getNumComponents(); ++i) {
-                auto* component = desktop.getComponent(i);
-                if (component->getName() == "Splice Sounds") window = dynamic_cast<juce::DocumentWindow*>(component);
-            }
-            auto* editor = window ? descendant<juce::AudioProcessorEditor>(*window) : nullptr;
-            if (!editor) {
-                const auto types = pane->types();
-                const bool installed = std::any_of(types.begin(), types.end(), [](const auto& t) {
-                    return t.name.equalsIgnoreCase("Splice Sounds") && t.pluginFormatName == "VST3";
-                });
-                return installed ? -1 : 77;
-            }
-            if (!editor->processor.getName().equalsIgnoreCase("Splice Sounds")
-                || !editor->isShowing() || editor->getPeer() == studio.getPeer()
-                || editor->getWidth() <= 0 || editor->getHeight() <= 0) return 3;
-#if JUCE_WINDOWS
-            auto* native = descendant<juce::HWNDComponent>(*editor);
-            if (!native) return -1;
-            auto host = static_cast<HWND>(native->getHWND());
-            if (!host || !IsChild(static_cast<HWND>(window->getPeer()->getNativeHandle()), host)
-                || !GetWindow(host, GW_CHILD)) return -1;
-#endif
-            if (!firstEditor) {
-                firstEditor = editor;
-                window->closeButtonPressed();
-                if (editor->isShowing()) return 5;
-                menus->menuItemSelected(command, 5);
-                return -1;
-            }
-            return editor == firstEditor ? 0 : 6;
-        }
-        void timerCallback() override {
-            int result = inspect();
-            if (result < 0 && juce::Time::getMillisecondCounterHiRes() < deadline) return;
-            stopTimer();
-            finish(result < 0 ? 7 : result);
-        }
-        bool browserVisible = false;
-        juce::Rectangle<int> browserBounds;
-        MainComponent studio;
-        std::function<void(int)> finish;
-        juce::MenuBarModel* menus = nullptr;
-        juce::Component::SafePointer<juce::AudioProcessorEditor> firstEditor;
-        int command = 0;
-        double deadline = juce::Time::getMillisecondCounterHiRes() + 30000;
-    };
-    return std::make_unique<Probe>(std::move(finished));
-}
-
 int checkSamplePlacement(const juce::File& file) {
     MainComponent main;
     main.setSize(1650, 1400);
@@ -1260,7 +1194,11 @@ int checkSamplePlacement(const juce::File& file) {
         using ostfstudio::TimelineLane;
         if (!main.splitTool_.getToggleState()) main.splitTool_.onClick();
         for (auto lane : {TimelineLane::section,TimelineLane::chord,TimelineLane::scale,TimelineLane::tempo,TimelineLane::key,TimelineLane::meter}) {
-            const int cutX=main.rowOverlay_.getX()+main.trackHeaderWidth+24;
+            const auto coarse = lane == TimelineLane::section || lane == TimelineLane::meter;
+            const auto target = coarse ? main.project_->ticksPerBar : main.project_->ppq;
+            int cutX = main.rowOverlay_.getX() + main.trackHeaderWidth;
+            while (cutX < main.rowOverlay_.getRight() && main.arrangementTickAt(cutX) < target) ++cutX;
+            if (cutX >= main.rowOverlay_.getRight()) return 337;
             int y=main.rowOverlay_.getY();
             while (y<main.rowOverlay_.getBottom() && main.globalLaneAt({cutX,y})!=lane) ++y;
             if(y==main.rowOverlay_.getBottom()) return 337;
@@ -1269,6 +1207,28 @@ int checkSamplePlacement(const juce::File& file) {
             const auto original=main.project_->sourceScore;
             main.mouseDown(drag({cutX,y},false));
             if(original==main.project_->sourceScore) {std::cerr<<"Scissors: "<<main.statusLabel_.getText()<<"\n"; return 339;}
+            if (lane == TimelineLane::chord) {
+                const auto split = main.project_->sourceScore;
+                main.splitTool_.onClick();
+                int movedX = cutX;
+                while (movedX > main.rowOverlay_.getX() + main.trackHeaderWidth
+                       && main.arrangementTickAt(movedX) > main.project_->ppq / 2) --movedX;
+                const auto now = juce::Time::getCurrentTime();
+                auto event = [&](int x) {
+                    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), {float(x),float(y)},
+                        juce::ModifierKeys::leftButtonModifier, 1, 0, 0, 0, 0, &main, &main, now,
+                        {float(cutX),float(y)}, now, 1, x != cutX);
+                };
+                main.mouseDown(event(cutX));
+                main.mouseDrag(event(movedX));
+                main.mouseUp(event(movedX));
+                const auto moved = juce::JSON::parse(main.project_->sourceScore.toString());
+                const auto chord = ostfstudio::globalEventAt(moved, lane, main.project_->ppq / 2);
+                if (juce::int64(chord["start"]) != main.project_->ppq / 2) return 395;
+                main.undoPianoEdit(false);
+                if (main.project_->sourceScore != split) return 396;
+                main.splitTool_.onClick();
+            }
             main.undoPianoEdit(false);
         }
         main.setWorkspaceMode(MainComponent::WorkspaceMode::live);
@@ -1316,6 +1276,85 @@ int checkSamplePlacement(const juce::File& file) {
         if (stems.clipOn(0)->timing.cycleTicks!=0 || stems.clipOn(1)->timing!=pitched) return 373;
     }
     {
+        auto ownedSession=std::make_unique<MainComponent>();
+        auto& session=*ownedSession;
+        session.newProject();
+        session.editTracks(ostfstudio::TrackKind::audio);
+        session.editTracks(ostfstudio::TrackKind::audio);
+        session.placeWav(file,0,0,false);
+        session.placeWav(file,1,0,false);
+        const auto wait=[&]{
+            if(!session.rendering_ || !session.renderJob_->waitForThreadToExit(60000))return false;
+            for(int i=0;i<30 && session.rendering_;++i){
+                juce::Thread::sleep(15);
+                juce::Timer::callPendingTimersSynchronously();
+            }
+            return !session.rendering_;
+        };
+        session.renderAudio(0,{},0);
+        if(!wait() || session.project_->sourceTrackCount()!=3 || !session.mixer_.channel(2).muted)return 379;
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatReader> one;
+        juce::int64 bounceFrames=0, endTick=0;
+        int bounceParts=0;
+        for(const auto& part:session.project_->audio){
+            if(part.track!=2)continue;
+            if(part.startTick!=endTick || part.embedded.isEmpty())return 380;
+            std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(new juce::MemoryInputStream(part.embedded.read(),false),true));
+            if(!reader || reader->sampleRate!=48000 || reader->bitsPerSample!=24)return 380;
+            endTick+=part.durationTicks;
+            bounceFrames+=reader->lengthInSamples;
+            ++bounceParts;
+            if(!one)one=std::move(reader);
+        }
+        if(bounceParts<2 || endTick!=session.project_->playbackEndTick())return 380;
+        juce::TemporaryFile mix(".wav");
+        session.renderAudio({}, {},2,mix.getFile());
+        if(!wait())return 381;
+        std::unique_ptr<juce::AudioFormatReader> two(wav.createReaderFor(mix.getFile().createInputStream().release(),true));
+        if(!two || two->lengthInSamples-bounceFrames!=96000 || two->sampleRate!=48000){
+            std::cerr<<"Bounce frames "<<bounceFrames<<", mix frames "<<(two?two->lengthInSamples:-1)
+                     <<", rate "<<(two?two->sampleRate:0)<<", status "<<session.statusLabel_.getText()<<'\n';
+            return 382;
+        }
+        juce::AudioBuffer<float> a(2,4096),b(2,4096);
+        double sum=0,difference=0;
+        for(int pos=0;pos<std::min<juce::int64>(one->lengthInSamples,48000);pos+=4096){
+            one->read(&a,0,4096,pos,true,true);
+            two->read(&b,0,4096,pos,true,true);
+            for(int ch=0;ch<2;++ch)for(int j=0;j<4096;++j){
+                const auto single=a.getSample(ch,j);
+                if(std::abs(single)<.45f){sum+=std::abs(single);difference+=std::abs(2*single-b.getSample(ch,j));}
+            }
+        }
+        if(sum<1 || difference>sum*.001)return 383;
+        juce::MemoryOutputStream projectBytes;
+        if(ostfstudio::writeOstfpPreview(*session.project_,session.sessionMix(),projectBytes).failed())return 384;
+        std::unique_ptr<ostfstudio::OstfpPreview> loaded;
+        juce::MemoryInputStream stream(projectBytes.getData(),projectBytes.getDataSize(),false);
+        if(ostfstudio::readOstfpPreview(stream,loaded).failed() || loaded->audio.size()!=size_t(2+bounceParts))return 385;
+        session.bounceTracks_.add(session.project_->trackIds[0]);
+        session.bounceTracks_.add(session.project_->trackIds[1]);
+        session.bounceTracks(1);
+        if(!wait() || session.project_->sourceTrackCount()!=4) return 390;
+        auto* combined=session.clipOn(3);
+        std::unique_ptr<juce::AudioFormatReader> group(combined ? wav.createReaderFor(new juce::MemoryInputStream(combined->embedded.read(),false),true) : nullptr);
+        if (!group || !group->read(&a,0,4096,0,true,true) || !two->read(&b,0,4096,0,true,true)) return 391;
+        a.addFrom(0,0,b,0,0,4096,-1.f);
+        if (a.getMagnitude(0,0,4096)>.00001f) return 392;
+        const auto tick=session.project_->ticksPerBar;
+        session.placeWav(file,0,tick,false);
+        auto hit=session.clipsOn(0).back();
+        session.renderAudio(0,{},0,{}, {},{hit});
+        if(!wait() || session.project_->sourceTrackCount()!=5) return 393;
+        auto* excerpt=session.clipOn(4);
+        if (!excerpt || excerpt->startTick!=tick || excerpt->durationTicks!=hit.end-hit.start) return 394;
+        std::unique_ptr<juce::AudioFormatReader> sliced(wav.createReaderFor(new juce::MemoryInputStream(excerpt->embedded.read(),false),true));
+        if(!sliced || !sliced->read(&b,0,4096,0,true,true) || !one->read(&a,0,4096,0,true,true)) return 395;
+        a.addFrom(0,0,b,0,0,4096,-1.f);
+        if(a.getMagnitude(0,0,4096)>.00001f) return 396;
+    }
+    {
         MainComponent view;
         view.setSize(1650, 1000);
         std::unique_ptr<ostfstudio::OstfpPreview> song;
@@ -1324,6 +1363,23 @@ int checkSamplePlacement(const juce::File& file) {
         if (!input.openedOk() || ostfstudio::readOstfpPreview(input,song).failed()) return 374;
         song->savedMix.reset();
         view.openImportedSong(std::move(song));
+        view.selectTrack(0);
+        view.scoreButton_.onClick(); view.pianoButton_.onClick();
+        if(!view.scoreView_->isVisible() || !view.pianoGrid_.isVisible() || !view.pianoGrid_.editable
+            || view.scoreView_->getBounds().intersects(view.pianoGrid_.getBounds())) return 397;
+        const auto originalNotes=view.project_->sourceScore;
+        if(view.pianoGrid_.notes.empty()) return 399;
+        auto note=view.pianoGrid_.notes.front();
+        const auto oldPitch=note.pitch;
+        ++note.pitch;
+        view.pianoGrid_.commit({{ostfstudio::NoteEdit::change,note}});
+        if(view.project_->sourceScore==originalNotes || view.pianoGrid_.notes.front().pitch!=oldPitch+1
+           || !view.scoreView_->isVisible()) return 400;
+        view.undoPianoEdit(false);
+        if(view.project_->sourceScore!=originalNotes) return 401;
+        view.pianoButton_.onClick();
+        if(!view.scoreView_->isVisible() || view.pianoGrid_.isVisible()) return 398;
+        view.arrangementButton_.onClick();
         view.setVisible(true);
         const auto area=view.rowOverlay_.getBounds();
         const int x=area.getX()+view.trackHeaderWidth+20;
@@ -1338,6 +1394,38 @@ int checkSamplePlacement(const juce::File& file) {
             if (!output.openedOk() || !output.setPosition(0) || output.truncate().failed()
                 || !juce::PNGImageFormat{}.writeImageToStream(view.createComponentSnapshot(crop),output)) return 376;
         }
+        auto clickLane=[&](ostfstudio::TimelineLane lane) {
+            auto r=view.rowOverlay_.getBounds();
+            const int px=r.getX()+view.trackHeaderWidth+20;
+            int py=r.getY();
+            while(py<r.getBottom() && view.globalLaneAt({px,py})!=lane) ++py;
+            if(py==r.getBottom())return false;
+            const juce::Point<float> pos(float(px),float(py)+0.5f);
+            const auto now=juce::Time::getCurrentTime();
+            view.mouseDown(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),pos,
+                juce::ModifierKeys::leftButtonModifier,1,0,0,0,0,&view,&view,now,pos,now,1,false));
+            return view.globalEditor_.isVisible() && !view.pianoGrid_.isVisible()
+                && !view.audioEditor_.isVisible() && view.selectedGlobal_==lane;
+        };
+        for(auto lane:{ostfstudio::TimelineLane::section,ostfstudio::TimelineLane::key,ostfstudio::TimelineLane::meter,
+                       ostfstudio::TimelineLane::chord,ostfstudio::TimelineLane::scale})
+            if(!clickLane(lane)) return 386;
+        juce::ComboBox* preset=nullptr;
+        for(auto* child:view.globalEditor_.getChildren())
+            if(child->getTitle()==TRANS("Preset")) preset=dynamic_cast<juce::ComboBox*>(child);
+        auto* apply=findControl<juce::TextButton>(view.globalEditor_,TRANS("Apply"));
+        if(!preset || !apply || !apply->isEnabled())return 387;
+        const auto before=view.project_->sourceScore;
+        preset->setSelectedId(2,juce::sendNotificationSync);
+        apply->onClick();
+        auto score=juce::JSON::parse(view.project_->sourceScore.toString());
+        auto scale=ostfstudio::globalEventAt(score,ostfstudio::TimelineLane::scale,view.selectedGlobalTick_);
+        auto chord=ostfstudio::globalEventAt(score,ostfstudio::TimelineLane::chord,view.selectedGlobalTick_);
+        if(!scale["label"].toString().endsWith("Dorian") || scale["duration"]!=chord["duration"])return 388;
+        view.undoPianoEdit(false);
+        if(view.project_->sourceScore!=before)return 389;
+        view.selectTrack(0);
+        if(view.globalEditor_.isVisible() || !view.pianoGrid_.isVisible())return 390;
         view.selectedGlobal_=ostfstudio::TimelineLane::scale;
         view.selectedGlobalTick_=view.project_->ticksPerBar;
         view.globalCommand(1);
@@ -1539,13 +1627,15 @@ int checkTrackView(const juce::File& fixture) {
     if (!main.getName().contains(TRANS("Unsaved project"))
         || !tracks || tracks->getNumItems() != 0 || !menus || !menus->getModel()) return 13;
     auto& model = *menus->getModel();
-    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Edit"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")};
+    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Edit"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("Help")};
     if (model.getMenuBarNames() != names) return 38;
     const auto edit = model.getMenuForIndex(2, {});
     juce::StringArray editActions;
     for (juce::PopupMenu::MenuItemIterator item(edit); item.next();) editActions.add(item.getItem().text);
-    if (editActions != juce::StringArray{TRANS("Undo"), TRANS("Redo"), TRANS("Edit history"),
-                                         TRANS("Paste scales from Scale Editor")}) return 246;
+    juce::StringArray expectedEdits{TRANS("Undo"),TRANS("Redo"),TRANS("Edit history")};
+    if (juce::SystemClipboard::getTextFromClipboard().startsWith(ostfstudio::scale::clipboardReturnPrefix))
+        expectedEdits.add(TRANS("Paste scales from Scale Editor"));
+    if (editActions!=expectedEdits) return 246;
     const auto settings = model.getMenuForIndex(5, {});
     juce::StringArray performanceOptions;
     for (juce::PopupMenu::MenuItemIterator item(settings, true); item.next();) performanceOptions.add(item.getItem().text);
@@ -1554,7 +1644,7 @@ int checkTrackView(const juce::File& fixture) {
     const auto external = model.getMenuForIndex(6, {});
     juce::StringArray actions;
     for (juce::PopupMenu::MenuItemIterator it(external); it.next();) actions.add(it.getItem().text);
-    if (!actions.contains(TRANS("Open Splice Sounds")) || !actions.contains("Melodyne...") || !actions.contains("Ableton Link")) return 121;
+    if (!actions.contains(TRANS("About OSTF Studio"))) return 121;
     auto* examples = findControl<juce::TextEditor>(main, TRANS("Example prompts"));
     auto* connection = main.findChildWithID("chatgpt-connection");
     if (!examples || !examples->isReadOnly() || !connection || !connection->isVisible()) return 122;
@@ -1588,7 +1678,7 @@ int checkTrackView(const juce::File& fixture) {
     EditorClipLane exampleLane;
     exampleLane.clips = {{{1, 2}, "A"}, {{3, 5}, "B"}};
     if (exampleLane.at(1.5) != 1. || exampleLane.at(2.) || exampleLane.at(3.) != 3. || exampleLane.at(5.)) return 124;
-    const auto help = model.getMenuForIndex(7, {});
+    const auto help = model.getMenuForIndex(6, {});
     bool hasShortcuts = false;
     for (juce::PopupMenu::MenuItemIterator it(help); it.next();)
         if (it.getItem().text == TRANS("Shortcuts...")) hasShortcuts = it.getItem().isEnabled;

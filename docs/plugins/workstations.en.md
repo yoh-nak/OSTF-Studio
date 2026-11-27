@@ -8,13 +8,15 @@ Load these on an instrument track to play a score, sing lyrics or turn live MIDI
 
 ## OSTF Studio
 
-The complete workstation on a stereo instrument track. Choose **OSTF Studio (VST3)** in the development installer, open Paper Lantern Replies inside the plug-in, and start your host transport to hear the arrangement.
+The complete workstation on a stereo instrument track. Choose **OSTF Studio (VST3)** in the Public Alpha 2 installer, open Paper Lantern Replies inside the plug-in, and start your host transport to hear the arrangement.
 
 ![OSTF Studio showing DAW transport follow above the arrangement and piano roll](../images/plugins/ostf-studio.png)
 
+[Signal path and controls](ostf-studio.en.md)
+
 ## OSTF Scale Editor
 
-In the development build, load **OSTF Scale Editor** on an instrument track **inside OSTF Studio**. In another DAW, load **OSTF Studio (VST3)** first and open the project there. Choose a chord in the left pane, audition candidates, then choose **Set scale**. The check mark and scale name show the assignment for the selected target. **Harmony** updates Studio’s global scale lane. A pitched track receives its own scale direction. Save the project in Studio or in the DAW containing it.
+In Public Alpha 2, load **OSTF Scale Editor** on an instrument track **inside OSTF Studio**. In another DAW, load **OSTF Studio (VST3)** first and open the project there. Choose a chord in the left pane, audition candidates, then choose **Set scale**. The check mark and scale name show the assignment for the selected target. **Harmony** updates Studio’s global scale lane. A pitched track receives its own scale direction. Save the project in Studio or in the DAW containing it.
 
 Select the section in the header and click **Play section**, or choose **Play song** to start at the beginning. The header names the sounding scale. Choose your audition instrument there to hear saved assignments or suggestions for an unassigned range. [Assign and audition scales](../manual/en.md#scale-assignment)
 
@@ -71,5 +73,7 @@ Play the LEAD v1.2 instrument on a MIDI track in Studio or another VST3 host. Ch
 **Original rate** is the default. Try **2x oversampling** on a bright, driven lead and listen to the upper notes. Both modes report 16 samples of latency.
 
 ![SUPER KNOBBER LEAD showing oscillator and source mixer page with genre and preset selection](../images/plugins/super-knobber-lead.png)
+
+[Signal path and controls](super-knobber-lead.en.md)
 
 [Return to the plug-in guide](en.md)

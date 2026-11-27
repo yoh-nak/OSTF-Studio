@@ -88,4 +88,6 @@
 
 ![SUPER KNOBBER REVERBの画面。入力と残響のスペクトル、ピークメーター、初期反射の設定](../images/plugins/super-knobber-reverb.png)
 
+[詳しい操作と入出力](super-knobber-reverb.md)
+
 [プラグイン図鑑の目次に戻る](README.md)

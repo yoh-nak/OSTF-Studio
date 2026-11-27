@@ -2,9 +2,9 @@
 
 [日本語](README.md) · [Studio user manual](../manual/en.md)
 
-Browse the bundled VST3s by what you want to do. Each entry shows the editor and suggests a first control to try. Public Alpha 1 includes 38 tools. The development build adds the OSTF Studio workstation, SUPER KNOBBER LEAD synthesizer and SUPER KNOBBER REVERB stereo effect.
+Browse the bundled VST3s by what you want to do. Each entry shows the editor and suggests a first control to try. Public Alpha 2 includes 41 tools. The additions since Public Alpha 1 are the OSTF Studio workstation, SUPER KNOBBER LEAD synthesizer and SUPER KNOBBER REVERB stereo effect.
 
-**All 41 screenshots come from the Windows development build.** To edit a Studio song inside another DAW, load OSTF Studio on an instrument track and open Scale Editor inside it. To use a single effect such as an EQ or reverb, insert it directly in your DAW’s effect slot. [Set up the workstation in another DAW](../manual/en.md#studio-vst3)
+**All 41 screenshots come from the Windows build of Public Alpha 2.** To edit a Studio song inside another DAW, load OSTF Studio on an instrument track and open Scale Editor inside it. To use a single effect such as an EQ or reverb, insert it directly in your DAW’s effect slot. [Set up the workstation in another DAW](../manual/en.md#studio-vst3)
 
 ## [Composition and instruments (10)](workstations.en.md)
 

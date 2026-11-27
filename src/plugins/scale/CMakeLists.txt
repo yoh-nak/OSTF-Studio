@@ -33,21 +33,22 @@ juce_enable_copy_plugin_step(OSTFSynthScaleEditor)
 
 find_program(OSTF_NODE_EXECUTABLE NAMES node nodejs)
 if(OSTF_NODE_EXECUTABLE)
+    add_test(NAME ostf_scale_assigned_audition COMMAND "${OSTF_NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/scale_assigned_audition.js")
     add_test(NAME ostf_scale_take_context COMMAND "${OSTF_NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/scale_take_context.js")
 endif()
 
 add_executable(ostf_scale_instrument_tests ../../../tests/scale_instrument_tests.cpp)
 target_compile_definitions(ostf_scale_instrument_tests PRIVATE JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1)
-target_include_directories(ostf_scale_instrument_tests PRIVATE "${JUCE_MODULES_DIR}")
+target_include_directories(ostf_scale_instrument_tests PRIVATE "${JUCE_MODULES_DIR}" "${ostf_vst_sdk}")
 target_link_libraries(ostf_scale_instrument_tests PRIVATE OSTFSynthScaleEditor juce::juce_recommended_config_flags)
 add_test(NAME ostf_scale_instrument_tests COMMAND ostf_scale_instrument_tests
     "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF FM Synth.vst3"
     "${CMAKE_SOURCE_DIR}/examples/demo-songs/paper-lantern-replies.ostf")
 if(WIN32 OR APPLE)
     add_dependencies(ostf_scale_instrument_tests OSTFSynthScaleEditor_VST3)
-    add_test(NAME ostf_scale_linked_save COMMAND ostf_scale_instrument_tests
+    add_test(NAME ostf_scale_project_connection COMMAND ostf_scale_instrument_tests
         "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF Scale Editor.vst3"
-        "${CMAKE_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostf" --linked-save)
+        "${CMAKE_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostf" --project-connection)
     add_test(NAME ostf_scale_workspace COMMAND ostf_scale_instrument_tests
         "${CMAKE_BINARY_DIR}/StudioEffects/$<CONFIG>/OSTF FM Synth.vst3"
         "${CMAKE_SOURCE_DIR}/examples/demo-songs/neon-platforms.ostf" --workspace)

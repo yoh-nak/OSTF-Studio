@@ -1,3 +1,4 @@
+#include "../PluginCcMap.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "../StudioPluginEditor.h"
@@ -26,8 +27,9 @@ constexpr Design designs[] {
 class RackEditor final : public ostfstudio::StudioPluginEditor, private juce::Timer {
 public:
     RackEditor(juce::AudioProcessor& processor, const std::array<juce::AudioParameterFloat*, 3>& params,
-               ostfstudio::CompressorListen* measurement)
-        : StudioPluginEditor(processor), title(processor.getName()), listen(measurement), threshold(params[0]), ratio(params[1]) {
+               ostfstudio::CompressorListen* measurement,ostfstudio::PluginCcMap& map)
+        : StudioPluginEditor(processor), title(processor.getName()), listen(measurement), threshold(params[0]), ratio(params[1]),ccButton(map) {
+        addAndMakeVisible(ccButton);
         for (std::size_t i = 0; i < sliders.size(); ++i) {
             auto& slider = sliders[i];
             const auto name = params[i]->getName(64);
@@ -63,6 +65,7 @@ public:
     }
 
     void resized() override {
+        ccButton.setBounds(getWidth()-96,12,78,27);
         auto panel = getLocalBounds().reduced(18, 12).withTrimmedTop(43);
         if (listen) {
             auto row = panel.removeFromBottom(40).reduced(3, 5);
@@ -123,6 +126,7 @@ private:
     juce::AudioParameterFloat *threshold, *ratio;
     juce::TextButton learn{"Listen (3 s)"}, apply{"Apply"};
     juce::Label advice;
+    ostfstudio::PluginCcButton ccButton;
     std::array<juce::Slider, 3> sliders;
     std::array<juce::Label, 3> labels;
     std::array<std::unique_ptr<juce::SliderParameterAttachment>, 3> bindings;
@@ -130,6 +134,7 @@ private:
 
 class StudioEffect final : public juce::AudioProcessor {
 public:
+    ostfstudio::PluginCcMap ccMap{*this};
     StudioEffect(const Design& design, const char* name)
         : AudioProcessor([&] {
               auto io = BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true);
@@ -145,11 +150,11 @@ public:
         }
     }
     const juce::String getName() const override { return name_; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     bool hasEditor() const override { return true; }
-    juce::AudioProcessorEditor* createEditor() override { return new RackEditor(*this, params_, design_.kind == Kind::Compressor ? &listen_ : nullptr); }
+    juce::AudioProcessorEditor* createEditor() override { return new RackEditor(*this, params_, design_.kind == Kind::Compressor ? &listen_ : nullptr,ccMap); }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
@@ -166,14 +171,17 @@ public:
     void getStateInformation(juce::MemoryBlock& destination) override {
         juce::XmlElement xml(design_.type);
         for (auto* p : params_) xml.setAttribute(p->paramID, p->convertTo0to1(p->get()));
+        ccMap.save(xml);
         copyXmlToBinary(xml, destination);
     }
     void setStateInformation(const void* data, int size) override {
-        if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName(design_.type))
+        if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName(design_.type)) {
+            ccMap.restore(*xml);
             for (auto* p : params_) {
                 const auto value = xml->getDoubleAttribute(p->paramID, p->convertTo0to1(p->get()));
                 if (std::isfinite(value)) p->setValueNotifyingHost(static_cast<float>(std::clamp(value, 0.0, 1.0)));
             }
+        }
     }
     void prepareToPlay(double rate, int block) override {
         rate_ = rate;
@@ -203,7 +211,8 @@ public:
         dc_ = {};
         reduction_ = 1.0f;
     }
-    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override {
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override {
+        ccMap.process(midi); midi.clear();
         auto audio = getBusBuffer(buffer, false, 0);
         juce::ScopedNoDenormals noDenormals;
         if (audio.getNumChannels() < 1 || audio.getNumSamples() == 0) return;

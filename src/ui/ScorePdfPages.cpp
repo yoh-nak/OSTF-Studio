@@ -1,4 +1,5 @@
 #include "ui/AnalysisService.h"
+#include "ui/StudioPaths.h"
 #if JUCE_WINDOWS && defined(_MSC_VER)
 #include <windows.data.pdf.h>
 #include <thread>
@@ -95,7 +96,8 @@ juce::Result readScorePages(const juce::File& source, const juce::File& director
                             const std::function<juce::Result(const juce::File&)>& readPage) {
     auto failed = [] { return juce::Result::fail(TRANS("Could not read the selected PDF.")); };
 #if JUCE_WINDOWS && defined(_MSC_VER)
-    const auto executable = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+    const auto executable = studioToolsExecutable();
+    if (!executable.existsAsFile()) return juce::Result::fail(TRANS("Install OSTF Studio to import PDF pages."));
     const auto png = directory.getChildFile("page.png");
     int pageCount = 1;
     for (int i = 0; i < pageCount; ++i) {

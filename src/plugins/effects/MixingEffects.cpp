@@ -45,7 +45,8 @@ using Coeff = juce::dsp::IIR::ArrayCoefficients<float>;
 using Biquad = juce::dsp::IIR::Filter<float>;
 
 class MixingEffect final : public juce::AudioProcessor {
-  public:
+public:
+    ostfstudio::PluginCcMap ccMap{*this};
     MixingEffect(Mode m, const char* product, const char* key)
         : AudioProcessor([&] {
               auto io = BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true);
@@ -128,7 +129,7 @@ class MixingEffect final : public juce::AudioProcessor {
         }
     }
     const juce::String getName() const override { return name; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override {
@@ -140,7 +141,7 @@ class MixingEffect final : public juce::AudioProcessor {
     const juce::String getProgramName(int) override { return "Default"; }
     void changeProgramName(int, const juce::String&) override {}
     bool hasEditor() const override { return true; }
-    juce::AudioProcessorEditor* createEditor() override { return new ostfstudio::EffectControlPanel(*this, params, mode == Mode::graphic); }
+    juce::AudioProcessorEditor* createEditor() override { return new ostfstudio::EffectControlPanel(*this, params, mode == Mode::graphic,ccMap); }
     bool isBusesLayoutSupported(const BusesLayout& b) const override {
         if (b.inputBuses.size() > 1 && !b.inputBuses[1].isDisabled()
             && b.inputBuses[1] != juce::AudioChannelSet::mono() && b.inputBuses[1] != juce::AudioChannelSet::stereo()) return false;
@@ -152,15 +153,18 @@ class MixingEffect final : public juce::AudioProcessor {
         juce::XmlElement xml(stateTag);
         for (auto* p : params)
             xml.setAttribute(p->paramID, p->convertTo0to1(p->get()));
+        ccMap.save(xml);
         copyXmlToBinary(xml, dest);
     }
     void setStateInformation(const void* data, int size) override {
-        if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName(stateTag))
+        if (auto xml = getXmlFromBinary(data, size); xml && xml->hasTagName(stateTag)) {
+            ccMap.restore(*xml);
             for (auto* p : params) {
                 auto v = xml->getDoubleAttribute(p->paramID, p->convertTo0to1(p->get()));
                 if (std::isfinite(v))
                     p->setValueNotifyingHost(float(std::clamp(v, 0., 1.)));
             }
+        }
     }
     void prepareToPlay(double rate, int block) override {
         sr = rate;
@@ -188,7 +192,8 @@ class MixingEffect final : public juce::AudioProcessor {
         delay.clear();
         room.reset();
     }
-    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override {
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override {
+        ccMap.process(midi); midi.clear();
         auto audio = getBusBuffer(buffer, false, 0);
         juce::ScopedNoDenormals safe;
         const int channels = audio.getNumChannels(), samples = audio.getNumSamples();

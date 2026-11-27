@@ -2,7 +2,7 @@
 
 [日本語](README.md) · [Illustrated plug-in guide](../plugins/en.md) · [Project home](../../README.md)
 
-The screenshots show the Windows development build on 27 November 2026. Public Alpha 1 ships 38 VST3s. The workstation VST3 and the two SUPER KNOBBER devices were added in development after that release.
+These screenshots show the Windows interface in Public Alpha 2. The installer includes the standalone workstation and 41 VST3s. On macOS, choose the disk image for your processor and run the package inside it.
 
 <a name="studio-vst3"></a>
 
@@ -10,9 +10,7 @@ The screenshots show the Windows development build on 27 November 2026. Public A
 
 If you work in Ableton Live, Cubase or another VST3 host, load **OSTF Studio** as an instrument on a track in that DAW. You can edit the score inside Studio and record or mix the rest of the production in your host.
 
-With Public Alpha 1, open the standalone Studio application for this song. Its bundled instruments and effects also load directly into compatible DAWs.
-
-1. **Install the workstation instrument.** In the Windows development installer, all components start selected. Choose **Studio VST3 for another DAW** for the workstation and the instruments and effects used in the demo. The individual workstation checkbox is **OSTF Studio (VST3)**.
+1. **Install the workstation instrument.** In the Windows Public Alpha 2 installer, all components start selected. Choose **Studio VST3 for another DAW** for the workstation and the instruments and effects used in the demo. The individual workstation checkbox is **OSTF Studio (VST3)**.
 2. **Create an instrument track.** Rescan VST3s in your host and search for **OSTF Studio** in its instrument browser. In Ableton Live, drag it from the browser to a MIDI track. In Cubase, open **Add Track → Instrument** and select it as the instrument. [Ableton VST3 setup](https://help.ableton.com/hc/en-us/articles/209071729-Using-VST-plug-ins-on-Windows) · [Cubase instrument tracks](https://www.steinberg.help/r/cubase-pro/16.0/en/cubase_nuendo/topics/tracks_about/tracks_about_add_track_instrument_settings_r.html)
 3. **Open the song inside the plug-in.** Choose **File → Demo songs → Paper Lantern Replies**, or open your own `.ostfp` project or `.ostf` score.
 4. **Start your DAW at the beginning.** Enable **Follow DAW transport** at the top left of the plug-in. Studio sends a stereo mix to the host track. The lead vocal enters at bar 5. To audition with Studio’s own transport, turn follow off.
@@ -25,7 +23,7 @@ The plug-in follows the host’s play, stop and time position. Studio reads temp
 
 ## Assign a scale to the project
 
-In the development build, load **OSTF Scale Editor** on an instrument track **inside OSTF Studio**. In another DAW, load **OSTF Studio (VST3)** first and open the project there. Choose a chord in the left pane, audition candidates, then choose **Set scale**. The check mark and scale name show the assignment for the selected target. **Harmony** updates Studio’s global scale lane. A pitched track receives its own scale direction. Save the project in Studio or in the DAW containing it.
+In Public Alpha 2, load **OSTF Scale Editor** on an instrument track **inside OSTF Studio**. In another DAW, load **OSTF Studio (VST3)** first and open the project there. Choose a chord in the left pane, audition candidates, then choose **Set scale**. The check mark and scale name show the assignment for the selected target. **Harmony** updates Studio’s global scale lane. A pitched track receives its own scale direction. Save the project in Studio or in the DAW containing it.
 
 If you choose the DAW installer preset, also select **OSTF Scale Editor** under **Composition**.
 
@@ -103,7 +101,7 @@ Open **Score** and click **Piano Roll** in the top toolbar. Picking a part in th
 | --- | --- |
 | The session in your usual DAW | Save the **host DAW project**. It stores Studio’s song and device state with the plug-in instance. |
 | A Studio production to reopen or move | Save an **OSTFP project** from Studio. The destination computer also needs the VST3s and any external sound libraries used by the project. |
-| The musical score to exchange with another tool | Save an **OSTF score** in Studio. In the development build this includes the scales you assigned in Scale Editor. |
+| The musical score to exchange with another tool | Save an **OSTF score** in Studio. In Public Alpha 2 this includes the scales you assigned in Scale Editor. |
 
 ## If you hear silence
 
@@ -113,7 +111,7 @@ Open **Score** and click **Piano Roll** in the top toolbar. Picking a part in th
 
 <a name="audio-export"></a>
 
-## Export audio and bounce a track (development build)
+## Export audio and bounce a track (Public Alpha 2)
 
 Choose **File → Export mix as audio** to render the arrangement from its beginning. Choose a format, sample rate and bit depth or encoding rate. **Effect tail after song end** keeps up to 30 seconds of reverb and delay. The stereo file includes track inserts, buses, returns and the master. Record an external MIDI instrument to an audio track before exporting its sound.
 
@@ -122,3 +120,17 @@ WAV supports 16/24-bit PCM and 32-bit float. AIFF and FLAC offer 16/24-bit PCM. 
 Click a track name, then Ctrl-click (Command-click on macOS) other track names. Shift-click selects a contiguous range. Right-click a selected header and choose **Bounce tracks to one audio track**. The number beside the command is the number of source tracks. The piano roll keeps its editing focus while you extend the selection. A single source prints its instrument and inserts before its fader. Multiple sources are summed with their strip levels and pan before bus and master processing.
 
 To render an excerpt, select the clip in the arrangement and right-click it. Ctrl/Cmd-click additional clips to select passages across tracks. The new audio starts at the earliest selected clip and ends at the last selected clip boundary. Gaps keep their original duration. The new 48 kHz, 24-bit track starts muted. Save the project as OSTFP to keep its audio.
+
+## Mixer, song information and AI prompts
+
+Open **Mixer** to see the track instruments, inserts, sends, output routing and master. Set the input and arm each track you want to play or record.
+
+![Studio mixer with the track faders, sends and output meters](../images/mixer.png)
+
+Open **Details** beside the song information strip to edit the song and its credits. Print preview lets you select which of the stored credits to display.
+
+![Song information and credit settings](../images/song-settings.png)
+
+Use the **Mode** menu to choose arrangement, lyric or vocal work. The prompt guide beside the timeline changes with the mode. Use its arrows to read another example. The toolbar shows the ChatGPT connection status. When working with an external AI, choose the OSTF material to share and review the result before importing it.
+
+![AI Arrangement Studio prompt example and navigation arrows](../images/ai-prompt-guide.png)

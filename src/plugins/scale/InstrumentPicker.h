@@ -15,10 +15,7 @@ inline std::vector<InstrumentChoice> availableInstruments(const std::optional<ju
     juce::KnownPluginList library;
     if (auto xml=juce::XmlDocument::parse(pluginDataDirectory().getChildFile("vst3-cache.xml")))
         library.recreateFromXml(*xml);
-    auto module=juce::File::getSpecialLocation(juce::File::currentExecutableFile);
-    while (!module.hasFileExtension("vst3") && module!=module.getParentDirectory()) module=module.getParentDirectory();
-    const auto home=module.hasFileExtension("vst3") ? module.getParentDirectory()
-        : juce::File::getSpecialLocation(juce::File::hostApplicationPath).getParentDirectory();
+    const auto home = studioBundleDirectory(juce::File::getSpecialLocation(juce::File::currentExecutableFile));
     auto scanned=library.getTypes();
     if (current) scanned.add(*current);
     std::vector<InstrumentChoice> result;
@@ -35,7 +32,7 @@ inline std::vector<InstrumentChoice> availableInstruments(const std::optional<ju
     for (const auto& path:paths) {
         if (knownPaths.contains(path)) continue;
         const juce::File bundle(path);
-        if (bundle.getFileName()=="OSTF Scale Editor.vst3") continue;
+        if (bundle.getFileName()=="OSTF Scale Editor.vst3" || bundle.getFileName()=="OSTF Studio.vst3") continue;
         const auto info=juce::JSON::parse(bundle.getChildFile("Contents/Resources/moduleinfo.json"));
         if (auto* classes=info["Classes"].getArray()) {
             for (const auto& cls:*classes) {
@@ -46,7 +43,7 @@ inline std::vector<InstrumentChoice> availableInstruments(const std::optional<ju
                 type.name=cls["Name"].toString();
                 type.manufacturerName=cls["Vendor"].toString();
                 type.pluginFormatName="VST3";
-                if (type.name=="OSTF Scale Editor" || isOstfGenerator(type) || isOstfArranger(type)) continue;
+                if (type.name=="OSTF Scale Editor" || isOstfGenerator(type) || isOstfArranger(type) || isStudioWorkstation(type)) continue;
                 juce::var identity(new juce::DynamicObject());
                 identity.getDynamicObject()->setProperty("format","vst3");
                 identity.getDynamicObject()->setProperty("name",type.name);
@@ -165,6 +162,11 @@ private:
         load.setEnabled(!visible.empty()); loadAndTest.setEnabled(!visible.empty()); list.repaint();
     }
     int getNumRows() override {return int(visible.size());}
+    juce::String getTooltipForRow(int row) override {
+        if (!juce::isPositiveAndBelow(row, getNumRows())) return {};
+        const auto& choice = choices[visible[size_t(row)]];
+        return choice.name + "\n" + choice.path;
+    }
     void selectedRowsChanged(int row) override {
         if (!filtering && juce::isPositiveAndBelow(row,getNumRows())) preferred=visible[size_t(row)];
     }

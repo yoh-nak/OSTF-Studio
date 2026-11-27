@@ -864,6 +864,9 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
     juce::Array<juce::var> automation;
     auto states = object({});
     auto externalKeys = object({});
+    auto localSwitches = object({});
+    for (const auto& [slot, state] : mix.deviceStates)
+        if (!state.active()) localSwitches.getDynamicObject()->setProperty(slot, object({{"enabled",state.enabled},{"bypass",state.bypass}}));
     auto attachEffects = [&](juce::var& channel, bool output, std::size_t index, const juce::StringArray& chain) {
         if (output && mix.outputNames[index].isNotEmpty()) channel.getDynamicObject()->setProperty("name", mix.outputNames[index]);
         auto ids = array(channel["deviceIds"]);
@@ -887,7 +890,9 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
                             {"targetDeviceId",id},{"targetPortId","vst3-aux-1"},{"tapPoint","preFader"},
                             {"followMute",false},{"gainDb",0.0},{"enabled",true}}));
                 }
-                devices.add(object({{"id", id}, {"role", "effect"}, {"enabled", true}, {"bypass", false},
+                const auto state = mix.deviceState(id);
+                localSwitches.getDynamicObject()->removeProperty(id);
+                devices.add(object({{"id", id}, {"role", "effect"}, {"enabled", state.enabled}, {"bypass", state.bypass},
                     {"onUnavailable", "reportAndPreserve"}, {"plugin", object({{"format", "vst3"}, {"vendor", "OSTF Studio"},
                         {"name", fx.displayName()}, {"pluginId", fx.classId()}})}}));
                 if (const auto state = mix.stockEffectStates.find(id); state != mix.stockEffectStates.end())
@@ -937,10 +942,12 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
                                   {"targetChannelId", returnId(r)}, {"gainDb", 20.0 * std::log10(settings.returnSends[r])},
                                   {"preFader", false}, {"enabled", true}}));
         if (!isVoicing && index < mix.instruments.size() && mix.instruments[index].isObject()) {
-            const auto device = "instrument-" + juce::String(i + 1);
+            const auto device = SessionMix::instrumentSlot(index);
+            const auto state = mix.deviceState(device);
+            localSwitches.getDynamicObject()->removeProperty(device);
             model->setProperty("deviceIds", juce::Array<juce::var>{device});
             devices.add(object({{"id", device}, {"role", "instrument"}, {"plugin", mix.instruments[index]},
-                                {"enabled", true}, {"bypass", false}, {"onUnavailable", "reportAndPreserve"}}));
+                                {"enabled", state.enabled}, {"bypass", state.bypass}, {"onUnavailable", "reportAndPreserve"}}));
         }
         model->setProperty("sends", sends);
         if (index < mix.trackEffects.size()) {
@@ -954,6 +961,8 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
         if (isVoicing) voicingMix = channel;
         else channels.add(std::move(channel));
         auto local = object({{"trackId", id}, {"midiChannel", midi.channel}, {"cue", settings.cue}});
+        if (isVoicing && index < mix.instruments.size() && mix.instruments[index].isObject())
+            local.getDynamicObject()->setProperty("instrument", mix.instruments[index]);
         if (midi.destination && *midi.destination < sourceCount)
             local.getDynamicObject()->setProperty("destinationTrackId", tracks[static_cast<int>(*midi.destination)]["id"]);
         if (index < mix.audioTracks.size() && mix.audioTracks[index])
@@ -988,6 +997,8 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
                         {"data", object({{"tracks", routes}, {"trackOrder", order}, {"cueDb", mix.routing.cueDb}, {"inserts", inserts}, {"outputEffects", outputEffects}, {"stockEffectStates", states}, {"chordVoicingMix", voicingMix}, {"chordVoicingRoute", voicingRoute}})}}));
     if (externalKeys.getDynamicObject()->getProperties().size() > 0)
         hostData[0]["data"].getDynamicObject()->setProperty("externalSidechainTracks",externalKeys);
+    if (localSwitches.getDynamicObject()->getProperties().size() > 0)
+        hostData[0]["data"].getDynamicObject()->setProperty("localDeviceStates", localSwitches);
     if (!mix.recordCycle.isEmpty())
         hostData[0]["data"].getDynamicObject()->setProperty("recordCycle", object({
             {"start", mix.recordCycle.getStart()}, {"end", mix.recordCycle.getEnd()}, {"enabled", mix.cycleEnabled}}));
@@ -1005,7 +1016,8 @@ juce::var productionMix(const juce::var& score, const SessionMix& mix, const Pan
     return document;
 }
 
-SessionMix readMix(const juce::var& score, const juce::var& production, PanAutomation& envelopes) {
+SessionMix readMix(const juce::var& score, const juce::var& production, PanAutomation& envelopes,
+                   std::map<juce::String,juce::String>* deviceIdsBySlot = nullptr) {
     const auto host = production["hostExtensions"];
     const auto extensions = host.isVoid() ? juce::Array<juce::var>{} : array(host);
     require(extensions.isEmpty() || (extensions.size() == 1 && extensions[0]["namespace"] == mixNamespace
@@ -1029,6 +1041,12 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
         return std::clamp(v, -60.0, 6.0);
     };
     SessionMix mix;
+    auto readSwitch = [](const juce::var& device) -> SessionMix::DeviceState {
+        return {bool(device["enabled"]), bool(device["bypass"])};
+    };
+    if (auto* switches = local["localDeviceStates"].getDynamicObject())
+        for (const auto& property : switches->getProperties())
+            mix.deviceStates[property.name.toString()] = readSwitch(property.value);
     if (const auto cycle = local["recordCycle"]; cycle.isObject()) {
         const auto first = integer(cycle["start"]), last = integer(cycle["end"]);
         require(first >= 0 && last > first, "Invalid Studio recording range.");
@@ -1039,6 +1057,8 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
     mix.tracks.resize(voicingIndex + static_cast<std::size_t>(voicingMix.isObject()));
     mix.midiRoutes.resize(mix.tracks.size());
     mix.instruments.resize(mix.tracks.size());
+    if (voicingMix.isObject() && voicingRoute["instrument"].isObject())
+        mix.instruments[voicingIndex] = voicingRoute["instrument"];
     mix.trackEffects.resize(mix.tracks.size());
     for (int i = 0; i < tracks.size(); ++i) {
         const auto midi = tracks[i]["midi"];
@@ -1064,6 +1084,7 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
     // Legacy Studio chains can also contain cached host IDs for third-party plug-ins.
     // Translate state keys after merging those chains, so mixed chains keep slot order.
     std::map<juce::String, juce::StringArray> effectDeviceIds;
+    std::map<juce::String, SessionMix::DeviceState> effectStates;
     for (const auto& entry : channels) {
         const auto id = entry["id"].toString();
         const bool outputChannel = entry["kind"] != "track";
@@ -1081,12 +1102,16 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
             const auto& device = *found;
             if (device["role"] == "instrument") {
                 require(!outputChannel && fx.isEmpty() && !mix.instruments[track].isObject(), "Unsupported instrument order");
-                if (static_cast<bool>(device["enabled"]) && !static_cast<bool>(device["bypass"]))
-                    mix.instruments[track] = device["plugin"];
+                mix.instruments[track] = device["plugin"];
+                if (deviceIdsBySlot) (*deviceIdsBySlot)[SessionMix::instrumentSlot(track)] = deviceId.toString();
+                const auto state = readSwitch(device);
+                if (!state.active()) mix.deviceStates[SessionMix::instrumentSlot(track)] = state;
+                else mix.deviceStates.erase(SessionMix::instrumentSlot(track));
                 continue;
             }
-            require(device["role"] == "effect" && static_cast<bool>(device["enabled"]) && !static_cast<bool>(device["bypass"]),
-                    "Unsupported production device or bypass state");
+            require(device["role"] == "effect", "Unsupported production device");
+            const auto deviceState = readSwitch(device);
+            effectStates.emplace(deviceId.toString(), deviceState);
             const auto ref = device["plugin"];
             const auto stock = std::find_if(std::begin(stockEffects), std::end(stockEffects), [&](const auto& item) {
                 return ref["format"] == "vst3" && ref["pluginId"].toString().equalsIgnoreCase(item.classId());
@@ -1202,6 +1227,12 @@ SessionMix readMix(const juce::var& score, const juce::var& production, PanAutom
                 const auto key = SessionMix::effectSlot(output, channel, slot);
                 const juce::Identifier deviceId(voicing ? key : it->second[device++]);
                 slotByDevice[deviceId.toString()] = key;
+                if (deviceIdsBySlot && !voicing) (*deviceIdsBySlot)[key] = deviceId.toString();
+                if (!voicing) {
+                    const auto state = effectStates.at(deviceId.toString());
+                    if (state.active()) mix.deviceStates.erase(key);
+                    else mix.deviceStates[key] = state;
+                }
                 if(auto source=deviceKeys.find(deviceId.toString()); source!=deviceKeys.end()) mix.sidechainTracks[key]=source->second;
                 const auto state = local["stockEffectStates"][deviceId];
                 if (state.isString()) mix.stockEffectStates[key] = state.toString();
@@ -2172,6 +2203,82 @@ juce::Result OstfpPreview::drawTempo(juce::int64 start, double from, juce::int64
     return result;
 } catch (const std::exception& error) { return juce::Result::fail(error.what()); }
 
+juce::Result OstfpPreview::insertBars(juce::int64 at, int count, juce::MemoryBlock& previous) try {
+    require(count>0 && count<=128 && ticksPerBar>0 && at>=0 && at<=durationTicks && at%ticksPerBar==0,"Select a bar boundary.");
+    const auto length=ticksPerBar*count;
+    require(durationTicks<=0x0fffffff-length,"Song is too long.");
+    const auto original=savedScore(*this), base=savedScore(*this,true);
+    auto score=parseObject(base);
+    // These 5.2 profiles carry independent notation/clock coordinates that need their own time edit.
+    require(!score.hasProperty("notation") && !score.hasProperty("musicalModel"),"Bar insertion with authored notation or musical time maps is not supported.");
+    auto each=[](const juce::var& list,auto fn){if(auto* a=list.getArray())for(auto& item:*a)fn(item);};
+    auto move=[&](juce::int64 tick){return tick>=at ? tick+length : tick;};
+    auto span=[&](juce::var item,const char* start,const char* duration,juce::int64 oldOrigin=0,
+                  juce::int64 newOrigin=0,bool extendLeft=false) {
+        if (!item.hasProperty(start)) return;
+        auto* fields=item.getDynamicObject();
+        const auto old=oldOrigin+integer(item[start]);
+        const auto first=extendLeft && at==0 && old==0 ? old : move(old);
+        fields->setProperty(start,first-newOrigin);
+        if(item.hasProperty(duration)) {
+            const auto oldEnd=old+integer(item[duration]);
+            const auto end=oldEnd>at || (extendLeft && oldEnd==at && old<at) ? oldEnd+length : oldEnd;
+            fields->setProperty(duration,std::max<juce::int64>(0,end-first));
+        }
+    };
+    auto timeline=score["timeline"];
+    timeline.getDynamicObject()->setProperty("duration",durationTicks+length);
+    for (auto key:{"tempoChanges","meterChanges","keyChanges"}) each(timeline[key],[&](auto item){
+        const auto tick=integer(item["at"]);
+        if(tick>0) item.getDynamicObject()->setProperty("at",move(tick));
+    });
+    auto global=[&](auto item){span(item,"start","duration",0,0,true);};
+    each(timeline["sections"],global); each(score["harmony"]["chords"],global); each(score["harmony"]["scales"],global);
+    for (auto key:{"units","phrases"}) each(score["lyrics"][key],[&](auto item){span(item,"start","duration");});
+    each(score["ensembleInteractions"],[&](auto item){span(item,"start","duration");});
+    each(score["performancePlans"],[&](auto plan){
+        each(plan["visits"],[&](auto visit){span(visit["sourceRange"],"start","duration");});
+    });
+    each(score["takeGroups"],[&](auto group){
+        span(group,"startTick","durationTicks");
+        each(group["comps"],[&](auto comp){each(comp["compRegions"],[&](auto region){span(region,"startTick","durationTicks");});});
+    });
+    each(score["tracks"],[&](auto track) {
+        each(track["directions"],[&](auto item){span(item,"start","duration");span(item,"at","duration");});
+        each(track["clips"],[&](auto clip) {
+            const auto origin=integer(clip["start"]);
+            const auto oldEnd=origin+integer(clip["duration"]);
+            if(origin<at && at<oldEnd) {
+                auto period=score["extensions"][loopNamespace]["data"].getProperty(juce::Identifier(clip["id"].toString()),0);
+                require(integer(period)==0,"Split the looped MIDI clip before inserting bars inside it.");
+            }
+            span(clip,"start","duration");
+            auto relative=[&](auto ev){span(ev,"start","duration",origin,move(origin));};
+            each(clip["notes"],relative); each(clip["midiEvents"],relative);
+            each(clip["vocalPerformances"],[&](auto voice) {
+                for (auto key:{"techniques","breathEvents","phonemeEvents"}) each(voice[key],relative);
+                for (auto key:{"pitchCurves","expressionCurves"}) each(voice[key],[&](auto curve){
+                    each(curve["points"],[&](auto p){span(p,"at","duration",origin,move(origin));});
+                });
+            });
+        });
+    });
+    for(size_t i=0;i<sourceTrackCount();++i) if(takes(i).count>1) {
+        auto shifted=takes(i);
+        for(auto& region:shifted.spans) {
+            const auto a=region.ticks.getStart(),b=region.ticks.getEnd();
+            region.ticks={move(a),b>at?b+length:b};
+        }
+        writeTrackTakes(score,score["tracks"][int(i)],shifted);
+    }
+    reviseDocument(score,original,"insert-bars-"+juce::Uuid().toString());
+    const auto bytes=editedScoreBytes(base,score,{"timeline","harmony","tracks","lyrics","ensembleInteractions","performancePlans","takeGroups",StudioMidiTakes::extension,"document"});
+    validateVersion(parseObject(bytes)["version"].toString(),bytes);
+    auto result=restoreNoteScore(bytes);
+    if(result.wasOk()) previous=original;
+    return result;
+} catch(const std::exception& e) {return juce::Result::fail(e.what());}
+
 juce::Result OstfpPreview::appendSection(juce::Range<juce::int64> range, const juce::String& name,
                                          bool duplicate, juce::MemoryBlock& previous) try {
     const auto destination = playbackEndTick(), length = range.getLength();
@@ -2411,6 +2518,31 @@ juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Arr
                 }
             }
     }
+    // A direction referring to the old scale still covers all pieces after a cut.
+    bool changedScaleReferences=false;
+    if (lane==TimelineLane::scale && remove.size()==1 && insert.size()>1 && insert[0]["id"]==remove[0]["id"]) {
+        const auto old=remove[0];
+        auto cursor=integer(old["start"]);
+        bool tiled=true;
+        for (const auto& piece:insert) {
+            tiled=tiled && integer(piece["start"])==cursor && same(piece["targets"],old["targets"]);
+            cursor+=integer(piece["duration"]);
+        }
+        if(tiled && cursor==integer(old["start"])+integer(old["duration"])) {
+            if(auto* tracks=score["tracks"].getArray()) for(const auto& track:*tracks)
+                if(auto* directions=track["directions"].getArray()) for(const auto& direction:*directions) {
+                    auto source=direction["parameters"]["pitchSource"];
+                    if(source["type"]!="harmonyScales") continue;
+                    if(auto* ids=source["scaleIds"].getArray()) {
+                        const auto index=ids->indexOf(old["id"]);
+                        if(index>=0) {
+                            for(int j=1;j<insert.size();++j) ids->insert(index+j,insert[j]["id"]);
+                            changedScaleReferences=true;
+                        }
+                    }
+                }
+        }
+    }
     // Keep any authored reference to a removed ID valid. A value edit retains the ID.
     const auto json = juce::JSON::toString(score, true, 17);
     for (const auto& item : remove) {
@@ -2423,7 +2555,9 @@ juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Arr
                 "Another score object refers to this event.");
     }
     reviseDocument(score, old, "timeline-" + juce::Uuid().toString());
-    auto bytes = editedScoreBytes(base, score, {"timeline", "harmony", "performancePlans", "document"});
+    auto bytes = changedScaleReferences
+        ? editedScoreBytes(base, score, {"timeline", "harmony", "performancePlans", "document", "tracks"})
+        : editedScoreBytes(base, score, {"timeline", "harmony", "performancePlans", "document"});
     validateVersion(parseObject(bytes)["version"].toString(), bytes);
     auto result = restoreNoteScore(bytes);
     if (result.wasOk())
@@ -2540,6 +2674,74 @@ juce::Result OstfpPreview::placeMidiClip(const MidiClipCopy& payload, size_t des
     if (tick + length > durationTicks) score["timeline"].getDynamicObject()->setProperty("duration", tick + length);
     reviseDocument(score, original, "clip-" + juce::Uuid().toString());
     auto bytes = editedScoreBytes(base, score, {"tracks", "timeline", "soundSlots", "drumKits", loopNamespace, "document"});
+    require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
+    validateVersion(parseObject(bytes)["version"].toString(), bytes);
+    auto result = restoreNoteScore(bytes);
+    if (result.wasOk()) before = original;
+    return result;
+} catch (const std::exception& e) { return juce::Result::fail(e.what()); }
+
+juce::Result OstfpPreview::moveArrangementClips(const std::set<std::pair<size_t, juce::String>>& midiClips,
+                                               juce::int64 delta, juce::int64 latestEnd, juce::MemoryBlock& before) try {
+    require(latestEnd > 0 && latestEnd <= 0x0fffffff, "Invalid clip range.");
+    const auto original = savedScore(*this);
+    if (midiClips.empty() && latestEnd <= durationTicks) { before = original; return juce::Result::ok(); }
+    const auto base = savedScore(*this, true);
+    auto score = parseObject(base);
+    auto selected = midiClips;
+    const auto groups = score["takeGroups"];
+    if (const auto* list = groups.getArray()) for (const auto& group : *list) {
+        const int track = trackIds.indexOf(group["trackId"].toString());
+        require(track >= 0, "Select a matching take track.");
+        std::set<std::pair<size_t, juce::String>> members;
+        for (const auto& take : array(group["takes"])) for (const auto& id : array(take["clipIds"]))
+            members.emplace(size_t(track), id.toString());
+        for (const auto& comp : array(group["comps"])) for (const auto& id : array(comp["outputClipIds"]))
+            members.emplace(size_t(track), id.toString());
+        if (std::none_of(members.begin(), members.end(), [&](const auto& member) { return midiClips.contains(member); })) continue;
+        selected.insert(members.begin(), members.end());
+        const auto start = integer(group["startTick"]) + delta;
+        const auto end = start + integer(group["durationTicks"]);
+        require(start >= 0 && end <= 0x0fffffff, "Invalid clip range.");
+        latestEnd = std::max(latestEnd, end);
+        group.getDynamicObject()->setProperty("startTick", start);
+        if (group.hasProperty("sectionId")) {
+            group.getDynamicObject()->removeProperty("sectionId");
+            for (const auto& section : array(score["timeline"]["sections"])) {
+                const auto sectionStart = integer(section["start"]);
+                if (sectionStart <= start && end <= sectionStart + integer(section["duration"])) {
+                    group.getDynamicObject()->setProperty("sectionId", section["id"]);
+                    break;
+                }
+            }
+        }
+        for (const auto& comp : array(group["comps"])) for (const auto& region : array(comp["compRegions"]))
+            region.getDynamicObject()->setProperty("startTick", integer(region["startTick"]) + delta);
+    }
+    size_t found = 0;
+    const auto tracks = score["tracks"];
+    for (size_t i = 0; i < sourceTrackCount(); ++i) {
+        const auto clips = tracks[int(i)]["clips"];
+        std::vector<juce::Range<juce::int64>> stationary, moving;
+        if (const auto* list = clips.getArray()) for (const auto& clip : *list) {
+            const auto range = juce::Range<juce::int64>::withStartAndLength(integer(clip["start"]), integer(clip["duration"]));
+            if (!selected.contains({i, clip["id"].toString()})) { stationary.push_back(range); continue; }
+            const auto dest = range + delta;
+            require(dest.getStart() >= 0 && dest.getEnd() <= latestEnd, "Invalid clip range.");
+            for (const auto key : {"notes", "midiEvents"}) if (const auto* events = clip[key].getArray()) {
+                for (const auto& event : *events) require(dest.getStart() + integer(event["start"]) >= 0, "Invalid clip range.");
+            }
+            moving.push_back(dest);
+            clip.getDynamicObject()->setProperty("start", dest.getStart());
+            ++found;
+        }
+        for (auto dest : moving) for (auto other : stationary)
+            require(!dest.intersects(other), "The destination contains another clip.");
+    }
+    require(found == selected.size(), "Select a MIDI clip.");
+    if (latestEnd > durationTicks) score["timeline"].getDynamicObject()->setProperty("duration", latestEnd);
+    reviseDocument(score, original, "move-clips-" + juce::Uuid().toString());
+    const auto bytes = editedScoreBytes(base, score, {"tracks", "timeline", "takeGroups", "document"});
     require(bytes.getSize() <= maxBytes, "OSTF score is too large.");
     validateVersion(parseObject(bytes)["version"].toString(), bytes);
     auto result = restoreNoteScore(bytes);
@@ -3476,7 +3678,7 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
                 next = projectScore(score, false, imported);
             }
             const auto viewScore = withProductionRows(score, imported);
-            next->savedMix = readMix(viewScore, playback, next->panAutomation);
+            next->savedMix = readMix(viewScore, playback, next->panAutomation, imported ? &imported->deviceIdsBySlot : nullptr);
             const auto source = production.hasProperty("assets") || production.hasProperty("audioRegions")
                 ? playback : score["extensions"][mixNamespace]["data"];
             readAudioReferences(viewScore, source, *next, manifest, documentPath);
@@ -3528,6 +3730,7 @@ juce::Result readOstfpPreview(juce::InputStream& input, std::unique_ptr<OstfpPre
                 baseline.midiRoutes.resize(baseline.tracks.size());
             }
             imported->mixerSnapshot=jsonBytes(productionMix(withProductionRows(score,imported),*next->savedMix,next->panAutomation));
+            imported->originalDeviceStates = next->savedMix->deviceStates;
         } else require(loadedAssets.size() == assets.size(), "OSTFP audio inventory mismatch");
         if (next->savedMix)
             for (std::size_t i = 0; i < next->trackKinds.size(); ++i)
@@ -3559,19 +3762,45 @@ static void writeImportedProduction(const OstfpPreview& project, const SessionMi
     const auto score = savedScore(project,true);
     const auto core = parseObject(score);
     const auto view = withProductionRows(core,project.importedProduction);
-    require(jsonBytes(productionMix(view,mix,project.panAutomation)) == source.mixerSnapshot,
+    const bool switchesEdited = mix.deviceStates != source.originalDeviceStates;
+    auto comparableMix = mix;
+    comparableMix.deviceStates = source.originalDeviceStates;
+    require(jsonBytes(productionMix(view,comparableMix,project.panAutomation)) == source.mixerSnapshot,
             "This imported Production uses its original mixer. Export the edited score separately to retain your musical edits.");
     auto manifest=parseObject(source.manifestBytes);
     auto scoreRef=manifest["score"]; juce::var companion;
     for (const auto& doc : array(manifest["documents"])) if (doc["role"] == "productionSession") companion=doc;
-    require(!audioEdited || companion.isObject(),"Edited audio needs a Production companion");
+    require((!audioEdited && !switchesEdited) || companion.isObject(),"Edited devices and audio need a Production companion");
     auto production=source.productionBytes; auto manifestBytes=source.manifestBytes;
     const auto hash=juce::SHA256(score).toHexString();
-    if (hash!=scoreRef["sha256"].toString() || audioEdited) {
+    if (hash!=scoreRef["sha256"].toString() || audioEdited || switchesEdited) {
         require(array(manifest["documents"]).size() == (companion.isObject() ? 1 : 0),
                 "An additional companion refers to the original revision. Save the edited score as OSTF.");
         if (companion.isObject()) {
             auto session=parseObject(production); auto binding=session["score"];
+            if (switchesEdited) {
+                auto devices = session["devices"];
+                for (const auto& [slot,id] : source.deviceIdsBySlot) {
+                    const auto state = mix.deviceState(slot);
+                    const auto original = source.originalDeviceStates.find(slot);
+                    if (state == (original == source.originalDeviceStates.end() ? SessionMix::DeviceState{} : original->second))
+                        continue;
+                    for (const auto& device : array(devices)) {
+                        if (device["id"] != id) continue;
+                        device.getDynamicObject()->setProperty("enabled", state.enabled);
+                        device.getDynamicObject()->setProperty("bypass", state.bypass);
+                        break;
+                    }
+                }
+                const auto hosts = session["hostExtensions"];
+                if (hosts.size() && hosts[0]["namespace"] == mixNamespace) {
+                    auto data = hosts[0]["data"];
+                    const auto settings = productionMix(view,mix,project.panAutomation);
+                    const auto local = settings["hostExtensions"][0]["data"]["localDeviceStates"];
+                    if (local.isObject()) data.getDynamicObject()->setProperty("localDeviceStates", local);
+                    else data.getDynamicObject()->removeProperty("localDeviceStates");
+                }
+            }
             if (audioEdited) {
                 auto host=session.getProperty("hostExtensions",juce::Array<juce::var>{});
                 if (!host.size()) host.getArray()->add(object({{"namespace",mixNamespace},{"version","1.0"},{"data",object({})}}));
@@ -3595,7 +3824,8 @@ static void writeImportedProduction(const OstfpPreview& project, const SessionMi
             binding.getDynamicObject()->setProperty("sha256",hash);
             for(const auto key:{"documentId","revisionId"}) if(binding.hasProperty(key))
                 binding.getDynamicObject()->setProperty(key,core["document"][juce::String(key)=="documentId"?"id":"revisionId"]);
-            production=audioEdited ? editedScoreBytes(source.productionBytes,session,{"score","hostExtensions"})
+            production=switchesEdited ? editedScoreBytes(source.productionBytes,session,{"score","hostExtensions","devices"})
+                                   : audioEdited ? editedScoreBytes(source.productionBytes,session,{"score","hostExtensions"})
                                    : editedScoreBytes(source.productionBytes,session,{"score"});
             companion.getDynamicObject()->setProperty("sha256",juce::SHA256(production).toHexString());
         }

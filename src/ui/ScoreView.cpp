@@ -16,6 +16,20 @@ class ReadingGrid final : public juce::Component {
 } // namespace
 class ScoreView::Panel final : public juce::Component {
   public:
+    std::function<void(std::size_t)> partChanged;
+    std::function<void(int)> barsChanged;
+    void enablePartSelection(bool enabled) { track.setEnabled(enabled); }
+    void revealBar(int bar) {
+        if (preview || (bar>=firstBar && bar<firstBar+columns*rows)) return;
+        follow.setToggleState(false, juce::dontSendNotification);
+        firstBar=bar;
+        updatePage();
+    }
+    std::vector<std::size_t> partTracks;
+    std::optional<std::size_t> selectedPartTrack() const {
+        if (!juce::isPositiveAndBelow(index(),int(partTracks.size()))) return {};
+        return partTracks[size_t(index())];
+    }
     Panel() {
         for (auto* c : std::array<juce::Component*, 18>{&grid, &title, &position, &track, &staff, &previous, &next,
                                                         &counter, &pdf, &xml, &status, &density, &voices, &follow,
@@ -66,7 +80,10 @@ class ScoreView::Panel final : public juce::Component {
         };
         follow.setToggleState(true, juce::dontSendNotification);
         follow.onClick = [this] { updatePage(); };
-        track.onChange = [this] { update(); };
+        track.onChange = [this] {
+            update();
+            if (auto value = selectedPartTrack(); value && partChanged) partChanged(*value);
+        };
         staff.onChange = [this] {
             if (index() >= 0)
                 styles[score.parts[index()].id] = static_cast<StaffStyle>(staff.getSelectedId());
@@ -208,6 +225,7 @@ class ScoreView::Panel final : public juce::Component {
             lead = *switchMode;
         }
         track.clear(juce::dontSendNotification);
+        partTracks.clear();
         int choice = 0, part = 0;
         for (std::size_t i = 0; i < project.trackKinds.size(); ++i) {
             if (project.trackKinds[i] == TrackKind::audio)
@@ -215,6 +233,7 @@ class ScoreView::Panel final : public juce::Component {
             const auto& p = score.parts[part];
             if (p.id == selected)
                 choice = part;
+            partTracks.push_back(i);
             track.addItem(p.name, ++part);
         }
         if (preferred && (selected.isEmpty() || preferred != arrangementTrack) &&
@@ -334,6 +353,7 @@ class ScoreView::Panel final : public juce::Component {
             follow.setToggleState(false, juce::dontSendNotification);
         firstBar += direction * columns * rows;
         updatePage();
+        if (barsChanged) barsChanged(firstBar);
     }
     void updatePage() {
         paper = {};
@@ -466,6 +486,8 @@ class ScoreView::Panel final : public juce::Component {
 };
 ScoreView::ScoreView() : panel_(std::make_unique<Panel>()) {
     setComponentID("notation-workspace");
+    panel_->barsChanged = [this](int bar){ if (barsChanged) barsChanged(bar); };
+    panel_->partChanged = [this](size_t i){ if (partChanged) partChanged(i); };
     addAndMakeVisible(*panel_);
 }
 ScoreView::~ScoreView() = default;
@@ -475,6 +497,9 @@ void ScoreView::showScore(const OstfpPreview& p, bool lead, std::optional<std::s
     panel_->setSong(p, track, lead);
 }
 void ScoreView::refresh(const OstfpPreview& p) { panel_->setSong(p, {}, {}); }
+std::optional<size_t> ScoreView::selectedPartTrack() const { return panel_->selectedPartTrack(); }
+void ScoreView::enablePartSelection(bool enabled) { panel_->enablePartSelection(enabled); }
+void ScoreView::revealBar(int bar) { panel_->revealBar(bar); }
 bool ScoreView::showsLeadSheet() const { return panel_->showsLeadSheet(); }
 void ScoreView::playbackPosition(juce::int64 t) { panel_->playbackPosition(t); }
 

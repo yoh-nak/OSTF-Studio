@@ -34,6 +34,7 @@ int checkGmPlugin(const juce::String& plugin, const juce::String& bank) {
     if (appDirectory.getChildFile("OSTF Chorus.vst3").isDirectory()) {
         PluginBrowser browser;
         for (const auto& bundle : appDirectory.findChildFiles(juce::File::findDirectories, false, "OSTF *.vst3")) {
+            if (bundle.getFileName() == "OSTF Studio.vst3") continue;
             const auto matches = std::count_if(browser.types().begin(), browser.types().end(), [&](const auto& type) {
                 return type.manufacturerName == "OSTF Studio" && type.name == bundle.getFileNameWithoutExtension();
             });
@@ -222,7 +223,6 @@ int checkStockEffects(const juce::StringArray&);
 int checkStudioInstruments(const juce::StringArray&);
 int checkTrackView(const juce::File&);
 int checkLiveSession(const juce::File&);
-std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)>);
 std::unique_ptr<juce::Timer> startPluginFocusCheck(const juce::File&, std::function<void(int)>);
 std::unique_ptr<juce::Timer> startVocalTrackCheck(const juce::File&, const juce::File&, std::function<void(int)>);
 int checkPianoEdits(const juce::File&);
@@ -244,13 +244,12 @@ public:
                 [this](int result) { setApplicationReturnValue(result); quit(); });
             return;
         }
-        const bool spliceCheck = args.size() == 1 && (args[0] == "--splice-window-smoke" || args[0] == "--splice-pane-smoke");
-        if (spliceCheck || (args.size() == 2 && args[0] == "--plugin-focus-smoke")) {
+        if (args.size() == 2 && args[0] == "--plugin-focus-smoke") {
             auto finished = [this](int result) {
                 setApplicationReturnValue(result);
                 quit();
             };
-            windowCheck_ = spliceCheck ? startSpliceWindowCheck(finished) : startPluginFocusCheck(juce::File(args[1]), finished);
+            windowCheck_ = startPluginFocusCheck(juce::File(args[1]), finished);
             return;
         }
 #if JUCE_WINDOWS && defined(_MSC_VER)

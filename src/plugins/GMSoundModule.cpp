@@ -1,3 +1,4 @@
+#include "PluginCcMap.h"
 #include "StudioPluginEditor.h"
 #include "EditorProgramParameter.h"
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -36,6 +37,7 @@ Bank copyFactoryBank() {
 
 class SoundModule final : public juce::AudioProcessor {
 public:
+    ostfstudio::PluginCcMap ccMap{*this};
     enum Control { volume, pan, expression, tuning, bendRange, sustain, mute, solo, controlCount };
     static constexpr std::array<int, controlCount> defaults {100, 64, 127, 0, 2, 0, 0, 0};
     static constexpr std::array<int, controlCount> minimum {0, 0, 0, -100, 0, 0, 0, 0};
@@ -183,11 +185,13 @@ public:
             part->setAttribute("bendCents", rpn_[i].bendCents);
             for (int id = 0; id < controlCount; ++id) part->setAttribute("c" + juce::String(id), control(i, id));
         }
+        ccMap.save(state);
         copyXmlToBinary(state, block);
     }
     void setStateInformation(const void* data, int size) override {
         const auto state = getXmlFromBinary(data, size);
         if (!state || !state->hasTagName("OSTF_GM")) return;
+        ccMap.restore(*state);
         {
             const juce::ScopedLock lock(bankLock_);
             resetBanks();
@@ -223,6 +227,7 @@ public:
     }
 
     void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer& midi) override {
+        ccMap.process(midi);
         audio.clear();
         const juce::ScopedTryLock lock(bankLock_);
         if (!lock.isLocked() || !bank_ || audio.getNumChannels() < 2) return;
@@ -454,7 +459,8 @@ private:
 
 class SoundModuleEditor final : public ostfstudio::StudioPluginEditor, private juce::Timer {
 public:
-    explicit SoundModuleEditor(SoundModule& module) : StudioPluginEditor(module), module_(module) {
+    explicit SoundModuleEditor(SoundModule& module) : StudioPluginEditor(module), module_(module), ccButton(module.ccMap) {
+    addAndMakeVisible(ccButton);
         for (auto* item : std::array<juce::Component*, 7>{&bank_, &load_, &factory_, &program_, &preset_, &part_, &heading_})
             addAndMakeVisible(*item);
         heading_.setText(JucePlugin_Name, juce::dontSendNotification);
@@ -542,6 +548,7 @@ public:
     void resized() override {
         auto area = getLocalBounds().reduced(16);
         auto top = area.removeFromTop(36);
+        ccButton.setBounds(top.removeFromRight(78).reduced(3));
         load_.setBounds(top.removeFromRight(114).reduced(3));
         factory_.setBounds(top.removeFromRight(112).reduced(3));
         heading_.setBounds(top);
@@ -626,6 +633,7 @@ private:
 
     struct PartControl { juce::Label label; juce::Slider slider; juce::ToggleButton toggle; };
     SoundModule& module_;
+    ostfstudio::PluginCcButton ccButton;
     bool showingDrums_ = false;
     std::array<juce::TextButton, 16> channels_;
     std::array<PartControl, SoundModule::controlCount> controls_;

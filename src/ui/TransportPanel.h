@@ -1,6 +1,6 @@
 #pragma once
 #include "ConsoleDisplay.h"
-#include <juce_gui_basics/juce_gui_basics.h>
+#include "ui/CamelotWheel.h"
 #include "ui/OstfpPreview.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -123,11 +123,17 @@ public:
         }
         addChildComponent(camelot_);
         camelot_.setComponentID("transport-camelot");
-        camelot_.setTitle("Camelot");
-        camelot_.setJustificationType(juce::Justification::centred);
-        camelot_.setBorderSize({});
-        camelot_.setFont(juce::FontOptions(13.f,juce::Font::bold));
-        camelot_.setColour(juce::Label::textColourId,juce::Colour(0xff142027));
+        camelot_.setTitle(TRANS("Camelot wheel"));
+        camelot_.setTooltip(TRANS("Show the Camelot wheel"));
+        camelot_.onClick = [this] {
+            if (!camelot_.code || wheel_) return;
+            auto content = std::make_unique<CamelotWheel>(camelot_.code);
+            wheel_ = content.get();
+            auto* parent = getTopLevelComponent();
+            if (parent == this) parent = nullptr;
+            const auto anchor = parent ? parent->getLocalArea(&camelot_, camelot_.getLocalBounds()) : camelot_.getScreenBounds();
+            juce::CallOutBox::launchAsynchronously(std::move(content), anchor, parent);
+        };
         stop.setToggleState(true, juce::dontSendNotification);
         setComponentID("transport");
     }
@@ -155,17 +161,18 @@ public:
                + padded(frames / 30 % 60, 2) + ":" + padded(frames % 30, 2));
         set(2, rate == 1 ? song.contextAt(ostfstudio::TimelineLane::tempo, tick) : juce::String(song.clock.bpmAt(tick) * rate, 2));
         set(3, juce::String(meter.numerator) + "/" + juce::String(meter.denominator));
-        set(4, ostfstudio::shiftedLabel(song.contextAt(ostfstudio::TimelineLane::key, tick), shift));
+        const auto keyTick = std::min(tick, std::max<juce::int64>(0, song.durationTicks - 1));
+        set(4, ostfstudio::shiftedLabel(song.contextAt(ostfstudio::TimelineLane::key, keyTick), shift));
         const auto nextKey = std::upper_bound(song.camelotKeys.begin(),song.camelotKeys.end(),tick,
             [](auto at,const auto& event){ return at < event.first; });
         const int code = nextKey == song.camelotKeys.begin() ? 0 : std::prev(nextKey)->second;
         const int number = code ? ((code-1 + 7*(shift%12))%12 + 12)%12 + 1 : 0;
-        const auto badge = code ? juce::String(number) + (code <= 12 ? "A" : "B") : juce::String{};
-        if (camelot_.getText() != badge) {
-            camelot_.setText(badge,juce::dontSendNotification);
-            camelot_.setTooltip("Camelot " + badge);
-            camelot_.setColour(juce::Label::backgroundColourId,juce::Colour::fromHSV(
-                std::fmod(.71f + number/12.f,1.f),code <= 12 ? .53f : .35f,.95f,1.f));
+        const auto shiftedCode = code ? number + (code <= 12 ? 0 : 12) : 0;
+        if (camelot_.code != shiftedCode) {
+            camelot_.code = shiftedCode;
+            camelot_.setButtonText(shiftedCode ? CamelotWheel::label(shiftedCode) : juce::String{});
+            if (wheel_) wheel_->select(shiftedCode);
+            camelot_.repaint();
             camelot_.setVisible(code != 0);
             resized();
         }
@@ -223,7 +230,19 @@ private:
     const std::array<juce::String, fieldCount> captions_{TRANS("Bar / Beat / Tick"), TRANS("Timecode / 30 fps"),
         TRANS("Tempo (BPM)"), TRANS("Meter"), TRANS("Key"), TRANS("Scale"), TRANS("Chord"), TRANS("Section")};
     std::array<juce::Label, fieldCount> readouts_;
-    juce::Label camelot_;
+    struct CamelotBadge final : juce::Button {
+        CamelotBadge() : juce::Button("Camelot") {}
+        int code = 0;
+        void paintButton(juce::Graphics& g, bool over, bool down) override {
+            if (!code) return;
+            g.setColour(CamelotWheel::colour(code).brighter(over || down ? .12f : 0.f));
+            g.fillRoundedRectangle(getLocalBounds().toFloat(), 3.f);
+            g.setColour(juce::Colour(0xff142027));
+            g.setFont(juce::FontOptions(13.f,juce::Font::bold));
+            g.drawText(getButtonText(), getLocalBounds(), juce::Justification::centred);
+        }
+    } camelot_;
+    juce::Component::SafePointer<CamelotWheel> wheel_;
     struct CountStyle final : juce::LookAndFeel_V4 {
         void drawComboBox(juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& combo) override {
             g.setColour(juce::Colour(0xff61757e));

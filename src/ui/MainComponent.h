@@ -13,10 +13,12 @@
 #include "ui/OstfpPreview.h"
 #include "ui/PluginBrowser.h"
 #include "ui/PreviewTransport.h"
+#include "ui/AudioExport.h"
 #include "ui/ViewButton.h"
 #include "ui/ArrangementRuler.h"
 #include "ui/AudioClipEditor.h"
 #include "ui/TempoEditor.h"
+#include "ui/GlobalLaneEditor.h"
 #include "ui/PianoInspector.h"
 #include "ui/VocalLane.h"
 #include "ui/PromptGuide.h"
@@ -40,7 +42,11 @@
 class MainComponent final : public juce::Component, public juce::TooltipClient, public juce::DragAndDropContainer,
                             public juce::FileDragAndDropTarget, public juce::DragAndDropTarget, private juce::MenuBarModel, private juce::MidiInputCallback, private juce::Timer, private juce::ScrollBar::Listener {
 public:
-    MainComponent();
+    explicit MainComponent(ostfstudio::HostAudio* host = nullptr);
+    bool saveHostProject(juce::MemoryBlock&);
+    bool restoreHostProject(const void*, size_t);
+    void setHostAudioFormat(double rate, int block);
+    bool followHostTransport(bool playing, double seconds);
     ~MainComponent() override;
     bool openDocument(const juce::File& file);
     void openSongFile(const juce::File& file, std::function<void(bool)> finished = {});
@@ -54,6 +60,7 @@ public:
     void focusOfChildComponentChanged(FocusChangeType) override;
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent& event) override;
+    void mouseMove(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseUp(const juce::MouseEvent& event) override;
     bool isInterestedInFileDrag(const juce::StringArray&) override;
@@ -61,6 +68,8 @@ public:
     void filesDropped(const juce::StringArray&, int x, int y) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 private:
+    ostfstudio::HostAudio* hostAudio_;
+    ostfstudio::SessionMix sessionMix();
     ostfstudio::console::LookAndFeel consoleStyle_;
     const ostfstudio::console::Finish& finish() const { return ostfstudio::console::finishFor(pianoInspector_.theme); }
     bool isInterestedInDragSource(const SourceDetails& details) override;
@@ -152,6 +161,10 @@ private:
     ViewButton splitTool_{ViewButton::Icon::scissors}, joinTool_{ViewButton::Icon::join};
     void placeResult(ImportResultRow&, std::optional<std::size_t> track, juce::int64 tick, bool replace,
                      std::shared_ptr<const ostfstudio::OstfpPreview> dropped = {}, bool review = false);
+    juce::int64 snapLaneTick(ostfstudio::TimelineLane, juce::int64, juce::int64 ignoredMeter = -1) const;
+    struct GlobalEdgeDrag { ostfstudio::TimelineLane lane; juce::int64 from, to; std::size_t generation; };
+    std::optional<GlobalEdgeDrag> globalEdgeDrag_;
+    void insertTimelineBars(juce::int64 at,int count);
     void applyGlobalChange(ostfstudio::TimelineLane, juce::Array<juce::var> remove, juce::Array<juce::var> insert);
     std::optional<ostfstudio::TimelineLane> selectedGlobal_, copiedLane_;
     juce::int64 selectedGlobalTick_ = 0, copiedPpq_ = 0;
@@ -176,11 +189,12 @@ private:
     void menuItemSelected(int item, int topLevelMenuIndex) override;
     void inspectOSTF();
     void newProject();
-    void adoptProject(std::unique_ptr<ostfstudio::OstfpPreview>, const juce::String&, bool, const juce::File&);
+    void adoptProject(std::unique_ptr<ostfstudio::OstfpPreview>, const juce::String&, bool, const juce::File&,
+                      const juce::ValueTree& hostState = {});
     bool openPreview(juce::InputStream& input, const juce::String& filename, bool plainScore = false, const juce::File& sourceFolder = {});
     void editSongInformation();
     void updateDocumentLabel();
-    enum class SaveFormat { score, package, midi0, midi1, musicXml, chordPro };
+    enum class SaveFormat { score, package, midi0, midi1, musicXml, chordPro, svpLead, svpChorus, svpAll };
     void saveDocument(SaveFormat);
     juce::PopupMenu timelineMenu() const;
     void selectTrack(std::size_t index, bool keepMixer = false);
@@ -207,10 +221,24 @@ private:
     std::array<int,128> capturePitchMap_{};
     std::atomic<bool> capturingTake_{false};
     std::optional<std::size_t> drumInputMonitor_;
+    struct Bounce { juce::String name; std::vector<ostfstudio::ProjectAudio> clips; };
+    struct ClipHit { size_t track; juce::String id; juce::int64 start, end; bool audio; };
+    juce::StringArray bounceTracks_;
+    std::set<std::pair<juce::String,juce::String>> bounceClipIds_;
+    std::vector<ClipHit> bounceClipSelection(const ClipHit&) const;
+    std::set<size_t> bounceSelection(size_t clicked) const;
+    void bounceTracks(size_t clicked);
+    bool canBounce(std::size_t track) const;
+    void chooseAudioExport();
+    void renderAudio(std::optional<std::size_t> track, ostfstudio::audioexport::Settings,
+                     int tailSeconds, const juce::File& target = {}, std::set<size_t> sources = {},
+                     std::vector<ClipHit> clips = {});
+    std::unique_ptr<juce::ThreadWithProgressWindow> renderJob_;
+    bool rendering_ = false;
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
                     std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched,
                     const ImportResultRow* import = nullptr, juce::int64 tick = 0,
-                    std::optional<ostfstudio::SessionMix::MidiRoute> sharedPart = {});
+                    std::optional<ostfstudio::SessionMix::MidiRoute> sharedPart = {}, Bounce* bounce = nullptr);
     juce::TextEditor renameEditor_{TRANS("Track name")};
     std::size_t renameRow_{};
     bool renameOutput_{};
@@ -249,7 +277,17 @@ private:
     void editVocalNote(const ostfstudio::PitchedNote&);
     void linkAudio(std::size_t index);
     void setupOutputTracks();
+    struct PluginSwitch {
+        ostfstudio::SessionMix::DeviceState state;
+        std::shared_ptr<std::atomic<bool>> bypassed = std::make_shared<std::atomic<bool>>(false);
+        void set(ostfstudio::SessionMix::DeviceState value) {
+            state = value;
+            bypassed->store(!state.active());
+        }
+        void toggle() { set({true, state.active()}); }
+    };
     struct EffectSlot {
+        PluginSwitch power;
         juce::String id;
         juce::String savedState;
         ostfstudio::SessionMix::ParameterValues initialParameters;
@@ -265,6 +303,8 @@ private:
     EffectChain& effectChain(bool output, std::size_t index);
     void updateEffectButton(EffectChain& chain);
     void refreshScaleEditors();
+    bool applyScaleEdit(std::size_t generation,const char* base,const char* edited,int size);
+    void connectScaleEditor(juce::AudioPluginInstance&);
     bool scaleEditorMonitoring() const;
     void queueMixerPluginRefresh();
     void refreshMixerPlugins();
@@ -350,6 +390,7 @@ private:
     std::size_t pianoGeneration_ = 0;
     struct NoteRevision { juce::MemoryBlock before, after; juce::String panTrack; ostfstudio::PanEnvelope oldPan, newPan;
         std::optional<std::vector<ostfstudio::ProjectAudio>> beforeAudio, afterAudio;
+        std::optional<ostfstudio::PanAutomation> beforePan,afterPan;
         std::optional<ostfstudio::ChordDecisions> reviewBefore, reviewAfter;
         std::optional<size_t> reviewTrack;
         juce::String label;
@@ -384,6 +425,7 @@ private:
         std::optional<std::size_t> outputTrack;
         int midiChannel = 1;
         juce::var instrumentAssignment;
+        PluginSwitch instrumentPower;
         std::optional<juce::PluginDescription> inactiveInstrument;
         juce::MemoryBlock inactiveInstrumentState;
     };
@@ -496,16 +538,6 @@ private:
     ArrangementRuler ruler_, pianoRuler_;
     ostfstudio::ProjectAudio* clipOn(std::size_t track) const;
     void placeWav(const juce::File&, std::size_t track, juce::int64 tick, bool replace);
-    void openSplice();
-    void updateSplicePlayback();
-    void toggleLink();
-    void pollLink();
-    void editLinkTempo();
-    double linkQuantum() const;
-    std::unique_ptr<ostfstudio::LinkSession> link_;
-    int lastLinkPeers_ = -1;
-    double lastLinkTempo_ = 0;
-    bool lastLinkPlaying_ = false, followingLink_ = false;
     void aiConnectionMenu();
     void displayAiState(const juce::String&, juce::uint32);
     juce::String aiModel_;
@@ -543,14 +575,8 @@ private:
         }
     } aiButton_;
     juce::ThreadPool aiConnectionWorker_{1};
-    bool spliceLoading_ = false;
-    std::unique_ptr<juce::AudioPluginInstance> spliceInstance_;
-    juce::AudioProcessorPlayer splicePlayer_;
-    std::unique_ptr<juce::DocumentWindow> spliceWindow_;
-    bool spliceAuditionActive_ = false;
     EditorClipLane clipLane_;
     void refreshClipLane();
-    struct ClipHit { size_t track; juce::String id; juce::int64 start, end; bool audio; };
     enum class ClipOp { copy = 10, paste, duplicate, move, split, join };
     std::vector<ClipHit> clipsOn(size_t track) const;
     std::optional<ClipHit> clipAt(size_t track, juce::int64 tick) const;
@@ -570,18 +596,11 @@ private:
     struct MidiResize { std::size_t track; juce::String id; juce::int64 firstEnd, end, minEnd, maxEnd; };
     std::optional<MidiResize> resizingMidi_;
     void selectEditorClip(std::optional<double> bar, bool locate);
-    void editMelodyneCopy();
-    void applyMelodyneCopy();
-    struct MelodyneCopy {
-        juce::File wav;
-        juce::String originalHash, workingHash;
-        juce::int64 startFrame, frames, startTick, durationTicks;
-    };
-    std::map<juce::String, MelodyneCopy> melodyneCopies_;
     void openEffectEditor(bool output, std::size_t index, std::size_t slot);
     AudioClipWaveforms waveforms_;
     AudioClipEditor audioEditor_{waveforms_};
     TempoEditor tempoEditor_;
+    GlobalLaneEditor globalEditor_;
     std::optional<std::size_t> resizingAudio_;
     bool resizingAudioStart_ = false, movingAudio_ = false;
     juce::int64 audioGrabOffset_ = 0;
@@ -596,6 +615,8 @@ private:
     MixerPanel mixer_;
     std::unique_ptr<DeviceSettingsWindow> deviceSettings_;
     std::unique_ptr<ScoreView> scoreView_;
+    bool scorePiano_ = false;
+    juce::Rectangle<int> scorePianoBounds_;
     std::unique_ptr<juce::DocumentWindow> importWindow_;
     PreviewTransport transport_;
     bool transportActive_ = false;

@@ -1,3 +1,4 @@
+#include "../PluginCcMap.h"
 #include "StudioInstrument.h"
 #include "../EditorProgramParameter.h"
 #include "../StudioPluginEditor.h"
@@ -83,6 +84,7 @@ struct Voice {
 
 class Instrument final : public juce::AudioProcessor {
 public:
+    ostfstudio::PluginCcMap ccMap{*this};
     Instrument(Engine e, juce::String title)
         : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
           engine(e), name(std::move(title)) {
@@ -114,11 +116,13 @@ public:
         state.setAttribute("program", program.load());
         state.setAttribute("tone", double(tone->get()));
         state.setAttribute("output", double(level->get()));
+        ccMap.save(state);
         copyXmlToBinary(state, out);
     }
     void setStateInformation(const void* data, int length) override {
         if (auto state = getXmlFromBinary(data,length); state && state->hasTagName("StudioInstrument")
                 && state->getIntAttribute("engine",-1) == int(engine)) {
+            ccMap.restore(*state);
             setCurrentProgram(state->getIntAttribute("program"));
             *tone = float(state->getDoubleAttribute("tone",.5));
             *level = float(state->getDoubleAttribute("output",-3));
@@ -129,6 +133,7 @@ public:
     void reset() override { voices.fill({}); channels.fill({}); }
     void processBlock(juce::AudioBuffer<float>& out, juce::MidiBuffer& midi) override {
         juce::ScopedNoDenormals noDenormals;
+        ccMap.process(midi);
         out.clear();
         int from = 0;
         for (auto packet : midi) {
@@ -288,7 +293,8 @@ private:
 class InstrumentEditor final : public ostfstudio::StudioPluginEditor, private juce::Timer {
 public:
     explicit InstrumentEditor(Instrument& instrument)
-        : StudioPluginEditor(instrument), processor(instrument) {
+        : StudioPluginEditor(instrument), processor(instrument),ccButton(instrument.ccMap) {
+        addAndMakeVisible(ccButton);
         for (int i=0; i<processor.getNumPrograms(); ++i)
             presets.addItem("PC " + juce::String(i) + "   " + processor.getProgramName(i), i+1);
         presets.setTitle("Factory preset");
@@ -312,7 +318,8 @@ public:
     }
     void resized() override {
         auto area = getLocalBounds().reduced(10);
-        presets.setBounds(area.removeFromTop(30)); area.removeFromTop(6);
+        auto top=area.removeFromTop(30);
+        ccButton.setBounds(top.removeFromRight(76).reduced(2)); presets.setBounds(top); area.removeFromTop(6);
         for (int i=0; i<2; ++i) {
             auto strip = area.removeFromLeft(area.getWidth()/(2-i)).reduced(8,0);
             labels[size_t(i)].setBounds(strip.removeFromTop(22));
@@ -322,6 +329,7 @@ public:
 private:
     void timerCallback() override { presets.setSelectedId(processor.getCurrentProgram()+1,juce::dontSendNotification); }
     Instrument& processor;
+    ostfstudio::PluginCcButton ccButton;
     juce::ComboBox presets;
     std::array<juce::Slider,2> controls;
     std::array<juce::Label,2> labels;

@@ -2,9 +2,9 @@
 
 [English](en.md) · [Studio操作マニュアル](../manual/README.md)
 
-同梱VST3を用途から探せます。各項目に実際の操作画面と、最初に試す操作を載せました。公開アルファ1の38個に加え、開発版ではワークステーション音源 **OSTF Studio**、リードシンセ **SUPER KNOBBER LEAD**、ステレオリバーブ **SUPER KNOBBER REVERB** が使えます。
+同梱VST3を用途から探せます。各項目に実際の操作画面と、最初に試す操作を載せました。公開アルファ2は全41本です。公開アルファ1に加えてワークステーション音源 **OSTF Studio**、リードシンセ **SUPER KNOBBER LEAD**、ステレオリバーブ **SUPER KNOBBER REVERB** が使えます。
 
-**41本の操作画面はWindows開発版で撮影しました。** 普段のDAWでStudioの曲全体を扱う場合は、音源トラックにOSTF Studioを読み込み、その中でScale Editorを開きます。リバーブやEQを使う場合は、普段のDAWのFXスロットに直接挿せます。 [他のDAWでの起動手順](../manual/README.md#studio-vst3)
+**41本の操作画面は公開アルファ2のWindows版で撮影しました。** 普段のDAWでStudioの曲全体を扱う場合は、音源トラックにOSTF Studioを読み込み、その中でScale Editorを開きます。リバーブやEQを使う場合は、普段のDAWのFXスロットに直接挿せます。 [他のDAWでの起動手順](../manual/README.md#studio-vst3)
 
 ## [作曲ツールと音源 (10)](workstations.md)
 

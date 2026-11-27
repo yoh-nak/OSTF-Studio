@@ -315,6 +315,11 @@ int main(int argc, char** argv) {
     const auto lights = sungReading("lights",readingFor("lights"));
     const auto handsReading = readingFor("hands");
     const auto hands = sungReading("hands",handsReading);
+    const auto punctuated = sungReading("\"Hands!\"", handsReading);
+    const auto japanesePunctuation = sungReading(juce::String::fromUTF8("「Hands！」"), handsReading);
+    if (japanesePunctuation.empty() || japanesePunctuation.size() != hands.size() || japanesePunctuation.back().english != 38) return 88;
+    if (punctuated.size() != hands.size() || punctuated.back().english != 38
+        || sungReading("hand,s",handsReading).back().english != 0) return 88;
     const auto literalHands = lyricPhones(handsReading);
     const auto explicitStop = sungReading("hands",juce::String::fromUTF8("ハンドズ"));
     if (hands.size()!=3 || literalHands.size()!=3 || hands.front().sampleKey()!=literalHands.front().sampleKey()
@@ -337,6 +342,13 @@ int main(int argc, char** argv) {
     const auto customPaper=sungReading("paper",readingFor("pa")+readingFor("flame"));
     if (std::any_of(customPaper.begin(),customPaper.end(),[](auto& p){return p.vowelTiming!=VowelTiming::regular || p.english;})) return 81;
     const auto lyrics=lyricsFor(demoScore);
+    const auto paired = juce::JSON::parse(R"({"lyrics":{"units":[{"id":"u2","text":"mi","start":96},{"id":"u1","text":"do","start":0}],"alignments":[{"unitIds":["u2","u1"],"noteIds":["n1","n2"]}]},"tracks":[{"clips":[{"start":0,"notes":[{"id":"n2","start":96},{"id":"n1","start":0}]}]}]})");
+    const auto pairedPhones = lyricsFor(paired);
+    const auto singleDo = sungReading("do",{});
+    const auto singleMi = sungReading("mi",{});
+    if (pairedPhones.at("n1").size() != singleDo.size() || pairedPhones.at("n2").size() != singleMi.size()
+        || pairedPhones.at("n1").front().english != singleDo.front().english
+        || pairedPhones.at("n2").front().english != singleMi.front().english) return 94;
     auto sungUnit=[&](const juce::String& fragment) -> const std::vector<Phone>& {
         for (const auto& unit : scoreUnits) if (unit["text"].toString()==fragment)
             for (const auto& a : items(demoScore["lyrics"]["alignments"]))

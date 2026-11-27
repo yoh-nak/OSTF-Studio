@@ -4,9 +4,10 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 
+namespace ostfstudio { struct HostAudio; }
 class DeviceSettingsWindow final : public juce::DocumentWindow {
 public:
-    explicit DeviceSettingsWindow(std::function<void(int)> outputsChanged = {});
+    explicit DeviceSettingsWindow(std::function<void(int)> outputsChanged = {}, ostfstudio::HostAudio* host = nullptr);
     std::array<float,64> takeInputPeaks();
     void closeButtonPressed() override;
     bool enableTrackInput(const juce::MidiDeviceInfo&);

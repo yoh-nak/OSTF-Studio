@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## 2026-11-28 — Public Alpha 2
+
+Release branch `codex/public-alpha-2` integrates the Windows-tested development snapshot `d433b0b` and the illustrated guide from public main `19e600a`. The release candidate uses version `1.0.0-public-alpha.2`. Build, install and test the same revision on Windows x64, Apple silicon and Intel macOS. The draft publisher validates names, lengths and digests before exposing downloads. Track runner results independently of physical hardware and external DAW verification. [Release notes](docs/releases/v1.0.0-public-alpha.2.md) · [Release procedure](docs/RELEASING.md)
+
+Local Windows Release passed 48/48 CTests. The first Apple silicon build passed 46/47 GUI-build tests. The external-host recall check returned before its 18-second playback window. The macOS command-line test host now creates the AppKit application before starting the same event loop a DAW provides and reports processed audio blocks on failure.
+
+The corrected Apple silicon host passed all 47 tests. Verifying a customized install then exposed an issue with the Studio application dependency. Each dependent Mac choice now references the application package directly. A pre-build test installs tiny independent and dependent fixtures with Apple's actual Installer before testing the shipping DMG.
+
 ## 2026-11-27 — Windows development UI and bilingual illustrated guides
 
 Documentation branch `codex/illustrated-guide-refresh` started at public main `eacc148`. The screen captures use the local Windows x64 Release build of `codex/timeline-snap-audition-controls` at `d433b0b`. The public download links still identify Public Alpha 1. Its 38 plug-ins predate the workstation VST3 and both SUPER KNOBBER devices shown in the development guide.
@@ -8,11 +16,133 @@ The [Japanese manual](docs/manual/README.md) and [English manual](docs/manual/en
 
 To verify a guide update, compare each catalogue name from the documented build with the four category pages in each language, follow the corresponding index anchors, and decode the PNGs in `docs/images`. Check every relative image and page link in the manuals, inventories and home pages. Windows verification on this revision covered all 48 CTest cases. The initial run passed 45. Both Scale Editor WebView tests and Stem Separator passed on retry with normal Windows file access and a dedicated WebView2 profile. The screenshots document Windows. macOS and external DAW operation were not retested for this documentation update.
 
+## 2026-11-27 — Musical clip boundaries, drum loops and audition feedback
+
+Branch `codex/timeline-snap-audition-controls` starts at `d2ebb7c`. Drag a shared edge on the section, chord, key, scale or meter lane. Right-click the global lane to insert bars. In the arrangement, Ctrl/Cmd+A selects clips across source tracks. The clip context menu can move the selection together to the cursor in one undo step. The drum ruler follows the piano-roll viewport. Drag a new range or either end of the existing loop. Chord input offers root, quality and optional bass. Scale rows show the actual shared intervals and unassigned gaps.
+
+Scale Editor section/song auditions report the sounding scale on the audio sample clock. Bundled devices with exposed parameters share MIDI CC learn, channel-specific recall and unlearn controls. SUPER KNOBBER REVERB isolates preset selection from meter refresh, preserves low-level wet dynamics and meters wet RMS and stereo correlation. The tests cover preset selection, impulse responses, MIDI binding persistence, audition cues, neighbouring global spans, bar insertion, clip moves and drum ruler gestures.
+
+Moving a selected take group shifts its source takes, all comp outputs and their source ranges as a unit. The active comp and clip IDs survive the move. Blue Hour Waltz covers this case and rollback on an invalid selection.
+
+Windows x64 Release passed all 48 CTest cases, including the seven-song demo gallery and hosted Studio VST3 test. Windows Setup and Portable ZIP were built with the repository packaging script. ZIP CRC and SHA-256 against the freshly built executable and all 41 VST3 binaries passed. Local packages are under `E:/OSTF-Studio-build-cache/timeline-snap-audition`. The final track-view smoke additionally splits a chord, drags its boundary onto a half beat and checks exact undo. Bar insertion currently rejects authored notation/musical time maps and insertion inside a repeating MIDI clip. Split a repeated clip at the insertion boundary first. Imported Production automation and cross-boundary imported audio require companion editing support. macOS, physical MIDI controllers and listening comparisons in external DAWs remain unverified for this change.
+
+## 2026-11-27 — Reverb metering, arrangement bounce and score editing
+
+Branch `codex/reverb-bounce-score-workspace` starts at `803c0f0`. Ctrl/Cmd-click track names, or Shift-click a range, and use the track context menu to render one summed audio track. Single-source bounce retains the earlier pre-fader behaviour. Ctrl/Cmd-click arrangement clips, then right-click a selected clip to render only those IDs between their original outer tick boundaries. The piano roll keeps its editing focus while building a bounce selection. Verify embedded WAV frame lengths, output level and start ticks in the track-view smoke test.
+
+In the part score, Piano Roll opens a lower MIDI editor for the displayed part. Part selection drives the editor, manual score page steps move the piano time window, and piano edits and undo refresh the staff. The audio editor shows the selected pitch and semitone and reset buttons below the warp controls. A WAV without pinned pitch observations is analysed on a cancellable worker, including recordings longer than eight million frames. Polyphonic overlaps with model observations remain protected. The standalone and nested Studio VST3 share the score and clip editors.
+
+The original SUPER KNOBBER REVERB matrix and state IDs are preserved. The native editor pins Dry/Wet, Decay, Pre Delay and Output. The wet meter and wet waveform follow the amount actually sent to the output. Input filter and post-EQ comparisons have dedicated signal taps. The five RT60 display values are decay targets. A 20 ms dual-tap transition smooths pre-delay automation. The source device importer regenerates `Controls.h`, `Engine.h` and `Engine.cpp`; the crossfade and waveform live in separate native headers. Source reproduction was checked against the supplied v1.0 AMXD. The updated screenshot is in the illustrated plug-in guide.
+
+Windows x64 Release built all targets and passed 48/48 CTests, including an actual note edit and undo in split score view, audio bounce sample comparisons and reverb meter tests. The GUI smoke also passed from the extracted portable executable. The final Setup.exe and Portable ZIP are in `E:/OSTF-Studio-build-cache/reverb-bounce-score`. ZIP CRC and SHA-256 comparison passed for the extracted executable and all 41 VST3 binaries. The standalone menu test checks the seven current menus, and the voicing heading shares the row traversal used for painting and hit testing. Manual installation, macOS, third-party DAW testing and a listening comparison with the M4L original remain unverified for this build.
+
+## 2026-11-27 — Arrangement lane editing and Scale Editor audition
+
+Branch `codex/global-lane-editors` starts from `55c6dcd`. Select a section, chord, key, scale or meter clip in the arrangement to open the lower editor. The selectors and chord list share the arrangement selection. A new scale follows the clicked chord, bounded by adjoining scales. For an existing scale spanning several chords, **This chord only** preserves the other pieces and their harmony-scale references. Project changes use Studio's score validation, undo history and Scale Editor connection. The voicing track has its own group heading.
+
+Scale Editor exposes the audition section next to Play and Stop. The factory Paper Lantern Replies project has chords and no saved scales. An entirely unassigned range plays labelled suggestions; partially assigned ranges retain their rests. The assigned-scale commands always address the audition instrument, including the internal reference tone. With the transport stopped, an unarmed editor's preview reaches the master on a muted track.
+
+Splice and Melodyne use the normal VST3 browser. The dedicated external connections menu, standalone WAV exchange and network Link transport were retired. In another DAW, Studio VST3 follows host seconds through the score tempo map. A matching first downbeat, tempo map and meter map are required for identical bar numbers.
+
+Build the standalone, Studio VST3 and Scale Editor VST3 with the normal Release configuration. The track-view smoke test opens the lower editor from each lane and writes and undoes a scale. The gallery test checks track direction references after splitting a scale, transport smoke covers muted monitoring, and the Scale Editor WebView test clicks the audition controls and measures audio.
+
+Windows x64 Release passed all 48 CTests. With the bundled Paper Lantern Replies score, the audition planner produced 32 notes for Intro and 448 for the whole song, both beginning at zero. Local Setup and Portable ZIP were built in `E:/OSTF-Studio-build-cache/global-lane-editors`. ZIP CRC verification passed, and the extracted standalone and all 41 VST3 binaries matched their build outputs by SHA-256. The installer was not run. macOS, physical listening and commercial DAW/third-party plug-in interaction were not rechecked for this change.
+
+## 2026-11-27 — SUPER KNOBBER REVERB, mix export and track bounce
+
+Branch `codex/knobber-reverb-audio-export` adds the independent stereo VST3 effect `Skr1`. The source is the supplied SUPER KNOBBER REVERB v1.0 device, SHA-256 `95a376328808e8911e45ddd30ced3ad4396cf131e8befe1a0c5e61d9eca758de`. Run `python tools/import_knobber_reverb.py <device.amxd>` to regenerate the delay network and preset tables, then clang-format the three generated C++ files. The 49 algorithms, 13 source profiles and 10 styles use the original control mappings. The two shimmer harmonies use Signalsmith Stretch.
+
+In Studio, use **File → Export mix as audio** to render the arrangement. Each encoder supplies the available rate and quality choices. The optional tail can extend the master by up to 30 seconds. Right-click a source track and select **Bounce to new audio track** to print its instrument and inserts before the fader. The original remains available. The new track starts muted and contains stereo 48 kHz/24-bit WAV audio embedded in the project. Chunk boundaries follow score ticks so longer bounces fit the existing per-asset limit. The total package audio budget still applies.
+
+Build the usual Release targets plus `ostf_reverb_export_tests`. Its optional second argument after the VST3 path is an output directory for the Hall editor screenshot and Ambience, Hall and Shimmer impulse responses. The codec tests encode and decode stereo fixtures, check lossless resolution and confirm cancellation preserves the destination. The Studio track-view test exercises rendering through the actual workstation and saving the result to OSTFP. The development builds are local. macOS compilation and physical DAW testing remain outstanding for this change.
+
+Windows x64 Release compilation passed for the standalone, workstation VST3 and Reverb. All 49 CTests passed, including the rerun of the track-view test after fixing its temporary input buffer. All four installer-choice tests passed. Setup and the Portable ZIP were generated. The extracted application and all 41 VST3 binaries matched their build outputs by SHA-256. The installer itself was not run.
+
+For the original Max audio path, run `python tools/knobber_reverb_reference.py <device.amxd> <folder>` and open the generated patch in a separate Max instance. Channel three of `Max-Hall-trace.wav` marks the input impulse. At 48 kHz with Hall fully wet, the first second of stereo VST3 output measured 0.44 dB lower RMS than the Max reference. The sample correlation was 0.915. These measurements cover one preset and one input. The other presets, including both shimmer pitches, still need comparative listening on musical material.
+
+## 2026-11-27 — assigned scale audition and FX chain controls
+
+Branch `codex/assigned-scale-audition`. Open Scale Editor inside Studio, select Harmony or a pitched track, then select a chord in the desired section. **Play section** and **Play song** audition saved pitch collections using the selected instrument and the score tempo map. Unassigned spans remain silent unless a song scale supplies the harmony default. Conflicting collections leave rests. **Stop** releases the preview independently of the Studio transport. The standard workspace opens directly. The basic JUCE editor remains available automatically if the system web view is unavailable.
+
+In the FX chain, an active bypass has an amber background and the label **Bypassed**. Drag the handle to reorder slots, or focus it and use the arrow keys.
+
+Windows x64 Release builds of standalone Studio, the workstation VST3 and Scale Editor compiled locally. All 48 CTests passed. After extending authored scale-source handling, all eight Scale Editor checks passed again. The WebView test plays a saved section through the nested instrument and measures its audio. The Japanese recall test measures the drag-range label against the button bounds. Run `ctest -C Release -R ostf_scale_ --output-on-failure` with the GUI build. macOS validation and physical listening for these changes remain pending.
+
+The public homepage feedback update is [PR #10](https://github.com/yoh-nak/OSTF-Studio/pull/10). The English and Japanese READMEs link to bilingual issue forms. The development binaries are local.
+
+Windows Setup and the Portable ZIP were generated. The ZIP extracted successfully with 40 VST3 bundles. SHA-256 hashes for the extracted standalone application, Scale Editor and SUPER KNOBBER LEAD matched their tested build outputs. All four installer-choice tests passed. Interactive installation was not exercised.
+
+## 2026-11-27 — SUPER KNOBBER LEAD v1.2
+
+Branch `codex/super-knobber-lead` adds the independent Skl1 VST3, its preset bank, illustrated guide and host test. Source device SHA-256 is `9db41af6660b1ac8c8ba2a052fefa3f6c92dc22519f2fa4aef7c04a0f46811d5`. The editor groups 132 original sound controls into 19 sections across five resizable pages. It exposes direct automation, mono/three-voice playing, sustain, bend and MPE. The Max for Live Blue Hand proxies and assignment switches were retired for this port.
+
+Build `ostf_knobber_tests` with the GUI enabled. Run `ctest -C Release -R ostf_knobber_tests --output-on-failure` in the build tree. To write the MIDI and WAV fixtures, invoke the test executable with the built VST3 bundle path and a second argument containing the absolute output directory. For an independent reference, run `python tools/knobber_reference.py <original.amxd> <folder>`, then open the generated patch in a separate Max instance and allow its RAM recording to finish. Repeat with `--bright-saw` for the A7 fixture. The comparison uses the original Gen~ synthesis and effects code. The harness supplies the note timing in samples and bypasses Live's MIDI input path.
+
+Local Windows x64 Release compilation, standalone/hosted Studio builds, VST3 host recall, both sample rates, factory names, automation, screenshot capture and all 47 CTests passed. The four Python installer-choice tests also passed. Max rendered both reference fixtures at 48 kHz. For GM 082 the whole-phrase RMS level differed from Max by 0.002 dB or less at 1x. For the sustained A7 saw the non-harmonic energy ratio was −20.48 dB in Max, −20.48 dB in the native 1x engine and −29.07 dB at 2x. These measurements cover those two fixtures. Commercial DAW interaction, controller hardware and macOS compilation/runtime remain unverified for Skl1. Windows packaging and public release are separate from these audio checks.
+
+The local Windows Setup and Portable ZIP were generated without installing them. The portable archive passed a full ZIP integrity check and included 40 VST3 bundles. Its Skl1 binary matched the one used for the listening tests. The local comparison pack includes six WAVs (GM 082 and A7 in each engine), the MIDI phrase and Japanese listening notes.
+
+## 2026-11-27 — project-synced Scale Editor
+
+Branch `codex/project-synced-scales`. Insert Scale Editor on an instrument track inside standalone Studio or the hosted Studio VST3. The project supplies chords and scale assignments. Choosing a candidate previews it. Setting it writes to the selected harmony or pitched-track target and updates the chord list. Save the song in Studio or the parent DAW. The current VST3 state holds view and audition settings. A legacy preset retains its old private score and draft on resave for recovery with the earlier plug-in.
+
+The in-process VST3 project interface binds writes to a Studio instance, project generation and source digest. Studio validates and merges scale changes, records undo and updates its connected editors. Track and output changes renew the connection. Direct instantiation in another host displays the Studio routing instructions. The installer catalogue marks Ose1 as Studio-dependent. When using the DAW preset, select Scale Editor in addition to the workstation VST3.
+
+Windows x64 Release builds cover Studio, the hosted workstation and Scale Editor. CTest passed all 46 tests, including project connection, WebView editing, recall, the left pane after an external chord/scale edit, stale revision rejection and Studio undo. The installer catalogue tests and file-free Inno Setup wizard tests also passed. The plug-in guide image shows the Japanese workspace from the Windows build. Commercial DAW interaction and macOS runtime verification are outstanding for this change.
+
 ## 2026-11-27 — illustrated manual and plug-in guide
 
 Branch `codex/illustrated-manual` contains documentation and screenshots. The Japanese and English READMEs link to `docs/manual/` and `docs/plugins/`. The guides distinguish Public Alpha 1 (38 VST3s) from the subsequent development build (39, including the hosted workstation). Update both languages when the installer catalogue changes.
 
 Windows editor images came from Release builds. The workstation image uses the Paper Lantern Replies project, the analyzer uses a test signal, and the Scale Editor image shows its Japanese visual workspace. Check each catalogue entry against its gallery heading, image and index link in both languages. The external-host section documents the Windows playback, transport and recall checks from the hosted development build. Commercial-host and macOS playback were not tested for this documentation change.
+
+## 2026-11-27 — all components selected on opening Setup
+
+Branch `codex/all-components-default`. Both Windows installer filenames now use the full preset on every ordinary launch, including upgrades. The DAW preset remains available by choice or via `/TYPE=daw`. Selecting a plug-in marked `requiresStudio` checks and locks the application until the last such plug-in is deselected. Independent VST3s and the standalone application can be deselected separately.
+
+The four installer catalogue tests passed. File-free native Inno Setup runs used the production choice declarations for both Windows variants, checked every row on launch, then exercised dependency locks, category clicks and explicit custom selections. The corrected VST3-named installer uses the same local path as the preview below. No installation on the user's machine was performed.
+
+## 2026-11-27 — Windows installer for trying Studio in another DAW
+
+Branch `codex/studio-vst3-setup`. Pass `-ForDAW` to `packaging/windows/Package.ps1` with the usual Windows Release paths. The local output is `E:/OSTF-Studio-build-cache/studio-vst3-daw-installer/OSTF_Studio_VST3_Windows_x64_Setup.exe`. It starts with **OSTF Studio (VST3)** and the 15 bundled instruments and effects referenced by the embedded Paper Lantern Replies production session. The standalone application is optional. In an instrument track, open **OSTF Studio → File → Demo songs → Paper Lantern Replies** and start the host transport.
+
+The four installer-choice tests and native Windows wizard test passed. A file-free native wizard compiled with the production component and type definitions independently returned the exact 16 expected plug-in codes with the application unchecked. The external-host audio test passed using just these 16 copied bundles, including editor creation, project state recall, stereo playback and host stop. Verification used local Windows x64 and did not install into the user's DAW or run Ableton Live.
+
+## 2026-11-27 — optional application in the component installers
+
+Branch `codex/optional-studio-installer`. The Windows and macOS installers use the catalogue's optional boolean `requiresStudio`. Selecting any marked plug-in selects and locks the standalone app. Deselecting the last one unlocks it. The 39 current VST3s can be installed independently, including the hosted workstation, Scale Editor and Formant Singer. Windows plugin-only selection omits the app payload, shortcuts, associations and app uninstaller. The shared VST3 installer retains its own uninstall entry.
+
+Run `python tests/installer_choices.py` for both catalogue generators. On Windows run `python tests/installer_choices.py --windows-wizard "<path to ISCC.exe>"` to exercise the real Inno component list without installing software. Both checks passed, including two simultaneous dependencies, category selection, presets, and a command-line selection. The Windows Setup for the SVP-enabled build was generated locally under `E:/OSTF-Studio-build-cache/optional-studio-installer-windows`. Clean-machine installation and macOS Installer interaction have CI checks but were not run locally.
+
+## 2026-11-27 — Synthesizer V vocal export
+
+Branch `feat/synthesizer-v-vocal-export` adds **File → Export Synthesizer V (.svp)** to the standalone and hosted workstation. Choose the lead, chorus, or both. The writer uses separate monophonic SVP tracks for distinct voices and simultaneous harmony notes. It preserves aligned lyric text, enabled arrangement notes, tempo and meter. Select voice databases in Synthesizer V. Formant Singer also assigns a group of equally many lyric units and notes one to one, preventing repeated syllables on short notes.
+
+Build the Windows Release targets `OSTFStudio`, `ostf_hosted_studio_tests`, `OSTFSynthSinger_VST3`, `ostf_singing_tests` and `ostf_studio_ostfp_tests`. Run `ctest -C Release -R ostf_studio_synthv_export --output-on-failure` in the build directory to produce the three Paper Lantern Replies projects under `svp-test-output`. LibreSVIP 2.9.2 independently loaded all three and reproduced the original 194 lead and 10 backing notes, including their pitches, times and lyrics. Vocal synthesis in the commercial Synthesizer V editor, subjective listening and macOS execution remain unverified.
+
+Windows x64 Release passed all 46 CTest cases. Additional SVP assertions checked the selected comp and an instrumental countermelody. The local portable build and three sample files are in `E:/OSTF-Studio-build-cache/synthv-export-windows`. The staged application opened the demo in its startup smoke test and the staged workstation VST3 passed its external-host playback and recall test.
+
+## 2026-11-27 — plug-in switches and transport key display
+
+Branch `feat/device-bypass-camelot` builds on the hosted workstation. Both installer component trees use each VST3's display name. Bundle paths and component IDs stay stable for upgrades. The transport retains the last effective key at the end of a score. Clicking its Camelot code opens a 24-key wheel with the current key highlighted.
+
+Track instruments, track and output inserts, and individual rack devices can be bypassed while keeping their assignment and preset. Shared instruments have one switch for all routed parts. Production Session devices use the published `enabled` and `bypass` properties. Studio-only inserts use the existing host extension, and racks keep their nested switches in plug-in state. The 5.2 round-trip test changes an imported device with an external ID and reopens its original project. Formant Singer also handles Japanese punctuation around English display lyrics with katakana readings. Scale Editor's instrument list shows the VST3 path on hover.
+
+The Windows x64 Release build passed all 45 CTest cases, including audio rendering, rack state recall, Scale Editor audition and the hosted workstation. Both installer-choice tests passed and all 39 display names matched the audio classes in the built Windows VST3 metadata. macOS execution, installation on a clean PC and subjective listening to the revised singing remain unverified.
+
+The local Windows Setup executable and portable ZIP were generated with `packaging/windows/Package.ps1`. The application and all 39 VST3 binaries extracted from the ZIP matched the tested binaries by SHA-256. The extracted application opened Paper Lantern Replies with `--startup-smoke`. Running `ostf_hosted_studio_tests` against the extracted `OSTF Studio.vst3` also passed.
+
+## 2026-11-27 — host the workstation as a VST3
+
+Branch `feat/hosted-studio` adds a stereo VST3 instrument with the standalone arrangement, live session, mixers and editors. Open a score or project inside the editor. The editor may close while the DAW continues playing. The host saves an OSTFP snapshot with instrument and effect state. Host MIDI is routed to the active Studio input. DAW transport follow is enabled by default and can be switched off. The workstation keeps the OSTF tempo map.
+
+On Windows x64, build `ostf_hosted_studio_tests` in Release and run `ctest -C Release -R ostf_studio_external_host --output-on-failure` in the build tree. This independent host loads the actual VST3 bundle, recalls Paper Lantern Replies in a second instance with the editor closed, detects audio on the stereo bus, stops the host and checks for silence. The installer-choice tests cover the new composition-tool entry for both installer definitions.
+
+Scale Editor now finds adjacent portable instruments from the Windows module inside a VST3 bundle. Studio, Scale Editor and the racks exclude the workstation from their own instrument choices. Formant Singer retains English dictionary timing with punctuated display lyrics and katakana readings. Tests cover both matched and ambiguous readings.
+
+Windows x64 Release passed all 45 CTest cases and both installer-choice checks. The local portable preview contains 39 catalogued VST3 bundles with module metadata and license files. The staged standalone passed its startup smoke test and the staged workstation bundle passed the external-host test from its portable location.
+
+This iteration targets local Windows development. Commercial DAW interoperability, audible singing quality and macOS remain unverified for this build. The current transport follower uses the message thread. Sample-accurate loop starts, host tempo automation and offline rendering need separate work.
 
 ## 2026-11-27 — Public Alpha 1
 

@@ -51,6 +51,7 @@ struct Device {
     juce::PluginDescription type;
     juce::MemoryBlock state;
     Node node;
+    bool bypassed = false;
 };
 struct Layer {
     std::vector<Device> chain;
@@ -103,7 +104,7 @@ public:
         const bool synth=instrument && newLayer;
         juce::OwnedArray<juce::PluginDescription> types;
         formats.getFormat(0)->findAllTypesForFile(types,file.getFullPathName());
-        for(auto* type:types) if(type->isInstrument==synth) {
+        for(auto* type:types) if(type->isInstrument==synth && !(type->name=="OSTF Studio" && type->manufacturerName=="OSTF Studio")) {
             Device d{*type,{},{}};
             auto result=load(d);
             if(result.failed()) return result;
@@ -137,6 +138,7 @@ public:
             layer->setAttribute("level",double(l.level().level.load()));
             for(auto& d:l.chain) {
                 auto* item=layer->createNewChildElement("Device");
+                if (d.bypassed) item->setAttribute("bypass", true);
                 item->addChildElement(d.type.createXml().release());
                 if(d.node) d.node->getProcessor()->getStateInformation(d.state);
                 item->setAttribute("state",d.state.toBase64Encoding());
@@ -154,6 +156,7 @@ public:
             layer.level().level.store(float(juce::jlimit(0.,2.,entry->getDoubleAttribute("level",1.))));
             for(auto* item:entry->getChildWithTagNameIterator("Device")) {
                 Device d;
+                d.bypassed = item->getBoolAttribute("bypass");
                 if(auto* type=item->getFirstChildElement(); type && d.type.loadFromXml(*type)) {
                     d.state.fromBase64Encoding(item->getStringAttribute("state"));
                     if(d.type.isInstrument==(instrument && layer.chain.empty())) load(d);
@@ -170,6 +173,11 @@ public:
         layers.swap(next); connectLayers(); sendChangeMessage();
     }
     const bool instrument;
+    void toggleBypass(Device& d) {
+        const juce::ScopedLock guard(modelLock);
+        d.bypassed = !d.bypassed;
+        changed();
+    }
     juce::CriticalSection modelLock;
     std::vector<Layer> layers;
 private:
@@ -201,7 +209,7 @@ private:
     juce::Result load(Device& device) {
         locateDevice(device.type);
         const auto& type=device.type;
-        if(type.pluginFormatName!="VST3" || type.name.containsIgnoreCase("OSTF Instrument Rack")
+        if(type.pluginFormatName!="VST3" || (type.name=="OSTF Studio" && type.manufacturerName=="OSTF Studio") || type.name.containsIgnoreCase("OSTF Instrument Rack")
             || type.name.containsIgnoreCase("OSTF Effect Rack") || type.fileOrIdentifier.containsIgnoreCase("OSTF Instrument Rack.vst3")
             || type.fileOrIdentifier.containsIgnoreCase("OSTF Effect Rack.vst3")) return juce::Result::fail("A rack cannot host another OSTF rack.");
         juce::String error;
@@ -227,8 +235,16 @@ private:
         if(layers.empty() && input) stereoLink(input,output);
         for(auto& l:layers) {
             Node previous=input;
-            if(std::any_of(l.chain.begin(),l.chain.end(),[](const auto& d){return !d.node;})) continue;
+            if(std::any_of(l.chain.begin(),l.chain.end(),[](const auto& d){return !d.node && !d.bypassed;})) continue;
             for(auto& d:l.chain) {
+                if (d.bypassed) {
+                    if (d.type.isInstrument) {
+                        // Keep note-offs reaching the retained instrument while its audio is disconnected.
+                        if (d.node) graph.addConnection({{midi->nodeID,Graph::midiChannelIndex},{d.node->nodeID,Graph::midiChannelIndex}},Update::none);
+                        break;
+                    }
+                    continue;
+                }
                 if(previous) stereoLink(previous,d.node);
                 if(d.node->getProcessor()->acceptsMidi() && instrument)
                     graph.addConnection({{midi->nodeID,Graph::midiChannelIndex},{d.node->nodeID,Graph::midiChannelIndex}},Update::none);
@@ -244,7 +260,7 @@ private:
 class RackEditor final : public ostfstudio::StudioPluginEditor, private juce::ChangeListener {
 public:
     explicit RackEditor(Rack& p): StudioPluginEditor(p),rack(p) {
-        for(auto* c:std::initializer_list<juce::Component*>{&title,&layers,&devices,&add,&insert,&open,&remove,&level,&levelLabel,&status})
+        for(auto* c:std::initializer_list<juce::Component*>{&title,&layers,&devices,&add,&insert,&open,&bypass,&remove,&level,&levelLabel,&status})
             addAndMakeVisible(c);
         title.setText(p.getName(),juce::dontSendNotification);
         title.setFont(juce::FontOptions(20.f,juce::Font::bold));
@@ -267,6 +283,11 @@ public:
             }
         };
         remove.onClick=[this]{window.reset();rack.remove(layers.getSelectedItemIndex(),devices.getSelectedItemIndex());refresh();};
+        bypass.onClick=[this]{
+            const juce::ScopedLock guard(rack.modelLock);
+            if(auto* d=selected()) rack.toggleBypass(*d);
+            buttons();
+        };
         open.onClick=[this]{
             const juce::ScopedLock guard(rack.modelLock);
             auto* d=selected();if(!d || !d->node) return;
@@ -282,6 +303,7 @@ public:
         auto a=r.removeFromTop(34);layers.setBounds(a.removeFromLeft(200).reduced(2));levelLabel.setBounds(a.removeFromLeft(74));level.setBounds(a);
         devices.setBounds(r.removeFromTop(33).reduced(2));auto b=r.removeFromTop(32);
         insert.setBounds(b.removeFromLeft(135).reduced(2));open.setBounds(b.removeFromLeft(130).reduced(2));remove.setBounds(b.removeFromLeft(135).reduced(2));
+        bypass.setBounds(b.reduced(2));
         status.setBounds(r);
     }
 private:
@@ -325,7 +347,12 @@ private:
         auto& chain=rack.layers[size_t(l)].chain;
         return i>=0 && size_t(i)<chain.size()?&chain[size_t(i)]:nullptr;
     }
-    void buttons(){const juce::ScopedLock guard(rack.modelLock);auto* d=selected();open.setEnabled(d && d->node);remove.setEnabled(d!=nullptr);}
+    void buttons(){
+        const juce::ScopedLock guard(rack.modelLock);
+        auto* d=selected();
+        open.setEnabled(d && d->node);remove.setEnabled(d!=nullptr);
+        bypass.setEnabled(d!=nullptr);bypass.setToggleState(d && d->bypassed,juce::dontSendNotification);
+    }
     void refreshDevices() {
         const juce::ScopedLock guard(rack.modelLock);
         const int picked=devices.getSelectedId();devices.clear(juce::dontSendNotification);
@@ -351,7 +378,7 @@ private:
     juce::ComboBox layers,devices;
     juce::Slider level;
     juce::Label title,levelLabel,status;
-    juce::TextButton add,insert{"+ Insert effect"},open{"Open plug-in"},remove{"Remove plug-in"};
+    juce::TextButton add,insert{"+ Insert effect"},open{"Open plug-in"},remove{"Remove plug-in"},bypass{TRANS("Bypass")};
     std::unique_ptr<juce::FileChooser> chooser;
     std::unique_ptr<ChildWindow> window;
 };

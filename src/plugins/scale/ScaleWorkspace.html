@@ -361,7 +361,9 @@
 .scope-current{padding:7px 11px;border:1px solid #3b7480;background:#234b53;border-radius:6px;font-size:12px;color:#e1fcf2;text-align:right;max-width:55%}
 .scope-set{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:11px}
 .scope-modes,.scope-policy>div{display:flex;flex-wrap:wrap;gap:5px}
-.scope-modes button{padding:9px 13px;font-size:12px;min-width:83px;flex:1;border-color:#46677d}
+.scope-modes{max-width:100%}
+.scope-modes button{padding:9px 13px;font-size:12px;min-width:max-content;flex:1 0 auto;white-space:nowrap;border-color:#46677d}
+#assignedTools button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 -3px var(--accent)}
 .scope-modes button.active,.scope-policy button.active,.scope-section-chip.active{border-color:#6dcbb6;background:#296154;color:#f4fffa;box-shadow:inset 0 0 0 1px #56a898}
 .scope-sections{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:9px 0}
 .scope-section-chip{border-radius:6px;font-size:10px;padding:6px 9px;background:#283e51;color:#bbd3e4}
@@ -551,21 +553,18 @@ body.sidebar-resizing,body.sidebar-resizing * {cursor:col-resize!important;user-
 .studio-host #hostTools{display:flex;flex:1 0 100%;min-width:0;align-items:center;gap:6px 14px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:6px}
 #hostTools .tool-group,#hostLanguage{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
 #hostTools button,#hostLanguage{color:var(--control-text);background:var(--raised);border:1px solid var(--line);border-radius:5px}
+#auditionSection{max-width:18em;min-width:6em;color:var(--control-text);background:var(--raised);color-scheme:dark}
+#auditionMessage{color:var(--accent);overflow-wrap:anywhere}
 #hostTools button:disabled{opacity:.62;cursor:default}
 #studioInstrumentPicker{max-width:min(100%,340px);overflow:hidden;text-overflow:ellipsis}
 #hostLanguage{padding:4px 6px;gap:8px}
 #hostLanguage label{cursor:pointer;display:inline-flex;gap:3px;align-items:center}
 #hostLanguage input{margin:0;accent-color:var(--accent)}
-#hostTools #hostDrag{border:2px dashed var(--accent);cursor:grab;touch-action:none;user-select:none}
-#hostTools #hostDrag:active{cursor:grabbing}
-#hostTools #hostDrag:disabled{border-color:var(--line);cursor:default}
-#hostDrag .grip{pointer-events:none;padding-right:5px;color:var(--accent)}
 #hostTools :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 header{flex-wrap:wrap}
 .tool-symbols{position:absolute;pointer-events:none}
 [data-hint]{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:28px}
 .tool-icon{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linejoin:round;stroke-linecap:round;pointer-events:none}
-#hostDrag .tool-icon{stroke-width:3;color:var(--accent)}
 #hostTools .group-name{color:var(--dim);font-size:11px}
 #hostTools .tool-value{font-size:11px;font-weight:400;overflow:hidden;text-overflow:ellipsis;max-width:13ch}
 #hostTools .tool-value:not(:empty){border-inline-start:1px solid var(--line);padding-inline-start:6px}
@@ -573,7 +572,9 @@ header{flex-wrap:wrap}
 #actionHint{position:fixed;z-index:1000;box-sizing:border-box;max-width:min(32ch,calc(100vw - 12px));pointer-events:none;color:var(--control-text,var(--text));background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:6px 9px;font:12px/1.5 "Segoe UI",sans-serif;box-shadow:0 2px 8px #0005}
 @media(forced-colors:active){#actionHint{color:CanvasText;background:Canvas;border-color:CanvasText}}
 
-@media(forced-colors:active){#hostTools button,#hostLanguage{color:ButtonText;background:ButtonFace;border-color:ButtonText}#hostTools button:disabled{color:GrayText;opacity:1}}
+@media(forced-colors:active){#hostTools button,#hostLanguage{color:ButtonText;background:ButtonFace;border-color:ButtonText}#auditionSection{max-width:18em;min-width:6em;color:var(--control-text);background:var(--raised);color-scheme:dark}
+#auditionMessage{color:var(--accent);overflow-wrap:anywhere}
+#hostTools button:disabled{color:GrayText;opacity:1}}
 .studio-host #hostAudition{display:flex;align-items:center;flex-wrap:wrap;gap:5px 9px;padding:6px 0}
 #hostAudition label{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--dim);cursor:pointer}
 #hostAudition button{font-size:11px;padding:4px 7px}
@@ -596,7 +597,10 @@ header{flex-wrap:wrap}
 .studio-host .section-title,.studio-host .scale-card.selected,.studio-host .workspace-tabs button.active{background:var(--raised)}
 .studio-host .scale-card.selected,.studio-host .workspace-tabs button.active{border-color:var(--accent)}
 .studio-host .section.has-current>.section-title{box-shadow:inset 3px 0 var(--accent)}
-</style><!--STUDIO_THEME--><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script><script id="studio-draft" type="application/octet-stream"><!--STUDIO_DRAFT--></script><script id="studio-file" type="application/octet-stream"><!--STUDIO_FILE--></script></head><body>
+body.studio-host #open,body.studio-host #save,body.studio-host #saveAs,
+body.studio-host .viewtabs,body.studio-host #fileBinding,body.studio-host #dirty,
+body.studio-host .left-foot span:last-child {display:none!important}
+</style><!--STUDIO_THEME--><script id="studio-score" type="application/octet-stream"><!--STUDIO_SCORE--></script><script id="studio-draft" type="application/octet-stream"><!--STUDIO_DRAFT--></script></head><body>
 <svg class="tool-symbols" aria-hidden="true" width="0" height="0"><defs>
 <symbol id="tool-folder" viewBox="0 0 22 22"><path d="M2 5h6l2 2h10v3H6l-3 8H2z M3 18l3-8h15l-3 8z"/></symbol>
 <symbol id="tool-save" viewBox="0 0 22 22"><path d="M3 3h13l3 3v13H3z M7 3v6h8V3 M7 19v-6h8v6"/></symbol>
@@ -620,18 +624,21 @@ header{flex-wrap:wrap}
 </defs></svg>
 <div id="actionHint" role="tooltip" hidden></div>
 <div id="app">
-<header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Edit scale assignments in an OSTF file.</div></div></div><div class="head-actions"><button id="open" data-hint="Open an OSTF file in this plug-in (Ctrl+O)." data-hint-ja="OSTFファイルをプラグインで開きます（Ctrl+O）。" data-label-ja="開く…"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-folder"/></svg><span class="tool-label">Open…</span></button><button id="save" data-hint="Save the plug-in’s edited OSTF to its linked file (Ctrl+S)." data-hint-ja="プラグインで編集中のOSTFをリンク先に保存します（Ctrl+S）。" data-label-ja="保存"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-save"/></svg><span class="tool-label">Save</span></button><button id="saveAs" data-hint="Choose a new file for the OSTF edited in this plug-in (Ctrl+Shift+S)." data-hint-ja="プラグインで編集中のOSTFを別のファイルに保存します（Ctrl+Shift+S）。" data-label-ja="別名保存…"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-save-as"/></svg><span class="tool-label">Save as…</span></button>
-<button id="autoSetSong" class="primary" data-hint="Preview scale suggestions for the whole song. Confirm to apply them inside this editor." data-hint-ja="曲全体のスケール候補を確認し、選んだ内容をプラグイン内の曲に適用します。" data-label-ja="全曲候補"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-suggest"/></svg><span class="tool-label">Suggest scales</span></button><span class="sep"></span><button id="undo" disabled data-hint="Undo the last scale assignment in this plug-in." data-hint-ja="プラグイン内で直前に行ったスケール設定を取り消します。" data-label-ja="戻す"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-undo"/></svg><span class="tool-label">Undo</span></button><button id="redo" disabled data-hint="Redo the last undone scale assignment." data-hint-ja="取り消したスケール設定をやり直します。" data-label-ja="やり直す"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-redo"/></svg><span class="tool-label">Redo</span></button><button id="help" class="quiet" data-hint="Open the Scale Editor guide." data-hint-ja="Scale Editorの操作ガイドを開きます。" data-label-ja="ヘルプ"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-help"/></svg><span class="tool-label">Help</span></button></div>
+<header><div class="brand"><div class="brand-icon">♮</div><div><div class="brand-name">OSTF SCALE EDITOR</div><div class="brand-sub">Scales for the current OSTF Studio project.</div></div></div><div class="head-actions"><button id="open" data-hint="Open an OSTF file in this plug-in (Ctrl+O)." data-hint-ja="OSTFファイルをプラグインで開きます（Ctrl+O）。" data-label-ja="開く…"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-folder"/></svg><span class="tool-label">Open…</span></button><button id="save" data-hint="Save the plug-in’s edited OSTF to its linked file (Ctrl+S)." data-hint-ja="プラグインで編集中のOSTFをリンク先に保存します（Ctrl+S）。" data-label-ja="保存"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-save"/></svg><span class="tool-label">Save</span></button><button id="saveAs" data-hint="Choose a new file for the OSTF edited in this plug-in (Ctrl+Shift+S)." data-hint-ja="プラグインで編集中のOSTFを別のファイルに保存します（Ctrl+Shift+S）。" data-label-ja="別名保存…"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-save-as"/></svg><span class="tool-label">Save as…</span></button>
+<button id="autoSetSong" class="primary" data-hint="Preview scales for the whole song, then confirm to update the Studio project." data-hint-ja="曲全体の候補を確認し、確定したスケールをStudioのプロジェクトに反映します。" data-label-ja="全曲候補"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-suggest"/></svg><span class="tool-label">Suggest scales</span></button><span class="sep"></span><button id="undo" disabled data-hint="Undo the last scale assignment in this plug-in." data-hint-ja="プラグイン内で直前に行ったスケール設定を取り消します。" data-label-ja="戻す"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-undo"/></svg><span class="tool-label">Undo</span></button><button id="redo" disabled data-hint="Redo the last undone scale assignment." data-hint-ja="取り消したスケール設定をやり直します。" data-label-ja="やり直す"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-redo"/></svg><span class="tool-label">Redo</span></button><button id="help" class="quiet" data-hint="Open the Scale Editor guide." data-hint-ja="Scale Editorの操作ガイドを開きます。" data-label-ja="ヘルプ"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-help"/></svg><span class="tool-label">Help</span></button></div>
 <div id="hostTools" class="studio-only">
+<div class="tool-group" id="assignedTools">
+<label for="auditionSection" id="auditionLabel">Section</label><select id="auditionSection"></select>
+<button id="hearSection" aria-pressed="false" data-hint="Audition this section. A section without assignments plays scale suggestions." data-hint-ja="選んだ構成のスケールを試聴します。未設定の構成では候補を演奏します。" data-label-ja="▶ 構成を試聴"><span class="tool-label">▶ Play section</span></button>
+<button id="hearSong" aria-pressed="false" data-hint="Audition scales across the song. An unassigned song plays scale suggestions." data-hint-ja="曲の先頭からスケールを試聴します。未設定の曲では候補を演奏します。" data-label-ja="▶ 全曲を試聴"><span class="tool-label">▶ Play song</span></button>
+<button id="stopAssigned" disabled data-hint="Stop the scale audition." data-hint-ja="スケールの試聴を停止します。" data-label-ja="■ 停止"><span class="tool-label">■ Stop</span></button><span id="auditionMessage" role="status"></span>
+</div>
 <div class="tool-group"><button id="studioInstrumentPicker" data-hint="Choose the instrument used for auditioning scales." data-hint-ja="スケールの試聴に使う音源を選びます。" data-label-ja="試聴音源"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-keys"/></svg><span class="tool-label">Sound</span><span class="tool-value"></span></button><button id="hostInstrumentEditor" disabled data-hint="Open the loaded instrument’s controls. Select a VST3 instrument to enable this." data-hint-ja="試聴用VST3音源の設定を開きます。音源を読み込むと使えます。" data-label-ja="音源設定"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-sliders"/></svg><span class="tool-label">Controls</span></button><button id="hostTest" data-hint="Play a test note through the audition instrument." data-hint-ja="選択中の試聴音源でテスト音を鳴らします。" data-label-ja="試聴"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-note"/></svg><span class="tool-label">Test note</span></button></div>
-<div class="tool-group exchange-tools"><span class="group-name">OSTF Studio</span><button id="hostRead" disabled data-hint="Read the host’s song into the plug-in. Available when OSTF Studio supplies a score." data-hint-ja="ホストのOSTF Studioで開いている曲をプラグインに読み込みます。他のDAWでは使えません。" data-label-ja="曲を受信"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-receive"/></svg><span class="tool-label">Read score</span></button>
-<button id="hostDrag" disabled data-hint="Drag this handle onto the scale track in OSTF Studio. Enter copies the scales instead." data-hint-ja="この取っ手をOSTF Studioのスケールトラックへドラッグします。Enterキーでコピーできます。" data-label-ja="ドラッグ"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-grip"/></svg><span class="tool-label">Drag scales</span></button>
-<button id="hostReturn" data-hint="Copy the assignments for Edit → Paste scales from Scale Editor in OSTF Studio." data-hint-ja="スケールをコピーします。OSTF Studioの「編集」から貼り付けられます。" data-label-ja="スケールをコピー"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-copy"/></svg><span class="tool-label">Copy scales</span></button>
-</div><div class="tool-group"><button id="hostCommit" data-hint="Commit visual scale assignments to the plug-in’s own score." data-hint-ja="ビジュアル画面の設定を、このプラグインが保持する譜面に反映します。" data-label-ja="内部に適用"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-apply"/></svg><span class="tool-label">Apply locally</span></button></div>
+
 <div class="tool-group"><div id="hostLanguage" role="radiogroup" aria-labelledby="languageLabel"><span id="languageLabel">Display language</span>
 <label><input name="host-language" type="radio" value="system" checked>System language</label><label><input name="host-language" type="radio" value="en">English</label><label><input name="host-language" type="radio" value="ja">日本語</label></div>
-<button id="hostNative" data-hint="Switch to the native Scale Editor controls." data-hint-ja="プラグインの簡易エディターに切り替えます。" data-label-ja="簡易表示"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-panel"/></svg><span class="tool-label">Simple view</span></button></div></div></header>
-<div id="emptyScore">Open or drop an OSTF score to edit its scales.</div>
+</div></div></header>
+<div id="emptyScore">Waiting for a project from OSTF Studio.</div>
 <div class="songline"><span class="songtitle" id="songTitle"></span><span class="chip" id="songKey"></span><span class="chip" id="songVersion"></span><span class="chip" id="fileBinding" title="Save requires a linked file; imported text or drag-and-drop must use Save As">Not linked</span><span id="dirty"></span><div class="viewtabs"><button id="visualTab" class="active" data-hint="Edit scales on the chord timeline." data-hint-ja="コード進行を見ながらスケールを編集します。" data-label-ja="ビジュアル"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-grid"/></svg><span class="tool-label">Visual</span></button><button id="textTab" data-hint="Show the text of the score open in this plug-in." data-hint-ja="プラグインに読み込んでいる曲のOSTFテキストを表示します。" data-label-ja="OSTFテキスト"><svg class="tool-icon" aria-hidden="true" focusable="false"><use href="#tool-text"/></svg><span class="tool-label">OSTF text</span></button></div></div>
 <div id="visual">
 <aside class="left"><div class="pane-head"><h2>01 &nbsp; CHORD TIMELINE</h2><button class="tiny" id="collapseAll">Collapse others</button><button class="tiny" id="analyze">Analyze</button></div><div class="left-hint">Sections fold independently. Solid scales are assigned; suggestions remain uncommitted.</div><div id="timeline"></div><div class="left-foot"><span>✓ Assigned</span><span>·· Suggested only</span><span>Drop a .ostf file anywhere</span></div></aside>
@@ -1975,6 +1982,118 @@ function lane(doc,bar,target){
  return {kind:'assigned',label:hit[0].label||SA.pitchName(hit[0].tonic)||'Assigned',color:color(hit[0].type==='improvisation'?hit[0].parameters?.pitchSource?.scale:hit[0]),count:1};
 }
 SA.scope={version:'0.18',range,plan,remove,removable,bars,lane,color,summary,subtract,items,overlapsAt,maxTick,isPitched};
+// Audition authored spans, including scale changes between chords. All times in
+// the returned packet are relative to the start of the chosen playback range.
+SA.assignedPreview=function(doc,target,selection){
+ const scales=doc.harmony.scales||[];
+ const chords=new Map(doc.harmony.chords.map(ch=>[ch.id,ch]));
+ const sections=new Map((doc.timeline.sections||[]).map(s=>[s.id,s]));
+ const byId=new Map(scales.map(sc=>[sc.id,sc]));
+ const changes=[];
+ function include(scale,start,finish,fallback=false){
+  start=Math.max(selection.start,start);finish=Math.min(selection.end,finish);
+  const root=SA.PC(scale?.tonic);
+  if(!(finish>start)||root==null||!Array.isArray(scale.intervals))return;
+  const offsets=[...new Set(scale.intervals.filter(Number.isInteger).map(SA.mod))].sort((a,b)=>a-b);
+  if(!offsets.length)return;
+  const pitches=offsets.map(n=>60+root+n);
+  const known=Object.values(SA.scales||{}).find(s=>String(s.intervals)===String(offsets));
+  const label=scale.label || SA.pitchName(scale.tonic)+' '+(scale.name || known?.name || '['+offsets.join(' ')+']');
+  const span={pitches,start,fallback,label};
+  changes.push({tick:start,add:true,span},{tick:finish,add:false,span});
+ }
+ if(target==='harmony')include(doc.song?.scale,selection.start,selection.end,true);
+ const track=doc.tracks?.find(t=>t.id===target);
+ if(track && scales.some(s=>s.targets?.length)){
+  const clips=new Map(),notes=new Map();
+  for(const clip of track.clips||[]){
+   if(clip.enabled===false)continue;
+   clips.set(clip.id,clip);
+   for(const n of clip.notes||[]){
+    if(n.enabled!==false && n.probability!==0)notes.set(n.id,{start:clip.start+n.start,duration:n.duration});
+   }
+  }
+  for(const scale of scales)for(const ref of scale.targets||[]){
+   if(ref.type==='track' && ref.id===target)include(scale,scale.start,end(scale));
+   const region=ref.type==='clip'?clips.get(ref.id):ref.type==='note'?notes.get(ref.id):null;
+   if(region)include(scale,Math.max(scale.start,region.start),Math.min(end(scale),end(region)));
+  }
+ }
+ for(const item of items(doc,target)||[]){
+  if(target==='harmony'){
+   if(!item.targets?.length)include(item,item.start,end(item));
+   else for(const ref of item.targets){
+    const region=ref.type==='chord'?chords.get(ref.id):ref.type==='section'?sections.get(ref.id):null;
+    if(region)include(item,Math.max(item.start,region.start),Math.min(end(item),end(region)));
+   }
+  }else{
+   const source=item.parameters?.pitchSource;
+   if(source?.type==='explicitScale')include(source.scale,item.start,end(item));
+   if(source?.type==='songScale')include(doc.song?.scale,item.start,end(item));
+   if(source?.type==='effectiveKeyScale'){
+    const boundaries=[item.start,...(doc.timeline.keyChanges||[]).map(k=>k.at)
+     .filter(t=>t>item.start&&t<end(item)).sort((a,b)=>a-b),end(item)];
+    for(let i=0;i+1<boundaries.length;i++){
+     const key=SA.effectiveKey(doc,boundaries[i]);
+     if(key)include({tonic:key.tonic,intervals:key.pcs.map(pc=>SA.mod(pc-key.root))},boundaries[i],boundaries[i+1]);
+    }
+   }
+   if(source?.type==='harmonyScales')for(const id of source.scaleIds||[]){
+    const scale=byId.get(id);
+    if(scale)include(scale,Math.max(scale.start,item.start),Math.min(end(scale),end(item)));
+   }
+  }
+ }
+ const tempos=[{at:0,bpm:120,time:0}];
+ for(const t of [...(doc.timeline.tempoChanges||[])].sort((a,b)=>a.at-b.at)){
+  if(!(t.bpm>0)||!Number.isFinite(t.bpm))continue;
+  const prev=tempos[tempos.length-1];
+  tempos.push({at:t.at,bpm:t.bpm,time:prev.time+(t.at-prev.at)*60000/(doc.ppq*prev.bpm)});
+ }
+ function millis(tick){
+  let lo=0,hi=tempos.length;
+  while(lo+1<hi){const mid=Math.floor((lo+hi)/2);if(tempos[mid].at<=tick)lo=mid;else hi=mid;}
+  const t=tempos[lo];
+  return t.time+(tick-t.at)*60000/(doc.ppq*t.bpm);
+ }
+ const origin=millis(selection.start),duration=Math.round(millis(selection.end)-origin);
+ if(duration>86400000)throw new RangeError('Audition is too long');
+ const notes=[],cues=[],active=new Set();
+ let ambiguous=false;
+ changes.sort((a,b)=>a.tick-b.tick);
+ for(let i=0;i<changes.length;){
+  const start=changes[i].tick;
+  do{const e=changes[i++];if(e.add)active.add(e.span);else active.delete(e.span);}while(i<changes.length&&changes[i].tick===start);
+  if(!active.size||i===changes.length)continue;
+  const timed=[...active].filter(s=>!s.fallback);
+  const span=timed[0]||active.values().next().value;
+  if(timed.some(other=>String(other.pitches)!==String(span.pitches))){ambiguous=true;continue;}
+  const finish=changes[i].tick,step=doc.ppq/2;
+  cues.push({at:Math.round(millis(start)-origin),end:Math.round(millis(finish)-origin),label:span.label,
+             tick:start, endTick:finish});
+  for(let tick=start;tick<finish;tick+=step){
+   if(notes.length>=100000)throw new RangeError('Audition is too long');
+   const at=Math.round(millis(tick)-origin);
+   const available=Math.round(millis(Math.min(tick+step,finish))-origin)-at;
+   if(available<1)continue;
+   const degree=Math.floor((tick-span.start)/step)%span.pitches.length;
+   notes.push({at,note:span.pitches[degree],velocity:80,ms:Math.max(1,Math.round(available*.82))});
+  }
+ }
+ return {notes,cues,duration,ambiguous};
+};
+SA.auditionPlan=function(doc,target,selection,suggest){
+ const assigned=SA.assignedPreview(doc,target,selection);
+ if(assigned.notes.length || assigned.ambiguous)return assigned;
+ const scales=[];
+ for(const chord of doc.harmony.chords){
+  if(chord.start>=selection.end || end(chord)<=selection.start)continue;
+  const candidate=suggest(chord);
+  if(candidate)scales.push({start:chord.start,duration:chord.duration,tonic:candidate.tonic,intervals:candidate.intervals,name:candidate.name,label:candidate.label});
+ }
+ const previewDoc={...doc,song:{},harmony:{...doc.harmony,scales}};
+ return {...SA.assignedPreview(previewDoc,'harmony',selection),suggested:scales.length>0};
+};
 })(typeof globalThis!=='undefined'?globalThis:this);
 
 </script>
@@ -2311,7 +2430,7 @@ function initSidebarResize(){
 // Capture only the original interface. Song titles, tracks, chord names and the
 // editable OSTF text are inserted later and never pass through this catalogue.
 const japaneseUI = {
- 'Edit scale assignments in an OSTF file.':'OSTFファイルのスケールを編集するプラグイン',
+ 'Scales for the current OSTF Studio project.':'OSTF Studioの現在のプロジェクトと同期',
  'Open OSTF…':'OSTFを開く…','Save edited OSTF':'編集中のOSTFを保存','Save edited OSTF as…':'編集中のOSTFを別名で保存…',
  'Save the file being edited in this plug-in to a new location · Ctrl+Shift+S':'このプラグインで編集中のOSTFファイルの保存先を選ぶ · Ctrl+Shift+S',
  'Suggest scales for the song':'全曲のスケールを提案','Review scale suggestions for the OSTF open in this editor':'このエディターで開いているOSTFのスケール候補を確認',
@@ -2320,7 +2439,7 @@ const japaneseUI = {
  'Copy scales':'スケールをコピー','Paste these scales using the Edit menu in OSTF Studio':'OSTF Studioの編集メニューからスケールを貼り付け',
  'Choose audition instrument…':'試聴音源を選択…',
  'Open…':'開く…','Save':'保存','Save As…':'名前を付けて保存…','AUTO-SET SONG':'曲全体に自動設定',
- 'Undo':'取り消す','Redo':'やり直す','Open or drop an OSTF score to edit its scales.':'OSTFファイルを開くか、ここにドロップしてスケールを編集できます。',
+ 'Undo':'取り消す','Redo':'やり直す','Waiting for a project from OSTF Studio.':'OSTFファイルを開くか、ここにドロップしてスケールを編集できます。',
  'Studio / Settings':'Studio・設定','Read Studio score':'Studioから読み込む','Copy scales to Studio':'Studio用にコピー',
  'Click to copy, or drag the edited score to Studio':'クリックでコピー、ドラッグでStudioに渡す','Apply to plug-in score':'プラグインの譜面に反映',
  'Display language':'表示言語','System language':'システムの言語','Simple editor':'簡易エディター','Instrument controls':'音源の設定','Test note':'テスト発音',
@@ -2449,58 +2568,34 @@ function restoreDeviceSettings(d){
  if(d.scopeSectionId)state.scopeSectionId=d.scopeSectionId;
  render();
 }
-let studioDraftReady=false,studioBaseDoc,studioSentDoc,studioSentText=null,studioSentSettings='';
+let studioDraftReady=false,studioSentDoc,studioSentSettings='';
 function rememberStudioWorkspace(){
  if(!studioDraftReady)return;
  const settings={};
- for(const key of ['selected','scale','reference','target','adherence','dirty','strategy','approach','genreOverride','workspace',
-   'scopeMode','scopePolicy','scopeRange','scopeSectionId','sidebarWidth','autoListen','view','filename'])settings[key]=state[key];
+ for(const key of ['selected','scale','reference','target','adherence','strategy','approach','genreOverride','workspace',
+   'scopeMode','scopePolicy','scopeRange','scopeSectionId','sidebarWidth','autoListen'])settings[key]=state[key];
  const patch={settings};
  if(studioSentDoc!==state.doc){
-  patch.score=state.doc===studioBaseDoc?null:JSON.stringify(state.doc);
+  patch.score=JSON.stringify(state.doc);
   studioSentDoc=state.doc;
  }
- const text=state.textDirty?$('textArea').value:null;
- if(studioSentText!==text){patch.text=text;studioSentText=text;}
  const settingsText=JSON.stringify(settings);
- if(studioSentSettings===settingsText&&!('score' in patch)&&!('text' in patch))return;
+ if(studioSentSettings===settingsText&&!('score' in patch))return;
  studioSentSettings=settingsText;
  window.__JUCE__.backend.emitEvent('ostfScaleDraft',patch);
 }
-function acceptStudioRevision(metadata,epoch){
- if(metadata){
-  for(const doc of [state.doc,...state.history,...state.future])doc.document=metadata;
- }
- studioBaseDoc=studioSentDoc=state.epoch===epoch?state.doc:null;
- state.sourceCore=SA.audit.snapshot(state.doc);
- rememberStudioWorkspace();
-}
 async function loadStudioWorkspace(score){
- if(!await importString(score,'Studio.ostf',false))return;
- studioBaseDoc=state.doc;
+ if(!await importString(score,'OSTF Studio',false))return;
  const encoded=$('studio-draft')?.textContent.trim();
  if(encoded&&/^[A-Za-z0-9+/]+=*$/.test(encoded)){
   try{
-   const draft=JSON.parse(b64decode(encoded)), settings=draft.settings;
-   if(draft.score){
-    if(!await importString(draft.score,settings.filename||'Studio.ostf',false))throw Error('Could not restore the edited score.');
-    if(settings.dirty&&SA.audit.unchanged(state.doc,SA.audit.snapshot(studioBaseDoc)))state.history=[studioBaseDoc];
-   }
-   restoreDeviceSettings(settings);
-   if(typeof draft.text==='string'){
-    $('textArea').value=draft.text;
-    state.textDirty=true;
-    $('textFeedback').textContent=languageText('Text box edited. Load it to update the plug-in score.','テキスト欄の編集中です。読み込むとプラグイン内の曲に反映します。');
-   }
-   await view(settings.view==='text'?'text':'visual');
-   render();
+   const settings=JSON.parse(b64decode(encoded)).settings;
+   if(settings)restoreDeviceSettings({...settings,dirty:false,view:'visual'});
   }catch(e){error(e);}
  }
  studioSentDoc=state.doc;
- studioSentText=state.textDirty?$('textArea').value:null;
- const linked=$('studio-file')?.textContent.trim();
- if(linked&&/^[A-Za-z0-9+/]+=*$/.test(linked)){state.filename=b64decode(linked);state.fileBound=true;renderFileBinding();}
  studioDraftReady=!!window.__JUCE__?.backend;
+ status(languageText('Connected to OSTF Studio','OSTF Studioと同期中'),'success');
 }
 function notifyState(){
  rememberStudioWorkspace();
@@ -2524,8 +2619,8 @@ function sectionFor(ch){const sections=[...(state.doc?.timeline?.sections||[])].
 function getScale(){return getAnalysis()?.items.find(s=>s.id===state.scale)||null;}
 function savedLabel(x){if(x.type==='improvisation'){const p=x.parameters?.pitchSource;return x.label||p?.scale?.label||(p?.type==='explicitScale'?'Explicit scale':p?.type||'Track direction');}return x.label||(SA.pitchName(x.tonic)+' scale');}
 function matchSavedScale(a,existing){for(const x of existing){const s=x.type==='improvisation'?x.parameters?.pitchSource?.scale:x;if(!s?.intervals||!s.tonic)continue;const pcs=s.intervals.map(n=>SA.mod(SA.PC(s.tonic)+n)).sort((a,b)=>a-b).join(',');const item=a.items.find(z=>[...z.pcs].sort((a,b)=>a-b).join(',')===pcs);if(item)return item.id;}return null;}
-function selectChord(id){stop();state.reference=null;state.selected=id;state.patternKey=null;const selected=state.doc?.harmony.chords.find(x=>x.id===id);if(selected)state.expandedSections.add(sectionFor(selected));state.jumpToSelected=true;state.flowJump=true;state.scopeSectionId=null;state.filter='All';state.more=false;const a=getAnalysis();const c=getChord();state.scale=a?(matchSavedScale(a,SA.current(state.doc,c,state.target))||a.items[0]?.id):null;render();notifyState();}
-async function importString(text,name='Imported text.ostf',confirmDirty=true,fromNative=false){try{if(state.savePendingText){error(Error('Finish or cancel Save before importing a different song.'));return false;}const parsed=SA.parse(text);if(confirmDirty&&(state.dirty||state.textDirty)&&!await confirmAction(languageText('Replace the OSTF open in this plug-in?','プラグインで開いているOSTFを置き換えますか？'),languageText('The plug-in has unsaved changes. Save the edited OSTF first to keep them.','プラグイン内に未保存の変更があります。残す場合は先に編集中のOSTFを保存してください。')))return false;stop();state.epoch++;state.doc=parsed.doc;state.sourceCore=SA.audit.snapshot(state.doc);state.savePendingText=null;state.reference=null;state.validation=parsed.validation;state.filename=name;state.fileBound=false;if(native&&!fromNative)hostSend('forgetfile');if(studioDraftReady)window.__JUCE__?.backend.emitEvent('ostfScaleForgetFile',{});invalidateAnalysis();state.expandedSections=new Set();state.history=[];state.future=[];state.dirty=false;state.textDirty=false;state.target='harmony';state.scopeMode='chord';state.scopeRange=null;state.scopeSectionId=null;state.scopePolicy='replace';state.patternKey=null;state.noteFitTrack='all';state.genreOverride='auto';state.selected=state.doc.harmony.chords[0]?.id||null;if(state.doc.harmony.chords[0])state.expandedSections.add(sectionFor(state.doc.harmony.chords[0]));state.jumpToSelected=true;state.flowJump=true;state.filter='All';state.more=false;let a=getAnalysis();state.scale=a?.items[0]?.id||null;render();if(state.view==='text')setText();status(languageText('Loaded ','読み込み：')+name+' · '+state.doc.harmony.chords.length+languageText(' chords',' コード')+(!parsed.validation.writable?' · protected read-only version':''),'success');notifyState();return true;}catch(e){error(e);$('textFeedback').textContent=e.message;return false;}}
+function selectChord(id){stop();state.reference=null;state.selected=id;state.patternKey=null;const selected=state.doc?.harmony.chords.find(x=>x.id===id);if(selected){state.expandedSections.add(sectionFor(selected));state.auditionSection=sectionFor(selected);}state.jumpToSelected=true;state.flowJump=true;state.scopeSectionId=null;state.filter='All';state.more=false;const a=getAnalysis();const c=getChord();state.scale=a?(matchSavedScale(a,SA.current(state.doc,c,state.target))||a.items[0]?.id):null;render();notifyState();}
+async function importString(text,name='Imported text.ostf',confirmDirty=true,fromNative=false){try{if(state.savePendingText){error(Error('Finish or cancel Save before importing a different song.'));return false;}const parsed=SA.parse(text);if(confirmDirty&&(state.dirty||state.textDirty)&&!await confirmAction(languageText('Replace the OSTF open in this plug-in?','プラグインで開いているOSTFを置き換えますか？'),languageText('The plug-in has unsaved changes. Save the edited OSTF first to keep them.','プラグイン内に未保存の変更があります。残す場合は先に編集中のOSTFを保存してください。')))return false;stop();state.epoch++;state.doc=parsed.doc;state.auditionSection=null;state.sourceCore=SA.audit.snapshot(state.doc);state.savePendingText=null;state.reference=null;state.validation=parsed.validation;state.filename=name;state.fileBound=false;if(native&&!fromNative)hostSend('forgetfile');invalidateAnalysis();state.expandedSections=new Set();state.history=[];state.future=[];state.dirty=false;state.textDirty=false;state.target='harmony';state.scopeMode='chord';state.scopeRange=null;state.scopeSectionId=null;state.scopePolicy='replace';state.patternKey=null;state.noteFitTrack='all';state.genreOverride='auto';state.selected=state.doc.harmony.chords[0]?.id||null;if(state.doc.harmony.chords[0])state.expandedSections.add(sectionFor(state.doc.harmony.chords[0]));state.jumpToSelected=true;state.flowJump=true;state.filter='All';state.more=false;let a=getAnalysis();state.scale=a?.items[0]?.id||null;render();if(state.view==='text')setText();status(languageText('Loaded ','読み込み：')+name+' · '+state.doc.harmony.chords.length+languageText(' chords',' コード')+(!parsed.validation.writable?' · protected read-only version':''),'success');notifyState();return true;}catch(e){error(e);$('textFeedback').textContent=e.message;return false;}}
 function renderFileBinding(){
  const chip=$('fileBinding');if(!chip)return;
  chip.textContent=state.fileBound?languageText('Linked: ','リンク先：')+state.filename:translated('Not linked · Save As for new location');
@@ -2533,7 +2628,16 @@ function renderFileBinding(){
  chip.title=state.fileBound?'Save will overwrite the linked file after safety checks. Save As always asks for a new name.':'No verified native file path. Save will ask for a location.';
  const b=$('save');if(b)b.setAttribute('aria-description',state.fileBound?languageText('Save the edited OSTF to its linked file · Ctrl+S','編集中のOSTFをリンク先に保存 · Ctrl+S'):languageText('Choose a location for the edited OSTF · Ctrl+S','編集中のOSTFの保存先を選択 · Ctrl+S'));
 }
-function render(){const d=state.doc;if(!d)return;document.body.classList.remove('no-score');$('hostDrag').disabled=false;$('songTitle').textContent=d.song.title||'Untitled';$('songTitle').title=d.song.title;$('textSource').textContent=languageText('OSTF open in the plug-in · ','プラグインで開いているOSTF · ')+(d.song.title||state.filename||languageText('Untitled','無題'));$('songKey').textContent=SA.labelKey(d,getChord()?.start||0);$('songVersion').textContent='OSTF '+d.version+(!state.validation.writable?' · READ ONLY':'');$('songVersion').classList.toggle('read-only',!state.validation.writable);$('dirty').textContent=(state.dirty||state.textDirty)?'● '+translated('Unsaved changes'):'';renderFileBinding();$('undo').disabled=!state.history.length;$('redo').disabled=!state.future.length;
+function renderAuditionSection(){
+ const select=$('auditionSection'), sections=state.doc?.timeline?.sections||[];
+ if(!sections.some(s=>s.id===state.auditionSection))state.auditionSection=sectionFor(getChord()||{start:0})||sections[0]?.id;
+ select.replaceChildren(...sections.map((s,i)=>new Option(s.name||languageText('Section ','構成 ')+(i+1),s.id)));
+ select.value=state.auditionSection||'';
+ select.disabled=!sections.length;
+ $('hearSection').disabled=!sections.length;
+ $('auditionLabel').textContent=languageText('Audition section','試聴する構成');
+}
+function render(){const d=state.doc;if(!d)return;renderAuditionSection();document.body.classList.remove('no-score');$('songTitle').textContent=d.song.title||'Untitled';$('songTitle').title=d.song.title;$('textSource').textContent=languageText('OSTF open in the plug-in · ','プラグインで開いているOSTF · ')+(d.song.title||state.filename||languageText('Untitled','無題'));$('songKey').textContent=SA.labelKey(d,getChord()?.start||0);$('songVersion').textContent='OSTF '+d.version+(!state.validation.writable?' · READ ONLY':'');$('songVersion').classList.toggle('read-only',!state.validation.writable);$('dirty').textContent=(state.dirty||state.textDirty)?'● '+translated('Unsaved changes'):'';renderFileBinding();$('undo').disabled=!state.history.length;$('redo').disabled=!state.future.length;
  renderTargets();renderTimeline();renderContext();renderApproaches();renderStrategies();renderCards();renderInspector();renderFlowWorkspace();renderApply();}
 function renderTargets(){const tracks=state.doc.tracks.filter(t=>t.trackType!=='drum'&&!['drums','drum','percussion'].includes(t.type)&&!['drums','drum','percussion'].includes(t.role));$('targets').innerHTML='<button data-target="harmony" class="'+(state.target==='harmony'?'active':'')+'" title="Write a shared timed harmony scale; song.key stays unchanged">'+translated('Harmony')+'</button>'+tracks.map(t=>'<button data-target="'+esc(t.id)+'" class="'+(state.target===t.id?'active':'')+'" title="Assign an improvisation scale only to this pitched track">'+esc(t.name||t.id)+'</button>').join('');$('adherence').hidden=state.target==='harmony';for(const b of $('adherence').querySelectorAll('button'))b.classList.toggle('active',b.dataset.adherence===state.adherence);}
 function renderTimeline(){
@@ -3111,7 +3215,7 @@ async function doScopeRemove(){
   if(!old)throw Error('No removable exact-range assignment was found. Referenced or overlapping assignments are protected.');
   if(!await confirmAction('Remove this exact timed scale?', 'Remove '+(old.label||old.id)+' from '+scaleScopeTarget()+' · '+r.label+'? Other assignments and all notes remain unchanged. Undo is available.'))return;
   const result=SA.scope.remove(state.doc,r,state.target);commit(result.doc);
-  status('Removed '+(result.removed.label||result.removed.id)+' from '+r.label+'. Save or Save As to write the file.','success');
+  status('Removed '+(result.removed.label||result.removed.id)+' from '+r.label+'.','success');
  }catch(e){error(e);await dialog('Assignment unchanged',e.message);}
 }
 async function doScopeApply(){
@@ -3126,7 +3230,7 @@ async function doScopeApply(){
  }
  const details='Target: '+scaleScopeTarget()+' · '+r.label+'. '+d.writes+' new timed span(s)'+(d.replaced?' · '+d.replaced+' existing ranges will be replaced or split.':'')+'. '+(d.protected?'Protected referenced ranges remain unchanged. ':'')+cautions+'OSTF key, chords, notes and lyrics will not be edited. One Undo step.';
  if(state.scopeMode!=='chord'||d.conflicts.length||d.ambiguous.length||d.protected){if(!await confirmAction(state.scopePolicy==='replace'?'Replace selected range?':'Fill unassigned gaps?',details))return;}
- commit(plan.doc);status('Assigned '+plan.label+' across '+d.writes+' timed span(s) · '+r.label+'. Save or Save As to write the file.','success');
+ commit(plan.doc);status('Assigned '+plan.label+' across '+d.writes+' timed span(s) · '+r.label+'.','success');
 }
 
 
@@ -3211,9 +3315,9 @@ function renderPatternStudio(){
 async function applyPatternMatches(){
  const {chosen,scale,proposal:p}=currentPatternModel();
  if(!p||p.counts.ready===0)return;
- const message='Assign '+scaleName(scale)+' to '+p.counts.ready+' of '+p.counts.total+' matching occurrences? '+p.counts.locked+' existing assignments remain unchanged; '+(p.counts.review+p.counts.unsupported)+' require separate review. You must still Save or Save As to write a file.';
+ const message='Assign '+scaleName(scale)+' to '+p.counts.ready+' of '+p.counts.total+' matching occurrences? '+p.counts.locked+' existing assignments remain unchanged; '+(p.counts.review+p.counts.unsupported)+' require separate review.';
  if(!await confirmAction('Apply matching harmonic contexts?',message))return;
- try{const outcome=SA.pattern.apply(state.doc,p);stop();commit(outcome.doc);state.workspace='patterns';renderFlowWorkspace();status('Added '+outcome.counts.ready+' protected pattern matches · 1 Undo step. Save or Save As to write file.','success');}
+ try{const outcome=SA.pattern.apply(state.doc,p);stop();commit(outcome.doc);state.workspace='patterns';renderFlowWorkspace();status('Added '+outcome.counts.ready+' protected pattern matches · 1 Undo step.','success');}
  catch(e){error(e);await dialog('Pattern assignment was not changed',e.message);}
 }
 function renderFlowWorkspace(){
@@ -3281,11 +3385,11 @@ async function doApply(){
   const r=SA.apply(state.doc,c.id,s.id,state.target,state.adherence,true);
   commit(r.doc);
   const detail=r.replaced?' · replaced '+r.replaced+' prior range'+(r.replaced===1?'':'s'):' ';
-  status('SET '+SA.pitchName(s.tonic)+' '+s.name+' → '+c.label+detail+'. Save or Save As to write OSTF.','success');
+  status('SET '+SA.pitchName(s.tonic)+' '+s.name+' → '+c.label+detail+'.','success');
   return true;
  }catch(e){error(e);await dialog('Could not set scale',e.message);return false;}
 }
-async function applyAndNext(){const current=state.selected;if(!await doApply())return false;const next=nextUnassignedChord(current);if(next){selectChord(next.id);status('Applied. Next unassigned: '+next.label+'. Save or Save As when finished.','success');}else status('All chords in this target are assigned. Save or Save As to write the file.','success');return true;}
+async function applyAndNext(){const current=state.selected;if(!await doApply())return false;const next=nextUnassignedChord(current);if(next){selectChord(next.id);status('Applied. Next unassigned: '+next.label+'.','success');}else status('All chords in this target are assigned.','success');return true;}
 /** Whole-song planning with explicit strategy, visual review and one Undo transaction. */
 async function autoSetSong(){
  if(!state.doc)return;
@@ -3301,7 +3405,7 @@ async function autoSetSong(){
  '<label class="bulk-expressive small" id="bulkExpressiveRow"><input id="bulkExpressive" type="checkbox"> Allow expressive phrase vocabularies on a pitched track (opt-in; may omit chord thirds; melody and explicit tensions remain protected)</label>'+
  '<div class="bulk-modehelp" id="bulkModeHelp"></div><div id="bulkSummary" class="bulk-summary"></div><div id="bulkPreviewMap" class="bulk-preview-map" aria-label="Planned scale colors across the song"></div><div class="overview-label"><span>SONG SCALE PATH · selected direction</span><span id="bulkMapLabel"></span></div>'+
  '<div id="bulkPlan" class="bulk-plan"></div><p id="bulkNote" class="bulk-note"></p>'+
- '<div class="actions"><button data-action="cancel">'+translated('Cancel')+'</button><button data-action="apply" class="primary">'+languageText('Apply to this editor','このエディターに適用')+'</button></div></div>';
+ '<div class="actions"><button data-action="cancel">'+translated('Cancel')+'</button><button data-action="apply" class="primary">'+languageText('Apply to song','曲に適用')+'</button></div></div>';
  $('modalRoot').appendChild(overlay);
  let mode='fill',strategy=state.strategy,approach=state.approach,plan=null,flow=null,allowExpressive=false;
  function update(){try{
@@ -3346,22 +3450,12 @@ async function view(which){if(which==='text'&&state.view!=='text'&&!state.textDi
 async function refreshText(){if(state.textDirty&&!await confirmAction(languageText('Replace the edited text?','編集中のテキストを置き換えますか？'),languageText('Replace the text box with the OSTF open in this plug-in?','テキスト欄の内容を、プラグインで開いているOSTFで置き換えますか？')))return;setText();rememberStudioWorkspace();}
 async function copyText(){try{const text=$('textArea').value;try{await navigator.clipboard.writeText(text);}catch(_){$('textArea').focus();$('textArea').select();if(!document.execCommand('copy'))throw Error('Clipboard access is unavailable. Text is selected; use Ctrl+C / Cmd+C.');}status('Copied the complete OSTF text.','success');}catch(e){error(e);}}
 function checkText(){try{const p=SA.parse($('textArea').value);$('textFeedback').textContent='Core structure check passed · '+p.doc.harmony.chords.length+' chords.\n'+p.validation.warnings.join('\n');status(languageText('The text box contains valid OSTF.','テキスト欄のOSTFを検証しました。'),'success');}catch(e){$('textFeedback').textContent=e.message;error(e);}}
-let studioSaveTicket=0;
-function finishStudioSave(ticket,saved,filename='',message=''){
- if(ticket!==studioSaveTicket || !state.savePendingText)return;
- const unchanged=state.savePendingText===JSON.stringify(state.doc);
- state.savePendingText=null;
- if(saved){state.filename=filename;state.fileBound=true;if(unchanged)state.dirty=false;render();rememberStudioWorkspace();}
- status(saved?'Saved '+filename+'.':(message||'File was not saved.'),saved?'success':(message?'error':''));
-}
 function openFile(){
- if(window.__JUCE__?.backend)window.__JUCE__.backend.emitEvent('ostfScaleOpen',{});
- else if(!hostSend('openfile'))$('fileInput').click();
+ if(!window.__JUCE__?.backend&&!hostSend('openfile'))$('fileInput').click();
 }
-async function handleFile(file){if(!file)return;if(file.size>24*1024*1024){error(Error('File is larger than 24 MB.'));return;}status('Reading '+file.name+'…');try{const text=await file.text();
- if(!state.doc && window.__JUCE__?.backend){window.__JUCE__.backend.emitEvent('ostfScaleFirstDrop',text);return;}
+async function handleFile(file){if(!file||window.__JUCE__?.backend)return;if(file.size>24*1024*1024){error(Error('File is larger than 24 MB.'));return;}status('Reading '+file.name+'…');try{const text=await file.text();
  const ok=await importString(text,file.name);if(ok)await view('visual');}catch(e){error(e);}}
-async function save(mode='save'){
+async function save(mode='save'){if(window.__JUCE__?.backend)return;
  if(!state.doc)return;
  try{
   if(!['save','saveas'].includes(mode))mode='save';
@@ -3396,9 +3490,6 @@ async function save(mode='save'){
      for(let i=0;i<encoded.length;i+=6000)hostSend('saveChunk',encoded.slice(i,i+6000));
      hostSend('saveEnd');
      status(selectingNew?'Checks passed. Choose a destination in Save As…':'Checks passed. Saving the linked file…');
-    }else if(window.__JUCE__?.backend){
-     state.savePendingText=JSON.stringify(state.doc);
-     window.__JUCE__.backend.emitEvent('ostfScaleSave',{text,mode:selectingNew?'saveas':'save',ticket:++studioSaveTicket});
     }else{
      const blob=new Blob([text],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
      a.href=url;a.download=state.filename.replace(/\.(ostf|json|txt)$/i,'')+'_scales.ostf';a.click();
@@ -3505,7 +3596,7 @@ function hearContext(){
  if(n)notes.push(...n.intervals.map(i=>({at:780,note:48+n.root+i,velocity:65,ms:900,role:'chord',beat:2})));
  playSimplePreview(notes,'Chord → Next');
 }
-function help(){if(document.documentElement.lang==='ja'){dialog('OSTF Scale Editor の使い方',['1. OSTFを開き、コード進行から編集するコードを選びます。','2. 書き込み先に「和声」またはトラックを選び、候補をA / Bで試聴します。ヘッダーの「試聴音源」で音源を指定できます。','3. 「スケールを設定」で適用します。「全曲候補」で候補を確認し、「このエディターに適用」でプラグイン内の曲に反映できます。','4. 「保存」でリンク先を更新し、「別名保存」で別のファイルに書き出します。','OSTF Studioの曲へ戻すには、ヘッダーの点線のハンドルをスケールトラックにドラッグします。'].join('\n\n'));return;}dialog('OSTF Scale Editor · v1.0 Scale Workflow',[
+function help(){if(window.__JUCE__?.backend){dialog('OSTF Scale Editor',languageText('Select a chord on the left, audition a candidate and choose Set scale. The assignment updates this Studio project. Save the project in Studio or in the host DAW.','左の一覧でコードを選び、候補を試聴して「スケールを設定」を押します。設定は開いているStudioの曲に反映されます。曲はStudioまたはホストDAWで保存してください。'));return;}if(document.documentElement.lang==='ja'){dialog('OSTF Scale Editor の使い方',['1. OSTFを開き、コード進行から編集するコードを選びます。','2. 書き込み先に「和声」またはトラックを選び、候補をA / Bで試聴します。ヘッダーの「試聴音源」で音源を指定できます。','3. 「スケールを設定」で適用します。「全曲候補」で候補を確認し、「曲に適用」でプラグイン内の曲に反映できます。','4. 「保存」でリンク先を更新し、「別名保存」で別のファイルに書き出します。','OSTF Studioの曲へ戻すには、ヘッダーの点線のハンドルをスケールトラックにドラッグします。'].join('\n\n'));return;}dialog('OSTF Scale Editor · v1.0 Scale Workflow',[
 '1. Import OSTF via file, drag/drop, or OSTF TEXT.',
 'Progressions finds repeated chord + neighboring harmony + duration + key matches; select a scale card, preview each match, then Apply safe matches. Existing assignments are always protected. No concrete notes means a hearing check remains necessary.',
 '2. Choose Balanced / Smooth / Color & Tension. This recomputes suggestions only.',
@@ -3550,7 +3641,7 @@ function bind(){for(const [id,fn] of Object.entries({open:openFile,save:()=>save
  $('targets').onclick=e=>{const b=e.target.closest('[data-target]');if(!b)return;state.target=b.dataset.target;invalidateAnalysis();const c=getChord(),a=getAnalysis();state.scale=c?(matchSavedScale(a,SA.current(state.doc,c,state.target))||a.items[0]?.id):null;render();notifyState();};$('adherence').onclick=e=>{const b=e.target.closest('[data-adherence]');if(b){state.adherence=b.dataset.adherence;renderTargets();notifyState();}};
  $('keyboard').onclick=e=>{const b=e.target.closest('[data-pitch]');if(b)tone(+b.dataset.pitch);};$('noteRow').onclick=e=>{const b=e.target.closest('[data-note]');if(b)tone(+b.dataset.note);};
  function navigate(dir){const cs=[...state.doc.harmony.chords].sort((a,b)=>a.start-b.start),i=cs.findIndex(x=>x.id===state.selected);if(cs[i+dir])selectChord(cs[i+dir].id);} $('prev').onclick=()=>navigate(-1);$('next').onclick=()=>navigate(1);
- let depth=0;document.addEventListener('dragenter',e=>{if(Array.from(e.dataTransfer?.types||[]).includes('Files')){e.preventDefault();depth++;$('dropOverlay').hidden=false;}});document.addEventListener('dragover',e=>{if(Array.from(e.dataTransfer?.types||[]).includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy';}});document.addEventListener('dragleave',()=>{depth--;if(depth<=0){depth=0;$('dropOverlay').hidden=true;}});document.addEventListener('drop',e=>{depth=0;$('dropOverlay').hidden=true;if(e.dataTransfer?.files?.length){e.preventDefault();if(e.dataTransfer.files.length>1){error(Error('Drop one OSTF file at a time. Nothing was imported.'));return;}handleFile(e.dataTransfer.files[0]);}});
+ if(window.__JUCE__?.backend){for(const event of ['dragenter','dragover','drop'])document.addEventListener(event,e=>e.preventDefault());}else{let depth=0;document.addEventListener('dragenter',e=>{if(Array.from(e.dataTransfer?.types||[]).includes('Files')){e.preventDefault();depth++;$('dropOverlay').hidden=false;}});document.addEventListener('dragover',e=>{if(Array.from(e.dataTransfer?.types||[]).includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy';}});document.addEventListener('dragleave',()=>{depth--;if(depth<=0){depth=0;$('dropOverlay').hidden=true;}});document.addEventListener('drop',e=>{depth=0;$('dropOverlay').hidden=true;if(e.dataTransfer?.files?.length){e.preventDefault();if(e.dataTransfer.files.length>1){error(Error('Drop one OSTF file at a time. Nothing was imported.'));return;}handleFile(e.dataTransfer.files[0]);}});}
  document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&!e.altKey){const key=e.key.toLowerCase();if(key==='s'){e.preventDefault();e.stopPropagation();if(!e.repeat)save(e.shiftKey?'saveas':'save');return;}if(key==='o'&&!e.shiftKey){e.preventDefault();e.stopPropagation();if(!e.repeat)openFile();return;}}if(e.key==='Escape'){stop();$('dropOverlay').hidden=true;}if(e.target.matches('input,textarea,[contenteditable]'))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z') {e.preventDefault();undo(e.shiftKey);}});
  window.addEventListener('beforeunload',()=>stop());
 }
@@ -3563,7 +3654,7 @@ function nativeInit(){if(nativeBound||!window.max||typeof window.max.outlet!=='f
  window.max.bindInlet('saFileBinding',(name,bound)=>{state.fileBound=Number(bound)===1;if(state.fileBound&&name)state.filename=String(name);renderFileBinding();});window.max.bindInlet('saSaved',name=>{const unchanged=state.savePendingText===JSON.stringify(state.doc);state.savePendingText=null;state.saveModePending=null;state.fileBound=true;if(unchanged){state.dirty=false;state.sourceCore=SA.audit.snapshot(state.doc);}if(name)state.filename=String(name);render();status('Saved OSTF: '+(name||'file')+(unchanged?' · verified on disk':' · document changed during save; newer changes remain unsaved'),'success');notifyState();});window.max.bindInlet('saSaveCanceled',()=>{state.savePendingText=null;state.saveModePending=null;status('Save As canceled. The current song and linked file were not changed.');});window.max.bindInlet('saOpenCanceled',()=>status('Open canceled. Current song unchanged.'));window.max.bindInlet('saError',message=>{state.savePendingText=null;state.saveModePending=null;error(Error(String(message)));});
  $('hostLabel').textContent='Max for Live · MIDI effect';$('audioLabel').textContent='MIDI OUT → following instrument';hostSend('ui_ready');hostSend('midimode',state.midiMode);setMidiModeUI();return true;}
 // Exposed, bounded test / host interface. Never eval imported data.
-window.ScaleAdviserApp={state,acceptStudioRevision,finishStudioSave,exportAudit:()=>SA.audit.inspect(state.doc,state.sourceCore),currentPatternModel,applyPatternMatches,renderPatternStudio,scopeSelection,doScopeApply,renderScaleMap,renderNoteFit,selectedCompatibility,importString,selectChord,render,apply:doApply,applyAndNext,jumpNextUnassigned,autoSetSong,view,save,saveAs,analyzeSong,stop,playCompare,compareModel,exportText:()=>JSON.stringify(state.doc,null,2),nativeInit};
+window.ScaleAdviserApp={state,exportAudit:()=>SA.audit.inspect(state.doc,state.sourceCore),currentPatternModel,applyPatternMatches,renderPatternStudio,scopeSelection,doScopeApply,renderScaleMap,renderNoteFit,selectedCompatibility,importString,selectChord,render,apply:doApply,applyAndNext,jumpNextUnassigned,autoSetSong,view,save,saveAs,analyzeSong,stop,playCompare,compareModel,exportText:()=>JSON.stringify(state.doc,null,2),nativeInit};
 initSidebarResize();bind();
 setDisplayLanguage(document.documentElement.lang);
 if(window.__JUCE__?.backend){
@@ -3577,42 +3668,63 @@ if(window.__JUCE__?.backend){
  document.body.classList.add('studio-host');
  const backend=window.__JUCE__.backend;
  const send=(action,value)=>backend.emitEvent('ostfScaleHostAction',{action,value});
- for(const [id,action] of Object.entries({hostRead:'read',hostCommit:'commit',hostNative:'native',hostInstrumentEditor:'instrument',hostTest:'test'})){
+ for(const [id,action] of Object.entries({hostInstrumentEditor:'instrument',hostTest:'test'})){
   $(id).onclick=()=>send(action);
  }
- function sendScales(action){
-  if(!state.doc)return;
-  if(state.textDirty){status(languageText('Import pending text edits first.','編集中のテキストを先に読み込んでください。'));return;}
-  send(action,{score:window.ScaleAdviserApp.exportText()});
- }
- $('hostReturn').onclick=()=>sendScales('copy');
- const handle=$('hostDrag');
- let gesture=null;
- handle.onpointerdown=e=>{
-  if(e.button!==0||!e.isPrimary)return;
-  gesture={id:e.pointerId,x:e.clientX,y:e.clientY};
-  handle.setPointerCapture(e.pointerId);
- };
- window.addEventListener('pointermove',e=>{
-  if(gesture?.id!==e.pointerId)return;
-  if(!(e.buttons&1)){gesture=null;return;}
-  if(Math.hypot(e.clientX-gesture.x,e.clientY-gesture.y)<5)return;
-  gesture=null;
-  if(handle.hasPointerCapture(e.pointerId))handle.releasePointerCapture(e.pointerId);
-  sendScales('drag');
- });
- for(const event of ['pointerup','pointercancel'])window.addEventListener(event,e=>{if(gesture?.id===e.pointerId)gesture=null;});
- window.addEventListener('blur',()=>{gesture=null;});
- handle.onclick=e=>{if(e.detail===0)sendScales('copy');};
  $('hostLanguage').onchange=e=>{if(e.target.checked)send('language',e.target.value);};
+ let activePlan=null, cueIndex=0, lastCue;
+ function assignedControls(kind){
+  if(!kind){activePlan=null;lastCue=undefined;}
+  $('hearSection').setAttribute('aria-pressed',String(kind==='section'));
+  $('hearSong').setAttribute('aria-pressed',String(kind==='song'));
+  $('stopAssigned').disabled=!kind;
+ }
+ $('auditionSection').onchange=e=>{
+  stop();assignedControls('');state.auditionSection=e.target.value;$('auditionMessage').textContent='';
+ };
+ function auditionStatus(message){$('auditionMessage').textContent=message;status(message);}
+ function playAssigned(kind){
+  stop();assignedControls('');
+  if(!state.doc)return;
+  let selection;
+  try{selection=SA.scope.range(state.doc,kind,getChord(),null,state.auditionSection);}
+  catch{auditionStatus(languageText('Select a section first.','先に構成を選んでください。'));return;}
+  let plan;
+  try{plan=SA.auditionPlan(state.doc,state.target,selection,ch=>getAnalysis(ch)?.items[0]);}
+  catch(e){if(!(e instanceof RangeError))throw e;auditionStatus(languageText('Choose a shorter section to audition.','試聴の範囲を短くしてください。'));return;}
+  if(!plan.notes.length){
+   auditionStatus(plan.ambiguous?languageText('Overlapping scales in this range.','選択範囲のスケールが重複しています。'):
+    languageText('No assigned scales in this lane and range.','この書き込み先の選択範囲には、試聴できる設定済みスケールがありません。'));return;
+  }
+  backend.emitEvent('ostfAssignedPreview',{notes:plan.notes,duration:plan.duration,scope:kind});
+  activePlan=plan;cueIndex=0;lastCue=undefined;
+  assignedControls(kind);
+  auditionStatus((plan.suggested?languageText('Previewing suggestions · no assignments','未設定のため候補を試聴中'):languageText('Playing assigned scales','設定済みスケールを試聴中'))+
+   (plan.ambiguous?languageText(' · overlapping scales are silent',' · スケールが重複する区間は休符'):''));
+ }
+ $('hearSection').onclick=()=>playAssigned('section');
+ $('hearSong').onclick=()=>playAssigned('song');
+ $('stopAssigned').onclick=()=>{stop();assignedControls('');auditionStatus(languageText('Stopped','停止しました'));};
  $('hostPreviewOut').onchange=e=>send('preview',e.target.checked);
  $('hostThru').onchange=e=>send('thru',e.target.checked);
  $('studioInstrumentPicker').onclick=e=>{
   const rect=e.currentTarget.getBoundingClientRect();
   backend.emitEvent('ostfScaleChooseInstrument',{x:(rect.left+rect.width/2)/innerWidth,y:rect.bottom/innerHeight});
  };
+ backend.addEventListener('ostfScaleAuditionPosition',ms=>{
+  if(!activePlan)return;
+  const cues=activePlan.cues;
+  while(cueIndex<cues.length && ms>=cues[cueIndex].end)cueIndex++;
+  const cue=cues[cueIndex]?.at<=ms?cues[cueIndex]:null;
+  if(lastCue===cue)return;
+  lastCue=cue;
+  const prefix=activePlan.suggested?languageText('Suggestion','候補'):languageText('Assigned scale','設定済み');
+  auditionStatus(cue?prefix+' · '+cue.label:languageText('Rest','休符'));
+ });
  backend.addEventListener('ostfScaleHostState',host=>{
-  $('hostRead').disabled=!host.read;
+  if(!host.assignedScope&&!$('stopAssigned').disabled)
+   auditionStatus(languageText('Scale audition ended.','スケールの試聴が終了しました。'));
+  assignedControls(host.assignedScope);
   $('hostInstrumentEditor').disabled=!host.instrument;
   $('hostPreviewOut').checked=host.preview;
   $('hostThru').checked=host.thru;

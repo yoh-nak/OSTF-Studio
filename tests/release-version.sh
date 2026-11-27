@@ -26,3 +26,15 @@ if GITHUB_EVENT_NAME=push RELEASE_TYPE=prerelease RELEASE_TAG="v$alpha" bash pac
   echo 'Unexpectedly accepted a release on push' >&2
   exit 1
 fi
+
+
+# A draft can be resumed with the chosen number. Other products and the
+# experimental alpha series do not change the public series.
+inventory='[{"tag_name":"v1.0.0-public-alpha.39","draft":false},{"tag_name":"v1.0.0-public-alpha.40","draft":true},{"tag_name":"v2.0.0-public-alpha.9","draft":false},{"tag_name":"v1.0.0-alpha.100","draft":false}]'
+python packaging/next_alpha.py v1.0.0-public-alpha.40 <<< "$inventory"
+for wrong in 39 41; do
+  if python packaging/next_alpha.py "v1.0.0-public-alpha.$wrong" <<< "$inventory"; then
+    echo "Unexpectedly accepted alpha $wrong" >&2
+    exit 1
+  fi
+done

@@ -57,6 +57,21 @@ bool checkPerformanceAudio() {
     song.programChanges[0].push_back({10, 40, 3});
     MidiControl bank{"controlChange", 0, 3};
     song.performanceCurves[0].push_back({bank.label(), {{10, 2./127, "bank", -2}, {20, 7./127, "next-bank", -2}}, false, true, false, bank});
+    {
+        PerformanceProbe referenceTone;
+        juce::AudioBuffer<float> samples(2,96);
+        for(bool audition:{false,true}) {
+            auto monitor=std::make_unique<PreviewTransport>();
+            std::array<PreviewTransport::TrackSetup,1> route{{{{},&referenceTone,1}}};
+            route[0].auditionToMaster=audition;
+            if(monitor->preparePlayback(song,route,{},960,96,0,1,true).failed())return false;
+            monitor->setOutputMix({});
+            monitor->setChannelMix(0,{},false,0);
+            samples.clear();
+            monitor->renderBlock(samples.getArrayOfWritePointers(),2,96);
+            if((samples.getMagnitude(0,96)>.01f)!=audition)return false;
+        }
+    }
     PerformanceProbe fx1(true), fx2(true), probe;
     PreviewTransport::Inserts inserts{};
     inserts[PreviewTransport::outputCount][0] = &fx1;
@@ -601,6 +616,20 @@ int checkTransport(const juce::File& fixture, const juce::File& dir) {
     auto text = juce::JSON::toString(score);
     juce::MemoryInputStream raw(text.toRawUTF8(), text.getNumBytesAsUTF8(), false);
     if (readOstfPreview(raw, song).failed()) return 2;
+    {
+        TransportPanel panel;
+        panel.setPosition(*song, song->durationTicks + 240, -1, 2);
+        auto* key = dynamic_cast<juce::Label*>(panel.findChildWithID("key"));
+        auto* scale = dynamic_cast<juce::Label*>(panel.findChildWithID("scale"));
+        auto* badge = dynamic_cast<juce::Button*>(panel.findChildWithID("transport-camelot"));
+        if (!key || key->getText() != "A major" || !badge || badge->getButtonText() != "11B"
+            || !scale || scale->getText() != juce::String::charToString(0x2014)) return 130;
+        if (!badge->onClick) return 131;
+        badge->onClick();
+        auto* popup = dynamic_cast<juce::CallOutBox*>(juce::Component::getCurrentlyModalComponent());
+        if (!popup || !popup->findChildWithID("camelot-wheel")) return 132;
+        popup->exitModalState(0);
+    }
     if (song->clock.bpmAt(959) != 120 || song->clock.bpmAt(960) != 60
         || song->clock.nextChangeAfter(959) != 960 || song->clock.nextChangeAfter(960)
         || std::abs(song->clock.secondsAt(1920) - 1.5) > 1e-8 || std::abs(song->clock.tickAt(1.5) - 1920) > 1e-8

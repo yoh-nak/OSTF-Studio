@@ -158,6 +158,19 @@ int checkPianoEdits(const juce::File& fixture) {
             juce::Point<float> xy{125,y};
             steps.mouseDown(pointer(steps,xy,xy,juce::ModifierKeys::shiftModifier));
         };
+        steps.visibleBars=[] {return juce::Range<double>{1,4};};
+        steps.setLoopBars(1,1);
+        auto dragLoop=[&](float x1,float x2){
+            juce::Point<float> first{x1,32},last{x2,32};
+            steps.mouseDown(pointer(steps,first,first,0)); steps.mouseDrag(pointer(steps,last,first,0)); steps.mouseUp(pointer(steps,last,first,0));
+        };
+        dragLoop(340,540);
+        if(steps.loopRange()!=juce::Range<juce::int64>{3840,11520}) return 185;
+        dragLoop(280,120);
+        if(steps.loopRange()!=juce::Range<juce::int64>{0,11520}) return 186;
+        dragLoop(599,440);
+        if(steps.loopRange()!=juce::Range<juce::int64>{0,7680}) return 187;
+        steps.visibleBars={};
         steps.setLoopBars(2,2);
         steps.bind(&score,0,9000,240);
         if (steps.loopRange() != juce::Range<juce::int64>(3840,11520) || steps.range().getStart() != 0) return 131;

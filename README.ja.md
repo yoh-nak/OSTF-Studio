@@ -6,9 +6,33 @@
 
 **[画像付き操作マニュアル](docs/manual/README.md)** · **[全プラグインの図鑑](docs/plugins/README.md)** · [English manual](docs/manual/en.md)
 
-**公開アルファ1をダウンロード** · [Windows x64 インストーラー](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Setup.exe) · [Windows ポータブル ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Portable.zip) · [Appleシリコン Mac 用 DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_macOS_arm64.dmg) · [リリースノートと対応ソース](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1)
+**公開アルファ2をダウンロード** · [Windows x64 Setup](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Setup.exe) · [Windows Portable](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Portable.zip) · [Mac (Apple Silicon)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_arm64.dmg) · [Mac (Intel)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_x86_64.dmg)
 
-**公開アルファ1は38本、画像付き図鑑のWindows開発版は41本です。** 開発版では、他のDAWで曲全体を開く **OSTF Studio (VST3)**、リード音源 **SUPER KNOBBER LEAD**、残響を調整する **SUPER KNOBBER REVERB** が加わりました。
+[リリースノートと対応ソース](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.2) · [公開アルファ1](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1) · [CHANGELOG](CHANGELOG.md)
+
+公開アルファ2には、M4L版の188音色を収録し、通常処理と2倍オーバーサンプリングを切り替えられるリードシンセを追加しました。[SUPER KNOBBER LEADの操作画面](docs/plugins/workstations.md#super-knobber-lead)
+
+公開アルファ2では「ファイル → 曲全体をオーディオに書き出す」からステレオミックスを保存できます。Ctrl／⌘クリックで複数のトラック名やクリップを選び、右クリックから1本のオーディオトラックにバウンスできます。「楽譜」を開いて「ピアノロール」を押すと、同じパートの楽譜を見ながらノートを編集できます。[バウンスと楽譜の操作](docs/manual/README.md)
+
+[SUPER KNOBBER REVERBの操作とアナライザー](docs/plugins/space-and-tone.md#super-knobber-reverb)
+
+公開アルファ2のScale Editorでは、書き込み先を選び、**「構成を試聴」または「全曲を試聴」** を押すと、設定済みのスケールを選択中の音源で聴けます。曲のテンポに合わせて音階が8分音符で上行し、未設定区間は休符になります。試聴はStudioの再生とは独立して停止できます。
+
+公開アルファ2のインストーラーでは、他のDAWでVST3だけを使う場合は「OSTF Studio 本体」のチェックを外せます。本体が必須のプラグインを選んだ間だけ、本体が自動選択されます。Scale Editorを選択すると本体にもチェックが入り、Scale Editorを外すと本体のチェックを変更できます。
+
+公開アルファ2では **ファイル → Synthesizer V 形式で書き出す (.svp)** から「主旋律のみ」「コーラスのみ」「主旋律とコーラス」を選べます。両方を選ぶと、採用中の音符と歌詞が同じ曲の別トラックに入ります。声の重なる和音は声部に分け、テンポと拍子の変更も引き継ぎます。歌声と歌唱表現はSynthesizer Vで設定できます。
+
+公開アルファ2では、曲の終わりに最後のキーが残ります。横のキャメロット番号を押すと、現在のキーを縁取りした長調・短調の対応表が円形に開きます。個別のプラグインを一時的に外して聴き比べるには、FXチェーンの各行、音源のメニュー、またはラック内のデバイスで「バイパス」を切り替えます。割り当てと有効状態はOSTFPの保存・再読み込みで復元できます。
+
+## 他のDAWでStudio本体を使う（開発版）
+
+WindowsのDAW用インストーラー `OSTF_Studio_VST3_Windows_x64_Setup.exe` は、Studio本体と全プラグインにチェックが入った状態で開きます。Studio VST3とデモ曲用の音源・エフェクトだけを入れる場合は、「他のDAWで使う Studio VST3」を選んでください。インストール後、DAWでVST3を再スキャンし、インストゥルメントとして **OSTF Studio** を開きます。プラグイン内の **ファイル → デモソング → Paper Lantern Replies** を選び、DAWで再生してください。
+
+インストゥルメントトラックに **OSTF Studio** を挿し、プラグイン内で `.ostf` または `.ostfp` を開きます。アレンジ、ライブセッション、ピアノロール、ミキサーを操作でき、ステレオのミックスがDAWのトラックに返ります。**DAWの再生に追従** をオンにすると再生・停止とタイムラインの秒位置に追従します。テンポはOSTFのテンポマップを使います。単独で試聴したいときは追従をオフにします。
+
+DAWのプロジェクトを保存すると、Studioの曲、プロジェクトに同梱した音声、音源・エフェクトの設定も一緒に保存されます。このVST3は公開アルファ1の次の開発版で追加した機能です。
+
+**公開アルファ2のVST3は全41本です。** 公開アルファ1から、他のDAWで曲全体を開く **OSTF Studio (VST3)**、リード音源 **SUPER KNOBBER LEAD**、残響を調整する **SUPER KNOBBER REVERB** が加わりました。
 
 ![Paper Lantern Repliesのライブセッション。上に現在と次のコード、中央に構成別のトラック、下に選択した演奏を表示](docs/images/ostf-studio-live-session.png)
 
@@ -20,7 +44,7 @@ Scale Editorでは鍵盤の横の「音源」から試聴先を選べます。�
 
 Formant Singerは「paper／ペイパー」のように複数の音節を1音で歌うとき、英単語の強勢とカタカナの長音を発音の配分に使います。「little」を「lit／リ」「tle／トル」と2音に分けた場合も、単語全体の発音に沿って各音符を歌います。各音節と読みが対応する場合に適用します。
 
-開発版のScale Editorは、開いているStudioプロジェクトと同期します。左ペインでコードを選び、書き込み先を **和声** または個別のトラックにして **スケールを設定** を押すと、結果がStudioにも反映されます。 [設定と試聴](docs/manual/README.md#scale-assignment)
+公開アルファ2のScale Editorは、開いているStudioプロジェクトと同期します。左ペインでコードを選び、書き込み先を **和声** または個別のトラックにして **スケールを設定** を押すと、結果がStudioにも反映されます。 [設定と試聴](docs/manual/README.md#scale-assignment)
 
 Formant Singerで、表示歌詞が「street」、発音歌詞が「ストリート」のときは、「リー」を伸ばし、前後の子音を短くつなぎます。英単語が1音節で、辞書の発音とカタカナ読みを対応づけられる場合に有効です。「ストリート」とカタカナだけで入力した場合も、短い音符では各音を残しながら「リー」を長めに歌います。Scale Editorは「読み込んで試聴」でC4を鳴らし、そのまま一覧から次の音源を選べます。決まったら「読み込む」で一覧を閉じます。
 
@@ -94,7 +118,7 @@ MIDIとオーディオのクリップは、本体をドラッグして同じ種�
 
 「モード」からAI Arrangement Studio、AI Lyric Studio、AI Vocal Studioを選べます。プロンプトガイドは選んだモードの例文を15秒ごとに1件ずつ表示します。「‹」「›」で前後に移動すると、そこから15秒間その例文を表示します。上部ツールバーでChatGPTの接続やモデル選択ができます。解析したパートは同種のトラックへ追加でき、ほかの位置に置くと新規トラックになります。必要に応じて曲が延長されます。メロディートラック本体の初期高さは100 pxです。
 
-開発版では、SpliceやMelodyneを通常のVST3ブラウザーから読み込みます。波形のワープと単音の音程編集はStudioの下段エディターから使えます。
+公開アルファ2では、SpliceやMelodyneを通常のVST3ブラウザーから読み込みます。波形のワープと単音の音程編集はStudioの下段エディターから使えます。
 
 他のDAWにStudio VST3を挿し、ホストの再生に追従させると、再生・停止と時間位置が同期します。小節番号を揃えるには、拍子、テンポマップと先頭の位置を合わせます。
 
@@ -118,7 +142,7 @@ OSTF Studio は、楽曲の構造と演奏情報を OSTF 5.0 で扱う Windows�
 
 デモ曲を聴いて「この DAW で曲を作ってみたい」と感じたら、コーヒー1杯分のご支援をいただけるとうれしいです。GM 音源の音づくりや、Windows・macOS の両方で曲を開いて再生できるようにするための開発・検証を続けています。**[Buy Me a Coffee で支援する](https://buymeacoffee.com/yohsukenak)**
 
-## 開発版の波形エディターと理論ガイド
+## 公開アルファ2の波形エディターと理論ガイド
 
 ピアノロールと波形エディターでは、定規をクリックして録音の開始位置を決めます。Shift＋ドラッグ、または「ループ範囲」をオンにしてドラッグすると、拍や小節の途中にも範囲を設定できます。「録音を終了」でクリップを確定し、エディターを閉じます。メトロノームボタンは左側でオン・オフ、右側でカウントインなし、または1〜8小節を選べます。早送りの隣にある「末尾へ」で曲の終端に移動します。
 
@@ -136,18 +160,17 @@ MIDIのループ録音は各周のノートを重ねます。オーディオは�
 
 PDF楽譜の「ロジック解析」には、このコンピューターにインストールしたAudiverisを使います。取り込み画面の「Audiverisの入手方法」から公式の案内を開けます。セットアップ後は同じ画面の「このPDFを再試行」を押してください。Windowsでは標準インストール先、ユーザーの `%LOCALAPPDATA%\Programs\Audiveris`、PATH上の実行ファイルを検出します。認識結果は元譜のテンポ、コード、音符と照合してください。原本のMusicXMLがある場合は、そのファイルを直接取り込めます。
 
-
 「ロジック解析」はローカルで動作します。PDFのロジック解析にはAudiverisを使用します。「ファイル → インポートと採譜」でMusicXML（.musicxml / .xml / .mxl）を選び、「新しい未保存の曲としてここに開く」からOSTFに保存できます。「ファイル」メニューから全パートのMusicXMLと、コード・歌詞をまとめたChordProを書き出せます。[8小節の検証用PDF](examples/score-interchange/lantern-walk.pdf)と[比較用MusicXML](examples/score-interchange/lantern-walk.musicxml)をリポジトリの `examples/score-interchange` に用意しました。「AI解析」を使うには、公式Codex CLIを用意し、グローバルトラック左の「ChatGPT に接続…」または「設定 → AI接続…」からブラウザーでChatGPTにログインします。初回はStudio用に認証します。ブラウザーが自動で開かない場合は「認証ページを開く」を押してください。ファイルを選ぶ前に解析方式を指定してください。AIに送るデータは、オーディオでは音高・時刻・音色の測定値、MIDIでは音域や拍ごとの音の分布、PDFでは譜面のページ画像です。結果は取り込み後に編集できます。[ChatGPTの認証](https://developers.openai.com/codex/auth) · [Audiverisの使い方](https://audiveris.github.io/audiveris/_pages/guides/advanced/cli/)
 
 ## alpha 3 で旧版の曲を開く
 
-開発版のピアノロールでは、空白のダブルクリックでノートを追加し、中央をドラッグして移動、左右の端で長さを変更できます。Shift＋クリックや範囲選択で和音をまとめて編集できます。Alt／Option＋ドラッグで複製、Ctrl／Command＋上下ドラッグでベロシティを調整できます。入力の刻み幅はピアノロール右下のグリッドで選べます。ほかの操作は「ヘルプ → ショートカット一覧」にあります。
+公開アルファ2のピアノロールでは、空白のダブルクリックでノートを追加し、中央をドラッグして移動、左右の端で長さを変更できます。Shift＋クリックや範囲選択で和音をまとめて編集できます。Alt／Option＋ドラッグで複製、Ctrl／Command＋上下ドラッグでベロシティを調整できます。入力の刻み幅はピアノロール右下のグリッドで選べます。ほかの操作は「ヘルプ → ショートカット一覧」にあります。
 
 ピアノロールの小節ルーラーをクリックすると再生カーソルが移動し、左右にドラッグすると表示範囲が移動します。オーディオトラックには実際のWAVの波形を表示します。**Relay Circuit** の45小節ではタムとダブコード、**First Light Vector** の49小節ではゲート音とベルが重なります。各オーディオトラックのソロで聴き比べられます。
 
-開発版では、ツールバーからメロディー、コーラス、音階付き、ドラム、オーディオ、バス、リターンを追加できます。アレンジ画面またはミキサーでトラック名を右クリックすると複製・削除ができます。虫眼鏡のボタンで画面全体を75〜150%に調整でき、倍率は次回起動時にも保持されます。アイコンにカーソルを置くと操作内容が表示されます。
+公開アルファ2では、ツールバーからメロディー、コーラス、音階付き、ドラム、オーディオ、バス、リターンを追加できます。アレンジ画面またはミキサーでトラック名を右クリックすると複製・削除ができます。虫眼鏡のボタンで画面全体を75〜150%に調整でき、倍率は次回起動時にも保持されます。アイコンにカーソルを置くと操作内容が表示されます。
 
-**ファイル → 開く**で、3.5.0、4.0.0、4.1.0、4.2.0、4.3.0、5.0.0 の単体の `.ostf` を直接開けます。元の曲は開いた時点で保持されます。**OSTF で保存**と**OSTFP で保存**はスコアを5.0.0で書き出し、旧版を開いたあとの初回保存では別名を提案します。開発版では最大15パートを読み込めます。
+**ファイル → 開く**で、3.5.0、4.0.0、4.1.0、4.2.0、4.3.0、5.0.0 の単体の `.ostf` を直接開けます。元の曲は開いた時点で保持されます。**OSTF で保存**と**OSTFP で保存**はスコアを5.0.0で書き出し、旧版を開いたあとの初回保存では別名を提案します。公開アルファ2では最大15パートを読み込めます。
 
 ## alpha 3 のトランスポートと曲情報
 
@@ -177,7 +200,7 @@ PDF楽譜の「ロジック解析」には、このコンピューターにイ�
 
 ## インストール
 
-Windows は Setup.exe を実行するか、Portable ZIP を展開してください。Apple silicon Mac は DMG を開き、中の **Install OSTF Studio and VST3.pkg** でアプリと VST3 をインストールします。macOS の Developer ID 署名・公証は未設定です。公開版のインストーラーと対応ソースは [GitHub Releases](https://github.com/yoh-nak/OSTF-Studio/releases) の各リリースの **Assets** にあります。
+Windows は Setup.exe を実行するか、Portable ZIP を展開してください。Mac はAppleシリコン用またはIntel用のDMGを選んで開き、中の **Install OSTF Studio and VST3.pkg** でアプリと VST3 をインストールします。macOS の Developer ID 署名・公証は未設定です。公開版のインストーラーと対応ソースは [GitHub Releases](https://github.com/yoh-nak/OSTF-Studio/releases) の各リリースの **Assets** にあります。
 
 開発ビルドは **Actions → 各ビルドの実行結果 → Artifacts** に7日間保存されます。公開版の履歴・配布ファイルは Releases から取得できます。
 
@@ -259,7 +282,7 @@ cmake --build build-core --config Release
 ctest --test-dir build-core -C Release --output-on-failure --no-tests=error
 ```
 
-GUI をビルドするには `build-core` を `build` に、`OSTF_STUDIO_BUILD_GUI=OFF` を `ON` に変更します。GUI の構成時に JUCE 9.0.5 を取得します。配布版と同じ GM 音源を使用する場合は先に `python packaging/prepare_fluid_r3.py` を実行してください。Windows x64 と macOS arm64 の CI がビルドと自動テストを行います。実機のオーディオ、外部プラグインとの連携は別途検証します。[ビルドと配布の手順](docs/RELEASING.md)
+GUI をビルドするには `build-core` を `build` に、`OSTF_STUDIO_BUILD_GUI=OFF` を `ON` に変更します。GUI の構成時に JUCE 9.0.5 を取得します。配布版と同じ GM 音源を使用する場合は先に `python packaging/prepare_fluid_r3.py` を実行してください。Windows x64・macOS arm64・macOS x86_64のCI がビルドと自動テストを行います。実機のオーディオ、外部プラグインとの連携は別途検証します。[ビルドと配布の手順](docs/RELEASING.md)
 
 ## ライセンス
 

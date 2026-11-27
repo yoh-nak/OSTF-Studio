@@ -21,11 +21,11 @@ inline std::vector<AudioModelPitches::Observation> analysePitchGuide(const Proje
     const int maxLag=int(rate/55), minLag=std::max(2,int(rate/1200)), window=int(rate*.032);
     const int block=(window+maxLag)*stride;
     const auto frames=clip.frameCount ? clip.frameCount : reader->lengthInSamples-clip.startFrame;
-    if (clip.startFrame<0 || frames<=0 || frames>8*1024*1024 || frames>reader->lengthInSamples-clip.startFrame) return notes;
+    if (clip.startFrame<0 || frames<=0 || frames>reader->lengthInSamples-clip.startFrame) return notes;
     juce::AudioBuffer<float> input(int(reader->numChannels),block);
     std::vector<double> samples(window+maxLag), correlations(maxLag+1);
     int lastPitch=-1;
-    for (int first=0;first<frames && !cancel.load();first+=hop) {
+    for (juce::int64 first=0;first<frames && !cancel.load();first+=hop) {
         if (!reader->read(&input,0,block,clip.startFrame+first,true,true)) break;
         if (frames-first<block) input.clear(int(frames-first),block-int(frames-first));
         const int channel=reader->numChannels==2 && input.getRMSLevel(1,0,block)>input.getRMSLevel(0,0,block) ? 1 : 0;

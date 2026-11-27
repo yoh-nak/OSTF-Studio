@@ -3,6 +3,7 @@
 #include "EnglishLexiconData.h"
 #include <algorithm>
 #include <cstring>
+#include <string_view>
 
 namespace ostfstudio::singing {
 // The bundled dictionary stores a sorted word index followed by word/ARPAbet pairs.
@@ -160,6 +161,17 @@ inline bool matchSungSyllable(const std::vector<Phone>& word, size_t begin, size
     return true;
 }
 
+inline juce::String englishLyricWord(const juce::String& text) {
+    static const auto punctuation = [] {
+        juce::String marks(".,!?;:\"()");
+        for (const auto ch : std::u32string_view(U"\u2026\u201c\u201d\u3001\u3002\u300c\u300d\u300e\u300f\uff01\uff1f\uff08\uff09"))
+            marks += juce::String::charToString(ch);
+        return marks;
+    }();
+    return text.trim().trimCharactersAtStart(punctuation).trimCharactersAtEnd(punctuation)
+        .replaceCharacter(0x2019, '\'').toLowerCase();
+}
+
 inline std::vector<Phone> sungReading(const juce::String& text, const juce::String& reading) {
     const auto& written = reading.isEmpty() ? text : reading;
     auto kana = lyricPhones(written);
@@ -177,9 +189,10 @@ inline std::vector<Phone> sungReading(const juce::String& text, const juce::Stri
                 if (supportKana(p)) p.vowelTiming = VowelTiming::support;
         return kana;
     }
-    if (!text.containsOnly("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'-")) return kana;
+    const auto spelling = englishLyricWord(text);
+    if (spelling.isEmpty() || !spelling.containsOnly("abcdefghijklmnopqrstuvwxyz'-")) return kana;
     std::vector<Phone> word, result;
-    if (!englishWord(text.toLowerCase(), word)) return kana;
+    if (!englishWord(spelling, word)) return kana;
     const auto starts = englishSyllableBoundaries(word);
     size_t next = 0;
     for (size_t s = 1; s < starts.size(); ++s)

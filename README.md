@@ -8,9 +8,19 @@ OSTF Studio is a desktop music workstation for arranging, playing and editing Op
 
 **[Illustrated user manual](docs/manual/en.md)** · **[Browse all plug-ins with screenshots](docs/plugins/en.md)** · [日本語マニュアル](docs/manual/README.md)
 
-**Download Public Alpha 1** · [Windows x64 Setup](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Setup.exe) · [Windows Portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_macOS_arm64.dmg) · [Release notes and corresponding source](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1)
+**Download Public Alpha 2** · [Windows x64 Setup](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Setup.exe) · [Windows Portable](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Portable.zip) · [Mac (Apple Silicon)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_arm64.dmg) · [Mac (Intel)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_x86_64.dmg)
 
-**Public Alpha 1 includes 38 VST3s. The illustrated Windows development build includes 41.** The three additions are the OSTF Studio workstation VST3, SUPER KNOBBER LEAD and SUPER KNOBBER REVERB.
+[Release notes and corresponding source](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.2) · [Previous Public Alpha 1](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1) · [CHANGELOG](CHANGELOG.md)
+
+Public Alpha 2 includes a lead synth with 188 factory sounds from the M4L instrument and selectable 2x oversampling. [SUPER KNOBBER LEAD controls and screenshot](docs/plugins/workstations.en.md#super-knobber-lead)
+
+In Public Alpha 2, choose **File → Export mix as audio** to write the stereo master. Ctrl/Cmd-click track headers to select a group, then right-click to bounce the group to one audio track. Ctrl/Cmd-click clips to bounce just their time span. Open **Score → Piano Roll** to edit MIDI while reading the selected part. [Audio and notation workflows](docs/manual/en.md)
+
+[SUPER KNOBBER REVERB controls and analyzer](docs/plugins/space-and-tone.en.md#super-knobber-reverb)
+
+In Public Alpha 2 for Windows, drag the edge between global clips to change their timing. Sections and meter snap to bars, keys to beats, and chords and scales to half beats. Use the drum ruler to draw a loop or drag either end. The Scale Editor names the scale sounding during section and song auditions.
+
+**Public Alpha 2 includes 41 VST3s, up from 38 in Public Alpha 1.** The three additions are the OSTF Studio workstation VST3, SUPER KNOBBER LEAD and SUPER KNOBBER REVERB.
 
 ![Paper Lantern Replies in Live Session, with chord cues above the section and track grid and a MIDI editor below](docs/images/ostf-studio-live-session.png)
 
@@ -20,7 +30,21 @@ OSTF Studio is a desktop music workstation for arranging, playing and editing Op
 
 ## OSTF 5.2 studio preview
 
+In Public Alpha 2, choose **File → Export Synthesizer V (.svp)** and select the lead melody, chorus, or both. The combined file opens as one song with separate vocal tracks. Notes retain their pitches, timing and lyrics, including the saved arrangement take. Select the singers and adjust their expression in Synthesizer V.
+
+The transport retains the last key at the end of the score. Click its coloured Camelot number to see the 24 major and minor keys with the current key highlighted. Switch **Bypass** on in an FX chain, the instrument destination menu, or a rack to audition the mix with an individual device inactive. Save the session as an OSTFP to recall the assignments and switch settings.
+
+### Run Studio inside another DAW (development build)
+
+The Windows DAW installer, `OSTF_Studio_VST3_Windows_x64_Setup.exe`, initially selects the standalone Studio application and every bundled VST3. To install only the workstation plug-in and the devices used by **Paper Lantern Replies**, choose **Studio VST3 for another DAW**. After installation, rescan VST3s in your DAW, load **OSTF Studio** as an instrument, then choose **File → Demo songs → Paper Lantern Replies** in the plug-in and press Play in the DAW.
+
+Load **OSTF Studio** on a stereo instrument track and open an `.ostf` or `.ostfp` in its editor. The arrangement, live session, piano roll and mixer use the same project as the standalone application. **Follow DAW transport** starts and stops the song with the host and follows its timeline position in seconds. The OSTF tempo map controls the song's tempo. Turn follow off to audition Studio independently.
+
+Saving the host project stores the Studio session, packaged audio and instrument/effect settings. The host receives the stereo mix and supplies MIDI input. Use real-time playback for this preview. The workstation VST3 is available in builds after Public Alpha 1.
+
 Scale Editor pairs short labels with action icons. Hover over a toolbar button or use Tab to read its description, including which score or file it changes. Press Escape to dismiss the hint.
+
+In Public Alpha 2, choose **Play section** or **Play song** in Scale Editor to hear the scales already assigned to the selected lane. The audition instrument plays ascending eighth notes at the song's tempo, including tempo changes. Unassigned spans are rests. **Stop** ends the audition independently of Studio playback.
 
 Bundled VST3 editors read Studio’s saved colour theme when their windows open. Their controls use the same console knobs and faders as Studio. Choose **Colour theme** in Studio, then reopen an editor to use the new finish. In Scale Editor’s instrument search, use the arrow keys to select a result, **Enter** to load it, or **Shift+Enter** to load it and hear C4 while keeping the list open.
 
@@ -136,7 +160,7 @@ In the upcoming release, mixer strips have metal-capped level faders and separat
 
 Choose AI Arrangement Studio, AI Lyric Studio or AI Vocal Studio from the **Mode** menu. The prompt guide beside the global timeline headings cycles through three example requests for the selected mode every 15 seconds. The previous and next buttons reset the reading time. The ChatGPT connection button sits at the right of the top toolbar, alongside the model selector and refresh button when signed in. Open **Settings → Mackie Control** to connect a control surface. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
 
-In the development build, open Splice and Melodyne through the VST3 browser. To follow transport in another DAW, load the Studio VST3 and turn on **Follow DAW transport**. Match the starting downbeat, tempo and meter maps to align bar numbers.
+In Public Alpha 2, open Splice and Melodyne through the VST3 browser. To follow transport in another DAW, load the Studio VST3 and turn on **Follow DAW transport**. Match the starting downbeat, tempo and meter maps to align bar numbers.
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
 
@@ -210,9 +234,11 @@ New drum tracks have 16 GM assignments. In the drum editor, choose a pad and a M
 
 ## Install OSTF Studio
 
-On Windows, run the Setup executable or extract the portable ZIP. On an Apple silicon Mac, open the DMG and run **Install OSTF Studio and VST3.pkg**. Public installers and matching source archives are listed under **Assets** on each [GitHub Release](https://github.com/yoh-nak/OSTF-Studio/releases). Development packages are available for seven days under **Actions → build run → Artifacts**.
+On Windows, run the Setup executable or extract the portable ZIP. On a Mac, open the DMG for your Apple silicon or Intel processor and run **Install OSTF Studio and VST3.pkg**. Public installers and matching source archives are listed under **Assets** on each [GitHub Release](https://github.com/yoh-nak/OSTF-Studio/releases). Development packages are available for seven days under **Actions → build run → Artifacts**.
 
-Development builds of Windows Setup and the Apple silicon PKG let you uncheck individual VST3s or whole categories. On a fresh install all stock plug-ins are selected. Scale Editor appears under **Composition tools** and Wave Analyzer and Stem Separator under **Utilities**. To add a plug-in later, rerun the installer and select it. The Windows portable ZIP includes the full set.
+Windows Setup and both macOS packages let you uncheck individual VST3s or whole categories. On a fresh install all stock plug-ins are selected. Scale Editor appears under **Composition tools** and Wave Analyzer and Stem Separator under **Utilities**. To add a plug-in later, rerun the installer and select it. The Windows portable ZIP includes the full set.
+
+For use in another DAW, clear **OSTF Studio application** and select the VST3s you want. Selecting Scale Editor also selects the Studio application. Selecting a plug-in that requires the application automatically checks and locks Studio until the last such plug-in is deselected.
 
 ### MIDI export, language and view controls
 
@@ -273,7 +299,6 @@ On another track, choose **Instrument → Instrument destination** and select th
 - Use **Instruments** or **Effects** in the plug-in browser to filter the manufacturer list. A keyboard icon marks instruments and a waveform icon marks effects. Drag a plug-in over an arrangement row and release when the row lights up to assign it to that track.
 - If an installed VST3 is missing, choose **Scan one…** and select its `.vst3` file or bundle. This retries only the selected plug-in, including a previously skipped one. Windows commonly installs VST3 files under `C:\Program Files\Common Files\VST3`. Legacy VST2 DLLs are unsupported.
 
-
 In OSTF Studio, open a supported `.ostfp` and drag the name of an arrangement track with pitched notes onto a MIDI track in another DAW. **Drag MIDI to another DAW**, at the right edge of the Piano Roll toolbar, does the same for the selected track. The Standard MIDI File keeps the notes' project-relative start, duration and pitch and uses a fixed velocity. The source project stays in OSTF format.
 
 ### Piano-roll performance lanes
@@ -304,7 +329,7 @@ Arrangement clips show the number of stored notes. In **Piano Roll**, the perfor
 
 **Save as OSTF** writes the score and Studio mixer settings. If tracks have linked WAVs, it creates a sibling `<song>.media` folder and copies the WAVs there. The score references those copies by relative path. Move the score and media folder together. **Save as OSTFP** bundles the score, the Production Session 0.3 mixer document and the linked WAVs. Use **Instrument → Link WAV on this track…** to link a WAV for playback from the song start, or drop files at other positions on the arrangement. Studio supports up to 256 audio regions and WAV assets of up to 16 MiB each, subject to the total project size limit. Under **Output Tracks**, each bus, return and Master has its own arrangement lane with a fader and mute synchronized with the Mixer. Open **FX** on a source or output track to see up to eight stereo VST3 effects in processing order. Drag a row handle or use **Up** and **Down** to reorder it. Use the same panel to add, open or remove effects. Dropping an effect onto a track appends it. Source effects process instrument and WAV audio in order before the fader and post-fader sends. Output effects process the summed signal before the output fader. Changing a chain stops preview playback. Both save formats preserve these effect assignments and supported mixer and MIDI settings. Supported VST3 instrument assignments are saved as Production Session devices in OSTFP and in the common Studio production settings for standalone OSTF. Core MIDI Program Change uses the authored channel or the track channel. Instrument preset blobs and hardware settings remain outside this save implementation.
 
-In the development build, use the toolbar to add melody and chorus parts, pitched, drum and audio tracks, buses and returns. Right-click a track name in the arrangement or mixer to duplicate or delete it. The magnifying-glass buttons change the interface size (75–150%) and remember it on this computer. Hover over an icon to see its action. Audio tracks have a **Link WAV** control. The preview supports up to fifteen source tracks. Drum-grid editing and recording on drum tracks are pending.
+In Public Alpha 2, use the toolbar to add melody and chorus parts, pitched, drum and audio tracks, buses and returns. Right-click a track name in the arrangement or mixer to duplicate or delete it. The magnifying-glass buttons change the interface size (75–150%) and remember it on this computer. Hover over an icon to see its action. Audio tracks have a **Link WAV** control. The preview supports up to fifteen source tracks. Drum-grid editing and recording on drum tracks are pending.
 
 Recordable track headers show Mute, Solo, Record Arm and headphone Cue in that order. In the upper right of the mixer, **+ Bus** adds a destination to each track's output selector and **+ Return** adds a send destination.
 
@@ -312,12 +337,12 @@ Windows Setup registers a document icon for `.ostf` and a package icon for `.ost
 
 In alpha 3, the shared VST3 task in Windows Setup requests administrator approval to install both instruments and all nine effects in `%CommonProgramFiles%\VST3\OSTF Studio`. Other DAWs can find them with their system-folder scan. Setup keeps matching, versioned plug-in binaries in place and installs missing files. If a DAW is using a binary that needs updating, you can install Studio first. Save your session, close the DAW, and rerun Setup with the shared VST3 task selected to finish the update. After a successful shared install, recognized copies from older per-user installs move to `%LOCALAPPDATA%\OSTF Studio\Previous VST3`. The shared plug-ins have their own uninstaller. The Portable ZIP keeps them beside the app.
 
-On macOS arm64, run **Install OSTF Studio and VST3.pkg** inside the DMG to install the plug-ins in `/Library/Audio/Plug-Ins/VST3`. Dragging just the app installs the application alone. Signing and notarization are pending.
+On either Mac architecture, run **Install OSTF Studio and VST3.pkg** inside the DMG to install the plug-ins in `/Library/Audio/Plug-Ins/VST3`. Dragging just the app installs the application alone. Signing and notarization are pending.
 - GitHub Actions Windows + macOS **preview** builds, unsigned
 - `AGENTS.md` instructions for continuing in Codex
 - Architecture/roadmap/checklists
 
-Pending work includes full OSTFP conformance, SVP export, network sync, AI-assisted editing and signed binaries.
+Pending work includes full OSTFP conformance, verification in the Synthesizer V desktop editor, network sync, AI-assisted editing and signed binaries.
 
 ## Stock effects and mixed demos in alpha 3
 
@@ -365,7 +390,7 @@ Install CMake 3.22 or later and Git for the JUCE download. On Windows use MSVC w
 For Windows, use the `Visual Studio 17 2022` generator with `-A x64` for incremental builds, as in CI. When using MSVC/Ninja, check that `ninja -t deps` lists the project's headers before relying on incremental output. If localized compiler include lines are unrecognized, use the Visual Studio generator in a fresh directory. The Windows GUI CTest runs a startup smoke test through the splash screen.
 
 ## Build outputs
-The [build workflow](.github/workflows/build.yml) runs standalone core tests and builds the JUCE GUI on Windows x64 (Visual Studio 2022) and macOS arm64. Successful jobs upload a Windows installer and Portable ZIP, and a macOS DMG, under **Actions > run > Artifacts** for seven days. Publishing a stable release or pre-release requires an explicit workflow dispatch on `main`. See [Packaging and releases](docs/RELEASING.md) for version tags, installation behavior and macOS signing requirements. GUI interaction and audio-device behavior require separate real-device validation.
+The [build workflow](.github/workflows/build.yml) runs standalone core tests and builds the JUCE GUI on Windows x64 (Visual Studio 2022) and both macOS architectures. Successful jobs upload a Windows installer and Portable ZIP, and native Apple silicon and Intel DMGs, under **Actions > run > Artifacts** for seven days. Publishing a stable release or pre-release requires an explicit workflow dispatch on `main`. See [Packaging and releases](docs/RELEASING.md) for version tags, installation behavior and macOS signing requirements. GUI interaction and audio-device behavior require separate real-device validation.
 
 See the [development roadmap](docs/ARCHITECTURE.md#user-visible-milestones) for the official OSTF 5.0 intake requirements and the sequence for implementing DAW features.
 

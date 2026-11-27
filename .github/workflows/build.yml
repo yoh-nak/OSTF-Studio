@@ -14,6 +14,10 @@ on:
         description: New release tag (for example v1.0.0-public-alpha.1)
         type: string
 
+concurrency:
+  group: studio-build-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -21,7 +25,7 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -31,7 +35,12 @@ jobs:
             configure_args: '-G "Visual Studio 17 2022" -A x64 -DOSTF_STUDIO_ENABLE_ASIO=ON'
           - name: macOS-arm64
             os: macos-15
+            arch: arm64
             configure_args: '-DCMAKE_OSX_ARCHITECTURES=arm64'
+          - name: macOS-x86_64
+            os: macos-15-intel
+            arch: x86_64
+            configure_args: '-DCMAKE_OSX_ARCHITECTURES=x86_64'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +57,11 @@ jobs:
         run: bash tests/release-version.sh
       - name: Check installer catalogue and choices
         run: python tests/installer_choices.py
+      - name: Exercise macOS installer dependencies
+        if: runner.os == 'macOS'
+        run: python3 tests/installer_choices.py --mac-dependency-install
+      - name: Check illustrated manuals and device inventory
+        run: python tests/illustrated_guides.py
       - name: Configure standalone core
         run: cmake -S . -B build-core ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=OFF
       - name: Build standalone core
@@ -103,6 +117,7 @@ jobs:
           BINARY_VERSION: ${{ steps.version.outputs.binary }}
         run: |
           ./packaging/windows/Package.ps1 -AppVersion $env:APP_VERSION -BinaryVersion $env:BINARY_VERSION
+          python tests/installer_choices.py --windows-wizard "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
       - name: Verify app-only install and repair with a loaded VST3
         if: runner.os == 'Windows'
         shell: pwsh
@@ -123,7 +138,11 @@ jobs:
           $metadata = Join-Path $shared 'Resources/moduleinfo.json'
           $lock = [IO.File]::Open($dll, 'Open', 'Read', 'Read')
           try {
-            Install-Studio '/MERGETASKS=!sharedvst3'
+            Install-Studio '/TYPE=custom /COMPONENTS="effects\Of02" /TASKS=sharedvst3'
+            if (!(Test-Path (Join-Path $env:CommonProgramFiles 'VST3/OSTF Studio/OSTF Chorus.vst3/Contents/Resources/moduleinfo.json')) -or
+                (Test-Path (Join-Path $env:LOCALAPPDATA 'Programs/OSTF Studio/OSTF Studio.exe')) -or
+                (Test-Path 'HKCU:\Software\Classes\OSTFStudio.Score')) { throw 'Plug-in-only setup did not isolate the Studio payload' }
+            Install-Studio '/TYPE=apponly /MERGETASKS=!sharedvst3'
             if (!(Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs/OSTF Studio/OSTF Studio.exe')) -or
                 (Test-Path -LiteralPath $metadata) -or !(Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF GM Sound Module.vst3'))) {
               throw 'App-only setup touched plug-ins or failed to install Studio'
@@ -141,7 +160,7 @@ jobs:
           if ((Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF GM Sound Module.vst3')) -or
               -not (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'OSTF Studio/Previous VST3/OSTF GM Sound Module.vst3')) -or
               -not (Test-Path -LiteralPath $other.FullName)) { throw 'Unexpected legacy VST3 migration' }
-          $names = @('OSTF GM Sound Module') + @((Get-Content src/plugins/effects/catalog.json -Raw | ConvertFrom-Json).name) + @((Get-Content src/plugins/instruments/catalog.json -Raw | ConvertFrom-Json).name)
+          $names = @('OSTF Studio', 'OSTF GM Sound Module') + @((Get-Content src/plugins/effects/catalog.json -Raw | ConvertFrom-Json).name) + @((Get-Content src/plugins/instruments/catalog.json -Raw | ConvertFrom-Json).name)
           foreach ($name in $names) {
             $path = Join-Path $env:CommonProgramFiles "VST3/OSTF Studio/$name.vst3/Contents/x86_64-win/$name.vst3"
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Shared VST3 is missing: $path" }
@@ -150,31 +169,43 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          python3 packaging/macos_package.py '${{ steps.version.outputs.binary }}' --display-version '${{ steps.version.outputs.display }}'
+          python3 packaging/macos_package.py '${{ steps.version.outputs.binary }}' --arch '${{ matrix.arch }}' --display-version '${{ steps.version.outputs.display }}'
       - name: Verify macOS plug-in selection and full install
         if: runner.os == 'macOS'
         shell: bash
         run: |
           volume=$(mktemp -d)
-          hdiutil attach -readonly -nobrowse -mountpoint "$volume" dist/OSTF_Studio_macOS_arm64.dmg
+          hdiutil attach -readonly -nobrowse -mountpoint "$volume" dist/OSTF_Studio_macOS_${{ matrix.arch }}.dmg
           trap 'hdiutil detach "$volume"' EXIT
           pkg="$volume/Install OSTF Studio and VST3.pkg"
           changes="$RUNNER_TEMP/studio-choices.plist"
           python3 tests/installer_choices.py --mac-selection "$changes"
           sudo installer -pkg "$pkg" -target / -applyChoiceChangesXML "$changes"
+          set -x
           test -x '/Applications/OSTF Studio.app/Contents/MacOS/OSTF Studio'
           plugins='/Library/Audio/Plug-Ins/VST3'
           test -d "$plugins/OSTF Scale Editor.vst3"
           test ! -e "$plugins/OSTF GM Sound Module.vst3"
           test ! -e "$plugins/OSTF Reverb.vst3"
           sudo installer -pkg "$pkg" -target /
+          test -x '/Applications/OSTF Studio.app/Contents/MacOS/OSTF Studio'
           while IFS= read -r name; do
-            lipo "$plugins/$name.vst3/Contents/MacOS/$name" -verify_arch arm64
-          done < <(jq -sr '["OSTF GM Sound Module", (.[][] | .name)][]' src/plugins/effects/catalog.json src/plugins/instruments/catalog.json)
+            lipo "$plugins/$name.vst3/Contents/MacOS/$name" -verify_arch ${{ matrix.arch }}
+          done < <(jq -sr '["OSTF Studio", "OSTF GM Sound Module", (.[][] | .name)][]' src/plugins/effects/catalog.json src/plugins/instruments/catalog.json)
       - name: Package corresponding source and build inputs
-        if: runner.os == 'macOS'
+        if: matrix.arch == 'arm64'
         shell: bash
         run: bash packaging/package-source.sh
+      - name: Include the release version in download names
+        if: github.event_name == 'workflow_dispatch' && inputs.release_type != 'none'
+        shell: bash
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.display }}
+        run: |
+          for asset in dist/OSTF_Studio_*; do
+            test -s "$asset"
+            mv "$asset" "dist/OSTF_Studio_${PACKAGE_VERSION}_${asset#dist/OSTF_Studio_}"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: OSTF-Studio-${{ matrix.name }}

@@ -1,3 +1,4 @@
+#include "../PluginCcMap.h"
 #include "../StudioPluginEditor.h"
 #include "AnalyzerMeters.h"
 #include "AnalyzerSpectrum.h"
@@ -23,6 +24,7 @@ struct Frame {
 
 class Analyzer final : public juce::AudioProcessor {
 public:
+    ostfstudio::PluginCcMap ccMap{*this};
     Analyzer()
         : AudioProcessor(BusesProperties()
                              .withInput("Input", juce::AudioChannelSet::stereo(), true)
@@ -32,7 +34,7 @@ public:
         addParameter(span);
     }
     const String getName() const override { return JucePlugin_Name; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0; }
@@ -51,13 +53,16 @@ public:
     void getStateInformation(juce::MemoryBlock& data) override {
         juce::XmlElement xml("WaveAnalyzer");
         xml.setAttribute("span", span->getIndex());
+        ccMap.save(xml);
         copyXmlToBinary(xml, data);
     }
     void setStateInformation(const void* data, int size) override {
         const auto xml = getXmlFromBinary(data, size);
-        if (xml && xml->hasTagName("WaveAnalyzer"))
+        if (xml && xml->hasTagName("WaveAnalyzer")) {
+            ccMap.restore(*xml);
             span->setValueNotifyingHost(
                 span->convertTo0to1(static_cast<float>(std::clamp(xml->getIntAttribute("span", 1), 0, 3))));
+        }
     }
     void prepareToPlay(double rate, int) override {
         current.rate = rate;
@@ -66,7 +71,8 @@ public:
         publish();
     }
     void releaseResources() override {}
-    void processBlock(juce::AudioBuffer<float>& input, juce::MidiBuffer&) override {
+    void processBlock(juce::AudioBuffer<float>& input, juce::MidiBuffer& midi) override {
+        ccMap.process(midi); midi.clear();
         juce::ScopedNoDenormals noDenormals;
         if (resetRequested.exchange(false))
             clear();
@@ -136,7 +142,8 @@ String loud(double v) {
 
 class Editor final : public ostfstudio::StudioPluginEditor, private juce::Timer {
 public:
-    explicit Editor(Analyzer& p) : StudioPluginEditor(p), processor(p) {
+    explicit Editor(Analyzer& p) : StudioPluginEditor(p), processor(p), ccButton(p.ccMap) {
+    addAndMakeVisible(ccButton);
         addAndMakeVisible(freeze);
         addAndMakeVisible(reset);
         addAndMakeVisible(span);
@@ -169,6 +176,7 @@ public:
     void resized() override {
         auto area = getLocalBounds().toFloat().reduced(18);
         auto heading = area.removeFromTop(42).toNearestInt();
+        ccButton.setBounds(heading.removeFromRight(76).reduced(1,5));
         reset.setBounds(heading.removeFromRight(88).reduced(1, 5));
         freeze.setBounds(heading.removeFromRight(75).reduced(2, 5));
         area.removeFromTop(8);
@@ -391,6 +399,7 @@ private:
     }
     const Colour panel{juce::Colour(face.background).interpolatedWith(juce::Colour(face.panel),.48f)}, grid{face.panel};
     Analyzer& processor;
+    ostfstudio::PluginCcButton ccButton;
     Frame frame;
     Spectrum frequency;
     juce::TextButton freeze{"Freeze"}, reset{"Reset meters"};

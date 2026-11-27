@@ -33,6 +33,7 @@ inline juce::var globalEventAt(const juce::var& score, TimelineLane lane, juce::
     juce::var hit;
     if (auto* list = events.getArray())
         for (const auto& item : *list) {
+            if (lane == TimelineLane::scale && item.hasProperty("targets")) continue;
             const auto at = static_cast<juce::int64>(item[source.span ? "start" : "at"]);
             if (tick >= at && (!hit.isObject() || at >= static_cast<juce::int64>(hit[source.span ? "start" : "at"]))
                 && (!source.span || tick - at < static_cast<juce::int64>(item["duration"])))
@@ -60,6 +61,52 @@ inline juce::Range<juce::int64> emptyScaleRange(const juce::var& score, juce::in
     if (tick < 0 || tick >= songEnd || barLength <= 0) return {};
     const auto bar = tick - tick % barLength;
     return sharedScaleGap(score, tick, {bar, bar + std::min(barLength, songEnd - bar)});
+}
+inline juce::int64 snapGlobalTick(TimelineLane lane, juce::int64 tick, juce::int64 origin,
+                                  juce::int64 ppq, int numerator, int denominator) {
+    if (lane == TimelineLane::tempo) return tick;
+    const auto beat = std::max<juce::int64>(1, ppq * 4 / std::max(1, denominator));
+    const auto grid = lane == TimelineLane::section || lane == TimelineLane::meter ? beat * std::max(1, numerator)
+        : lane == TimelineLane::key ? beat : std::max<juce::int64>(1, beat / 2);
+    return origin + std::llround(double(tick - origin) / grid) * grid;
+}
+
+// A shared edge belongs to both spans. Keep both IDs so score references survive a drag.
+inline juce::Result moveGlobalBoundary(const juce::var& score, TimelineLane lane, juce::int64 boundary,
+                                       juce::int64 target, juce::int64 endTick,
+                                       juce::Array<juce::var>& remove, juce::Array<juce::var>& insert) {
+    const auto source = globalSource(lane);
+    const auto key = source.span ? "start" : "at";
+    const auto events = score[source.group][source.events];
+    juce::var left, right;
+    auto next = endTick;
+    if (const auto* list = events.getArray()) for (const auto& event : *list) {
+        if (lane == TimelineLane::scale && event.hasProperty("targets")) continue;
+        const juce::int64 at = event[key];
+        if (at == boundary) right = event;
+        if (at < boundary && (!left.isObject() || at > juce::int64(left[key]))) left = event;
+        if (at > boundary) next = std::min(next, at);
+    }
+    const auto leftStart = left.isObject() ? juce::int64(left[key]) : 0;
+    const bool shared=source.span && left.isObject() && leftStart+juce::int64(left["duration"])==boundary;
+    const bool gap=lane==TimelineLane::scale;
+    const auto lower=source.span && !shared && left.isObject() ? leftStart+juce::int64(left["duration"]) : leftStart;
+    if (boundary<=0 || (!right.isObject() && !(shared && gap)) || target<=lower || target>=next ||
+        (source.span && !shared && !gap))
+        return juce::Result::fail("Choose a position inside the adjacent intervals.");
+    if (right.isObject() && source.span && target>=boundary+juce::int64(right["duration"]))
+        return juce::Result::fail("Choose a position inside the adjacent intervals.");
+    if (shared) {
+        auto first=left.clone();
+        first.getDynamicObject()->setProperty("duration",target-leftStart);
+        remove.add(left); insert.add(first);
+    }
+    if (!right.isObject()) return juce::Result::ok();
+    auto moved=right.clone();
+    if (source.span) moved.getDynamicObject()->setProperty("duration",boundary+juce::int64(right["duration"])-target);
+    moved.getDynamicObject()->setProperty(key, target);
+    remove.add(right); insert.add(moved);
+    return juce::Result::ok();
 }
 // Compute a boundary edit without removing time from the lane.
 inline juce::Result globalBoundaryEdit(const juce::var& score, TimelineLane lane, juce::int64 tick,
