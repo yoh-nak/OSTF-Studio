@@ -4,6 +4,8 @@ OSTF Studio is a desktop music workstation for arranging, playing and editing Op
 
 **[Illustrated user manual](docs/manual/en.md)** · **[Browse all plug-ins with screenshots](docs/plugins/en.md)** · [日本語マニュアル](docs/manual/README.md)
 
+The development build includes a lead synth with 188 factory sounds from the M4L instrument and selectable 2x oversampling. [SUPER KNOBBER LEAD controls and screenshot](docs/plugins/workstations.en.md#super-knobber-lead)
+
 **Download Public Alpha 1** · [Windows x64 Setup](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Setup.exe) · [Windows Portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_macOS_arm64.dmg) · [Release notes and corresponding source](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1)
 
 ![OSTF Studio Live Session showing the section queue, nine tracks and the vocal piano roll](docs/images/ostf-studio-live-session.png)

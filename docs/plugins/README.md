@@ -2,13 +2,13 @@
 
 [English](en.md) · [Studio操作マニュアル](../manual/README.md)
 
-同梱VST3を用途から探せます。各項目に実際の操作画面と、最初に試す操作を載せました。公開アルファ1に含まれるのは38個です。39個目の **OSTF Studio** は、次の開発版で追加されたワークステーション音源です。
+同梱VST3を用途から探せます。各項目に実際の操作画面と、最初に試す操作を載せました。公開アルファ1の38個に加え、開発版ではワークステーション音源 **OSTF Studio** とリードシンセ **SUPER KNOBBER LEAD** が使えます。
 
-## [作曲ツールと音源 (9)](workstations.md)
+## [作曲ツールと音源 (10)](workstations.md)
 
 [<img src="../images/plugins/ostf-scale-editor.png" alt="OSTF Scale Editor" width="360">](workstations.md)
 
-[OSTF Studio](workstations.md#ostf-studio) · [OSTF Scale Editor](workstations.md#ostf-scale-editor) · [GM Sound Module](workstations.md#gm-sound-module) · [OSTF Formant Singer](workstations.md#ostf-formant-singer) · [FM Synth](workstations.md#fm-synth) · [Analog Synth](workstations.md#analog-synth) · [Wavetable Synth](workstations.md#wavetable-synth) · [Drum Machine](workstations.md#drum-machine) · [Instrument Rack](workstations.md#instrument-rack)
+[OSTF Studio](workstations.md#ostf-studio) · [OSTF Scale Editor](workstations.md#ostf-scale-editor) · [GM Sound Module](workstations.md#gm-sound-module) · [OSTF Formant Singer](workstations.md#ostf-formant-singer) · [FM Synth](workstations.md#fm-synth) · [Analog Synth](workstations.md#analog-synth) · [Wavetable Synth](workstations.md#wavetable-synth) · [Drum Machine](workstations.md#drum-machine) · [Instrument Rack](workstations.md#instrument-rack) · [SUPER KNOBBER LEAD](workstations.md#super-knobber-lead)
 
 ## [EQ・フィルター・ダイナミクス (16)](eq-dynamics.md)
 

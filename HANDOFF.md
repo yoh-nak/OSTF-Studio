@@ -1,5 +1,15 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — SUPER KNOBBER LEAD v1.2
+
+Branch `codex/super-knobber-lead` adds the independent Skl1 VST3, its preset bank, illustrated guide and host test. Source device SHA-256 is `9db41af6660b1ac8c8ba2a052fefa3f6c92dc22519f2fa4aef7c04a0f46811d5`. The editor groups 132 original sound controls into 19 sections across five resizable pages. It exposes direct automation, mono/three-voice playing, sustain, bend and MPE. The Max for Live Blue Hand proxies and assignment switches were retired for this port.
+
+Build `ostf_knobber_tests` with the GUI enabled. Run `ctest -C Release -R ostf_knobber_tests --output-on-failure` in the build tree. To write the MIDI and WAV fixtures, invoke the test executable with the built VST3 bundle path and a second argument containing the absolute output directory. For an independent reference, run `python tools/knobber_reference.py <original.amxd> <folder>`, then open the generated patch in a separate Max instance and allow its RAM recording to finish. Repeat with `--bright-saw` for the A7 fixture. The comparison uses the original Gen~ synthesis and effects code. The harness supplies the note timing in samples and bypasses Live's MIDI input path.
+
+Local Windows x64 Release compilation, standalone/hosted Studio builds, VST3 host recall, both sample rates, factory names, automation, screenshot capture and all 47 CTests passed. The four Python installer-choice tests also passed. Max rendered both reference fixtures at 48 kHz. For GM 082 the whole-phrase RMS level differed from Max by 0.002 dB or less at 1x. For the sustained A7 saw the non-harmonic energy ratio was −20.48 dB in Max, −20.48 dB in the native 1x engine and −29.07 dB at 2x. These measurements cover those two fixtures. Commercial DAW interaction, controller hardware and macOS compilation/runtime remain unverified for Skl1. Windows packaging and public release are separate from these audio checks.
+
+The local Windows Setup and Portable ZIP were generated without installing them. The portable archive passed a full ZIP integrity check and included 40 VST3 bundles. Its Skl1 binary matched the one used for the listening tests. The local comparison pack includes six WAVs (GM 082 and A7 in each engine), the MIDI phrase and Japanese listening notes.
+
 ## 2026-11-27 — project-synced Scale Editor
 
 Branch `codex/project-synced-scales`. Insert Scale Editor on an instrument track inside standalone Studio or the hosted Studio VST3. The project supplies chords and scale assignments. Choosing a candidate previews it. Setting it writes to the selected harmony or pitched-track target and updates the chord list. Save the song in Studio or the parent DAW. The current VST3 state holds view and audition settings. A legacy preset retains its old private score and draft on resave for recovery with the earlier plug-in.

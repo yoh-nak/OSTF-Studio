@@ -1,6 +1,12 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
-The [user manual](manual/en.md) covers the standalone workflow and the subsequent Windows development build of the workstation VST3. The [illustrated plug-in guide](plugins/en.md) identifies the 38 instruments, effects and tools in Public Alpha 1 and the additional hosted workstation in development.
+The [user manual](manual/en.md) covers the standalone workflow and the Windows development build of the workstation VST3. The [illustrated plug-in guide](plugins/en.md) covers the 38 instruments, effects and tools in Public Alpha 1 plus the hosted workstation and SUPER KNOBBER LEAD in development.
+
+## SUPER KNOBBER LEAD
+
+The independent instrument `Skl1` ports the supplied LEAD v1.2 voice, drive and wet-effects GenExpr to C++. Its three voices share the source patch’s audio routing. The dry stereo sum goes directly to the output and a parallel drive stage feeds chorus, flanger, phaser, delay and reverb. The optional 2x voice engine decimates through a 65-tap Blackman-windowed low-pass before the effects. Both modes report 16 samples of latency. The factory bank contains 188 programs in 37 genres. Stable VST3 parameter IDs expose the musical controls directly. DAW state stores the selected program, edited controls, MPE and quality per instance.
+
+The Windows host test scans the built bundle, checks the bank, automation and recall, renders a timed phrase at 44.1 and 48 kHz, and measures folded energy on a sustained saturated saw. The independent Max reference fixture uses the original device’s Gen~ processors with a sample-clocked performance input. MIDI dispatch inside Ableton Live and macOS host operation require separate verification.
 
 ## Studio as a hosted instrument
 

@@ -2,13 +2,13 @@
 
 [日本語](README.md) · [Studio user manual](../manual/en.md)
 
-Browse the bundled VST3s by what you want to do. Each entry shows the editor and suggests a first control to try. Public Alpha 1 includes 38 of these tools. **OSTF Studio**, the workstation instrument, is the 39th and is available in the subsequent development build.
+Browse the bundled VST3s by what you want to do. Each entry shows the editor and suggests a first control to try. Public Alpha 1 includes 38 tools. The development build adds the OSTF Studio workstation instrument and SUPER KNOBBER LEAD.
 
-## [Composition and instruments (9)](workstations.en.md)
+## [Composition and instruments (10)](workstations.en.md)
 
 [<img src="../images/plugins/ostf-scale-editor.png" alt="OSTF Scale Editor" width="360">](workstations.en.md)
 
-[OSTF Studio](workstations.en.md#ostf-studio) · [OSTF Scale Editor](workstations.en.md#ostf-scale-editor) · [GM Sound Module](workstations.en.md#gm-sound-module) · [OSTF Formant Singer](workstations.en.md#ostf-formant-singer) · [FM Synth](workstations.en.md#fm-synth) · [Analog Synth](workstations.en.md#analog-synth) · [Wavetable Synth](workstations.en.md#wavetable-synth) · [Drum Machine](workstations.en.md#drum-machine) · [Instrument Rack](workstations.en.md#instrument-rack)
+[OSTF Studio](workstations.en.md#ostf-studio) · [OSTF Scale Editor](workstations.en.md#ostf-scale-editor) · [GM Sound Module](workstations.en.md#gm-sound-module) · [OSTF Formant Singer](workstations.en.md#ostf-formant-singer) · [FM Synth](workstations.en.md#fm-synth) · [Analog Synth](workstations.en.md#analog-synth) · [Wavetable Synth](workstations.en.md#wavetable-synth) · [Drum Machine](workstations.en.md#drum-machine) · [Instrument Rack](workstations.en.md#instrument-rack) · [SUPER KNOBBER LEAD](workstations.en.md#super-knobber-lead)
 
 ## [EQ, filtering and dynamics (16)](eq-dynamics.en.md)
 

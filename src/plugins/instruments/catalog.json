@@ -21,5 +21,6 @@
   },
   {"type":"Singer","name":"OSTF Formant Singer","code":"Osg1"},
   {"type":"ScaleEditor","name":"OSTF Scale Editor","code":"Ose1","installerGroup":"composition","requiresStudio":true},
-  {"type":"InstrumentRack","name":"OSTF Instrument Rack","code":"Oir1"}
+  {"type":"InstrumentRack","name":"OSTF Instrument Rack","code":"Oir1"},
+  {"type":"SuperKnobberLead","name":"SUPER KNOBBER LEAD","code":"Skl1"}
 ]

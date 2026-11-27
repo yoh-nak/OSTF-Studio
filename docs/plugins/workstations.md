@@ -4,7 +4,7 @@
 
 MIDIトラックに挿し、曲全体を鳴らす、歌詞を歌わせる、または演奏に音色を付けるためのプラグインです。
 
-[OSTF Studio](#ostf-studio) · [OSTF Scale Editor](#ostf-scale-editor) · [GM Sound Module](#gm-sound-module) · [OSTF Formant Singer](#ostf-formant-singer) · [FM Synth](#fm-synth) · [Analog Synth](#analog-synth) · [Wavetable Synth](#wavetable-synth) · [Drum Machine](#drum-machine) · [Instrument Rack](#instrument-rack)
+[OSTF Studio](#ostf-studio) · [OSTF Scale Editor](#ostf-scale-editor) · [GM Sound Module](#gm-sound-module) · [OSTF Formant Singer](#ostf-formant-singer) · [FM Synth](#fm-synth) · [Analog Synth](#analog-synth) · [Wavetable Synth](#wavetable-synth) · [Drum Machine](#drum-machine) · [Instrument Rack](#instrument-rack) · [SUPER KNOBBER LEAD](#super-knobber-lead)
 
 ## OSTF Studio
 
@@ -59,5 +59,13 @@ MIDIノートをキック、スネア、ハイハットなどに割り当てる�
 1つのMIDI演奏で複数の音源を重ねます。**+ Instrument layer** で音源を2つ追加し、それぞれの **Layer level** で、たとえばピアノに薄くパッドを重ねられます。
 
 ![Instrument Rackの操作画面](../images/plugins/instrument-rack.png)
+
+## SUPER KNOBBER LEAD
+
+M4L版LEAD v1.2の音色を、Studioや他のDAWのMIDIトラックで演奏できます。上部でジャンルとプリセットを選びます。たとえば **GM → GM 082 Lead 2 sawtooth** を選び、**FM / Table / Filter → Cutoff** を動かすと、原音の明るさを調整できます。ノブはDAWから直接オートメーションできます。
+
+**Original rate** が初期設定です。高音で歪みを使うときは **2x oversampling** に切り替えて響きを比べられます。どちらもホストに報告するレイテンシーは16サンプルです。
+
+![SUPER KNOBBER LEADのオシレーターとミキサー](../images/plugins/super-knobber-lead.png)
 
 [プラグイン図鑑の目次に戻る](README.md)
