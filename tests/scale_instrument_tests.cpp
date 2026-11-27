@@ -1,6 +1,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <iostream>
+#include "ScaleProjectHost.h"
 
 juce::AudioProcessor* createScaleEditorWithPreferences(const juce::File&);
 
@@ -118,108 +119,17 @@ static bool testRelink(juce::AudioProcessor& editor,juce::VST3PluginFormat& form
     return std::abs(tone->getValue()-.19f)<.001f;
 }
 
-static int testLinkedSave(const juce::File& source) {
-    juce::TemporaryFile copy(".ostf");
-    const auto file=copy.getFile();
-    auto fixture=juce::JSON::parse(source.loadFileAsString());
-    auto* production=fixture["extensions"]["org.ostf.studio"]["data"].getDynamicObject();
-    if (!production) return 70;
-    fixture["harmony"].getDynamicObject()->setProperty("scales",juce::Array<juce::var>{});
-    const auto firstChord=fixture["harmony"]["chords"][0];
-    production->setProperty("testDecimal","EXACT_DECIMAL_FIXTURE");
-    const juce::String exactDecimal="0.123456789012345678901";
-    if (!file.replaceWithText(juce::JSON::toString(fixture).replace("\"EXACT_DECIMAL_FIXTURE\"",exactDecimal))) return 70;
-    std::unique_ptr<juce::AudioProcessor> processor(createTestFilter());
-    std::unique_ptr<juce::AudioProcessorEditor> editor(processor->createEditorAndMakeActive());
-    auto* drop=dynamic_cast<juce::FileDragAndDropTarget*>(editor.get());
-    if (!drop) return 71;
-    editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
-    editor->setVisible(true);
-    auto* browser=dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
-    if (!browser) return 72;
-    struct Poll final : juce::Timer {
-        std::function<void()> step;
-        void timerCallback() override {step();}
-    } timer;
-    const auto deadline=juce::Time::getMillisecondCounterHiRes()+45000.;
-    int stage=-2; bool pending=false,externallyEdited=false;
-    const auto check=[&](const juce::String& script) {
-        pending=true;
-        browser->evaluateJavascript(script,[&](auto result){
-            pending=false;
-            if (const auto* value=result.getResult(); value && value->isBool() && bool(*value)) ++stage;
-        });
-    };
-    timer.step=[&] {
-        if (stage==6 || juce::Time::getMillisecondCounterHiRes()>deadline) {
-            juce::MessageManager::getInstance()->stopDispatchLoop(); return;
-        }
-        if (pending) return;
-        if (stage==-2) {
-            check(R"JS(Boolean(document.querySelector('body.studio-host.no-score #emptyScore')?.offsetHeight
-                && document.querySelector('header #hostRead:disabled')?.offsetWidth
-                && document.querySelector('header #studioInstrumentPicker')?.offsetWidth
-                && document.querySelector('header #hostDrag:disabled') && !window.ScaleAdviserApp.state.doc && !document.getElementById('demos')))JS");
-        } else if (stage==-1) {
-            drop->filesDropped({file.getFullPathName()},4,4);
-            browser=dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
-            if (!browser) {juce::MessageManager::getInstance()->stopDispatchLoop();return;}
-            ++stage;
-        } else if (stage==0) {
-            check(R"JS((()=>{
-                const app=window.ScaleAdviserApp;
-                if(!app?.state.fileBound || !app.state.doc.harmony.chords.length)return false;
-                if(!document.querySelector('header #hostRead:disabled'))return false;
-                document.getElementById('textTab').click();
-                const source=document.getElementById('textSource'), text=document.getElementById('textArea');
-                if(!source.offsetWidth || !source.textContent.includes(app.state.doc.song.title)
-                   || JSON.parse(text.value).song.title!==app.state.doc.song.title)return false;
-                document.getElementById('visualTab').click();
-                app.selectChord(app.state.doc.harmony.chords[0].id);
-                app.apply();return true;
-            })())JS");
-        } else if (stage==1) {
-            check(R"JS((()=>{const app=window.ScaleAdviserApp;
-                if(!app.state.dirty || app.state.doc.harmony.scales.length!==1)return false;
-                app.save();return true;})())JS");
-        } else if (stage==2 || stage==4) {
-            check(R"JS((()=>{const b=document.querySelector('[data-export="confirm"]');
-                if(!b || b.disabled || b.textContent!=='Save linked file')return false;
-                b.click();return true;})())JS");
-        } else if (stage==3) {
-            if (!externallyEdited) {
-                const auto written=file.loadFileAsString();
-                const auto scales=juce::JSON::parse(written)["harmony"]["scales"];
-                if (scales.size()!=1 || scales[0]["start"]!=firstChord["start"] || scales[0]["duration"]!=firstChord["duration"]
-                    || scales[0]["intervals"].size()<5 || !written.contains(exactDecimal)) return;
-                if (!file.replaceWithText("Externally edited")) return;
-                externallyEdited=true;
-            }
-            check(R"JS((()=>{const app=window.ScaleAdviserApp;
-                if(app.state.savePendingText || app.state.dirty)return false;
-                app.state.dirty=true;app.save();return true;})())JS");
-        } else {
-            check(R"JS((()=>{const s=window.ScaleAdviserApp.state;
-                return !s.savePendingText && s.dirty && document.body.innerText.includes('linked file changed');})())JS");
-        }
-    };
-    timer.startTimer(100);
-    juce::MessageManager::getInstance()->runDispatchLoop();
-    timer.stopTimer();
-    if (stage!=6 || file.loadFileAsString()!="Externally edited") {
-        std::cerr<<"Linked Save failed at stage "<<stage<<'\n'; return 73;
-    }
-    return 0;
-}
-
-static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
+static int testWorkspaceRecall(const juce::MemoryBlock& initial,const juce::String& fixture) {
     std::unique_ptr<juce::AudioProcessor> processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor;
     juce::WebBrowserComponent* browser=nullptr;
+    Steinberg::IPtr<ScaleProjectHost> host;
     auto open=[&](const juce::MemoryBlock& bytes) {
         editor.reset();
         processor.reset(createTestFilter());
         processor->setStateInformation(bytes.getData(),int(bytes.getSize()));
+        host=Steinberg::owned(new ScaleProjectHost(*processor));
+        if (!host->publish(fixture)) return false;
         editor.reset(processor->createEditorAndMakeActive());
         editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
         editor->setVisible(true);
@@ -242,8 +152,15 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
             if (auto* value=evaluated.getResult(); value && value->isBool() && bool(*value)) ++stage;
         });
     };
-    const auto deadline=juce::Time::getMillisecondCounterHiRes()+35000.;
+    int observedStage=-1;
+    double deadline=0;
     timer.step=[&] {
+        // Each asynchronous transition (including creating a second WebView)
+        // gets its own deadline on slower CI and development machines.
+        if (observedStage!=stage) {
+            observedStage=stage;
+            deadline=juce::Time::getMillisecondCounterHiRes()+35000.;
+        }
         if (juce::Time::getMillisecondCounterHiRes()>deadline) {
             std::cerr<<"Workspace recall timed out at stage "<<stage<<'\n';
             juce::MessageManager::getInstance()->stopDispatchLoop();
@@ -254,67 +171,40 @@ static int testWorkspaceRecall(const juce::MemoryBlock& initial) {
             checkPage(R"JS((()=>{
                 const app=window.ScaleAdviserApp;
                 if(!app?.state.doc?.harmony.scales.length)return false;
-                const edited=JSON.parse(app.exportText());edited.harmony.scales=[];
-                app.importString(JSON.stringify(edited),'Working.ostf',false);
-                app.selectChord(edited.harmony.chords[1].id);
+                app.selectChord(app.state.doc.harmony.chords[1].id);
                 document.querySelector('#pinReference').click();
-                app.view('text');
-                const field=document.querySelector('#textArea');field.value='\u672a\u78ba\u5b9a <draft> &';
-                field.dispatchEvent(new Event('input'));
                 return true;
             })())JS");
         } else if (stage==1) {
             language()->setSelectedId(3,juce::sendNotificationSync);
-            checkPage(R"JS(document.documentElement.lang==='ja' && document.querySelector('#save').textContent==='\u4fdd\u5b58'
-                && document.querySelector('#save').getAttribute('aria-description').includes('OSTF')
-                && document.querySelector('#songTitle').textContent==='Save'
-                && document.querySelector('#textArea').value==='\u672a\u78ba\u5b9a <draft> &')JS");
+            checkPage("document.documentElement.lang==='ja' && document.querySelector('#songTitle').textContent==='Save'");
         } else if (stage==2) {
             juce::MemoryBlock bytes;
             processor->getStateInformation(bytes);
             const auto xml=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
-            auto* draft=xml->getChildByName("Workspace");
-            if (!draft || !juce::JSON::parse(draft->getAllSubText()).hasProperty("text")) return;
-            if (!juce::JSON::parse(xml->getChildByName("Score")->getAllSubText())["harmony"]["scales"].size()) return;
+            if (!xml || !xml->getChildByName("View") || !xml->getChildByName("Score")) return;
+            if (juce::JSON::parse(xml->getChildByName("Score")->getAllSubText())["song"]["title"]!="Legacy private score") return;
+            const auto view=juce::JSON::parse(xml->getChildByName("View")->getAllSubText());
+            const auto selected=juce::JSON::parse(fixture)["harmony"]["chords"][1]["id"];
+            if (view["selected"]!=selected || view["reference"].toString().isEmpty()) return;
             if (open(bytes)) ++stage;
         } else if (stage==3) {
             checkPage(R"JS((()=>{
-                const app=window.ScaleAdviserApp,s=app?.state;
-                return !!(document.documentElement.lang==='ja' && s?.textDirty && s.view==='text' && s.doc.harmony.scales.length===0 &&
-                    s.selected===s.doc.harmony.chords[1].id && s.reference && s.reference===s.scale &&
-                    document.querySelector('#textArea').value==='\u672a\u78ba\u5b9a <draft> &');
+                const s=window.ScaleAdviserApp?.state;
+                return !!(document.documentElement.lang==='ja' && s?.doc &&
+                    s.selected===s.doc.harmony.chords[1].id && s.reference && s.reference===s.scale);
             })())JS");
         } else if (stage==4) {
-            language()->setSelectedId(2,juce::sendNotificationSync);
-            checkPage("document.documentElement.lang==='en' && document.querySelector('#save').textContent==='Save' && document.querySelector('#save').getAttribute('aria-description').includes('OSTF')");
+            auto score=juce::JSON::parse(fixture);
+            score["song"].getDynamicObject()->setProperty("title","Switched project");
+            score["harmony"]["chords"][0].getDynamicObject()->setProperty("label","C6");
+            score["harmony"].getDynamicObject()->setProperty("scales",juce::Array<juce::var>{});
+            if (host->publish(juce::JSON::toString(score))) ++stage;
         } else if (stage==5) {
-            for (auto* child:editor->getChildren())
-                if (auto* b=dynamic_cast<juce::TextButton*>(child); b && b->getButtonText()=="Apply scales") {
-                    b->onClick(); ++stage; break;
-                }
-        } else if (stage==6) {
-            juce::MemoryBlock bytes;
-            processor->getStateInformation(bytes);
-            const auto xml=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
-            if (juce::JSON::parse(xml->getChildByName("Score")->getAllSubText())["harmony"]["scales"].size()) return;
-            auto* draft=xml->getChildByName("Workspace");
-            if (!draft || juce::JSON::parse(draft->getAllSubText()).hasProperty("score")) return;
-            draft->setAttribute("source","stale");
-            juce::AudioProcessor::copyXmlToBinary(*xml,bytes);
-            std::unique_ptr<juce::AudioProcessor> stale(createTestFilter());
-            stale->setStateInformation(bytes.getData(),int(bytes.getSize()));
-            stale->getStateInformation(bytes);
-            const auto checked=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
-            if (checked->getChildByName("Workspace")) {
-                result=52;
-                juce::MessageManager::getInstance()->stopDispatchLoop();
-                return;
-            }
-            processor->setStateInformation(initial.getData(),int(initial.getSize()));
-            ++stage;
-        } else if (stage==7) {
             browser=dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
-            if (browser) checkPage("Boolean(window.ScaleAdviserApp?.state.doc?.harmony.scales.length && !window.ScaleAdviserApp.state.textDirty)");
+            if (browser) checkPage(R"JS(document.querySelector('#songTitle')?.textContent==='Switched project'
+                && document.querySelector('.chord-tile .chord-name')?.textContent==='C6'
+                && !document.querySelector('.chord-tile .marker'))JS");
         } else {
             language()->setSelectedId(1,juce::sendNotificationSync);
             result=testLanguageFile().loadFileAsString()=="system" ? 0 : 76;
@@ -342,7 +232,7 @@ int main(int argc,char** argv) {
         return 2;
     }
     // Interactive verification of the shipped VST3 in a host with no Studio
-    // score interface. Open an OSTF in the plug-in, edit and copy back to Studio.
+    // project interface. The editor should explain how to open it inside Studio.
     if (argc==3 && juce::String(argv[2])=="--host-window") {
         juce::String error;
         auto plugin=format.createInstanceFromDescription(*instrument,48000,256,error);
@@ -363,12 +253,22 @@ int main(int argc,char** argv) {
         plugin->releaseResources();
         return 0;
     }
-    if (argc==4 && juce::String(argv[3])=="--linked-save") {
+    if (argc==4 && juce::String(argv[3])=="--project-connection") {
         juce::String error;
         auto plugin=format.createInstanceFromDescription(*instrument,48000,256,error);
         if (!plugin || !plugin->acceptsMidi() || !plugin->producesMidi()) {
             std::cerr<<"Scale Editor VST3 MIDI buses unavailable: "<<error<<'\n'; return 74;
         }
+        const auto fixture=juce::File(juce::String::fromUTF8(argv[2])).loadFileAsString();
+        juce::AudioBuffer<float> silent(2,256);
+        juce::MidiBuffer midi;
+        plugin->prepareToPlay(48000,256);
+        midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(100)),0);
+        plugin->processBlock(silent,midi);
+        plugin->releaseResources();
+        if (!midi.isEmpty() || silent.getMagnitude(0,256)!=0.f) return 96;
+        auto project=Steinberg::owned(new ScaleProjectHost(*plugin));
+        if (!project->publish(fixture)) return 97;
         juce::OwnedArray<juce::PluginDescription> receivers;
         format.findAllTypesForFile(receivers,file.getSiblingFile("OSTF FM Synth.vst3").getFullPathName());
         if (receivers.isEmpty()) {std::cerr<<"FM Synth VST3 unavailable\n";return 77;}
@@ -376,7 +276,7 @@ int main(int argc,char** argv) {
         if (!receiver || !testMidiThruBus(*plugin,*receiver)) {
             std::cerr<<"Packaged VST3 MIDI thru to FM Synth failed: "<<error<<'\n';return 77;
         }
-        return testLinkedSave(juce::File(juce::String::fromUTF8(argv[2])));
+        return 0;
     }
     const bool auditionOnly=argc==4 && juce::String(argv[3])=="--audition";
     juce::XmlElement state("ScaleEditor");
@@ -386,21 +286,27 @@ int main(int argc,char** argv) {
         fixture["song"].getDynamicObject()->setProperty("title","Save");
         fixtureText=juce::JSON::toString(fixture);
     }
-    state.createNewChildElement("Score")->addTextElement(fixtureText);
+    if (argc==4 && juce::String(argv[3])=="--recall") {
+        auto legacy=juce::JSON::parse(fixtureText);
+        legacy["song"].getDynamicObject()->setProperty("title","Legacy private score");
+        state.createNewChildElement("Score")->addTextElement(juce::JSON::toString(legacy));
+    }
     auto* nested=state.createNewChildElement("Instrument");
     nested->setAttribute("state",juce::MemoryBlock{}.toBase64Encoding());
     nested->addChildElement(instrument->createXml().release());
     juce::MemoryBlock bytes;
     juce::AudioProcessor::copyXmlToBinary(state,bytes);
-    if (argc==4 && juce::String(argv[3])=="--recall") return testWorkspaceRecall(bytes);
+    if (argc==4 && juce::String(argv[3])=="--recall") return testWorkspaceRecall(bytes,fixtureText);
     std::unique_ptr<juce::AudioProcessor> processor(createTestFilter());
+    auto project=Steinberg::owned(new ScaleProjectHost(*processor));
+    if (!project->publish(fixtureText)) return 97;
     if(!processor->acceptsMidi() || processor->getTotalNumInputChannels()!=0) return 3;
     processor->setStateInformation(bytes.getData(),int(bytes.getSize()));
     processor->setRateAndBufferSizeDetails(48000,256);
     processor->prepareToPlay(48000,256);
     processor->getStateInformation(bytes);
     auto saved=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),int(bytes.getSize()));
-    if(!saved || !saved->getChildByName("Instrument")) return 4;
+    if(!saved || !saved->getChildByName("Instrument") || saved->getChildByName("Score")) return 4;
     juce::PluginDescription actual;
     if(!actual.loadFromXml(*saved->getChildByName("Instrument")->getFirstChildElement()) || actual.name!=instrument->name) return 5;
     juce::AudioBuffer<float> block(2,256);
@@ -518,11 +424,7 @@ int main(int argc,char** argv) {
     }
     if (argc == 4) {
         auto* browser = dynamic_cast<juce::WebBrowserComponent*>(editor->findChildWithID("scale-full-workspace"));
-        juce::TextButton* applyScales = nullptr;
-        for (auto* child : editor->getChildren())
-            if (auto* button = dynamic_cast<juce::TextButton*>(child); button && button->getButtonText() == "Apply scales")
-                applyScales = button;
-        if (!browser || !applyScales || applyScales->isVisible()) return 43;
+        if (!browser) return 43;
         if (!editor->isResizable()) return 45;
         editor->setSize(760,580);
         auto narrow = browser->getBounds();
@@ -560,9 +462,7 @@ int main(int argc,char** argv) {
                 midi.clear(); block.clear();
                 processor->processBlock(block, midi);
                 heardPreview |= block.getMagnitude(0, block.getNumSamples()) > 0.0001f;
-                processor->getStateInformation(bytes);
-                const auto stateXml = juce::AudioProcessor::getXmlFromBinary(bytes.getData(), int(bytes.getSize()));
-                const auto doc = juce::JSON::parse(stateXml->getChildByName("Score")->getAllSubText());
+                const auto doc=juce::JSON::parse(project->current);
                 const auto directions = doc["tracks"][0]["directions"];
                 if (heardPreview && doc["song"]["title"].toString() == title && doc["harmony"]["scales"].size() == 0
                     && directions.size() > 0 && directions[directions.size()-1]["parameters"]["pitchSource"]["type"] == "explicitScale") {
@@ -591,17 +491,10 @@ int main(int argc,char** argv) {
                             }
                         }
                     }
-                    const header=document.querySelector('header'), read=header.querySelector('#hostRead');
-                    const readHint=read.getAttribute('aria-description');
-                    if(!readHint?.includes('OSTF Studio') || !read.querySelector('svg[aria-hidden=true]'))return false;
-                    const controls=[...document.querySelectorAll('header button,#textView button')];
-                    if(controls.some(c=>!c.querySelector('.tool-label')||!c.getAttribute('aria-description')))return false;
+                    const header=document.querySelector('header');
                     const radios=[...header.querySelectorAll('#hostLanguage input[type=radio]')];
-                    if(!header.contains(b) || !b.offsetHeight || !read?.disabled || !read.offsetHeight
-                       || radios.length!==3 || !radios.some(r=>r.checked)
-                       || !header.querySelector('#hostDrag:not(:disabled)')?.offsetWidth
-                       || header.querySelector('details') || document.getElementById('demos')
-                       || document.querySelectorAll('#open, #save, #saveAs').length!==3) return false;
+                    if(!header.contains(b) || !b.offsetHeight || radios.length!==3 || !radios.some(r=>r.checked)) return false;
+                    if(['hostRead','hostDrag','hostCommit','open','save','saveAs','textTab'].some(id=>document.getElementById(id)?.offsetHeight)) return false;
                     if(!matchMedia('(forced-colors: active)').matches && radios.some(r=>
                         getComputedStyle(r.parentElement).color!==rgb('--control-text'))) return false;
                     const sections=[...document.querySelectorAll('.section-title')];
@@ -611,7 +504,6 @@ int main(int argc,char** argv) {
                         return Math.abs(range.getBoundingClientRect().left-name.getBoundingClientRect().left)>2
                             || name.getBoundingClientRect().left-section.getBoundingClientRect().left>40;
                     })) return false;
-                    if(!document.getElementById('textSource').textContent.includes(window.ScaleAdviserApp.state.doc.song.title)) return false;
                     b.click();return true;
                 })())JS").replace("INSTRUMENT_NAME",juce::JSON::toString(juce::var(instrument->name)))
                     .replace("STUDIO_BG",juce::JSON::toString(juce::var("#"+editor->getLookAndFeel()
@@ -662,7 +554,6 @@ int main(int argc,char** argv) {
                     app.state.doc.harmony.scales = [];
                     document.querySelector('#targets button[data-target]:nth-child(2)').click();
                     document.getElementById('apply').click();
-                    document.getElementById('hostCommit').click();
                     return app.state.doc.song.title;
                 })())JS", [&](auto evaluated) {
                     pending = false;
@@ -717,11 +608,7 @@ int main(int argc,char** argv) {
         }
     }
     if (!chordTrack || !repeats || !apply || !undo || undo->isEnabled()) return 9;
-    const auto scoreText = [&] {
-        processor->getStateInformation(bytes);
-        auto xml = juce::AudioProcessor::getXmlFromBinary(bytes.getData(), int(bytes.getSize()));
-        return xml->getChildByName("Score")->getAllSubText();
-    };
+    const auto scoreText = [&] { return project->current; };
     const auto before = scoreText();
     const auto scales = [](const juce::String& text) { return juce::JSON::parse(text)["harmony"]["scales"].size(); };
     chordTrack->setSelectedItemIndex(3, juce::sendNotificationSync);
@@ -739,7 +626,7 @@ int main(int argc,char** argv) {
     juce::TextButton *redo=nullptr,*automatic=nullptr;
     for(auto* c:editor->getChildren()) if(auto* b=dynamic_cast<juce::TextButton*>(c)) {
         if(b->getButtonText()=="Redo") redo=b;
-        if(b->getButtonText()=="Set scales in editor") automatic=b;
+        if(b->getButtonText()=="Set song scales") automatic=b;
     }
     if(!redo || !redo->isEnabled() || !automatic) return 22;
     redo->onClick(); if(!undo->isEnabled() || scales(scoreText())<scales(before)+2)return 23;

@@ -73,8 +73,9 @@ class InstallerChoices(unittest.TestCase):
         self.assertEqual(groups["OSTF Wave Analyzer"], "utilities")
         self.assertEqual(groups["OSTF Stem Separator"], "utilities")
         for p in plugins:
-            if p["code"] in {"Osd1", "Ose1", "Osg1", "Ogm1"}:
+            if p["code"] in {"Osd1", "Osg1", "Ogm1"}:
                 self.assertFalse(p.get("requiresStudio", False))
+        self.assertEqual([p["code"] for p in plugins if p.get("requiresStudio")], ["Ose1"])
         self.check_choices(plugins)
 
     def test_mixed_dependencies(self):

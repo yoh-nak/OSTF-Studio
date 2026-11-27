@@ -282,6 +282,8 @@ private:
     EffectChain& effectChain(bool output, std::size_t index);
     void updateEffectButton(EffectChain& chain);
     void refreshScaleEditors();
+    bool applyScaleEdit(std::size_t generation,const char* base,const char* edited,int size);
+    void connectScaleEditor(juce::AudioPluginInstance&);
     bool scaleEditorMonitoring() const;
     void queueMixerPluginRefresh();
     void refreshMixerPlugins();

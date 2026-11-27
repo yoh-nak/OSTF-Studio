@@ -1,5 +1,13 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — project-synced Scale Editor
+
+Branch `codex/project-synced-scales`. Insert Scale Editor on an instrument track inside standalone Studio or the hosted Studio VST3. The project supplies chords and scale assignments. Choosing a candidate previews it. Setting it writes to the selected harmony or pitched-track target and updates the chord list. Save the song in Studio or the parent DAW. The current VST3 state holds view and audition settings. A legacy preset retains its old private score and draft on resave for recovery with the earlier plug-in.
+
+The in-process VST3 project interface binds writes to a Studio instance, project generation and source digest. Studio validates and merges scale changes, records undo and updates its connected editors. Track and output changes renew the connection. Direct instantiation in another host displays the Studio routing instructions. The installer catalogue marks Ose1 as Studio-dependent. When using the DAW preset, select Scale Editor in addition to the workstation VST3.
+
+Windows x64 Release builds cover Studio, the hosted workstation and Scale Editor. CTest passed all 46 tests, including project connection, WebView editing, recall, the left pane after an external chord/scale edit, stale revision rejection and Studio undo. The installer catalogue tests and file-free Inno Setup wizard tests also passed. The plug-in guide image shows the Japanese workspace from the Windows build. Commercial DAW interaction and macOS runtime verification are outstanding for this change.
+
 ## 2026-11-27 — illustrated manual and plug-in guide
 
 Branch `codex/illustrated-manual` contains documentation and screenshots. The Japanese and English READMEs link to `docs/manual/` and `docs/plugins/`. The guides distinguish Public Alpha 1 (38 VST3s) from the subsequent development build (39, including the hosted workstation). Update both languages when the installer catalogue changes.

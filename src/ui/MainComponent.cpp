@@ -21,7 +21,6 @@
 #include <utility>
 
 namespace {
-void offerScaleEditorScore(juce::AudioPluginInstance&, const juce::MemoryBlock&);
 constexpr auto panel = 0xff242a31;
 constexpr auto muted = 0xffaab6c4;
 constexpr auto accent = 0xff46bdb2;
@@ -1526,7 +1525,8 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(undoScore, TRANS("Undo"), project_ && !recordTrack_ && noteHistoryCursor_ > 0);
             menu.addItem(redoScore, TRANS("Redo"), project_ && !recordTrack_ && noteHistoryCursor_ < noteHistory_.size());
             menu.addSubMenu(TRANS("Edit history"), editHistoryMenu(), project_ && !recordTrack_ && !noteHistory_.empty());
-            menu.addItem(pasteScaleReturn, TRANS("Paste scales from Scale Editor"), canEditTracks() && !recordTrack_);
+            if (juce::SystemClipboard::getTextFromClipboard().startsWith(ostfstudio::scale::clipboardReturnPrefix))
+                menu.addItem(pasteScaleReturn, TRANS("Paste scales from Scale Editor"), canEditTracks() && !recordTrack_);
             break;
         case 4:
             for (int i = 0; i < int(std::size(studioModes)); ++i)
@@ -4091,6 +4091,7 @@ void MainComponent::editOutput(bool send, std::optional<std::size_t> source, boo
         ++count;
     }
     mixer_.restore(mix);
+    refreshScaleEditors();
     refreshEditor();
     if (!remove) revealRow(outputRows_[slotAt(count - 1)]);
 }
@@ -4221,6 +4222,7 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         }
         copyEffectChain(false, *duplicate, dest);
     }
+    refreshScaleEditors();
     if (!trackControls_.empty()) selectTrack(remove ? std::min(*remove, trackControls_.size() - 1) : project_->sourceTrackCount() - 1);
     else refreshEditor();
     if (selectedTrack_ && *selectedTrack_ < trackRows_.size()) revealRow(trackRows_[*selectedTrack_]);
@@ -5201,7 +5203,7 @@ void MainComponent::loadTrackPlugin(std::size_t index, const juce::PluginDescrip
         target.editor.reset();
         if (description.isInstrument) instance->disableNonMainBuses();
         if (!state.isEmpty()) instance->setStateInformation(state.getData(), static_cast<int>(state.getSize()));
-        if (self->project_) offerScaleEditorScore(*instance,self->project_->sourceScore);
+        if (self->project_) self->connectScaleEditor(*instance);
         target.playableInstrument = PreviewTransport::supportsInstrument(*instance);
         target.pluginPath = juce::File(description.fileOrIdentifier);
         target.instance = std::move(instance);
@@ -5247,7 +5249,7 @@ void MainComponent::openTrackPluginEditor(std::size_t index) {
     auto& instance = strip.instance;
     auto& pluginEditor = strip.editor;
     if (!instance) return;
-    offerScaleEditorScore(*instance,project_->sourceScore);
+    connectScaleEditor(*instance);
     if (!pluginEditor) {
         std::unique_ptr<juce::AudioProcessorEditor> editor(instance->createEditorAndMakeActive());
         if (!editor) editor = std::make_unique<juce::GenericAudioProcessorEditor>(*instance);
@@ -6076,17 +6078,67 @@ void MainComponent::updateSplicePlayback() {
 }
 
 namespace {
-void offerScaleEditorScore(juce::AudioPluginInstance& instance, const juce::MemoryBlock& score) {
-    if (instance.getName() != "OSTF Scale Editor") return;
+class StudioScaleWriter final : public ostfstudio::scale::ProjectWriter {
+public:
+    using Write = std::function<bool(const char*, const char*, int)>;
+    explicit StudioScaleWriter(Write write) : commit(std::move(write)) {}
+    Steinberg::tresult PLUGIN_API queryInterface(const Steinberg::TUID id, void** out) override {
+        if (!out) return Steinberg::kInvalidArgument;
+        *out = nullptr;
+        if (std::memcmp(id, Steinberg::FUnknown_iid, 16)) return Steinberg::kNoInterface;
+        *out = static_cast<ostfstudio::scale::ProjectWriter*>(this);
+        addRef(); return Steinberg::kResultOk;
+    }
+    Steinberg::uint32 PLUGIN_API addRef() override { return ++refs; }
+    Steinberg::uint32 PLUGIN_API release() override {
+        const auto n = --refs;
+        if (!n) delete this;
+        return n;
+    }
+    Steinberg::tresult PLUGIN_API applyScales(const char* base, const char* bytes, Steinberg::int32 size) override {
+        return base && bytes && size > 0 && size <= 24*1024*1024 && commit(base,bytes,size)
+            ? Steinberg::kResultOk : Steinberg::kResultFalse;
+    }
+private:
+    Write commit;
+    std::atomic<Steinberg::uint32> refs{1};
+};
+}
+bool MainComponent::applyScaleEdit(std::size_t generation,const char* base,const char* edited,int size) {
+    if (!project_ || projectGeneration_ != generation || recordTrack_ || !canEditTracks()
+        || juce::SHA256(project_->sourceScore).toHexString() != base) return false;
+    juce::MemoryBlock before;
+    if (project_->importScaleAssignments(juce::MemoryBlock(edited,size_t(size)),before).failed()) return false;
+    if (!before.isEmpty()) {
+        rememberScoreEdit(std::move(before),"Edit scale assignments");
+        theory_.reset();
+        refreshTheory();
+        finishNoteEdit(false);
+        repaint();
+    }
+    return true;
+}
+void MainComponent::connectScaleEditor(juce::AudioPluginInstance& instance) {
+    if (!project_ || instance.getName() != "OSTF Scale Editor") return;
     auto* vst = instance.getVST3Client();
     auto* component = vst ? vst->getIComponentPtr() : nullptr;
+    if (!component) return;
     void* out = nullptr;
-    if (component && component->queryInterface(ostfstudio::scale::scoreInputId,&out) == Steinberg::kResultOk && out) {
-        auto* input = static_cast<ostfstudio::scale::ScoreInput*>(out);
-        input->offerScore(static_cast<const char*>(score.getData()),int(score.getSize()));
+    const auto& score = project_->sourceScore;
+    if (component->queryInterface(ostfstudio::scale::projectScalesId,&out) == Steinberg::kResultOk && out) {
+        auto* input = static_cast<ostfstudio::scale::ProjectScales*>(out);
+        auto* writer = new StudioScaleWriter([self=juce::Component::SafePointer<MainComponent>(this), generation=projectGeneration_]
+            (const char* base, const char* edited, int size) {
+            return self && self->applyScaleEdit(generation,base,edited,size);
+        });
+        input->syncProject(writer,static_cast<const char*>(score.getData()),int(score.getSize()));
+        writer->release();
         input->release();
+    } else if (component->queryInterface(ostfstudio::scale::scoreInputId,&out) == Steinberg::kResultOk && out) {
+        auto* legacy = static_cast<ostfstudio::scale::ScoreInput*>(out);
+        legacy->offerScore(static_cast<const char*>(score.getData()),int(score.getSize()));
+        legacy->release();
     }
-}
 }
 bool MainComponent::scaleEditorMonitoring() const {
     return std::any_of(trackControls_.begin(),trackControls_.end(),[](const auto& track) {
@@ -6097,17 +6149,17 @@ void MainComponent::refreshScaleEditors() {
     if (!project_) return;
     const auto update = [this](const EffectChain& chain) {
         for (const auto& slot : chain.slots)
-            if (slot.editor && slot.effect) offerScaleEditorScore(*slot.effect,project_->sourceScore);
+            if (slot.effect) connectScaleEditor(*slot.effect);
     };
     for (const auto& track : trackControls_) {
-        if (track->instance) offerScaleEditorScore(*track->instance,project_->sourceScore);
+        if (track->instance) connectScaleEditor(*track->instance);
         update(track->effects);
     }
     for (const auto& output : outputControls_) update(output.effects);
 }
 void MainComponent::openEffectEditor(bool output, std::size_t index, std::size_t position) {
     auto& slot = effectChain(output, index).slots[position];
-    if (project_) offerScaleEditorScore(*slot.effect, project_->sourceScore);
+    if (project_) connectScaleEditor(*slot.effect);
     if (!slot.editor) {
         std::unique_ptr<juce::AudioProcessorEditor> editor(slot.effect->createEditorAndMakeActive());
         if (!editor) editor = std::make_unique<juce::GenericAudioProcessorEditor>(*slot.effect);

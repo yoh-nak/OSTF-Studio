@@ -1,5 +1,5 @@
 #include "StockEffects.h"
-#include "plugins/scale/ScoreExchange.h"
+#include "ScaleProjectHost.h"
 #include "ui/PreviewTransport.h"
 #include "ui/PluginRoles.h"
 #include <cmath>
@@ -475,14 +475,8 @@ int checkStockEffects(const juce::StringArray& args) {
     {
         auto editor = load(formats,directory.getChildFile("OSTF Scale Editor.vst3"));
         if (!editor || !editor->getPluginDescription().isInstrument || !PreviewTransport::supportsInstrument(*editor) || !editor->getVST3Client()) return 68;
-        auto* component = editor->getVST3Client()->getIComponentPtr();
-        void* result = nullptr;
-        if (!component || component->queryInterface(ostfstudio::scale::scoreInputId,&result)!=Steinberg::kResultOk || !result) return 69;
-        auto* input = static_cast<ostfstudio::scale::ScoreInput*>(result);
-        const auto& bytes = song->sourceScore;
-        const bool received = input->offerScore(static_cast<const char*>(bytes.getData()),int(bytes.getSize())) == Steinberg::kResultOk;
-        input->release();
-        if (!received) return 70;
+        auto host=Steinberg::owned(new ScaleProjectHost(*editor));
+        if (!host->publish(song->sourceScore.toString())) return 70;
         std::unique_ptr<juce::AudioProcessorEditor> gui(editor->createEditorIfNeeded());
         if (!gui) return 71;
         gui.reset();

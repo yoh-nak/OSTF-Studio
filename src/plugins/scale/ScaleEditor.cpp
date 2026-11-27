@@ -43,6 +43,7 @@ public:
         return layout.getMainOutputChannelSet()==juce::AudioChannelSet::stereo();
     }
     void processBlock(juce::AudioBuffer<float>& audio,juce::MidiBuffer& midi) override {
+        if (!connected.load(std::memory_order_relaxed)) { audio.clear(); midi.clear(); return; }
         // Observe host input before the rack inserts its preview notes.
         bool changed=false;
         for (const auto packet : midi) {
@@ -69,16 +70,16 @@ public:
     bool hasEditor() const override { return true; }
     juce::AudioProcessorEditor* createEditor() override;
     juce::VST3ClientExtensions* getVST3ClientExtensions() override { return this; }
-    struct Input final : ScoreInput {
+    struct Input final : ProjectScales {
         explicit Input(Processor& p) : owner(p) {}
         Processor& owner;
         std::atomic<Steinberg::uint32> references{1};
         Steinberg::tresult PLUGIN_API queryInterface(const Steinberg::TUID id, void** out) override {
             if (!out) return Steinberg::kInvalidArgument;
-            if (std::memcmp(id,scoreInputId,16) && std::memcmp(id,Steinberg::FUnknown_iid,16)) {
+            if (std::memcmp(id,projectScalesId,16) && std::memcmp(id,Steinberg::FUnknown_iid,16)) {
                 *out = nullptr; return Steinberg::kNoInterface;
             }
-            *out = static_cast<ScoreInput*>(this); addRef(); return Steinberg::kResultOk;
+            *out = static_cast<ProjectScales*>(this); addRef(); return Steinberg::kResultOk;
         }
         Steinberg::uint32 PLUGIN_API addRef() override { return ++references; }
         Steinberg::uint32 PLUGIN_API release() override {
@@ -86,43 +87,42 @@ public:
             if (!n) delete this;
             return n;
         }
-        Steinberg::tresult PLUGIN_API offerScore(const char* bytes, Steinberg::int32 size) override {
-            if (!bytes || size <= 0 || size > maxBytes) return Steinberg::kInvalidArgument;
-            const auto source = juce::String::fromUTF8(bytes,size);
+        Steinberg::tresult PLUGIN_API syncProject(ProjectWriter* writer, const char* bytes, Steinberg::int32 size) override {
+            if (!writer || !bytes || size <= 0 || size > maxBytes) return Steinberg::kInvalidArgument;
             const juce::ScopedLock lock(owner.stateLock);
-            if (source == owner.offered) return Steinberg::kResultOk;
-            owner.offered = source;
-            // Reopening an editor must preserve unreturned edits.
-            if (owner.document.text.isEmpty() || (owner.linkedFile.file==juce::File{} && owner.document.baseHash == digest(owner.document.text)
-                    && !owner.hasWorkspaceEdits())) {
-                const auto r = owner.document.load(source);
-                if (r.failed()) return Steinberg::kResultFalse;
-                owner.linkedFile={};
-                ++owner.restoredStateVersion;
+            const auto source = juce::String::fromUTF8(bytes,size);
+            if (source != owner.document.text) {
+                Document next;
+                if (next.load(source).failed()) return Steinberg::kResultFalse;
+                owner.document = std::move(next);
+                if (!owner.submitting) ++owner.restoredStateVersion;
+                owner.sendChangeMessage();
             }
-            owner.sendChangeMessage();
+            owner.writer = writer;
+            owner.connected.store(true);
             return Steinberg::kResultOk;
         }
     };
     int32_t queryIAudioProcessor(const Steinberg::TUID id,void** out) override {
-        if (std::memcmp(id,scoreInputId,16)) return juce::VST3ClientExtensions::queryIAudioProcessor(id,out);
-        *out = static_cast<ScoreInput*>(new Input(*this));
+        if (!out) return Steinberg::kInvalidArgument;
+        if (std::memcmp(id,projectScalesId,16)) return juce::VST3ClientExtensions::queryIAudioProcessor(id,out);
+        *out = static_cast<ProjectScales*>(new Input(*this));
         return Steinberg::kResultOk;
     }
     void getStateInformation(juce::MemoryBlock& dest) override {
         const juce::ScopedLock lock(stateLock);
         juce::XmlElement xml("ScaleEditor");
-        xml.setAttribute("baseHash",document.baseHash);
+        if (legacyScore) {
+            xml.addChildElement(new juce::XmlElement(*legacyScore));
+            xml.setAttribute("baseHash",legacyHash);
+        }
+        if (legacyDraft) xml.addChildElement(new juce::XmlElement(*legacyDraft));
         xml.setAttribute("previewMidiOut",rack.previewMidiOut());
         xml.setAttribute("midiThru",rack.midiThruEnabled());
         xml.setAttribute("editorWidth",lastEditorSize.x);
         xml.setAttribute("editorHeight",lastEditorSize.y);
-        xml.createNewChildElement("Score")->addTextElement(document.text);
-        if (workspaceSource == document.text && workspaceDraft.isObject()) {
-            auto* draft=xml.createNewChildElement("Workspace");
-            draft->setAttribute("source",digest(document.text));
-            draft->addTextElement(juce::JSON::toString(workspaceDraft,true));
-        }
+        if (workspaceSettings.isObject())
+            xml.createNewChildElement("View")->addTextElement(juce::JSON::toString(workspaceSettings,true));
         if (unavailableInstrument) xml.addChildElement(new juce::XmlElement(*unavailableInstrument));
         else rack.save(xml);
         copyXmlToBinary(xml,dest);
@@ -132,7 +132,20 @@ public:
             const juce::ScopedLock lock(stateLock);
             lastEditorSize={juce::jlimit(740,8192,xml->getIntAttribute("editorWidth",1120)),
                             juce::jlimit(550,8192,xml->getIntAttribute("editorHeight",800))};
-            const auto* score=xml->getChildByName("Score");
+            // Keep private edits from older versions recoverable by that version.
+            // Only the connected project supplies the working score.
+            auto copyChild=[&](const char* tag) -> std::unique_ptr<juce::XmlElement> {
+                if (const auto* child=xml->getChildByName(tag)) return std::make_unique<juce::XmlElement>(*child);
+                return {};
+            };
+            legacyScore=copyChild("Score");
+            legacyDraft=copyChild("Workspace");
+            legacyHash=xml->getStringAttribute("baseHash");
+            workspaceSettings=juce::var{};
+            if (auto* view=xml->getChildByName("View"))
+                workspaceSettings=juce::JSON::parse(view->getAllSubText());
+            else if (auto* legacy=xml->getChildByName("Workspace"))
+                workspaceSettings=juce::JSON::parse(legacy->getAllSubText())["settings"];
             rack.setPreviewMidiOut(xml->getBoolAttribute("previewMidiOut",false));
             rack.setMidiThru(xml->getBoolAttribute("midiThru",false));
             const auto restored=rack.restore(xml->getChildByName("Instrument"));
@@ -143,38 +156,27 @@ public:
                 rack.restore(nullptr);
             }
             sendChangeMessage();
-            if (document.load(score ? score->getAllSubText() : xml->getAllSubText()).wasOk()) {
-                linkedFile={};
-                ++restoredStateVersion;
-                workspaceDraft=juce::var();
-                workspaceSource.clear();
-                if (auto* draft=xml->getChildByName("Workspace"); draft && draft->getStringAttribute("source")==digest(document.text)) {
-                    auto saved=juce::JSON::parse(draft->getAllSubText());
-                    if (saved["settings"].isObject() && saved["score"].toString().getNumBytesAsUTF8()<=maxBytes
-                            && saved["text"].toString().getNumBytesAsUTF8()<=maxBytes) {
-                        workspaceDraft=std::move(saved);
-                        workspaceSource=document.text;
-                    }
-                }
-                const auto hash = xml->getStringAttribute("baseHash");
-                if (hash.length()==64 && hash.containsOnly("0123456789abcdef")) document.baseHash = hash;
-                sendChangeMessage();
-            }
         }
     }
+    bool submit(const juce::String& base, const juce::String& score) {
+        if (!writer || base != document.baseHash || score.getNumBytesAsUTF8() > maxBytes) return false;
+        auto keepAlive=writer;
+        juce::ScopedValueSetter<bool> guard(submitting,true);
+        return keepAlive->applyScales(base.toRawUTF8(),score.toRawUTF8(),int(score.getNumBytesAsUTF8())) == Steinberg::kResultOk;
+    }
+    Steinberg::IPtr<ProjectWriter> writer;
+    std::atomic<bool> connected{false};
+    bool submitting=false;
     juce::CriticalSection stateLock;
     std::atomic<int> inputPitchClasses{0};
     std::array<unsigned,128> heldChannels{};
     juce::Point<int> lastEditorSize{1120,800};
     Document document;
-    LinkedScoreFile linkedFile;
-    juce::String workspaceSource;
     uint64_t restoredStateVersion=0;
-    juce::var workspaceDraft;
-    bool hasWorkspaceEdits() const {
-        return workspaceSource==document.text && (workspaceDraft.hasProperty("score") || workspaceDraft.hasProperty("text"));
-    }
-    juce::String offered,rackError;
+    juce::var workspaceSettings;
+    std::unique_ptr<juce::XmlElement> legacyScore,legacyDraft;
+    juce::String legacyHash;
+    juce::String rackError;
     InstrumentRack rack;
     std::unique_ptr<juce::XmlElement> unavailableInstrument;
 };
@@ -235,7 +237,7 @@ public:
     void selectedRowsChanged(int i) override { if (i>=0 && choose) choose(i); }
 };
 
-class Editor final : public ostfstudio::StudioPluginEditor, public juce::FileDragAndDropTarget, private juce::ChangeListener, private juce::Timer {
+class Editor final : public ostfstudio::StudioPluginEditor, private juce::ChangeListener, private juce::Timer {
 public:
     explicit Editor(Processor& p) : StudioPluginEditor(p), proc(p) {
         language.setComponentID("scale-language");
@@ -251,11 +253,11 @@ public:
             applyLanguage();
             if (!saved) status.setText(words("Could not save the language setting.", "言語設定を保存できませんでした。"),juce::dontSendNotification);
         };
-        for (juce::Component* c : std::initializer_list<juce::Component*>{&song,&chords,&roots,&modes,&apply,&open,&refresh,&save,&drag,&status,&back,&forward,&strategy,&lens,&genre,&choices,&details,&notes,&audition,&compare,&stop,&loadInstrument,&showInstrument})
+        for (juce::Component* c : std::initializer_list<juce::Component*>{&song,&chords,&roots,&modes,&apply,&status,&back,&forward,&strategy,&lens,&genre,&choices,&details,&notes,&audition,&compare,&stop,&loadInstrument,&showInstrument})
             addAndMakeVisible(c);
         for (juce::Component* c : std::initializer_list<juce::Component*>{&mapView,&repeats,&rangeLabel,&undo})
             addAndMakeVisible(c);
-        for (auto* c : std::initializer_list<juce::Component*>{&timeline,&candidates,&timelineTitle,&candidateTitle,&inspectorTitle,&sourceToggle,&autoSet,&redo,&pin})
+        for (auto* c : std::initializer_list<juce::Component*>{&timeline,&candidates,&timelineTitle,&candidateTitle,&inspectorTitle,&autoSet,&redo,&pin})
             addAndMakeVisible(c);
         for(auto* heading:{&timelineTitle,&candidateTitle,&inspectorTitle}) {
             heading->setColour(juce::Label::textColourId,juce::Colour(0xff7fe0c0));
@@ -264,9 +266,12 @@ public:
         for (juce::Component* c : std::initializer_list<juce::Component*>{&inspectMode,&fitRows,&compareText,&scopeMode,&nextUnassigned,&resetA}) addAndMakeVisible(c);
         addAndMakeVisible(flowView);
         addAndMakeVisible(flowKey);
-        addAndMakeVisible(fullWorkspace); addAndMakeVisible(returnWorkspace);
-        fullWorkspace.onClick=[this]{openFullWorkspace();}; returnWorkspace.onClick=[this]{importFullWorkspace();};
-        returnWorkspace.setEnabled(false);
+        addAndMakeVisible(fullWorkspace);
+        fullWorkspace.onClick=[this]{openFullWorkspace();};
+        addChildComponent(disconnected);
+        disconnected.setJustificationType(juce::Justification::centred);
+        disconnected.setColour(juce::Label::backgroundColourId,juce::Colour(0xff17232e));
+        disconnected.setColour(juce::Label::textColourId,juce::Colours::white);
         addChildComponent(reviewList);
         reviewList.setTitle("Chord review"); reviewList.setComponentID("scale-review-list");
         reviewList.choose=[this](int row){
@@ -292,18 +297,6 @@ public:
             }
         };
         resetA.onClick=[this]{call("resetReference",{});updateInspector();};
-        source.setMultiLine(true); source.setReadOnly(true); source.setScrollbarsShown(true);
-        addChildComponent(source);
-        sourceToggle.onClick=[this] {
-            if (workspace && workspace->isVisible()) {
-                workspace->evaluateJavascript("window.ScaleAdviserApp.view(window.ScaleAdviserApp.state.view === 'text' ? 'visual' : 'text')");
-                return;
-            }
-            const bool show=!source.isVisible();
-            source.setVisible(show);
-            if (show) { source.setText(proc.document.text,false); source.toFront(false); }
-            sourceToggle.setButtonText(show ? words("Visual","ビジュアル") : words("OSTF text","OSTFテキスト")); updateInspector(); resized();
-        };
         timeline.choose=[this](int i){chords.setSelectedItemIndex(i,juce::sendNotificationSync);};
         candidates.choose=[this](int i){choices.setSelectedItemIndex(i,juce::sendNotificationSync);};
         mapView.setViewedComponent(&map,false); mapView.setScrollBarsShown(false,true);
@@ -317,7 +310,8 @@ public:
         redo.onClick=[this] {
             const juce::ScopedLock lock(proc.stateLock);
             if (!redoDocument || redoAtText!=proc.document.text) return;
-            previousDocument=proc.document; proc.document=std::move(*redoDocument); redoDocument.reset();
+            auto before=proc.document; if (!submit(redoDocument->text)) return;
+            previousDocument=std::move(before); redoDocument.reset();
             undoAtText=proc.document.text; undo.setEnabled(true); redo.setEnabled(false); sync();
             proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
         };
@@ -327,8 +321,9 @@ public:
         undo.onClick=[this] {
             const juce::ScopedLock lock(proc.stateLock);
             if (!previousDocument || undoAtText != proc.document.text) { sync(); return; }
-            redoDocument=proc.document; redoAtText=previousDocument->text; redo.setEnabled(true);
-            proc.document=std::move(*previousDocument); previousDocument.reset(); undo.setEnabled(false);
+            auto before=proc.document; if (!submit(previousDocument->text)) return;
+            redoDocument=std::move(before); redoAtText=proc.document.text; redo.setEnabled(true);
+            previousDocument.reset(); undo.setEnabled(false);
             sync(); proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
         };
         js.maximumExecutionTime=juce::RelativeTime::seconds(6);
@@ -381,22 +376,17 @@ public:
         apply.onClick = [this]{
             const juce::ScopedLock lock(proc.stateLock);
             const auto before = proc.document;
-            const auto r = proc.document.assign(map.targets,roots.getSelectedItemIndex(),modes.getSelectedItemIndex());
-            if (r.wasOk()) {
+            auto proposal=before;
+            const auto r = proposal.assign(map.targets,roots.getSelectedItemIndex(),modes.getSelectedItemIndex());
+            if (r.wasOk() && submit(proposal.text)) {
                 redoDocument.reset(); redo.setEnabled(false);
                 previousDocument = before; undoAtText = proc.document.text; undo.setEnabled(true);
                 const auto first=map.anchor, last=map.end;
                 proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true)); sync();
                 map.anchor=first; map.end=last; updateScope();
             }
-            else status.setText(r.getErrorMessage(),juce::dontSendNotification);
+            else if (r.failed()) status.setText(r.getErrorMessage(),juce::dontSendNotification);
         };
-        open.onClick = [this]{ choose(false); };
-        save.onClick = [this]{
-            if (workspace && workspace->isVisible()) workspace->evaluateJavascript("window.ScaleAdviserApp.saveAs()");
-            else choose(true);
-        };
-        refresh.onClick = [this]{ requestLoad(proc.offered); };
         proc.addChangeListener(this);
         applyLanguage();
         sync();
@@ -416,25 +406,17 @@ public:
         stopTimer();
         proc.rack.stopPreview(); proc.rack.closeWindow(); proc.removeChangeListener(this);
     }
-    bool isInterestedInFileDrag(const juce::StringArray& files) override {
-        return files.size()==1 && juce::File(files[0]).hasFileExtension("ostf");
-    }
-    void filesDropped(const juce::StringArray& files,int,int) override {
-        if (isInterestedInFileDrag(files)) openScoreFile(juce::File(files[0]));
-    }
     void resized() override {
         if (getWidth()>=740 && getHeight()>=550) {
             const juce::ScopedLock lock(proc.stateLock);
             proc.lastEditorSize={getWidth(),getHeight()};
         }
         auto area=getLocalBounds().reduced(12);
-        auto head=area.removeFromTop(32); language.setBounds(head.removeFromRight(145).reduced(1)); sourceToggle.setBounds(head.removeFromRight(95)); returnWorkspace.setBounds(head.removeFromRight(140).reduced(1)); fullWorkspace.setBounds(head.removeFromRight(145).reduced(1)); song.setBounds(head);
-        auto files=area.removeFromTop(32);
-        open.setBounds(files.removeFromLeft(100).reduced(1)); refresh.setBounds(files.removeFromLeft(145).reduced(1));
-        save.setBounds(files.removeFromLeft(99).reduced(1)); redo.setBounds(files.removeFromRight(59).reduced(1));
-        undo.setBounds(files.removeFromRight(89).reduced(1)); autoSet.setBounds(files.removeFromRight(115).reduced(1)); drag.setBounds(files.reduced(1));
+        auto head=area.removeFromTop(32);
+        language.setBounds(head.removeFromRight(145).reduced(1)); fullWorkspace.setBounds(head.removeFromRight(145).reduced(1));
+        redo.setBounds(head.removeFromRight(60).reduced(1)); undo.setBounds(head.removeFromRight(95).reduced(1));
+        autoSet.setBounds(head.removeFromRight(115).reduced(1)); song.setBounds(head);
         area.removeFromTop(8);
-        if (source.isVisible()) source.setBounds(area);
         auto tabs=area.removeFromTop(27);
         flowTab.setBounds(tabs.removeFromLeft(105).reduced(1));
         connectionsTab.setBounds(tabs.removeFromLeft(115).reduced(1));
@@ -466,10 +448,13 @@ public:
         details.setBounds(area.reduced(3));
         compareText.setBounds(details.getBounds()); fitRows.setBounds(details.getBounds());
         const bool full=workspace && workspace->isVisible();
-        for (auto* control : std::initializer_list<juce::Component*>{&song,&language,&sourceToggle,&returnWorkspace,
-                &fullWorkspace,&open,&refresh,&save,&autoSet,&undo,&redo,&drag,&loadInstrument,&showInstrument,
+        for (auto* control : std::initializer_list<juce::Component*>{&song,&language,&fullWorkspace,&autoSet,&undo,&redo,&loadInstrument,&showInstrument,
                 &testSound,&previewMidiOut,&midiThru,&status})
             control->setVisible(!full);
+        disconnected.setBounds(getLocalBounds());
+        setEnabled(proc.connected.load());
+        disconnected.setVisible(!proc.connected.load());
+        if (disconnected.isVisible()) disconnected.toFront(false);
         if (full) workspace->setBounds(getLocalBounds());
     }
 private:
@@ -486,11 +471,9 @@ private:
         language.addItem("Language: English",2); language.addItem(juce::String::fromUTF8("言語：日本語"),3);
         language.setSelectedId(languageChoice=="en" ? 2 : languageChoice=="ja" ? 3 : 1,juce::dontSendNotification);
         auto caption=[this](juce::Button& b,const char* en,const char* ja){ b.setButtonText(words(en,ja)); };
-        caption(open,"Open OSTF","OSTFを開く"); caption(refresh,"Read from OSTF Studio","OSTF Studioから読み込む");
-        caption(save,"Save edited OSTF as…","編集中のOSTFを別名で保存…"); caption(drag,"Copy scales to Studio","Studio用にコピー");
-        drag.setTooltip(words("Click to copy, then choose Edit > Paste scales from Scale Editor in Studio. You can also drag to Studio.",
-            "クリックでコピーし、Studioの「編集」→「Scale Editorのスケールを貼り付け」で反映します。Studioへドラッグすることもできます。"));
-        caption(autoSet,"Set scales in editor","エディター内の全曲に設定"); caption(undo,"Undo apply","適用を取り消す"); caption(redo,"Redo","やり直す");
+        disconnected.setText(words("Open Scale Editor on an instrument track inside OSTF Studio. In another DAW, load OSTF Studio (VST3) first.",
+            "OSTF Studio内の音源トラックでScale Editorを開いてください。他のDAWでは、まずOSTF Studio（VST3）を読み込みます。"),juce::dontSendNotification);
+        caption(autoSet,"Set song scales","全曲にスケールを設定"); caption(undo,"Undo apply","適用を取り消す"); caption(redo,"Redo","やり直す");
         caption(apply,"Assign scale","スケールを設定"); caption(nextUnassigned,"Next unassigned","次の未設定コード");
         caption(loadInstrument,"Instruments...","音源を選択…"); caption(testSound,"Test sound","テスト発音"); caption(previewMidiOut,"Preview MIDI out","試聴をMIDI出力");
         caption(midiThru,"MIDI thru","MIDIスルー");
@@ -499,8 +482,6 @@ private:
         caption(flowTab,"Scale Flow","スケールの流れ"); caption(connectionsTab,"Connections","つながり"); caption(reviewTab,"Review","確認");
         caption(pin,"Pin A","Aを固定"); caption(resetA,"Reset A","Aをリセット"); caption(repeats,"Include matching progressions","同じ進行を含める");
         fullWorkspace.setButtonText(workspace && workspace->isVisible() ? words("Native controls","簡易エディター") : words("Full editor","詳細エディター"));
-        returnWorkspace.setButtonText(workspaceFile && !workspace ? words("Import edited scales","編集結果を読み込む") : words("Apply scales","スケールを適用"));
-        sourceToggle.setButtonText(source.isVisible()?words("Visual","ビジュアル"):words("OSTF text","OSTFテキスト"));
         timelineTitle.setText(words("Chord timeline","コード進行"),juce::dontSendNotification);
         candidateTitle.setText(words("Compare scales","スケールを比較"),juce::dontSendNotification);
         inspectorTitle.setText(words("Scale inspector","スケールの詳細"),juce::dontSendNotification);
@@ -513,23 +494,11 @@ private:
         items(strategy,{"Balanced","Smooth voice leading","Tension / resolution"},{"バランス","滑らかな声部進行","緊張と解決"});
         items(lens,{"Chord scale","Key and mode","Performance"},{"コードスケール","調とモード","演奏"});
         updateInstrument();
-        if (!chords.getNumItems()) status.setText(words("Open an OSTF score with a chord track.","コード進行を含むOSTFを開いてください。"),juce::dontSendNotification);
+        if (!chords.getNumItems()) status.setText(words("Add chords to the Studio project.","Studioのプロジェクトにコードを追加してください。"),juce::dontSendNotification);
         shownLanguage.clear();
     }
-    struct Drag final : juce::TextButton {
-        Drag():TextButton("Copy scales to Studio"){ setComponentID("return-scales-to-studio"); onClick=[this]{if (!started && beginExport) beginExport(false);}; }
-        std::function<void(bool)> beginExport;
-        void mouseDown(const juce::MouseEvent& e) override { started=false; juce::TextButton::mouseDown(e); }
-        void mouseUp(const juce::MouseEvent& e) override { juce::TextButton::mouseUp(e); started=false; }
-        void mouseDrag(const juce::MouseEvent& e) override {
-            if (started || !e.mouseWasDraggedSinceMouseDown()) return;
-            started=true;
-            if (beginExport) beginExport(true);
-        }
-        bool started=false;
-    };
     void showInitialWorkspace() {
-        if (!openedWorkspace) {
+        if (proc.connected.load() && !openedWorkspace) {
             openedWorkspace = true;
             openFullWorkspace();
         }
@@ -548,7 +517,6 @@ private:
             undo.setEnabled(false);
             redo.setEnabled(false);
             fullWorkspace.setButtonText(words("Full editor","詳細エディター"));
-            returnWorkspace.setEnabled(false);
         }
         sync(); showInitialWorkspace();
     }
@@ -672,8 +640,10 @@ private:
         }
         if(int(plan.size())!=chords.getNumItems()) {selectChord();status.setText("Could not assign a scale to every chord.",juce::dontSendNotification);return;}
         const auto before=proc.document;
-        const auto result=proc.document.assignPlan(plan);
+        auto proposal=before;
+        const auto result=proposal.assignPlan(plan);
         if(result.failed()){status.setText(result.getErrorMessage(),juce::dontSendNotification);return;}
+        if (!submit(proposal.text)) return;
         previousDocument=before; undoAtText=proc.document.text; undo.setEnabled(true); redoDocument.reset(); redo.setEnabled(false);
         sync(); proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
@@ -695,8 +665,8 @@ private:
         flowKey.setText(showConnections ? "Guide tones and approach notes  /  motion in semitones"
                                         : "Previous, selected and next chords  /  fill: scale tones   outline: chord tones",juce::dontSendNotification);
         reviewTab.setToggleState(showingReview,juce::dontSendNotification);
-        flowView.setVisible(!showingReview && !source.isVisible());
-        reviewList.setVisible(showingReview && !source.isVisible());
+        flowView.setVisible(!showingReview);
+        reviewList.setVisible(showingReview);
         if (showingReview) {
             const auto rows=juce::JSON::parse(call("reviewChords",{}).toString());
             reviewIndices.clear(); reviewList.labels.clear(); reviewList.subtitles.clear();
@@ -816,12 +786,10 @@ private:
         timeline.labels=map.chords; timeline.subtitles=map.scales;
         for(int i=0;i<timeline.labels.size();++i) timeline.labels.set(i,juce::String(i+1)+"   "+timeline.labels[i]);
         timeline.updateContent();
-        if (source.isVisible()) source.setText(proc.document.text,false);
         if (!ready) { candidates.labels.clear(); candidates.subtitles.clear(); candidates.updateContent(); choices.clear(juce::dontSendNotification); updateInspector(); }
-        refresh.setEnabled(proc.offered.isNotEmpty()); save.setEnabled(!proc.document.text.isEmpty()); drag.setEnabled(save.isEnabled());
         back.setEnabled(false);forward.setEnabled(false);audition.setEnabled(ready);compare.setEnabled(ready);
         updateInstrument();
-        if(ready) selectChord(); else status.setText(words("Open an OSTF score with a chord track.","コード進行を含むOSTFを開いてください。"),juce::dontSendNotification);
+        if(ready) selectChord(); else status.setText(words("Add chords to the Studio project.","Studioのプロジェクトにコードを追加してください。"),juce::dontSendNotification);
         if(proc.unavailableInstrument) {
             const auto* info=proc.unavailableInstrument->getFirstChildElement();
             const auto name=info ? info->getStringAttribute("name") : juce::String{};
@@ -829,89 +797,13 @@ private:
                                                "同じ音源を選ぶと、保存した音色を復元できます。"),juce::dontSendNotification);
             status.setTooltip(proc.rackError);
         } else status.setTooltip({});
-        drag.beginExport=[this](bool dragFile) { beginStudioReturn(dragFile); };
-    }
-    void beginStudioReturn(bool dragFile) {
-        Document snapshot;
-        { const juce::ScopedLock guard(proc.stateLock); snapshot=proc.document; }
-        returnDocument(snapshot,dragFile);
-    }
-    void returnWorkspaceScales(const juce::var& value,bool dragFile) {
-        if (!value["score"].isString() || workspaceHash.isEmpty()) return;
-        Document snapshot;
-        {
-            const juce::ScopedLock guard(proc.stateLock);
-            if (seenStateVersion!=proc.restoredStateVersion) return;
-            snapshot=proc.document;
-        }
-        const auto result=snapshot.importWorkspaceScales(value["score"].toString(),workspaceHash);
-        if (result.failed()) { status.setText(result.getErrorMessage(),juce::dontSendNotification); return; }
-        if (dragFile && !juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown()) {
-            status.setText(words("Hold the drag handle until you reach the scale track.","スケールトラックまでボタンを押したままドラッグしてください。"),juce::dontSendNotification);
-            return;
-        }
-        returnDocument(snapshot,dragFile);
-    }
-    void returnDocument(const Document& document,bool dragFile) {
-        if (!dragFile) {
-            juce::SystemClipboard::copyTextToClipboard(clipboardReturnPrefix + document.baseHash + "\n" + document.text);
-            status.setText(words("Copied. In Studio, choose Edit > Paste scales from Scale Editor.","コピーしました。Studioの「編集」→「Scale Editorのスケールを貼り付け」で反映します。"),juce::dontSendNotification);
-            return;
-        }
-        const auto dir=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("OSTF Scale Editor");
-        juce::File file;
-        const auto result=document.exportForStudio(dir,file);
-        if (result.failed()) status.setText(result.getErrorMessage(),juce::dontSendNotification);
-        else if (!juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()},false,this))
-            status.setText(words("Could not start the drag. Use Copy scales to paste in OSTF Studio.","ドラッグを開始できませんでした。「スケールをコピー」でOSTF Studioに貼り付けられます。"),juce::dontSendNotification);
-    }
-    void requestLoad(juce::String source, LinkedScoreFile link={}) {
-        if (workspace && workspace->isVisible() && workspaceSource.isNotEmpty()) {
-            workspace->evaluateJavascript("Boolean(window.ScaleAdviserApp?.state.dirty || window.ScaleAdviserApp?.state.textDirty)",
-                [self=juce::Component::SafePointer<Editor>(this),source,link](auto result) {
-                    if (self) self->confirmLoad(source,link,result.getResult() && bool(*result.getResult()));
-                });
-        } else {
-            const juce::ScopedLock lock(proc.stateLock);
-            confirmLoad(source,link,proc.hasWorkspaceEdits());
-        }
-    }
-    void confirmLoad(const juce::String& source,const LinkedScoreFile& link,bool workspaceDirty) {
-        const juce::ScopedLock lock(proc.stateLock);
-        if (!workspaceDirty && !proc.hasWorkspaceEdits() && (proc.document.text.isEmpty() || proc.document.baseHash == digest(proc.document.text))) {
-            load(source,link);
-            return;
-        }
-        juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon,
-            "Read another score?", "Replace the scale assignments currently open in the editor?", "Replace", "Cancel", this,
-            juce::ModalCallbackFunction::create([self=juce::Component::SafePointer<Editor>(this),source,link](int answer) {
-                if (self && answer) self->load(source,link);
-            }));
-    }
-    void load(const juce::String& source,const LinkedScoreFile& link) {
-        const juce::ScopedLock lock(proc.stateLock);
-        const auto r=proc.document.load(source);
-        if(r.failed()) {status.setText(r.getErrorMessage(),juce::dontSendNotification); return;}
-        proc.linkedFile=link;
-        proc.workspaceDraft=juce::var();
-        proc.workspaceSource.clear();
-        previousDocument.reset(); undo.setEnabled(false); redoDocument.reset(); redo.setEnabled(false);
-        if (workspace) {
-            workspace.reset();
-        }
-        openedWorkspace = false;
-        sync(); showInitialWorkspace();
-        proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
     }
     int shownPitchClasses=-1, shownMidiRoute=-1, shownHostFlags=-1;
     juce::String shownInstrument,shownLanguageChoice,shownStatus;
     void handleHostAction(const juce::var& request) {
         const auto action=request["action"].toString();
         const auto value=request["value"];
-        if (action=="read" && refresh.isEnabled()) refresh.onClick();
-        else if ((action=="copy" || action=="drag") && drag.isEnabled()) returnWorkspaceScales(value,action=="drag");
-        else if (action=="commit" && returnWorkspace.isEnabled()) importFullWorkspace();
-        else if (action=="native") openFullWorkspace();
+        if (action=="native") openFullWorkspace();
         else if (action=="instrument" && showInstrument.isEnabled()) showInstrument.onClick();
         else if (action=="test") testSound.onClick();
         else if ((action=="preview" || action=="thru") && value.isBool()) {
@@ -933,12 +825,11 @@ private:
             shownLanguage=locale;
         }
         const int route=proc.rack.previewMidiOut() ? 1 : 0;
-        const auto flags=int(refresh.isEnabled()) | (int(showInstrument.isEnabled())<<1)
+        const auto flags=(int(showInstrument.isEnabled())<<1)
             | (route<<2) | (int(proc.rack.midiThruEnabled())<<3);
         if (flags!=shownHostFlags || languageChoice!=shownLanguageChoice) {
             juce::var state(new juce::DynamicObject());
             auto& fields=*state.getDynamicObject();
-            fields.setProperty("read",refresh.isEnabled());
             fields.setProperty("instrument",showInstrument.isEnabled());
             fields.setProperty("preview",route!=0);
             fields.setProperty("thru",proc.rack.midiThruEnabled());
@@ -971,15 +862,13 @@ private:
             workspace->setVisible(false);
             resized();
             fullWorkspace.setButtonText(words("Full editor","詳細エディター"));
-            returnWorkspace.setEnabled(false);
             return;
         }
         const juce::ScopedLock lock(proc.stateLock);
         const auto snapshot=proc.document.text;
         if (workspace && workspaceHash==digest(snapshot)) {
             workspace->setVisible(true); workspace->toFront(false);
-            resized();
-            fullWorkspace.setButtonText(words("Native controls","簡易エディター")); returnWorkspace.setEnabled(snapshot.isNotEmpty()); return;
+            resized(); return;
         }
         auto html=juce::String::fromUTF8(ScaleAssets::ScaleWorkspace_html,ScaleAssets::ScaleWorkspace_htmlSize)
             .replace("<!--STUDIO_THEME-->", "<style>:root{--bg:#"+juce::Colour(face.background).toDisplayString(false)
@@ -1002,10 +891,9 @@ private:
         if (Browser::areOptionsSupported(options)) {
             const int page=++workspaceGeneration;
             workspaceSource=snapshot;
-            const auto draft=proc.workspaceSource==snapshot && proc.workspaceDraft.isObject()
-                ? juce::Base64::toBase64(juce::JSON::toString(proc.workspaceDraft,true)) : juce::String{};
-            html=html.replace("<!--STUDIO_DRAFT-->",draft);
-            html=html.replace("<!--STUDIO_FILE-->",juce::Base64::toBase64(proc.linkedFile.file.getFileName()));
+            juce::var draft(new juce::DynamicObject());
+            draft.getDynamicObject()->setProperty("settings",proc.workspaceSettings);
+            html=html.replace("<!--STUDIO_DRAFT-->",juce::Base64::toBase64(juce::JSON::toString(draft,true)));
             options = options.withNativeIntegrationEnabled()
                 .withEventListener("ostfScaleDraft",[self=juce::Component::SafePointer<Editor>(this),page](juce::var patch){
                     if (self && self->workspaceGeneration==page) self->rememberWorkspace(patch);
@@ -1020,15 +908,6 @@ private:
                     if (self && self->workspaceGeneration==page && self->workspace && self->workspace->isVisible())
                         self->handleHostAction(request);
                 })
-                .withEventListener("ostfScaleOpen", [self=juce::Component::SafePointer<Editor>(this)](juce::var) {
-                    if (self) self->choose(false);
-                })
-                .withEventListener("ostfScaleFirstDrop", [self=juce::Component::SafePointer<Editor>(this),page](juce::var text) {
-                    if (text.isString()) juce::MessageManager::callAsync([self,page,text] {
-                        if (self && self->workspaceGeneration==page && self->workspaceSource.isEmpty())
-                            self->requestLoad(text.toString());
-                    });
-                })
                 .withEventListener("ostfScaleChooseInstrument", [self=juce::Component::SafePointer<Editor>(this),page](juce::var pos) {
                     if (!self || self->workspaceGeneration!=page || !self->workspace) return;
                     const auto bounds=self->workspace->getScreenBounds();
@@ -1036,14 +915,6 @@ private:
                     const auto y=juce::jlimit(0.0,1.0,double(pos["y"]));
                     self->chooseInstrument({bounds.getX()+juce::roundToInt(bounds.getWidth()*x),
                         bounds.getY()+juce::roundToInt(bounds.getHeight()*y),1,1});
-                })
-                .withEventListener("ostfScaleForgetFile", [self=juce::Component::SafePointer<Editor>(this),page](juce::var) {
-                    if (!self || self->workspaceGeneration!=page) return;
-                    const juce::ScopedLock lock(self->proc.stateLock);
-                    self->proc.linkedFile={};
-                })
-                .withEventListener("ostfScaleSave", [self=juce::Component::SafePointer<Editor>(this),page](juce::var request) {
-                    if (self && self->workspaceGeneration==page) self->saveWorkspaceFile(request);
                 })
                 .withEventListener("ostfScalePreview", [self=juce::Component::SafePointer<Editor>(this)](juce::var notes) {
                     if (!self || !notes.isArray() || notes.size() > 2048) return;
@@ -1061,142 +932,28 @@ private:
             workspace->goToURL(Browser::getResourceProviderRoot());
             workspaceHash=digest(snapshot);
             fullWorkspace.setButtonText(words("Native controls","簡易エディター"));
-            returnWorkspace.setButtonText(words("Apply scales","スケールを適用")); returnWorkspace.setEnabled(snapshot.isNotEmpty());
             return;
         }
        #endif
-        if (snapshot.isEmpty()) return;
-        auto file=std::make_unique<juce::TemporaryFile>(".html");
-        if(!file->getFile().replaceWithText(html) || !file->getFile().startAsProcess()) {
-            status.setText("Could not open the local Scale Editor in your browser.",juce::dontSendNotification); return;
-        }
-        workspaceFile=std::move(file); workspaceHash=digest(snapshot);
-        returnWorkspace.setButtonText(words("Import edited scales","編集結果を読み込む"));
-        returnWorkspace.setEnabled(true);
-    }
-    void importFullWorkspace() {
-        if(workspace && workspace->isVisible()) {
-            const auto opened=workspaceHash;
-            workspace->evaluateJavascript("({text:window.ScaleAdviserApp.exportText(),epoch:window.ScaleAdviserApp.state.epoch})",
-                [self=juce::Component::SafePointer<Editor>(this),page=workspaceGeneration,opened](auto result){
-                    if(!self || !self->workspace || page!=self->workspaceGeneration) return;
-                    const auto* value=result.getResult();
-                    if(!value || !(*value)["text"].isString()) { self->status.setText("The full editor is still loading.",juce::dontSendNotification); return; }
-                    const juce::ScopedLock lock(self->proc.stateLock);
-                    if (self->seenStateVersion!=self->proc.restoredStateVersion) return;
-                    const auto before=self->proc.document;
-                    const auto r=self->proc.document.importWorkspaceScales((*value)["text"].toString(),opened);
-                    if(r.failed()){self->status.setText(r.getErrorMessage(),juce::dontSendNotification);return;}
-                    if (before.text!=self->proc.document.text) {
-                        self->previousDocument=before; self->undoAtText=self->proc.document.text;
-                        self->undo.setEnabled(true); self->redoDocument.reset(); self->redo.setEnabled(false);
-                    }
-                    self->workspaceHash=digest(self->proc.document.text);
-                    self->workspaceSource=self->proc.document.text;
-                    self->proc.workspaceSource=self->workspaceSource;
-                    if (auto* draft=self->proc.workspaceDraft.getDynamicObject()) draft->removeProperty("score");
-                    const auto& score=self->proc.document.score;
-                    const auto metadata=score.hasProperty("document") ? juce::JSON::toString(score["document"],true) : juce::String("null");
-                    self->workspace->evaluateJavascript("window.ScaleAdviserApp.acceptStudioRevision("+metadata+","
-                        +juce::String(int((*value)["epoch"]))+")");
-                    self->sync(); self->proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
-                    self->status.setText("Scales applied to the plug-in score.",juce::dontSendNotification);
-                });
-            return;
-        }
-        chooser=std::make_unique<juce::FileChooser>("Import the full editor's exported scales",juce::File{},"*.ostf");
-        chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,
-            [self=juce::Component::SafePointer<Editor>(this)](const juce::FileChooser& fc) {
-                if(!self) return;
-                const auto f=fc.getResult(); if(!f.existsAsFile()) return;
-                if(f.getSize()>maxBytes) {self->status.setText("Scale export exceeds 24 MiB.",juce::dontSendNotification);return;}
-                const juce::ScopedLock lock(self->proc.stateLock);
-                const auto before=self->proc.document;
-                const auto r=self->proc.document.importWorkspaceScales(f.loadFileAsString(),self->workspaceHash);
-                if(r.failed()){self->status.setText(r.getErrorMessage(),juce::dontSendNotification);return;}
-                if (before.text!=self->proc.document.text) {
-                    self->previousDocument=before; self->undoAtText=self->proc.document.text;
-                    self->undo.setEnabled(true); self->redoDocument.reset(); self->redo.setEnabled(false);
-                }
-                self->sync(); self->returnWorkspace.setEnabled(false);
-                self->proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
-            });
+        status.setText(words("Using native scale controls.","簡易エディターでスケールを編集できます。"),juce::dontSendNotification);
     }
     void rememberWorkspace(const juce::var& patch) {
-        if (!patch["settings"].isObject()) return;
-        if (patch["score"].toString().getNumBytesAsUTF8()>maxBytes || patch["text"].toString().getNumBytesAsUTF8()>maxBytes) {
-            status.setText("Workspace draft exceeds 24 MiB.",juce::dontSendNotification);
-            return;
-        }
-        {
-            const juce::ScopedLock lock(proc.stateLock);
-            if (seenStateVersion!=proc.restoredStateVersion || workspaceSource!=proc.document.text) return;
-            if (proc.workspaceSource!=workspaceSource || !proc.workspaceDraft.isObject())
-                proc.workspaceDraft=juce::var(new juce::DynamicObject());
-            proc.workspaceSource=workspaceSource;
-            for (const auto* key : {"settings","score","text"}) if (patch.hasProperty(key)) {
-                if (patch[key].isVoid()) proc.workspaceDraft.getDynamicObject()->removeProperty(key);
-                else proc.workspaceDraft.getDynamicObject()->setProperty(key,patch[key]);
-            }
-        }
-        proc.updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
-    }
-    void saveWorkspaceFile(const juce::var& request) {
-        if (!workspace) return;
-        const auto text = request["text"].toString();
-        const int ticket = request["ticket"];
         const juce::ScopedLock lock(proc.stateLock);
-        const auto reply = [browser=juce::Component::SafePointer<juce::WebBrowserComponent>(workspace.get()),ticket]
-                (bool ok,const juce::String& name={},const juce::String& message={}) {
-            if (browser) browser->evaluateJavascript("window.ScaleAdviserApp.finishStudioSave(" + juce::String(ticket)
-                + "," + (ok ? "true" : "false") + "," + juce::JSON::toString(name,true)
-                + "," + juce::JSON::toString(message,true) + ")");
-        };
-        if (workspaceSaveChooser) { reply(false); return; }
-        auto checked=std::make_shared<Document>();
-        if (text.getNumBytesAsUTF8() > maxBytes || checked->load(text).failed()) {
-            status.setText("Invalid OSTF export.",juce::dontSendNotification); reply(false); return;
-        }
-        auto write=[self=juce::Component::SafePointer<Editor>(this),checked,reply,page=workspaceGeneration,
-                    version=proc.restoredStateVersion](const juce::File& file) {
-            if (!self) return;
-            const juce::ScopedLock stateLock(self->proc.stateLock);
-            if (page!=self->workspaceGeneration || version!=self->proc.restoredStateVersion) {reply(false); return;}
-            const auto result=self->proc.linkedFile.write(*checked,file,true);
-            self->status.setText(result.wasOk() ? "Saved edited OSTF." : result.getErrorMessage(),juce::dontSendNotification);
-            reply(result.wasOk(),file.getFileName(),result.getErrorMessage());
-        };
-        if (request["mode"]=="save") {write(proc.linkedFile.file); return;}
-        workspaceSaveChooser=std::make_unique<juce::FileChooser>(words("Save edited OSTF as","編集中のOSTFを別名で保存"),proc.linkedFile.file,"*.ostf");
-        workspaceSaveChooser->launchAsync(juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::warnAboutOverwriting,
-            [self=juce::Component::SafePointer<Editor>(this),write,reply](const juce::FileChooser& fc) {
-                if (!self) return;
-                const auto file = fc.getResult();
-                if (file != juce::File{}) write(file); else reply(false);
-                self->workspaceSaveChooser.reset();
-            });
+        if (seenStateVersion!=proc.restoredStateVersion || workspaceSource!=proc.document.text || !patch["settings"].isObject()) return;
+        proc.workspaceSettings=patch["settings"];
+        if (!patch["score"].isString()) return;
+        if (!submit(patch["score"].toString())) return;
+        workspaceSource=proc.document.text;
+        workspaceHash=proc.document.baseHash;
+        sync();
     }
-    void openScoreFile(const juce::File& file) {
-        LinkedScoreFile link; juce::String text;
-        const auto result=link.read(file,text);
-        if (result.wasOk()) requestLoad(text,link);
-        else status.setText(result.getErrorMessage(),juce::dontSendNotification);
-    }
-    void choose(bool writing) {
-        chooser=std::make_unique<juce::FileChooser>(writing?words("Save edited OSTF as","編集中のOSTFを別名で保存"):words("Open OSTF","OSTFを開く"),juce::File{},"*.ostf");
-        using F=juce::FileBrowserComponent;
-        chooser->launchAsync((writing?F::saveMode|F::warnAboutOverwriting:F::openMode)|F::canSelectFiles,
-            [self=juce::Component::SafePointer<Editor>(this),writing](const auto& fc) {
-                if (!self) return;
-                auto file=fc.getResult(); if(file==juce::File{}) return;
-                if (!writing) {self->openScoreFile(file); return;}
-                const juce::ScopedLock lock(self->proc.stateLock);
-                auto saved=self->proc.linkedFile;
-                const auto result=saved.write(self->proc.document,file);
-                if (result.wasOk() && (!self->workspace || file==self->proc.linkedFile.file))
-                    self->proc.linkedFile=saved;
-                self->status.setText(result.wasOk()?"Saved OSTF.":result.getErrorMessage(),juce::dontSendNotification);
-            });
+    bool submit(const juce::String& proposed) {
+        if (proc.submit(proc.document.baseHash,proposed)) return true;
+        ++proc.restoredStateVersion;
+        proc.sendChangeMessage();
+        status.setText(words("Edit was not applied. Check the current Studio project and try again.",
+                             "編集を反映できませんでした。Studioの現在の曲と録音状態を確認してください。"),juce::dontSendNotification);
+        return false;
     }
     using ChangeDetails = juce::AudioProcessorListener::ChangeDetails;
     Processor& proc;
@@ -1213,14 +970,12 @@ private:
     ScaleRows reviewList;
     juce::Array<int> reviewIndices;
     bool showingReview=false;
-    juce::TextButton fullWorkspace{"Full editor"}, returnWorkspace{"Apply scales"};
+    juce::TextButton fullWorkspace{"Full editor"};
     std::unique_ptr<juce::WebBrowserComponent> workspace;
-    std::unique_ptr<juce::FileChooser> workspaceSaveChooser;
     juce::String workspaceHash,workspaceSource;
     int workspaceGeneration=0;
     uint64_t seenStateVersion=0;
     bool openedWorkspace = false;
-    std::unique_ptr<juce::TemporaryFile> workspaceFile;
     juce::Label flowKey;
     bool showConnections=false;
     ScaleRows fitRows;
@@ -1228,8 +983,6 @@ private:
     juce::Label compareText;
     juce::TextButton nextUnassigned{"Next unassigned"},resetA{"Reset A"};
     juce::Label timelineTitle{"","Chord timeline"},candidateTitle{"","Compare scales"},inspectorTitle{"","Scale inspector"};
-    juce::TextButton sourceToggle{"OSTF text"};
-    juce::TextEditor source;
     ChordMap map;
     juce::Viewport mapView;
     juce::ToggleButton repeats{"Include matching progressions"};
@@ -1248,8 +1001,8 @@ private:
     juce::ComboBox choices,strategy,lens,genre;
     juce::StringArray genreIds;
     juce::ComboBox chords,roots,modes;
-    juce::TextButton open{"Open OSTF"}, refresh{"Read Studio score"}, save{"Save OSTF..."},apply{"Assign scale"};
-    Drag drag;
+    juce::TextButton apply{"Assign scale"};
+    juce::Label disconnected;
     std::unique_ptr<juce::FileChooser> chooser;
 };
 juce::AudioProcessorEditor* Processor::createEditor(){return new Editor(*this);}

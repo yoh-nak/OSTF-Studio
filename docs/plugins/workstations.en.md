@@ -14,7 +14,7 @@ The complete workstation on a stereo instrument track. Choose **OSTF Studio (VST
 
 ## OSTF Scale Editor
 
-Audition chord-scale choices before writing them to an OSTF score. Select a chord, compare two candidates, then assign the scale. In an external DAW, save the edited score from Scale Editor.
+In the development build, load **OSTF Scale Editor** on an instrument track **inside OSTF Studio**. In another DAW, load **OSTF Studio (VST3)** first and open the project there. Choose a chord in the left pane, audition candidates, then choose **Set scale**. The check mark and scale name show the assignment for the selected target. **Harmony** updates Studio’s global scale lane. A pitched track receives its own scale direction. Save the project in Studio or in the DAW containing it.
 
 ![OSTF Scale Editor editor](../images/plugins/ostf-scale-editor.png)
 

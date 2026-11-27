@@ -167,7 +167,7 @@ jobs:
           changes="$RUNNER_TEMP/studio-choices.plist"
           python3 tests/installer_choices.py --mac-selection "$changes"
           sudo installer -pkg "$pkg" -target / -applyChoiceChangesXML "$changes"
-          test ! -e '/Applications/OSTF Studio.app'
+          test -x '/Applications/OSTF Studio.app/Contents/MacOS/OSTF Studio'
           plugins='/Library/Audio/Plug-Ins/VST3'
           test -d "$plugins/OSTF Scale Editor.vst3"
           test ! -e "$plugins/OSTF GM Sound Module.vst3"

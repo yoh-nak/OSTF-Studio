@@ -416,6 +416,19 @@ private:
             if (project.sourceScore!=applied) return 35;
             studio.undoPianoEdit(false);
             if (project.sourceScore!=before) return 36;
+            const auto generation=studio.projectGeneration_;
+            const auto revision=juce::SHA256(before).toHexString();
+            const auto proposal=juce::JSON::toString(score);
+            auto assign=[&](std::size_t owner) { return studio.applyScaleEdit(owner,revision.toRawUTF8(),
+                proposal.toRawUTF8(),int(proposal.getNumBytesAsUTF8())); };
+            if (assign(generation+1) || project.sourceScore!=before || !assign(generation)) return 131;
+            const auto committed=project.sourceScore;
+            if (assign(generation) || project.sourceScore!=committed) return 132;
+            const auto syncScore=juce::JSON::parse(committed.toString());
+            if (syncScore["harmony"]["scales"].size()!=scales.size()
+                || juce::JSON::toString(syncScore["tracks"][0]["directions"])!=juce::JSON::toString(directions)) return 133;
+            studio.undoPianoEdit(false);
+            if (project.sourceScore!=before) return 134;
             const auto copy=ostfstudio::scale::clipboardReturnPrefix+juce::SHA256(before).toHexString()+"\r\n"+juce::JSON::toString(score);
             studio.pasteScaleChanges("unrelated clipboard text");
             if (project.sourceScore!=before) return 95;
@@ -1544,8 +1557,10 @@ int checkTrackView(const juce::File& fixture) {
     const auto edit = model.getMenuForIndex(2, {});
     juce::StringArray editActions;
     for (juce::PopupMenu::MenuItemIterator item(edit); item.next();) editActions.add(item.getItem().text);
-    if (editActions != juce::StringArray{TRANS("Undo"), TRANS("Redo"), TRANS("Edit history"),
-                                         TRANS("Paste scales from Scale Editor")}) return 246;
+    juce::StringArray expectedEdits{TRANS("Undo"),TRANS("Redo"),TRANS("Edit history")};
+    if (juce::SystemClipboard::getTextFromClipboard().startsWith(ostfstudio::scale::clipboardReturnPrefix))
+        expectedEdits.add(TRANS("Paste scales from Scale Editor"));
+    if (editActions!=expectedEdits) return 246;
     const auto settings = model.getMenuForIndex(5, {});
     juce::StringArray performanceOptions;
     for (juce::PopupMenu::MenuItemIterator item(settings, true); item.next();) performanceOptions.add(item.getItem().text);
