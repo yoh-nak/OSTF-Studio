@@ -5,17 +5,19 @@
 - A push to `main` or a pull request stores the platform packages in **Actions → run → Artifacts**. A manual run defaults to `none` and also produces Artifacts only. GitHub automatically expires new Artifacts after seven days. This setting applies to workflow artifacts and leaves Git history and Release assets independent of that expiration. Artifacts uploaded before this change retain their original expiry.
 - Publish the 1.0.0 alpha series as GitHub pre-releases. Set `OSTF_STUDIO_ALPHA_NUMBER` in `CMakeLists.txt` to the next unused number (1, then 2, then 3). Include the matching notes under `docs/releases/`, verify the pull request on both platforms and merge into `main`.
 - For each authorized publication, open **Actions → OSTF Studio cross-platform build → Run workflow**, select `main`, choose `prerelease` and enter the matching tag, starting with `v1.0.0-public-alpha.1` for **OSTF Studio Public Alpha 1**. The earlier experimental Release entries and downloads were withdrawn. Their three Git tags identify the original source revisions. The workflow creates a fresh tag on the exact commit it built. Select `stable` and a plain numeric tag only when a stable release is explicitly requested.
-- After both platform jobs succeed, the Release job verifies the three binary packages and their corresponding-source archive, claims a new tag, and publishes the assets and release notes together.
-- If an upload fails after the tag is created, the tag and any unpublished draft are retained for inspection. Use a new approved version tag for a fresh automated attempt. To use a new stable version tag, first update the numeric version in `CMakeLists.txt`.
+- After both platform jobs succeed, the Release job verifies the four binary packages and their corresponding-source archive, claims a new tag, stages a draft, checks the byte count and SHA-256 of each uploaded asset, and publishes the assets and release notes together.
+- Re-run failed jobs for the original release run to reuse the exact artifacts, tag and commit. A draft for that commit can resume missing uploads. An existing published release, another tag target or a conflicting uploaded asset stops publication. Keep the chosen alpha number throughout retries.
+- Before publication, check the current release and tag inventories, review the source delta since the last published tag, refresh the bilingual illustrated guides and CHANGELOG, and verify installers, project round trips and the documented limitations. After publication, fetch each asset through its release URL and compare its SHA-256 to GitHub’s asset metadata. Ordinary development builds keep the current alpha number.
 
 The CMake project version is the numeric product version. The Git tag identifies the exact released version, including a suffix for pre-releases. Use the GitHub Actions run number (`GITHUB_RUN_NUMBER`) and run attempt (`GITHUB_RUN_ATTEMPT`) to identify CI builds and reruns. Use the GitHub Release publication date as the release date and retain the generated release notes with the assets.
 
 | Package | File |
 |---|---|
-| Windows x64 installer | `OSTF_Studio_Windows_x64_Setup.exe` |
-| Windows x64 portable app | `OSTF_Studio_Windows_x64_Portable.zip` |
-| macOS arm64 disk image | `OSTF_Studio_macOS_arm64.dmg` |
-| Matching source and build inputs | `OSTF_Studio_Corresponding_Source.tar.gz` |
+| Windows x64 installer | `OSTF_Studio_<version>_Windows_x64_Setup.exe` |
+| Windows x64 portable app | `OSTF_Studio_<version>_Windows_x64_Portable.zip` |
+| macOS arm64 disk image | `OSTF_Studio_<version>_macOS_arm64.dmg` |
+| macOS Intel disk image | `OSTF_Studio_<version>_macOS_x86_64.dmg` |
+| Matching source and build inputs | `OSTF_Studio_<version>_Corresponding_Source.tar.gz` |
 
 ## Windows install and upgrade
 
@@ -41,7 +43,7 @@ Windows packages currently have no Authenticode signing configured or verified. 
 
 ## macOS signing and notarization
 
-Run **Install OSTF Studio and VST3.pkg** in the DMG. The customization page lets the user choose which VST3s to install in `/Library/Audio/Plug-Ins/VST3`. The application goes in `/Applications`. Dragging the app to Applications is also available. To build the DMG from an arm64 Release build, run `python3 packaging/macos_package.py <numeric-version>`. The packaging workflow checks the selection of Scale Editor with its required Studio application and then installs all plug-ins and verifies their arm64 binaries.
+Run **Install OSTF Studio and VST3.pkg** in the DMG. The customization page lets the user choose which VST3s to install in `/Library/Audio/Plug-Ins/VST3`. The application goes in `/Applications`. Dragging the app to Applications is also available. To build a native DMG, use `python3 packaging/macos_package.py <numeric-version> --arch arm64` or `--arch x86_64` on the matching Mac runner. The packaging workflow checks the selection of Scale Editor with its required Studio application and then installs all plug-ins and verifies the installed native binaries with lipo.
 
 Both installers read the effect and instrument catalogues under `src/plugins`. Set a plug-in's optional `installerGroup` to `effects`, `instruments`, `composition`, `learning`, `utilities`, or `games` when its user-facing category differs from its catalogue. Categories appear when they contain at least one plug-in. Set `requiresStudio` to `true` for plug-ins that require a Studio project host. Scale Editor uses this flag. Select the workstation VST3 as well for a nested DAW installation. Host integration, a shared code library or an optional drag target does not require installing the application.
 

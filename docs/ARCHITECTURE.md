@@ -1,6 +1,8 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
-The [user manual](manual/en.md) covers the standalone workflow and the Windows development build of the workstation VST3. The [illustrated plug-in guide](plugins/en.md) covers the 38 instruments, effects and tools in Public Alpha 1 plus the hosted workstation, SUPER KNOBBER LEAD and SUPER KNOBBER REVERB in development.
+The [user manual](manual/en.md) covers standalone Studio and the hosted workstation. The [illustrated device inventory](plugins/en.md) covers all 41 VST3 editors in the Windows build of Public Alpha 2. Public Alpha 1 shipped 38. The subsequent three are the workstation VST3, SUPER KNOBBER LEAD and SUPER KNOBBER REVERB.
+
+The workstation plug-in and standalone app share arrangement, notation and piano-roll editing. With host transport follow enabled, the workstation maps the host time position through the score tempo map. The embedded Scale Editor reads the active Studio project and writes shared or track-specific scale assignments there. The [timeline guide](manual/en.md#timeline-edit) describes the boundary rules, and the [export guide](manual/en.md#audio-export) shows how a track or clip selection becomes a separate audio track.
 
 ## Offline arrangement rendering
 

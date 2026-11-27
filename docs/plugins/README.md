@@ -2,7 +2,9 @@
 
 [English](en.md) · [Studio操作マニュアル](../manual/README.md)
 
-同梱VST3を用途から探せます。各項目に実際の操作画面と、最初に試す操作を載せました。公開アルファ1の38個に加え、開発版ではワークステーション音源 **OSTF Studio**、リードシンセ **SUPER KNOBBER LEAD**、ステレオリバーブ **SUPER KNOBBER REVERB** が使えます。
+同梱VST3を用途から探せます。各項目に実際の操作画面と、最初に試す操作を載せました。公開アルファ2は全41本です。公開アルファ1に加えてワークステーション音源 **OSTF Studio**、リードシンセ **SUPER KNOBBER LEAD**、ステレオリバーブ **SUPER KNOBBER REVERB** が使えます。
+
+**41本の操作画面は公開アルファ2のWindows版で撮影しました。** 普段のDAWでStudioの曲全体を扱う場合は、音源トラックにOSTF Studioを読み込み、その中でScale Editorを開きます。リバーブやEQを使う場合は、普段のDAWのFXスロットに直接挿せます。 [他のDAWでの起動手順](../manual/README.md#studio-vst3)
 
 ## [作曲ツールと音源 (10)](workstations.md)
 
@@ -18,11 +20,9 @@
 
 ## [空間・モジュレーション・ギター・ラック (13)](space-and-tone.md)
 
-[SUPER KNOBBER REVERB](space-and-tone.md#super-knobber-reverb)（開発版）
+[<img src="../images/plugins/super-knobber-reverb.png" alt="SUPER KNOBBER REVERB" width="360">](space-and-tone.md)
 
-[<img src="../images/plugins/chorus.png" alt="Chorus" width="360">](space-and-tone.md)
-
-[Reverb](space-and-tone.md#reverb) · [Delay](space-and-tone.md#delay) · [Chorus](space-and-tone.md#chorus) · [Phaser](space-and-tone.md#phaser) · [Flanger](space-and-tone.md#flanger) · [Harmonizer](space-and-tone.md#harmonizer) · [Distortion](space-and-tone.md#distortion) · [Guitar Amp](space-and-tone.md#guitar-amp) · [Electric Guitar Rig](space-and-tone.md#electric-guitar-rig) · [Acoustic Guitar Rig](space-and-tone.md#acoustic-guitar-rig) · [Bass Rig](space-and-tone.md#bass-rig) · [Effect Rack](space-and-tone.md#effect-rack)
+[Reverb](space-and-tone.md#reverb) · [Delay](space-and-tone.md#delay) · [Chorus](space-and-tone.md#chorus) · [Phaser](space-and-tone.md#phaser) · [Flanger](space-and-tone.md#flanger) · [Harmonizer](space-and-tone.md#harmonizer) · [Distortion](space-and-tone.md#distortion) · [Guitar Amp](space-and-tone.md#guitar-amp) · [Electric Guitar Rig](space-and-tone.md#electric-guitar-rig) · [Acoustic Guitar Rig](space-and-tone.md#acoustic-guitar-rig) · [Bass Rig](space-and-tone.md#bass-rig) · [Effect Rack](space-and-tone.md#effect-rack) · [SUPER KNOBBER REVERB](space-and-tone.md#super-knobber-reverb)
 
 ## [解析・素材の取り出し (2)](analysis.md)
 

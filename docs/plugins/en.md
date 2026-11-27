@@ -2,7 +2,9 @@
 
 [日本語](README.md) · [Studio user manual](../manual/en.md)
 
-Browse the bundled VST3s by what you want to do. Each entry shows the editor and suggests a first control to try. Public Alpha 1 includes 38 tools. The development build adds the OSTF Studio workstation, SUPER KNOBBER LEAD synthesizer and SUPER KNOBBER REVERB stereo effect.
+Browse the bundled VST3s by what you want to do. Each entry shows the editor and suggests a first control to try. Public Alpha 2 includes 41 tools. The additions since Public Alpha 1 are the OSTF Studio workstation, SUPER KNOBBER LEAD synthesizer and SUPER KNOBBER REVERB stereo effect.
+
+**All 41 screenshots come from the Windows build of Public Alpha 2.** To edit a Studio song inside another DAW, load OSTF Studio on an instrument track and open Scale Editor inside it. To use a single effect such as an EQ or reverb, insert it directly in your DAW’s effect slot. [Set up the workstation in another DAW](../manual/en.md#studio-vst3)
 
 ## [Composition and instruments (10)](workstations.en.md)
 
@@ -18,11 +20,9 @@ Browse the bundled VST3s by what you want to do. Each entry shows the editor and
 
 ## [Space, modulation, guitars and racks (13)](space-and-tone.en.md)
 
-[SUPER KNOBBER REVERB](space-and-tone.en.md#super-knobber-reverb) (development build)
+[<img src="../images/plugins/super-knobber-reverb.png" alt="SUPER KNOBBER REVERB" width="360">](space-and-tone.en.md)
 
-[<img src="../images/plugins/chorus.png" alt="Chorus" width="360">](space-and-tone.en.md)
-
-[Reverb](space-and-tone.en.md#reverb) · [Delay](space-and-tone.en.md#delay) · [Chorus](space-and-tone.en.md#chorus) · [Phaser](space-and-tone.en.md#phaser) · [Flanger](space-and-tone.en.md#flanger) · [Harmonizer](space-and-tone.en.md#harmonizer) · [Distortion](space-and-tone.en.md#distortion) · [Guitar Amp](space-and-tone.en.md#guitar-amp) · [Electric Guitar Rig](space-and-tone.en.md#electric-guitar-rig) · [Acoustic Guitar Rig](space-and-tone.en.md#acoustic-guitar-rig) · [Bass Rig](space-and-tone.en.md#bass-rig) · [Effect Rack](space-and-tone.en.md#effect-rack)
+[Reverb](space-and-tone.en.md#reverb) · [Delay](space-and-tone.en.md#delay) · [Chorus](space-and-tone.en.md#chorus) · [Phaser](space-and-tone.en.md#phaser) · [Flanger](space-and-tone.en.md#flanger) · [Harmonizer](space-and-tone.en.md#harmonizer) · [Distortion](space-and-tone.en.md#distortion) · [Guitar Amp](space-and-tone.en.md#guitar-amp) · [Electric Guitar Rig](space-and-tone.en.md#electric-guitar-rig) · [Acoustic Guitar Rig](space-and-tone.en.md#acoustic-guitar-rig) · [Bass Rig](space-and-tone.en.md#bass-rig) · [Effect Rack](space-and-tone.en.md#effect-rack) · [SUPER KNOBBER REVERB](space-and-tone.en.md#super-knobber-reverb)
 
 ## [Analysis and stem extraction (2)](analysis.en.md)
 

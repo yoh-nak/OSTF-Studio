@@ -4,79 +4,79 @@
 
 残響、反復、揺れ、歪みを加えます。ギター用の処理や、複数のエフェクトを重ねるラックもここにあります。
 
-[Reverb](#reverb) · [Delay](#delay) · [Chorus](#chorus) · [Phaser](#phaser) · [Flanger](#flanger) · [Harmonizer](#harmonizer) · [Distortion](#distortion) · [Guitar Amp](#guitar-amp) · [Electric Guitar Rig](#electric-guitar-rig) · [Acoustic Guitar Rig](#acoustic-guitar-rig) · [Bass Rig](#bass-rig) · [Effect Rack](#effect-rack)
+[Reverb](#reverb) · [Delay](#delay) · [Chorus](#chorus) · [Phaser](#phaser) · [Flanger](#flanger) · [Harmonizer](#harmonizer) · [Distortion](#distortion) · [Guitar Amp](#guitar-amp) · [Electric Guitar Rig](#electric-guitar-rig) · [Acoustic Guitar Rig](#acoustic-guitar-rig) · [Bass Rig](#bass-rig) · [Effect Rack](#effect-rack) · [SUPER KNOBBER REVERB](#super-knobber-reverb)
 
 ## Reverb
 
 音に部屋の響きを加えます。リターンで使うときは **Wet %** を100にし、各トラックのセンドで残響量を調整します。**Room size %** で空間の大きさが変わります。
 
-![Reverbの操作画面](../images/plugins/reverb.png)
+![Reverbの画面。部屋の大きさ、ダンピング、ウェット量](../images/plugins/reverb.png)
 
 ## Delay
 
 一定の間隔で音を繰り返します。歌の語尾を伸ばすようなエコーにするには、**Delay ms** で間隔を、**Feedback %** で繰り返しの残り方を調整します。
 
-![Delayの操作画面](../images/plugins/delay.png)
+![Delayの画面。ディレイ時間、フィードバック、ウェット量](../images/plugins/delay.png)
 
 ## Chorus
 
 わずかに時間の異なる音を重ね、鍵盤やギターの音を厚くします。**Rate Hz** で揺れの速さを、**Wet %** で原音に混ぜる量を決めます。
 
-![Chorusの操作画面](../images/plugins/chorus.png)
+![Chorusの画面。変調速度、深さ、ウェットフェーダー](../images/plugins/chorus.png)
 
 ## Phaser
 
 音色の中に周期的に動くくぼみを作ります。コードを伸ばし、**Rate Hz** を遅くして **Depth %** を上げると、うねりを聴き取りやすくなります。
 
-![Phaserの操作画面](../images/plugins/phaser.png)
+![Phaserの画面。変調速度、深さ、ウェットフェーダー](../images/plugins/phaser.png)
 
 ## Flanger
 
 短い遅延を揺らし、金属的なジェット音に似た響きを作ります。ドラムのフィルで **Depth %** を上げ、**Wet %** で原音の輪郭を戻せます。
 
-![Flangerの操作画面](../images/plugins/flanger.png)
+![Flangerの画面。変調速度、深さ、ウェットフェーダー](../images/plugins/flanger.png)
 
 ## Harmonizer
 
 原音に最大2声の移調音を重ねます。**Voice A (st)** を+7、**Voice B (st)** を+12にすると、完全5度とオクターブ上を同時に試せます。
 
-![Harmonizerの操作画面](../images/plugins/harmonizer.png)
+![Harmonizerの画面。2声の音程、ブレンド、ウェット量](../images/plugins/harmonizer.png)
 
 ## Distortion
 
 入力を歪ませて倍音を加えます。**Drive dB** で歪みの量を決め、**Tone Hz** で明るさを調整して、**Wet %** で原音に混ぜます。
 
-![Distortionの操作画面](../images/plugins/distortion.png)
+![Distortionの画面。ドライブ、トーン、ウェット量](../images/plugins/distortion.png)
 
 ## Guitar Amp
 
 ギターのライン音にアンプの歪みとキャビネットの音色を加えます。**Preamp dB** で押し込み具合を変え、**Cabinet tone Hz** で高音を整えます。
 
-![Guitar Ampの操作画面](../images/plugins/guitar-amp.png)
+![Guitar Ampの画面。プリアンプ、キャビネットのトーン、ウェット量](../images/plugins/guitar-amp.png)
 
 ## Electric Guitar Rig
 
 エレキギターの駆動、キャビネット、圧縮、出力を1つの画面で調整します。**Drive dB** と **Amp mix %** から始め、ピッキングの強弱を弾き比べてください。
 
-![Electric Guitar Rigの操作画面](../images/plugins/electric-guitar-rig.png)
+![Electric Guitar Rigの画面。ドライブ、キャビネット、アンプのミックス、圧縮](../images/plugins/electric-guitar-rig.png)
 
 ## Acoustic Guitar Rig
 
 アコースティックギターの低い振動や胴鳴りを整えます。**Notch Hz** で響きすぎる周波数を探し、**Notch cut dB** で下げ、必要に応じて **Room %** で空間を足します。
 
-![Acoustic Guitar Rigの操作画面](../images/plugins/acoustic-guitar-rig.png)
+![Acoustic Guitar Rigの画面。ローカット、ノッチ、Air、Room](../images/plugins/acoustic-guitar-rig.png)
 
 ## Bass Rig
 
 低域の芯を残しながらアンプの倍音を足せます。**Amp blend %** で原音との比率を決め、**Compressor dB** で強く弾いた音の飛び出しを整えます。
 
-![Bass Rigの操作画面](../images/plugins/bass-rig.png)
+![Bass Rigの画面。ドライブ、キャビネット、アンプのブレンド、圧縮](../images/plugins/bass-rig.png)
 
 ## Effect Rack
 
 同じ音を複数のエフェクト列に送り、並列で混ぜます。**+ Effect layer** で列を増やし、たとえば短い残響と長いエコーの音量を **Layer level** で個別に調整できます。
 
-![Effect Rackの操作画面](../images/plugins/effect-rack.png)
+![Effect Rackの画面。並列レイヤーの音量とインサートの操作欄](../images/plugins/effect-rack.png)
 
 ## SUPER KNOBBER REVERB
 
@@ -84,6 +84,8 @@
 
 アナライザーで入力と残響のスペクトル、入力フィルターやポストEQの前後、5帯域の減衰設定を確認できます。Wet waveform / tail は直近5秒の残響の波形を表示します。Pre Delay を動かすと、前後のディレイ位置を20ミリ秒かけて切り替えます。
 
-![SUPER KNOBBER REVERBの空間と初期反射の調整画面](../images/plugins/super-knobber-reverb.png)
+尾を聴き比べるには、短い音を鳴らしてから入力を止め、アナライザーを **Wet RMS** とステレオ相関の表示に切り替えます。RMSは残響の平均レベル、相関は残響の左右の似かより具合です。5帯域のRT60は各帯域に設定した減衰時間の目安です。
+
+![SUPER KNOBBER REVERBの画面。入力と残響のスペクトル、ピークメーター、初期反射の設定](../images/plugins/super-knobber-reverb.png)
 
 [プラグイン図鑑の目次に戻る](README.md)

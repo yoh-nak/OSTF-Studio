@@ -12,6 +12,11 @@ from plugin_choices import GROUPS, catalog, daw_demo_plugins, windows_files
 
 
 class InstallerChoices(unittest.TestCase):
+    def test_macos_native_architectures(self):
+        for arch in ("arm64", "x86_64"):
+            xml = distribution(catalog(), "1.0.0", arch=arch)
+            self.assertEqual(xml.getroot().find("options").get("hostArchitectures"), arch)
+
     def check_choices(self, plugins):
         version = "1.0.0"
         display_version = "1.0.0-public-alpha.1-dev"
