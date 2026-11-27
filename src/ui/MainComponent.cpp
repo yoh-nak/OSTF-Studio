@@ -6606,13 +6606,18 @@ void MainComponent::globalCommand(int command) {
     if (command == 4 && copiedLane_ == lane && !copiedEvent_.isVoid()) {
         auto copy = copiedEvent_.clone();
         auto at = snapLaneTick(lane, selectedGlobalTick_);
-        bool replace = event.isObject() && (source.span || juce::int64(event[timeKey]) == at);
+        // Key and meter events describe the entire interval up to the next event.
+        const bool continuous = lane == TimelineLane::key || lane == TimelineLane::meter;
+        const bool replace = event.isObject() && (continuous || source.span || juce::int64(event[timeKey]) == at);
+        if (lane == TimelineLane::key && !event.isObject()) at = 0;
         if (replace) {
             copy.getDynamicObject()->setProperty(timeKey, event[timeKey]);
             if (source.span)
                 copy.getDynamicObject()->setProperty("duration", event["duration"]);
             if (event.hasProperty("id"))
                 copy.getDynamicObject()->setProperty("id", event["id"]);
+            else
+                copy.getDynamicObject()->removeProperty("id");
             juce::AlertWindow::showOkCancelBox(
                 juce::MessageBoxIconType::QuestionIcon, TRANS("Paste"),
                 TRANS("Replace the selected event with the copied value?"), TRANS("Replace"), TRANS("Cancel"), this,
@@ -6635,7 +6640,7 @@ void MainComponent::globalCommand(int command) {
     const bool insertScale = lane == TimelineLane::scale && (command == 9 ||
         (command == 1 && event.isVoid() && !score["song"]["scale"].isObject()));
     if (insertScale) {
-        const auto range = emptyScaleRange(score, selectedGlobalTick_, project_->ticksPerBar, project_->durationTicks);
+        const auto range = sharedScaleGap(score, selectedGlobalTick_, project_->measureRange(selectedGlobalTick_));
         if (range.isEmpty()) return;
         auto draft = score["song"]["scale"].clone();
         if (!draft.isObject()) {
@@ -6797,8 +6802,12 @@ void MainComponent::chooseBoundaryValue() {
     juce::PopupMenu menu;
     menu.addSectionHeader(TRANS("Remove boundary"));
     if (lane == TimelineLane::meter) menu.addSectionHeader(TRANS("Note positions and lengths stay at their original ticks."));
-    menu.addItem(1, TRANS("Keep earlier value"));
-    menu.addItem(2, TRANS("Keep later value"));
+    auto choiceLabel = [&](juce::String action, juce::int64 position) {
+        const auto value = project_->contextAt(lane, position);
+        return value.isEmpty() ? action : action + "   " + value;
+    };
+    menu.addItem(1, choiceLabel(TRANS("Keep earlier value"), at - 1));
+    menu.addItem(2, choiceLabel(TRANS("Keep later value"), at));
     menu.showMenuAsync({}, [safe = juce::Component::SafePointer<MainComponent>(this), lane, at,
                             generation = projectGeneration_](int choice) {
         if (!safe || !choice || !safe->project_ || safe->projectGeneration_ != generation ||
@@ -6869,7 +6878,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
                          hasEvent || *lane == TimelineLane::key || *lane == TimelineLane::scale);
             if (*lane == TimelineLane::scale)
                 menu.addItem(9, TRANS("Set scale for this bar"),
-                    !ostfstudio::emptyScaleRange(score, selectedGlobalTick_, project_->ticksPerBar, project_->durationTicks).isEmpty());
+                    !ostfstudio::sharedScaleGap(score, selectedGlobalTick_, project_->measureRange(selectedGlobalTick_)).isEmpty());
             menu.addItem(2, TRANS("Copy"), hasEvent);
             menu.addItem(5, TRANS("Split here"));
             juce::PopupMenu bars;

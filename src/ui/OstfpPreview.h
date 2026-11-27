@@ -233,6 +233,11 @@ struct OstfpPreview {
     // Pixels and clips use linear source ticks; musical bar numbers follow the meter map.
     juce::int64 measureNumber(juce::int64 tick) const;
     juce::int64 measureStart(juce::int64 number) const;
+    juce::Range<juce::int64> measureRange(juce::int64 tick) const {
+        if (tick < 0 || tick >= durationTicks) return {};
+        const auto number = measureNumber(tick);
+        return {measureStart(number), std::min(durationTicks, measureStart(number + 1))};
+    }
     std::vector<std::pair<juce::int64,int>> camelotKeys;
     juce::String defaultScale;
     juce::StringArray trackIds;

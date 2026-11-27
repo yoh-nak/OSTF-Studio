@@ -116,8 +116,7 @@ public:
         }
         original=globalEventAt(score,lane,tick);
         draft=original.clone();
-        const auto number = project.measureNumber(tick);
-        auto range = juce::Range<Tick>(project.measureStart(number), project.measureStart(number + 1)).getIntersectionWith({0,songEnd});
+        auto range = project.measureRange(tick);
         if (section.isObject()) range=range.getIntersectionWith(span(section));
         if (lane==Lane::scale && chord.isObject()) range=span(chord).getIntersectionWith({0,songEnd});
         if (original.isVoid()) {

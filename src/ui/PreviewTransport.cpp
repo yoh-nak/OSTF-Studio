@@ -889,8 +889,10 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PreviewTransport::getPosition(
     position.setBpm(clock_.bpmAt(static_cast<juce::int64>(tick + 1e-9)));
     const auto meter = ostfstudio::activeMeter(meters_, tick, {0, meterBeats_, beatUnit_});
     position.setTimeSignature(TimeSignature{meter.numerator, meter.denominator});
-    const auto barPpq = meterBeats_ * 4.0 / beatUnit_;
-    position.setPpqPositionOfLastBarStart(std::floor(tick / ppq_ / barPpq) * barPpq);
+    const auto barPpq = meter.numerator * 4.0 / meter.denominator;
+    const auto barsSinceChange = std::floor(std::max(0.0, tick - meter.tick) / (ppq_ * barPpq));
+    position.setPpqPositionOfLastBarStart(double(meter.tick) / ppq_ + barsSinceChange * barPpq);
+    position.setBarCount(meter.firstBar - 1 + static_cast<juce::int64>(barsSinceChange));
     position.setIsPlaying(running_ && !monitorOnly_);
     return position;
 }

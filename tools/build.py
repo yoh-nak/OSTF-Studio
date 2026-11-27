@@ -58,6 +58,8 @@ def package(tree):
                    "-AppExe", str(tree / "OSTFStudio_artefacts/Release/OSTF Studio.exe"),
                    "-GmBundle", str(tree / "OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3"),
                    "-EffectsDir", str(tree / "StudioEffects/Release"), "-OutputDir", str(output), "-Python", sys.executable]
+        if compiler := shutil.which("ISCC.exe"):
+            command.extend(["-InnoCompiler", compiler])
     else:
         arch = arch or platform.machine()
         command = [sys.executable, "packaging/macos_package.py", version, "--display-version", display,
@@ -103,8 +105,22 @@ def main():
     if args.target:
         build.extend(["--target", *args.target])
     print(f"{tree} ({jobs} parallel jobs)", flush=True)
-    for command in (configure, build):
-        subprocess.run(command, cwd=ROOT, env=env, check=True)
+    cache_file = tree / "CMakeCache.txt"
+    existing = {}
+    if cache_file.is_file():
+        for line in cache_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            key, separator, value = line.partition("=")
+            if separator:
+                existing[key.split(":", 1)[0]] = value
+        if (existing.get("CMAKE_GENERATOR") != "Ninja" or
+                Path(existing.get("CMAKE_HOME_DIRECTORY", "")).resolve() != ROOT):
+            parser.error("Choose a separate Ninja build directory for this checkout.")
+    if (args.definitions or not (tree / "build.ninja").exists() or
+            existing.get("OSTF_STUDIO_BUILD_GUI") != ("OFF" if args.core else "ON") or
+            existing.get("CMAKE_BUILD_TYPE") != "Release"):
+        subprocess.run(configure, cwd=ROOT, env=env, check=True)
+    # Ninja runs CMake automatically when its tracked configuration inputs change.
+    subprocess.run(build, cwd=ROOT, env=env, check=True)
     if args.test or args.mode == "release":
         subprocess.run(["ctest", "--test-dir", str(tree), "-C", "Release", "--output-on-failure",
                         "--no-tests=error"], cwd=ROOT, env=env, check=True)
