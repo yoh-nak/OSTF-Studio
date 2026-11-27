@@ -53,7 +53,8 @@ def package(tree):
     output = tree / "packages"
     output.mkdir(exist_ok=True)
     if os.name == "nt":
-        command = ["powershell.exe", "-NoProfile", "-File",
+        shell = shutil.which("pwsh.exe") or "powershell.exe"
+        command = [shell, "-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-File",
                    str(ROOT / "packaging/windows/Package.ps1"), "-AppVersion", display, "-BinaryVersion", version,
                    "-AppExe", str(tree / "OSTFStudio_artefacts/Release/OSTF Studio.exe"),
                    "-GmBundle", str(tree / "OSTFGMSoundModule_artefacts/Release/VST3/OSTF GM Sound Module.vst3"),

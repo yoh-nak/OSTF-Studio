@@ -112,14 +112,23 @@ if (OSTF_STUDIO_BUILD_GUI)
     juce_add_binary_data(OSTFGMPreviewBank HEADER_NAME GMPreviewData.h NAMESPACE GMPreviewData SOURCES assets/StudioPreview.sf2)
     target_link_libraries(OSTFGMSoundModule PRIVATE OSTFGMPreviewBank juce::juce_audio_processors juce::juce_recommended_config_flags)
     set(OSTF_FLUID_R3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build-tools/fluid-r3")
-    if(EXISTS "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" AND EXISTS "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt")
+    file(GLOB fluid_payload CONFIGURE_DEPENDS "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt")
+    list(LENGTH fluid_payload fluid_file_count)
+    if(fluid_file_count EQUAL 2)
+        set_property(TARGET OSTFGMSoundModule_VST3 APPEND PROPERTY LINK_DEPENDS "${fluid_payload}")
         add_custom_command(TARGET OSTFGMSoundModule_VST3 POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources"
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "${OSTF_FLUID_R3_DIR}/FluidR3_GM.sf2" "${OSTF_FLUID_R3_DIR}/FluidR3-License.txt"
                 "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources")
+    else()
+        add_custom_command(TARGET OSTFGMSoundModule_VST3 POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E rm -f
+                "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources/FluidR3_GM.sf2"
+                "$<TARGET_FILE_DIR:OSTFGMSoundModule_VST3>/../Resources/FluidR3-License.txt")
     endif()
 
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/DocumentTypes.plist")
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/DocumentTypes.plist" ostf_document_types)
     if(MSVC)
         set_property(SOURCE tests/track_view_smoke.cpp tests/notation_smoke.cpp tests/ostfp_preview_tests.cpp

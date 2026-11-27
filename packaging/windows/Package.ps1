@@ -37,7 +37,12 @@ try {
         $null = Get-Item -LiteralPath (Join-Path $bundle 'Contents/Resources/Licenses/GPL-3.0.txt')
         $bundle
     })
-    $extra = Get-ChildItem -LiteralPath $EffectsDir -Force | Where-Object { $_.FullName -notin $fxBundles -and $_.FullName -ne $GmBundle }
+    # Some persistent development trees also stage the GM bundle beside the effects.
+    # Setup and the ZIP both use the separately validated GmBundle above.
+    $gmName = Split-Path -Leaf $GmBundle
+    $extra = Get-ChildItem -LiteralPath $EffectsDir -Force | Where-Object {
+        $_.FullName -notin $fxBundles -and !($_.PSIsContainer -and $_.Name -eq $gmName)
+    }
     if ($extra) { throw "Unexpected entries in ${EffectsDir}: $($extra.Name -join ', ')" }
     $migration = foreach ($plugin in $catalog) {
         $bundle = if ($plugin.code -eq 'Ogm1') { $GmBundle } else { Join-Path $EffectsDir ($plugin.name + '.vst3') }

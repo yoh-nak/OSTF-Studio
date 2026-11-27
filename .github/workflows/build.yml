@@ -107,6 +107,18 @@ jobs:
         run: cmake -S . -B build-core -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache ${{ matrix.configure_args }} -DCMAKE_BUILD_TYPE=Release -DOSTF_STUDIO_BUILD_GUI=OFF
       - name: Build standalone core
         run: cmake --build build-core --config Release
+      - name: Verify an unchanged development build reuses the core
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess, sys
+          log = Path("build-core/.ninja_log")
+          before = log.read_bytes()
+          subprocess.run([sys.executable, "tools/build.py", "--core", "--build-dir", "build-core"], check=True)
+          if log.read_bytes() != before:
+              raise SystemExit("An unchanged core build executed Ninja build steps")
+          PY
       - name: Test standalone core
         run: ctest --test-dir build-core -C Release --output-on-failure --no-tests=error
       - name: Record the current official OSTF specification
