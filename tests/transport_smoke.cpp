@@ -57,6 +57,21 @@ bool checkPerformanceAudio() {
     song.programChanges[0].push_back({10, 40, 3});
     MidiControl bank{"controlChange", 0, 3};
     song.performanceCurves[0].push_back({bank.label(), {{10, 2./127, "bank", -2}, {20, 7./127, "next-bank", -2}}, false, true, false, bank});
+    {
+        PerformanceProbe referenceTone;
+        juce::AudioBuffer<float> samples(2,96);
+        for(bool audition:{false,true}) {
+            auto monitor=std::make_unique<PreviewTransport>();
+            std::array<PreviewTransport::TrackSetup,1> route{{{{},&referenceTone,1}}};
+            route[0].auditionToMaster=audition;
+            if(monitor->preparePlayback(song,route,{},960,96,0,1,true).failed())return false;
+            monitor->setOutputMix({});
+            monitor->setChannelMix(0,{},false,0);
+            samples.clear();
+            monitor->renderBlock(samples.getArrayOfWritePointers(),2,96);
+            if((samples.getMagnitude(0,96)>.01f)!=audition)return false;
+        }
+    }
     PerformanceProbe fx1(true), fx2(true), probe;
     PreviewTransport::Inserts inserts{};
     inserts[PreviewTransport::outputCount][0] = &fx1;

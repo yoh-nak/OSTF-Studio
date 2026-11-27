@@ -822,85 +822,6 @@ std::unique_ptr<juce::Timer> startPluginFocusCheck(const juce::File& bundle, std
 
 // Optional integration check using the user's installed VST3 and its real native editor.
 // Exercise the same menu item twice, closing and reopening the independent window.
-std::unique_ptr<juce::Timer> startSpliceWindowCheck(std::function<void(int)> finished) {
-    class Probe final : public juce::Timer {
-    public:
-        explicit Probe(std::function<void(int)> done) : finish(std::move(done)) {
-            studio.setBounds(-12000, -12000, 1440, 900);
-            studio.addToDesktop(juce::ComponentPeer::windowIsTemporary | juce::ComponentPeer::windowIgnoresKeyPresses);
-            studio.setVisible(true);
-            for (auto* child : studio.getChildren())
-                if (auto* bar = dynamic_cast<juce::MenuBarComponent*>(child)) menus = bar->getModel();
-            if (menus) {
-                const auto menu = menus->getMenuForIndex(6, {});
-                for (juce::PopupMenu::MenuItemIterator it(menu); it.next();)
-                    if (it.getItem().text == TRANS("Open Splice Sounds")) command = it.getItem().itemID;
-                if (auto* pane = descendant<PluginBrowser>(studio)) {
-                    browserBounds = pane->getBounds();
-                    browserVisible = pane->isVisible();
-                }
-                if (command) menus->menuItemSelected(command, 5);
-            }
-            startTimer(100);
-        }
-    private:
-        int inspect() {
-            if (!command) return 1;
-            PluginBrowser* pane = nullptr;
-            for (auto* child : studio.getChildren())
-                if (auto* p = dynamic_cast<PluginBrowser*>(child)) pane = p;
-            if (!pane || pane->isVisible() != browserVisible || (browserVisible && pane->getBounds() != browserBounds)) return 2;
-            juce::DocumentWindow* window = nullptr;
-            auto& desktop = juce::Desktop::getInstance();
-            for (int i = 0; i < desktop.getNumComponents(); ++i) {
-                auto* component = desktop.getComponent(i);
-                if (component->getName() == "Splice Sounds") window = dynamic_cast<juce::DocumentWindow*>(component);
-            }
-            auto* editor = window ? descendant<juce::AudioProcessorEditor>(*window) : nullptr;
-            if (!editor) {
-                const auto types = pane->types();
-                const bool installed = std::any_of(types.begin(), types.end(), [](const auto& t) {
-                    return t.name.equalsIgnoreCase("Splice Sounds") && t.pluginFormatName == "VST3";
-                });
-                return installed ? -1 : 77;
-            }
-            if (!editor->processor.getName().equalsIgnoreCase("Splice Sounds")
-                || !editor->isShowing() || editor->getPeer() == studio.getPeer()
-                || editor->getWidth() <= 0 || editor->getHeight() <= 0) return 3;
-#if JUCE_WINDOWS
-            auto* native = descendant<juce::HWNDComponent>(*editor);
-            if (!native) return -1;
-            auto host = static_cast<HWND>(native->getHWND());
-            if (!host || !IsChild(static_cast<HWND>(window->getPeer()->getNativeHandle()), host)
-                || !GetWindow(host, GW_CHILD)) return -1;
-#endif
-            if (!firstEditor) {
-                firstEditor = editor;
-                window->closeButtonPressed();
-                if (editor->isShowing()) return 5;
-                menus->menuItemSelected(command, 5);
-                return -1;
-            }
-            return editor == firstEditor ? 0 : 6;
-        }
-        void timerCallback() override {
-            int result = inspect();
-            if (result < 0 && juce::Time::getMillisecondCounterHiRes() < deadline) return;
-            stopTimer();
-            finish(result < 0 ? 7 : result);
-        }
-        bool browserVisible = false;
-        juce::Rectangle<int> browserBounds;
-        MainComponent studio;
-        std::function<void(int)> finish;
-        juce::MenuBarModel* menus = nullptr;
-        juce::Component::SafePointer<juce::AudioProcessorEditor> firstEditor;
-        int command = 0;
-        double deadline = juce::Time::getMillisecondCounterHiRes() + 30000;
-    };
-    return std::make_unique<Probe>(std::move(finished));
-}
-
 int checkSamplePlacement(const juce::File& file) {
     MainComponent main;
     main.setSize(1650, 1400);
@@ -1410,6 +1331,38 @@ int checkSamplePlacement(const juce::File& file) {
             if (!output.openedOk() || !output.setPosition(0) || output.truncate().failed()
                 || !juce::PNGImageFormat{}.writeImageToStream(view.createComponentSnapshot(crop),output)) return 376;
         }
+        auto clickLane=[&](ostfstudio::TimelineLane lane) {
+            auto r=view.rowOverlay_.getBounds();
+            const int px=r.getX()+view.trackHeaderWidth+20;
+            int py=r.getY();
+            while(py<r.getBottom() && view.globalLaneAt({px,py})!=lane) ++py;
+            if(py==r.getBottom())return false;
+            const juce::Point<float> pos(float(px),float(py)+0.5f);
+            const auto now=juce::Time::getCurrentTime();
+            view.mouseDown(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),pos,
+                juce::ModifierKeys::leftButtonModifier,1,0,0,0,0,&view,&view,now,pos,now,1,false));
+            return view.globalEditor_.isVisible() && !view.pianoGrid_.isVisible()
+                && !view.audioEditor_.isVisible() && view.selectedGlobal_==lane;
+        };
+        for(auto lane:{ostfstudio::TimelineLane::section,ostfstudio::TimelineLane::key,ostfstudio::TimelineLane::meter,
+                       ostfstudio::TimelineLane::chord,ostfstudio::TimelineLane::scale})
+            if(!clickLane(lane)) return 386;
+        juce::ComboBox* preset=nullptr;
+        for(auto* child:view.globalEditor_.getChildren())
+            if(child->getTitle()==TRANS("Preset")) preset=dynamic_cast<juce::ComboBox*>(child);
+        auto* apply=findControl<juce::TextButton>(view.globalEditor_,TRANS("Apply"));
+        if(!preset || !apply || !apply->isEnabled())return 387;
+        const auto before=view.project_->sourceScore;
+        preset->setSelectedId(2,juce::sendNotificationSync);
+        apply->onClick();
+        auto score=juce::JSON::parse(view.project_->sourceScore.toString());
+        auto scale=ostfstudio::globalEventAt(score,ostfstudio::TimelineLane::scale,view.selectedGlobalTick_);
+        auto chord=ostfstudio::globalEventAt(score,ostfstudio::TimelineLane::chord,view.selectedGlobalTick_);
+        if(!scale["label"].toString().endsWith("Dorian") || scale["duration"]!=chord["duration"])return 388;
+        view.undoPianoEdit(false);
+        if(view.project_->sourceScore!=before)return 389;
+        view.selectTrack(0);
+        if(view.globalEditor_.isVisible() || !view.pianoGrid_.isVisible())return 390;
         view.selectedGlobal_=ostfstudio::TimelineLane::scale;
         view.selectedGlobalTick_=view.project_->ticksPerBar;
         view.globalCommand(1);
@@ -1611,7 +1564,7 @@ int checkTrackView(const juce::File& fixture) {
     if (!main.getName().contains(TRANS("Unsaved project"))
         || !tracks || tracks->getNumItems() != 0 || !menus || !menus->getModel()) return 13;
     auto& model = *menus->getModel();
-    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Edit"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")};
+    const juce::StringArray names {TRANS("File"), TRANS("View"), TRANS("Edit"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("Help")};
     if (model.getMenuBarNames() != names) return 38;
     const auto edit = model.getMenuForIndex(2, {});
     juce::StringArray editActions;
@@ -1628,7 +1581,7 @@ int checkTrackView(const juce::File& fixture) {
     const auto external = model.getMenuForIndex(6, {});
     juce::StringArray actions;
     for (juce::PopupMenu::MenuItemIterator it(external); it.next();) actions.add(it.getItem().text);
-    if (!actions.contains(TRANS("Open Splice Sounds")) || !actions.contains("Melodyne...") || !actions.contains("Ableton Link")) return 121;
+    if (!actions.contains(TRANS("About OSTF Studio"))) return 121;
     auto* examples = findControl<juce::TextEditor>(main, TRANS("Example prompts"));
     auto* connection = main.findChildWithID("chatgpt-connection");
     if (!examples || !examples->isReadOnly() || !connection || !connection->isVisible()) return 122;
@@ -1662,7 +1615,7 @@ int checkTrackView(const juce::File& fixture) {
     EditorClipLane exampleLane;
     exampleLane.clips = {{{1, 2}, "A"}, {{3, 5}, "B"}};
     if (exampleLane.at(1.5) != 1. || exampleLane.at(2.) || exampleLane.at(3.) != 3. || exampleLane.at(5.)) return 124;
-    const auto help = model.getMenuForIndex(7, {});
+    const auto help = model.getMenuForIndex(6, {});
     bool hasShortcuts = false;
     for (juce::PopupMenu::MenuItemIterator it(help); it.next();)
         if (it.getItem().text == TRANS("Shortcuts...")) hasShortcuts = it.getItem().isEnabled;

@@ -915,7 +915,7 @@ private:
                     if (scope!="section" && scope!="song") return;
                     if (!notes.isArray() || notes.size()==0 || notes.size()>100000 || duration<=0 || duration>86400000) return;
                     self->assignedScope=scope;
-                    self->proc.rack.audition(notes, false, duration);
+                    self->proc.rack.audition(notes, true, duration);
                     self->shownHostFlags=-1;
                 })
                 .withEventListener("ostfScalePreview", [self=juce::Component::SafePointer<Editor>(this),page](juce::var notes) {

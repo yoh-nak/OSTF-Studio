@@ -558,7 +558,11 @@ int main(int argc,char** argv) {
                 browser->evaluateJavascript(R"JS((()=>{
                     if(document.getElementById('hostNative'))return false;
                     const button=document.getElementById('hearSection');
-                    if(!button)return false;
+                    const sections=document.getElementById('auditionSection');
+                    if(!button || !sections?.options.length)return false;
+                    sections.selectedIndex=0;sections.dispatchEvent(new Event('change'));
+                    const midiOut=document.getElementById('hostPreviewOut');
+                    midiOut.checked=true;midiOut.dispatchEvent(new Event('change'));
                     button.click();
                     return button.getAttribute('aria-pressed')==='true';
                 })())JS",[&](auto evaluation){

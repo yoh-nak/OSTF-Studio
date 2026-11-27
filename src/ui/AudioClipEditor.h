@@ -13,7 +13,7 @@ public:
         loop.setComponentID("audio-loop");
         warp.setComponentID("audio-warp");
         setWantsKeyboardFocus(true);
-        for (auto* button : {&loop, &warp, &melodyne, &apply, &splice, &link}) addAndMakeVisible(button);
+        for (auto* button : {&loop, &warp, &link}) addAndMakeVisible(button);
         link.setClickingTogglesState(true);
         link.setTooltip(TRANS("Apply warp changes to aligned clips on other tracks with the same length and warp map"));
         addAndMakeVisible(beats);
@@ -22,7 +22,6 @@ public:
         channels.addItem(TRANS("Mono input"), 1);
         channels.addItem(TRANS("Stereo input"), 2);
         channels.setSelectedId(1, juce::dontSendNotification);
-        splice.onClick = [this] { if (onSplice) onSplice(); };
         loop.setClickingTogglesState(true);
         warp.setClickingTogglesState(true);
         beats.setEditableText(true);
@@ -47,16 +46,13 @@ public:
                 commit(edit);
             } else sync();
         };
-        apply.onClick = [this] { if (onApply) onApply(); };
-        melodyne.onClick = [this] { if (onMelodyne) onMelodyne(); };
     }
     ~AudioClipEditor() override { if (cancelAnalysis) cancelAnalysis->store(true); }
     bool linkWarp() const { return link.getToggleState(); }
     std::function<const ostfstudio::ProjectAudio*()> sourceClip;
     std::function<const ostfstudio::TempoMap&()> clock;
     std::function<void(const ostfstudio::ClipTiming&)> onEdit;
-    std::function<void()> onMelodyne, onApply, onSplice, selectWave;
-    std::function<bool()> hasWorkingCopy;
+    std::function<void()> selectWave;
     ArrangementRuler recordRuler;
     juce::ComboBox channels;
     void setTimelineColumns(int left, int right) {
@@ -83,11 +79,9 @@ public:
         const bool available = editable && clip && nativeLength > 0;
         updateGuide(clip);
         link.setEnabled(available);
-        loop.setEnabled(available); warp.setEnabled(available); melodyne.setEnabled(available);
-        apply.setVisible(available && hasWorkingCopy && hasWorkingCopy());
+        loop.setEnabled(available); warp.setEnabled(available);
         resized();
         channels.setEnabled(editable);
-        splice.setEnabled(editable);
         sync();
     }
     void resized() override {
@@ -101,10 +95,6 @@ public:
         warp.setBounds(row.removeFromLeft(row.getWidth() / 2).reduced(2, 1));
         beatCaption = row.removeFromRight(std::min(40, row.getWidth() / 3));
         beats.setBounds(row.reduced(2, 1));
-        row = tools.removeFromTop(h);
-        melodyne.setBounds(row.removeFromLeft(row.getWidth() / (apply.isVisible() ? 3 : 2)).reduced(2, 1));
-        if (apply.isVisible()) apply.setBounds(row.removeFromLeft(row.getWidth() / 2).reduced(2, 1));
-        splice.setBounds(row.reduced(2, 1));
         link.setBounds(tools.removeFromTop(h).reduced(2,1));
         recordRuler.setBounds(left, 0, std::max(0, std::min(timelineRight, getWidth()) - left), std::min(23, getHeight()));
     }
@@ -444,6 +434,6 @@ private:
     juce::int64 ticksPerBar = 1;
     double dragCycle = 0;
     juce::Rectangle<int> beatCaption;
-    juce::TextButton loop{TRANS("Loop")}, warp{TRANS("Warp")}, melodyne{"Melodyne"}, apply{TRANS("Apply edited WAV")}, splice{"Splice Sounds"},link{TRANS("Link aligned stems")};
+    juce::TextButton loop{TRANS("Loop")}, warp{TRANS("Warp")}, link{TRANS("Link aligned stems")};
     juce::ComboBox beats;
 };

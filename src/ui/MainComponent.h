@@ -18,6 +18,7 @@
 #include "ui/ArrangementRuler.h"
 #include "ui/AudioClipEditor.h"
 #include "ui/TempoEditor.h"
+#include "ui/GlobalLaneEditor.h"
 #include "ui/PianoInspector.h"
 #include "ui/VocalLane.h"
 #include "ui/PromptGuide.h"
@@ -524,16 +525,6 @@ private:
     ArrangementRuler ruler_, pianoRuler_;
     ostfstudio::ProjectAudio* clipOn(std::size_t track) const;
     void placeWav(const juce::File&, std::size_t track, juce::int64 tick, bool replace);
-    void openSplice();
-    void updateSplicePlayback();
-    void toggleLink();
-    void pollLink();
-    void editLinkTempo();
-    double linkQuantum() const;
-    std::unique_ptr<ostfstudio::LinkSession> link_;
-    int lastLinkPeers_ = -1;
-    double lastLinkTempo_ = 0;
-    bool lastLinkPlaying_ = false, followingLink_ = false;
     void aiConnectionMenu();
     void displayAiState(const juce::String&, juce::uint32);
     juce::String aiModel_;
@@ -571,11 +562,6 @@ private:
         }
     } aiButton_;
     juce::ThreadPool aiConnectionWorker_{1};
-    bool spliceLoading_ = false;
-    std::unique_ptr<juce::AudioPluginInstance> spliceInstance_;
-    juce::AudioProcessorPlayer splicePlayer_;
-    std::unique_ptr<juce::DocumentWindow> spliceWindow_;
-    bool spliceAuditionActive_ = false;
     EditorClipLane clipLane_;
     void refreshClipLane();
     struct ClipHit { size_t track; juce::String id; juce::int64 start, end; bool audio; };
@@ -598,18 +584,11 @@ private:
     struct MidiResize { std::size_t track; juce::String id; juce::int64 firstEnd, end, minEnd, maxEnd; };
     std::optional<MidiResize> resizingMidi_;
     void selectEditorClip(std::optional<double> bar, bool locate);
-    void editMelodyneCopy();
-    void applyMelodyneCopy();
-    struct MelodyneCopy {
-        juce::File wav;
-        juce::String originalHash, workingHash;
-        juce::int64 startFrame, frames, startTick, durationTicks;
-    };
-    std::map<juce::String, MelodyneCopy> melodyneCopies_;
     void openEffectEditor(bool output, std::size_t index, std::size_t slot);
     AudioClipWaveforms waveforms_;
     AudioClipEditor audioEditor_{waveforms_};
     TempoEditor tempoEditor_;
+    GlobalLaneEditor globalEditor_;
     std::optional<std::size_t> resizingAudio_;
     bool resizingAudioStart_ = false, movingAudio_ = false;
     juce::int64 audioGrabOffset_ = 0;

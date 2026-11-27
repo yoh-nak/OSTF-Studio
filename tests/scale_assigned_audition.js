@@ -21,6 +21,13 @@ const doc = {
         {start:2400, duration:240, type:'improvisation', parameters:{pitchSource:{type:'explicitScale',scale}}}
     ]}]
 };
+const unassigned={...doc,harmony:{chords:[{id:'example',start:480,duration:960}],scales:[]}};
+const pristine=JSON.stringify(unassigned);
+const candidatePlan=page.SA.auditionPlan(unassigned,'harmony',scope.range(unassigned,'section',null,null,section.id),()=>scale);
+assert.equal(candidatePlan.suggested,true);
+assert.equal(candidatePlan.notes[0].at,0);
+assert.equal(candidatePlan.notes[0].note,62);
+assert.equal(JSON.stringify(unassigned),pristine);
 const original=JSON.stringify(doc);
 const selection=scope.range(doc,'section',null,null,section.id);
 const song=scope.range(doc,'song');

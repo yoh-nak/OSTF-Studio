@@ -150,7 +150,7 @@ In the upcoming release, mixer strips have metal-capped level faders and separat
 
 Choose AI Arrangement Studio, AI Lyric Studio or AI Vocal Studio from the **Mode** menu. The prompt guide beside the global timeline headings cycles through three example requests for the selected mode every 15 seconds. The previous and next buttons reset the reading time. The ChatGPT connection button sits at the right of the top toolbar, alongside the model selector and refresh button when signed in. Open **Settings → Mackie Control** to connect a control surface. Drag an analysed part onto a compatible track or into the arrangement to create one. Its notes extend the song as needed. Melody track bodies open at 100 px.
 
-The **External connections** menu opens Splice, Melodyne and Ableton Link. Select an audio clip in the arrangement or the lower clip lane to open its source range in Melodyne. Opening Melodyne without a selection launches the standalone editor. Enable Link in both Live and Studio and enable Start Stop Sync in Live to share transport. The Link tempo menu shows the connected peer count. Audio capture holds its starting tempo for the duration of a take.
+Click a scale, chord, key, meter or section in the arrangement to edit it in the lower pane. The section and chord selectors locate a musical passage. On an empty scale lane, choose a tonic and scale preset and press **Apply**. Select a chord in the lower list and enable **This chord only** to change its part of a longer scale clip. Scale Editor auditions a named section or the whole song. If the range has no assignments, it plays suggested scales and labels them as suggestions.
 
 OSTF Studio is intended to become an AI-native DAW with OSTF 5.0 as canonical musical score, OSTFP as the project format, a powerful global musical timeline, VST3/AU hosting, optional audio assets, AI arrangement, and future distributed sessions.
 
@@ -182,9 +182,9 @@ Use **File → Import and transcription** to analyse audio, MIDI or a PDF score.
 
 ## Audio clip editing (development build)
 
-Select an audio track to open its waveform below the arrangement. Enable **Loop** and drag the clip’s amber right edge to repeat it. **Warp (re-pitch)** fits one cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker and drag it to move that point in time. Pitch follows the change in speed. Choose **External connections → Open Splice Sounds** to open the scanned Splice Sounds VST3 in its own window. Studio accepts a downloaded WAV on an audio track. [Splice plugin and plan details](https://support.splice.com/en/articles/12997860-splice-sounds-plugin-faq)
+Select an audio track to open its waveform. Enable **Loop** and drag the right edge to repeat the clip. **Warp (re-pitch)** fits a cycle to the chosen number of quarter notes. Double-click the waveform to add or remove a marker, then drag it to adjust timing. Load installed Melodyne or Splice VST3 plug-ins through the plug-in browser. Downloaded WAV files can be dropped onto an audio track.
 
-Press **Melodyne** in the waveform editor to open the selected source as a working WAV in Melodyne standalone. Use **Replace Audio** in Melodyne, then **Apply edited WAV** in Studio to keep the edited audio in your project. The Theory Guide groups cadences directly on the degree row. The function row stays available underneath.
+In another DAW, enable **Follow DAW transport** in Studio VST3 to follow play, stop and seek by elapsed time. Align the first downbeat, tempo changes and time signatures in the two projects for matching bar numbers. Studio plays the tempo map stored in the OSTF score.
 
 ## Wave Analyzer (development build)
 

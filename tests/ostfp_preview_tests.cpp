@@ -162,6 +162,28 @@ static int checkGallery(const juce::File& directory) {
             if (project->changeGlobalEvents(TimelineLane::scale,{}, {scale},before).failed()
                 || project->contextAt(TimelineLane::scale,bar+120)!="dorian-test") return 133;
             source=juce::JSON::parse(project->sourceScore.toString());
+            {
+                auto linked=source.clone();
+                auto track=linked["tracks"][0];
+                auto direction=juce::JSON::parse(R"({"id":"reference-split","type":"improvisation","parameters":{"pitchSource":{"type":"harmonyScales","scaleIds":["dorian-test"]},"adherence":"preferred"}})");
+                direction.getDynamicObject()->setProperty("start",scale["start"]);
+                direction.getDynamicObject()->setProperty("duration",scale["duration"]);
+                auto dirs=track.getProperty("directions",juce::Array<juce::var>{}).clone();
+                dirs.getArray()->add(direction);
+                track.getDynamicObject()->setProperty("directions",dirs);
+                const auto text=juce::JSON::toString(linked);
+                juce::MemoryInputStream stream(text.toRawUTF8(),text.getNumBytesAsUTF8(),false);
+                std::unique_ptr<ostfstudio::OstfpPreview> edited;
+                if(ostfstudio::readOstfPreview(stream,edited).failed())return 175;
+                juce::Array<juce::var> removed,pieces;
+                juce::MemoryBlock snapshot;
+                if(ostfstudio::globalBoundaryEdit(linked,TimelineLane::scale,bar+240,edited->durationTicks,true,false,removed,pieces).failed()
+                    || edited->changeGlobalEvents(TimelineLane::scale,removed,pieces,snapshot).failed())return 176;
+                auto result=juce::JSON::parse(edited->sourceScore.toString());
+                auto saved=result["tracks"][0]["directions"];
+                auto ids=saved[saved.size()-1]["parameters"]["pitchSource"]["scaleIds"];
+                if(ids.size()!=2 || ids[0]!=scale["id"] || ids[1]!=pieces[1]["id"])return 177;
+            }
             auto songScale=scale.clone();
             songScale.getDynamicObject()->removeProperty("start");
             songScale.getDynamicObject()->removeProperty("duration");

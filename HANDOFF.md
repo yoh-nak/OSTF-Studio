@@ -1,5 +1,17 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — Arrangement lane editing and Scale Editor audition
+
+Branch `codex/global-lane-editors` starts from `55c6dcd`. Select a section, chord, key, scale or meter clip in the arrangement to open the lower editor. The selectors and chord list share the arrangement selection. A new scale follows the clicked chord, bounded by adjoining scales. For an existing scale spanning several chords, **This chord only** preserves the other pieces and their harmony-scale references. Project changes use Studio's score validation, undo history and Scale Editor connection. The voicing track has its own group heading.
+
+Scale Editor exposes the audition section next to Play and Stop. The factory Paper Lantern Replies project has chords and no saved scales. An entirely unassigned range plays labelled suggestions; partially assigned ranges retain their rests. The assigned-scale commands always address the audition instrument, including the internal reference tone. With the transport stopped, an unarmed editor's preview reaches the master on a muted track.
+
+Splice and Melodyne use the normal VST3 browser. The dedicated external connections menu, standalone WAV exchange and network Link transport were retired. In another DAW, Studio VST3 follows host seconds through the score tempo map. A matching first downbeat, tempo map and meter map are required for identical bar numbers.
+
+Build the standalone, Studio VST3 and Scale Editor VST3 with the normal Release configuration. The track-view smoke test opens the lower editor from each lane and writes and undoes a scale. The gallery test checks track direction references after splitting a scale, transport smoke covers muted monitoring, and the Scale Editor WebView test clicks the audition controls and measures audio.
+
+Windows x64 Release passed all 48 CTests. With the bundled Paper Lantern Replies score, the audition planner produced 32 notes for Intro and 448 for the whole song, both beginning at zero. Local Setup and Portable ZIP were built in `E:/OSTF-Studio-build-cache/global-lane-editors`. ZIP CRC verification passed, and the extracted standalone and all 41 VST3 binaries matched their build outputs by SHA-256. The installer was not run. macOS, physical listening and commercial DAW/third-party plug-in interaction were not rechecked for this change.
+
 ## 2026-11-27 — SUPER KNOBBER REVERB, mix export and track bounce
 
 Branch `codex/knobber-reverb-audio-export` adds the independent stereo VST3 effect `Skr1`. The source is the supplied SUPER KNOBBER REVERB v1.0 device, SHA-256 `95a376328808e8911e45ddd30ced3ad4396cf131e8befe1a0c5e61d9eca758de`. Run `python tools/import_knobber_reverb.py <device.amxd>` to regenerate the delay network and preset tables, then clang-format the three generated C++ files. The 49 algorithms, 13 source profiles and 10 styles use the original control mappings. The two shimmer harmonies use Signalsmith Stretch.

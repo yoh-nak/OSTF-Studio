@@ -118,7 +118,7 @@ bool stackTimelineNavigation(int innerWidth, int workspaceHeight) {
 
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
-                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, trackTakeMenu, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal, exportMusicXml, exportChordPro, showSamplesPane, moveRowUp, moveRowDown,
+                   exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, trackTakeMenu, studioArrangement, studioLyric, studioVocal, exportMusicXml, exportChordPro, showSamplesPane, moveRowUp, moveRowDown,
                    printLeadSheet, printPartScore, openLiveSession, pasteScaleReturn, exportSvpLead, exportSvpChorus, exportSvpAll, exportMixAudio, bounceTrackAudio };
 constexpr struct { const char* name; const char* first; const char* second; const char* third; } studioModes[] {
     {"AI Arrangement Studio", "Keep just piano and bass in the verse. Suggest an eight-bar build into the chorus.",
@@ -1190,6 +1190,11 @@ MainComponent::MainComponent(ostfstudio::HostAudio* host) : hostAudio_(host) {
     aiButton_.setTooltip(TRANS("Connect ChatGPT or choose the analysis model."));
     if (!hostAudio_ && viewPreferences_.getUserSettings()->getBoolValue("studioChatGptBrowserLogin", false)) updateAiConnection(AccountAction::restore);
     addChildComponent(audioEditor_);
+    addChildComponent(globalEditor_);
+    globalEditor_.navigate = [this](juce::int64 tick) { selectedGlobalTick_=tick; refreshEditor(); repaint(); };
+    globalEditor_.commit = [this](juce::Array<juce::var> remove, juce::Array<juce::var> insert) {
+        if (selectedGlobal_) applyGlobalChange(*selectedGlobal_,std::move(remove),std::move(insert));
+    };
     addChildComponent(tempoEditor_);
     tempoEditor_.visibleBars = [this] { return arrangementScroll_.getCurrentRange(); };
     tempoEditor_.edit = [this](juce::int64 start, double from, juce::int64 end, double to) {
@@ -1209,18 +1214,12 @@ MainComponent::MainComponent(ostfstudio::HostAudio* host) : hostAudio_(host) {
     };
     audioEditor_.sourceClip = [this] { return selectedTrack_ ? clipOn(*selectedTrack_) : nullptr; };
     audioEditor_.clock = [this]() -> const ostfstudio::TempoMap& { return auditionClock_ ? *auditionClock_ : project_->clock; };
-    audioEditor_.onSplice = [this] { openSplice(); };
     audioEditor_.selectWave = [this] {
         if (auto* clip = audioEditor_.sourceClip()) {
             selectedAudioId_=clip->regionId;
             clipLane_.selected=1.+double(clip->startTick)/project_->ticksPerBar;
             clipLane_.repaint();
         }
-    };
-    audioEditor_.onMelodyne = [this] { audioEditor_.selectWave(); editMelodyneCopy(); };
-    audioEditor_.onApply = [this] { applyMelodyneCopy(); };
-    audioEditor_.hasWorkingCopy = [this] {
-        return project_ && selectedTrack_ && audioEditor_.sourceClip() && melodyneCopies_.contains(audioEditor_.sourceClip()->regionId);
     };
     audioEditor_.onEdit = [this](const ostfstudio::ClipTiming& edit) {
         auto* clip = selectedTrack_ ? clipOn(*selectedTrack_) : nullptr;
@@ -1309,7 +1308,7 @@ MainComponent::MainComponent(ostfstudio::HostAudio* host) : hostAudio_(host) {
     newProject();
 }
 
-juce::StringArray MainComponent::getMenuBarNames() { return {TRANS("File"), TRANS("View"), TRANS("Edit"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("External connections"), TRANS("Help")}; }
+juce::StringArray MainComponent::getMenuBarNames() { return {TRANS("File"), TRANS("View"), TRANS("Edit"), TRANS("Track"), TRANS("Mode"), TRANS("Settings"), TRANS("Help")}; }
 
 juce::PopupMenu MainComponent::timelineMenu() const {
     juce::PopupMenu lanes;
@@ -1570,17 +1569,6 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             break;
         }
         case 6:
-            menu.addItem(externalSplice, TRANS("Open Splice Sounds"));
-            menu.addItem(externalMelodyne, "Melodyne...", !recordTrack_);
-            menu.addSeparator();
-            menu.addItem(externalLink, "Ableton Link", !recordTrack_, link_ != nullptr);
-            if (link_) {
-                const auto state = link_->state(linkQuantum());
-                menu.addItem(linkTempoItem, TRANS("Link tempo") + "  " + juce::String(state.tempo, 2) + " BPM   /   " +
-                             juce::String(int(state.peers)) + " " + TRANS("peers") + "...", !recordTrack_);
-            }
-            break;
-        case 7:
             menu.addItem(showShortcuts, TRANS("Shortcuts..."));
             menu.addItem(showAbout, TRANS("About OSTF Studio"));
             break;
@@ -1800,10 +1788,6 @@ void MainComponent::menuItemSelected(int item, int) {
         case removeTrack:
             if (selectedTrack_) confirmRemoval(false, *selectedTrack_);
             break;
-        case externalSplice: openSplice(); break;
-        case externalMelodyne: editMelodyneCopy(); break;
-        case externalLink: toggleLink(); break;
-        case linkTempoItem: editLinkTempo(); break;
         case showShortcuts: showShortcutList(); break;
         case showAbout:
             juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
@@ -2110,7 +2094,9 @@ template<class Heading, class Track>
 void visitArrangementRows(const ostfstudio::OstfpPreview& project, const std::vector<size_t>& order, Heading heading, Track draw) {
     bool special = false, arrangement = false;
     for (const auto track : order) {
-        if (project.chordVoicingTrack != track) {
+        if (project.chordVoicingTrack == track) {
+            heading("VOICING TRACK");
+        } else {
             if (!special && (project.isMelodyOrLyricTrack(track) || !project.specialTrackNames.isEmpty())) {
                 heading("MELODY / LYRICS TRACKS");
                 special = true;
@@ -2644,9 +2630,6 @@ MainComponent::~MainComponent() {
     surfaceDevices_ = {};
     songReader_.removeAllJobs(true, -1);
     aiConnectionWorker_.removeAllJobs(true, -1);
-    if (spliceAuditionActive_ && deviceSettings_) deviceSettings_->devices().removeAudioCallback(&splicePlayer_);
-    splicePlayer_.setProcessor(nullptr);
-    spliceWindow_.reset();
     attachPadInput(false);
     stopTimer();
     transport_.stop();
@@ -2858,6 +2841,7 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
             route.monitorGain=juce::Decibels::decibelsToGain(float(input.gainDb));
         }
         const bool previewEditor = track.editor && track.editor->isVisible() && track.instance && track.instance->getName()=="OSTF Scale Editor";
+        route.auditionToMaster = monitorOnly && previewEditor && (!inputTrack || i != monitorDest);
         if (monitorOnly && (!inputTrack || i != monitorDest) && !previewEditor) route.instrument = nullptr;
         if (const auto out = midiOutputs_.find(project_->trackIds[int(i)]); out != midiOutputs_.end()) {
             route.outputTrack.reset();
@@ -2937,12 +2921,6 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
         return;
     }
     if (recording) cancelPadLearn();
-    if (link_ && !monitorOnly) {
-        take.link = link_.get();
-        take.linkQuantum = linkQuantum();
-        take.announceLinkStart = !followingLink_;
-        take.linkTempo = link_->state(take.linkQuantum).tempo;
-    }
     const auto result = transport_.start(deviceSettings_->devices(), *project_, recording, tracks, inserts, start,
                                          auditionShift_, auditionRate_, inputTrack, &take, monitorOnly);
     if (result.failed()) {
@@ -2953,7 +2931,6 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
     transportActive_ = true;
     livePerformanceActive_ = !take.sections.empty();
     if(livePerformanceActive_) stagedCues_.clear();
-    if (take.link) lastLinkPlaying_ = true;
     activeLoop_ = recording ? take.cycle : juce::Range<juce::int64>{};
     recordTrack_ = recording ? selectedTrack_ : std::nullopt;
     recordingTake_=recordTrack_ ? editingTake(*recordTrack_,takeRange()) : 0;
@@ -2981,10 +2958,6 @@ void MainComponent::startTransport(bool recording, bool replaceConfirmed, bool m
 void MainComponent::stopTransport() {
     if (transportActive_) {
         livePerformanceActive_ = false;
-    }
-    if (transportActive_ && link_ && !followingLink_) {
-        link_->stop();
-        lastLinkPlaying_ = false;
     }
     if (!transportActive_) {
         if (monitorActive_) {
@@ -3017,7 +2990,6 @@ void MainComponent::stopTransport() {
                 }
                 if(clips.size()==audioArms_.size()) {
                     for(auto& clip:clips) {
-                        melodyneCopies_.erase(project_->trackIds[int(clip.track)]);
                         project_->audio.push_back(std::move(clip));
                     }
                     waveforms_.load(project_->audio); markSessionEdited(); added=true;
@@ -3027,7 +2999,6 @@ void MainComponent::stopTransport() {
                 else project_->audio.push_back(std::move(*clip));
                 waveforms_.load(project_->audio);
                 markSessionEdited();
-                melodyneCopies_.erase(project_->trackIds[int(*recordTrack_)]);
                 added = true;
             } else failure = TRANS("No audio captured");
         }
@@ -3058,7 +3029,7 @@ void MainComponent::stopTransport() {
     for (auto* button : {&deck_.home, &deck_.rewind, &deck_.forward, &deck_.end}) button->setEnabled(true);
     displayTransportPosition(parked.tick, parked.seconds);
     monitorPending_ = armedId_.isNotEmpty() || scaleEditorMonitoring();
-    if (link_ || hasAudioInputs_ || monitorPending_) startTimerHz(24); else stopTimer();
+    if (hasAudioInputs_ || monitorPending_) startTimerHz(24); else stopTimer();
     for (auto& track : trackControls_) track->meter.clear();
     for (auto& output : outputControls_) output.meter.clear();
     mixer_.clearMeters();
@@ -3220,8 +3191,7 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, c
     }
     if (scoreView_ && scoreView_->isVisible()) scoreView_->playbackPosition(tick);
     if (!project_) return;
-    const auto bpm = project_->clock.bpmAt(std::max<juce::int64>(0, tick));
-    const auto rate = link_ && bpm > 0 ? link_->state(linkQuantum()).tempo / bpm : auditionRate_;
+    const auto rate = auditionRate_;
     deck_.setPosition(*project_, std::max<juce::int64>(0, tick), seconds, auditionShift_, rate,
                       transportActive_ ? transport_.countInSeconds() : 0.);
     for (const auto& [id, envelope] : project_->panAutomation) {
@@ -3264,14 +3234,13 @@ void MainComponent::displayTransportPosition(juce::int64 tick, double seconds, c
 void MainComponent::timerCallback() {
     if (std::erase_if(cellPlayers_,[](const auto& c){return !c.second->transport.isRunning();}))
         liveMatrix_.refreshVisibleRows();
-    pollLink();
     if (hasAudioInputs_) updateInputMeters();
     if (drumPads_.isVisible()) { drumPads_.repaint(); drumSteps_.repaint(); }
     if (!transportActive_ && !monitorActive_ && monitorPending_ && canEditTracks()) {
         monitorPending_ = false;
         startTransport(false, false, true);
     }
-    if (!transportActive_ && !monitorActive_) { if (!hasAudioInputs_ && !monitorPending_ && !link_) stopTimer(); return; }
+    if (!transportActive_ && !monitorActive_) { if (!hasAudioInputs_ && !monitorPending_) stopTimer(); return; }
     if (!transport_.isRunning()) { stopTransport(); return; }
     if (recordTrack_ && transport_.countingIn())
         statusLabel_.setText(TRANS("Count-in"), juce::dontSendNotification);
@@ -3411,7 +3380,6 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     pianoRuler_.cycleMode = audioEditor_.recordRuler.cycleMode = false;
     scoreView_.reset();
     selectedGlobal_.reset();
-    melodyneCopies_.clear();
     clipLane_.selected.reset();
     project_ = std::move(next);
     reorderSource_.reset();
@@ -4157,7 +4125,6 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
     theory_.reset();
     refreshTheory();
     waveforms_.load(project_->audio);
-    std::erase_if(melodyneCopies_, [this](const auto& copy) { return !project_->trackIds.contains(copy.first); });
     resizingAudio_.reset();
     draggingMidi_.reset();
     dragPreview_.reset();
@@ -5646,19 +5613,6 @@ void MainComponent::showEffects(bool output, std::size_t index) {
     juce::CallOutBox::launchAsynchronously(std::move(panel), getLocalArea(&chain.button, chain.button.getLocalBounds()), this);
 }
 
-namespace {
-juce::File melodyneApplication() {
-#if JUCE_WINDOWS
-    return juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory)
-        .getChildFile("Celemony/Melodyne 5/Melodyne.exe");
-#elif JUCE_MAC
-    return juce::File("/Applications/Melodyne 5/Melodyne.app");
-#else
-    return {};
-#endif
-}
-}
-
 void MainComponent::refreshClipLane() {
     clipLane_.clips.clear();
     if (project_ && selectedTrack_ && *selectedTrack_ < project_->trackLanes.size()) {
@@ -5783,86 +5737,6 @@ void MainComponent::selectEditorClip(std::optional<double> bar, bool locate) {
         locateTransport(std::llround((*bar - project_->bars.firstBar) * project_->ticksPerBar), &arrangementScroll_);
 }
 
-void MainComponent::editMelodyneCopy() {
-    const auto* clip = audioEditor_.sourceClip();
-    if (recordTrack_) return;
-    if (!clip || !selectedTrack_ || !clipLane_.selected || selectedGlobal_) {
-        const auto app = melodyneApplication();
-        if (!app.exists() || !app.startAsProcess())
-            statusLabel_.setText(TRANS("Melodyne standalone could not be opened."), juce::dontSendNotification);
-        return;
-    }
-    const auto source = sourceWavBytes(*clip);
-    juce::int64 frames = 0, first = 0;
-    const auto bytes = ostfstudio::clipWav(*clip, source, project_->clock, frames, &first);
-    const auto digest = juce::SHA256(source).toHexString();
-    if (bytes.isEmpty() || (clip->sha256.isNotEmpty() && digest != clip->sha256)) {
-        statusLabel_.setText(TRANS("The source has changed. Create a new working copy."), juce::dontSendNotification);
-        return;
-    }
-    const auto id = clip->regionId;
-    auto it = melodyneCopies_.find(id);
-    if (it == melodyneCopies_.end() || it->second.originalHash != digest || it->second.startFrame != first
-        || it->second.frames != frames || it->second.startTick != clip->startTick || it->second.durationTicks != clip->durationTicks
-        || !it->second.wav.existsAsFile()) {
-        auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
-            .getChildFile("OSTF Studio").getChildFile("Melodyne").getChildFile(juce::Uuid().toString());
-        auto name = juce::File::createLegalFileName(juce::File::isAbsolutePath(clip->path)
-            ? juce::File(clip->path).getFileName() : clip->path.fromLastOccurrenceOf("/", false, false));
-        const auto copy = folder.getChildFile(name.isEmpty() ? "Clip.wav" : name).withFileExtension(".wav");
-        if (folder.createDirectory().failed() || !copy.replaceWithData(bytes.getData(), bytes.getSize())) {
-            statusLabel_.setText(TRANS("Could not save the working WAV"), juce::dontSendNotification);
-            return;
-        }
-        it = melodyneCopies_.insert_or_assign(id, MelodyneCopy{copy, digest, juce::SHA256(bytes).toHexString(), first, frames, clip->startTick, clip->durationTicks}).first;
-    }
-    const auto& copy = it->second.wav;
-    const auto app = melodyneApplication();
-#if JUCE_MAC
-    juce::ChildProcess opener;
-    const bool opened = app.isDirectory() && opener.start(juce::StringArray{"/usr/bin/open", "-a", app.getFullPathName(), copy.getFullPathName()});
-#else
-    const bool opened = app.existsAsFile() && app.startAsProcess(copy.getFullPathName().quoted());
-#endif
-    refreshEditor();
-    statusLabel_.setText((opened ? TRANS("Use Replace Audio in Melodyne, then Apply edited WAV")
-                                 : TRANS("Open this WAV in Melodyne, then use Apply edited WAV")) + "   " + copy.getFullPathName(),
-                         juce::dontSendNotification);
-}
-
-void MainComponent::applyMelodyneCopy() {
-    if (!selectedTrack_ || recordTrack_) return;
-    auto* clip = clipOn(*selectedTrack_);
-    if (!clip) return;
-    const auto it = melodyneCopies_.find(clip->regionId);
-    if (!clip || it == melodyneCopies_.end()) return;
-    const auto& copy = it->second;
-    juce::int64 frames = 0, first = 0;
-    const auto current = ostfstudio::clipWav(*clip, sourceWavBytes(*clip), project_->clock, frames, &first);
-    if (copy.startFrame != first || copy.startTick != clip->startTick || copy.durationTicks != clip->durationTicks
-        || frames != copy.frames || juce::SHA256(current).toHexString() != copy.workingHash) {
-        statusLabel_.setText(TRANS("The source has changed. Create a new working copy."), juce::dontSendNotification);
-        return;
-    }
-    if (juce::SHA256(copy.wav).toHexString() == copy.workingHash) {
-        statusLabel_.setText(TRANS("Use Replace Audio in Melodyne, then Apply edited WAV"), juce::dontSendNotification);
-        return;
-    }
-    ostfstudio::ProjectAudio edited;
-    const auto check = ostfstudio::prepareEditedWav(*clip, it->second.wav, it->second.originalHash, edited, frames, first);
-    if (check.failed()) {
-        statusLabel_.setText(juce::translate(check.getErrorMessage()), juce::dontSendNotification);
-        return;
-    }
-    const bool playing = transportActive_;
-    if (playing) stopTransport();
-    *clip = std::move(edited);
-    melodyneCopies_.erase(it);
-    markSessionEdited();
-    waveforms_.load(project_->audio);
-    finishNoteEdit(playing);
-    statusLabel_.setText(TRANS("Edited WAV applied") + "   " + clip->path, juce::dontSendNotification);
-}
 
 void MainComponent::displayAiState(const juce::String& state, juce::uint32 colour) {
     aiButton_.setButtonText(state);
@@ -5997,113 +5871,6 @@ void MainComponent::aiConnectionMenu() {
                        });
 }
 
-double MainComponent::linkQuantum() const {
-    return project_ && project_->ppq > 0 ? std::max(1.0, double(project_->ticksPerBar) / project_->ppq) : 4.0;
-}
-
-void MainComponent::toggleLink() {
-    if (recordTrack_) return;
-    const bool playing = transportActive_;
-    const juce::ScopedValueSetter<bool> internal(followingLink_, true);
-    if (playing) stopTransport();
-    if (link_) {
-        link_.reset();
-        if (project_) displayTransportPosition(cursorTick_);
-        lastLinkPlaying_ = false;
-    } else {
-        const auto tempo = project_ ? project_->clock.bpmAt(std::max<juce::int64>(0, cursorTick_)) * auditionRate_ : 120.0;
-        lastLinkPeers_ = -1;
-        lastLinkTempo_ = 0;
-        link_ = std::make_unique<ostfstudio::LinkSession>(tempo > 0 ? tempo : 120);
-        lastLinkPlaying_ = false;
-        startTimerHz(24);
-    }
-    if (playing) {
-        const juce::ScopedValueSetter<bool> publish(followingLink_, false);
-        startTransport(false);
-    }
-}
-
-void MainComponent::pollLink() {
-    if (!link_ || !project_) return;
-    const auto state = link_->state(linkQuantum());
-    const juce::ScopedValueSetter<bool> internal(followingLink_, true);
-    if (int(state.peers) != lastLinkPeers_) {
-        lastLinkPeers_ = int(state.peers);
-        statusLabel_.setText(lastLinkPeers_ == 0 ? TRANS("Ableton Link: waiting for peers")
-            : "Ableton Link: " + juce::String(lastLinkPeers_) + " " + TRANS("peers"), juce::dontSendNotification);
-    }
-    if (std::abs(lastLinkTempo_ - state.tempo) > .001) {
-        lastLinkTempo_ = state.tempo;
-        if (!transportActive_) displayTransportPosition(cursorTick_);
-    }
-    if (state.playing != lastLinkPlaying_) {
-        if (state.playing && !transportActive_ && !canEditTracks()) return;
-        lastLinkPlaying_ = state.playing;
-        if (state.playing && !transportActive_) startTransport(false);
-        else if (!state.playing && transportActive_) stopTransport();
-    }
-}
-
-void MainComponent::editLinkTempo() {
-    if (!link_ || recordTrack_) return;
-    auto* dialog = new juce::AlertWindow("Ableton Link", TRANS("Link tempo"), juce::MessageBoxIconType::NoIcon);
-    dialog->addTextEditor("bpm", juce::String(link_->state(linkQuantum()).tempo, 2), "BPM");
-    dialog->addButton(TRANS("Apply"), 1, juce::KeyPress(juce::KeyPress::returnKey));
-    dialog->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
-    dialog->enterModalState(true, juce::ModalCallbackFunction::create(
-        [safe = juce::Component::SafePointer<MainComponent>(this), dialog](int result) {
-            const double tempo = dialog->getTextEditorContents("bpm").getDoubleValue();
-            if (result && safe && safe->link_ && tempo >= 20 && tempo <= 999) safe->link_->setTempo(tempo);
-        }), true);
-}
-
-void MainComponent::openSplice() {
-    if (spliceWindow_) {
-        showStudioWindow(*spliceWindow_, *this);
-        updateSplicePlayback();
-        return;
-    }
-    if (spliceLoading_) return;
-    auto& browser = ensurePluginBrowser();
-    for (const auto& type : browser.types()) {
-        if (type.pluginFormatName != "VST3" || !type.name.trim().equalsIgnoreCase("Splice Sounds")) continue;
-        auto* device = ensureDeviceSettings().devices().getCurrentAudioDevice();
-        spliceLoading_ = true;
-        statusLabel_.setText(TRANS("Loading Splice Sounds..."), juce::dontSendNotification);
-        pluginFormats_.createPluginInstanceAsync(type, device ? device->getCurrentSampleRate() : 44100.,
-            device ? device->getCurrentBufferSizeSamples() : 512,
-            [safe = juce::Component::SafePointer<MainComponent>(this)](std::unique_ptr<juce::AudioPluginInstance> instance, const juce::String& error) {
-                if (!safe) return;
-                safe->spliceLoading_ = false;
-                std::unique_ptr<juce::AudioProcessorEditor> editor(instance ? instance->createEditorAndMakeActive() : nullptr);
-                if (!editor) {
-                    safe->statusLabel_.setText(TRANS("Could not open Splice Sounds") + " " + error, juce::dontSendNotification);
-                    return;
-                }
-                safe->spliceInstance_ = std::move(instance);
-                safe->splicePlayer_.setProcessor(safe->spliceInstance_.get());
-                auto window = std::make_unique<PluginWindow>("Splice Sounds");
-                window->attachEditor(std::move(editor));
-                window->centreAroundComponent(safe.getComponent(), window->getWidth(), window->getHeight());
-                window->onClosed = [safe] { if (safe) safe->updateSplicePlayback(); };
-                safe->spliceWindow_ = std::move(window);
-                showStudioWindow(*safe->spliceWindow_, *safe);
-                safe->statusLabel_.setText("Splice Sounds", juce::dontSendNotification);
-                safe->updateSplicePlayback();
-            });
-        return;
-    }
-    statusLabel_.setText(TRANS("Install the Splice Sounds instrument from Splice, then scan your VST3 plugins."), juce::dontSendNotification);
-}
-
-void MainComponent::updateSplicePlayback() {
-    const bool active = spliceWindow_ && spliceWindow_->isVisible();
-    if (active == spliceAuditionActive_) return;
-    if (active) deviceSettings_->devices().addAudioCallback(&splicePlayer_);
-    else deviceSettings_->devices().removeAudioCallback(&splicePlayer_);
-    spliceAuditionActive_ = active;
-}
 
 namespace {
 class StudioScaleWriter final : public ostfstudio::scale::ProjectWriter {
@@ -6956,7 +6723,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
     dragPreview_.reset();
     arrangementClipFocus_ = false;
     pendingMidiDrag_.reset();
-    const bool wasTempo = selectedGlobal_ == TimelineLane::tempo;
+    const bool wasLaneEditor = selectedGlobal_ && (selectedGlobal_ == TimelineLane::tempo || GlobalLaneEditor::supports(*selectedGlobal_));
     if (!rowOverlay_.isVisible() || !rowOverlay_.getBounds().contains(event.getPosition())) return;
     if (auto lane = globalLaneAt(event.getPosition())) {
         if (chordReviewBlocksSwitch() || (*lane == TimelineLane::tempo && recordTrack_)) return;
@@ -6966,11 +6733,11 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
             ? std::max<juce::int64>(0, cursorTick_) : arrangementTickAt(event.x);
         if (clipTool_ != ClipTool::select && event.mods.isLeftButtonDown() && !event.mods.isPopupMenu()
             && event.x >= rowOverlay_.getX() + trackHeaderWidth) { editGlobalBoundary(clipTool_ == ClipTool::split); return; }
-        if (*lane == TimelineLane::tempo) {
+        if (*lane == TimelineLane::tempo || GlobalLaneEditor::supports(*lane)) {
             trackEditorOpen_ = true;
             mixerSelected_ = false;
             refreshEditor();
-        } else if (wasTempo) refreshEditor();
+        } else if (wasLaneEditor) refreshEditor();
         grabKeyboardFocus();
         repaint();
         if (event.mods.isPopupMenu()) {
@@ -7006,7 +6773,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
         return;
     }
     selectedGlobal_.reset();
-    if (wasTempo) refreshEditor();
+    if (wasLaneEditor) refreshEditor();
     if (event.mods.isPopupMenu()) {
         if (auto output = outputDropTrack(event.getPosition())) showRowMenu(true, *output);
         else if (auto track = pluginDropTrack(event.getPosition())) {
@@ -7968,10 +7735,14 @@ void MainComponent::refreshEditor() {
     mixerButton_.setToggleState(showMixer, juce::dontSendNotification);
     const bool editing = arranging && project_ && trackEditorOpen_ && !showMixer;
     const bool tempo = editing && selectedGlobal_ == TimelineLane::tempo;
+    const bool musical = editing && selectedGlobal_ && GlobalLaneEditor::supports(*selectedGlobal_);
+    globalEditor_.setVisible(musical);
+    if (musical) globalEditor_.bind(juce::JSON::parse(project_->sourceScore.toString()),*selectedGlobal_,
+        selectedGlobalTick_,project_->ticksPerBar,project_->durationTicks,project_->bars.firstBar,!recordTrack_);
     tempoEditor_.setVisible(tempo);
     if (tempo) tempoEditor_.bind(project_.get());
     deck_.record.setEnabled(project_ && (armedId_.isNotEmpty() || (selectedTrack_ && selectedGlobal_ != TimelineLane::tempo)));
-    const bool audio = editing && !tempo && selectedTrack_ && project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::audio;
+    const bool audio = editing && !tempo && !musical && selectedTrack_ && project_->trackKinds[*selectedTrack_] == ostfstudio::TrackKind::audio;
     audioEditor_.setVisible(audio);
     if (audio) {
         audioEditor_.bind(project_->ppq, project_->ticksPerBar, project_->bars.firstBar, !recordTrack_.has_value(), project_->importedProduction);
@@ -7980,7 +7751,7 @@ void MainComponent::refreshEditor() {
     }
     const bool liveNotes = matrix && !liveShowsMixer_ && selectedTrack_ && project_->trackKinds[*selectedTrack_] != ostfstudio::TrackKind::audio
         && (!matrix || *selectedTrack_ < project_->sourceTrackCount());
-    const bool piano = (editing && !audio && !tempo) || liveNotes;
+    const bool piano = (editing && !audio && !tempo && !musical) || liveNotes;
     takeButton_.setVisible(piano && selectedTrack_ && *selectedTrack_<project_->sourceTrackCount());
     takeButton_.setEnabled(!recordTrack_ && pendingReview_.empty());
     if (takeButton_.isVisible()) {
@@ -8000,9 +7771,9 @@ void MainComponent::refreshEditor() {
     const bool steps = drum && arranging && drumMode_.getSelectedId()==2;
     drumSteps_.bind(drum ? project_.get() : nullptr,selectedTrack_.value_or(0),std::max<juce::int64>(0,cursorTick_),pianoGrid_.grid);
     drumSteps_.setVisible(steps);
-    cycleButton_.setVisible(editing && !tempo && selectedTrack_ && !steps);
+    cycleButton_.setVisible(editing && !tempo && !musical && selectedTrack_ && !steps);
     cycleButton_.setEnabled(!recordTrack_);
-    editorRecord_.setVisible(editing && !tempo && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
+    editorRecord_.setVisible(editing && !tempo && !musical && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
     editorRecord_.setButtonText(recordTrack_ ? TRANS("Stop recording") : TRANS("Record"));
     editorRecord_.setToggleState(recordTrack_.has_value(), juce::dontSendNotification);
     drumPads_.setVisible(drum);
@@ -8043,7 +7814,7 @@ void MainComponent::refreshEditor() {
     theoryButton_.setEnabled(arranging && project_ != nullptr);
     theoryButton_.setToggleState(theoryVisible_ && arranging, juce::dontSendNotification);
     lanesButton_.setEnabled(arranging);
-    trackPicker_.setVisible(arranging && project_ && lowerPaneOpen() && !tempo);
+    trackPicker_.setVisible(arranging && project_ && lowerPaneOpen() && !tempo && !musical);
     trackPicker_.setEnabled(!recordTrack_ && project_ && !project_->trackLanes.empty());
     performanceLane_.setVisible(piano && selectedTrack_ && !steps);
     const auto previous = performanceLaneNames_[performanceLane_.getSelectedId() - 1];
@@ -8470,6 +8241,7 @@ void MainComponent::layoutPianoPanel(juce::Rectangle<int> editor, int inlineRevi
     audioEditor_.setTimelineColumns(pianoLayout.ruler.getX() - audioEditor_.getX(), pianoLayout.ruler.getRight() - audioEditor_.getX());
     clipLane_.setBounds(pianoLayout.ruler.withY(editor.getY() + 30).withHeight(clipHeight));
     tempoEditor_.setBounds(editor);
+    globalEditor_.setBounds(editor);
     tempoEditor_.setTimelineColumns(rowOverlay_.getX() + trackHeaderWidth - editor.getX(), rowOverlay_.getRight() - editor.getX());
     pianoGrid_.setBounds(pianoLayout.grid);
     if (chordReview_.isVisible()) { chordReview_.resized(); chordReview_.repaint(); }
@@ -8551,7 +8323,7 @@ void MainComponent::paint(juce::Graphics& g) {
                                           juce::Colour(panel), 0.0f, static_cast<float>(area.getBottom()), false));
     g.fillRoundedRectangle(area.toFloat(), 10.0f);
     area.removeFromTop(30);
-    if (!mixerButton_.getToggleState() && !audioEditor_.isVisible() && !tempoEditor_.isVisible()) {
+    if (!mixerButton_.getToggleState() && !audioEditor_.isVisible() && !tempoEditor_.isVisible() && !globalEditor_.isVisible()) {
         drawPianoRoll(g, area);
     }
 }

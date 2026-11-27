@@ -1,5 +1,4 @@
 #pragma once
-#include "ui/LinkSession.h"
 #include "ui/AudioTrackInput.h"
 #include "ui/ControllerMap.h"
 #include "ui/MidiInputRoute.h"
@@ -42,6 +41,7 @@ public:
         int monitorInput = -1, monitorWidth = 1;
         float monitorGain = 1.f;
         bool playSource = true;
+        bool auditionToMaster = false;
     };
     static bool supportsInstrument(const juce::AudioPluginInstance& instrument);
     static bool supportsInsert(const juce::AudioPluginInstance& effect);
@@ -97,9 +97,6 @@ public:
         int firstInputBuffer = 0;
         double inputGainDb = 0;
         int countInBars = 0;
-        ostfstudio::LinkSession* link = nullptr;
-        double linkQuantum = 4, linkTempo = 0;
-        bool announceLinkStart = true;
         const std::array<int, 128>* drumMapping = nullptr;
         juce::String controlPort;
         ostfstudio::MidiInputRoute midiInput;
@@ -127,7 +124,7 @@ public:
     void setLoop(juce::Range<juce::int64> ticks);
     void seekToTick(juce::int64 tick);
     juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
-                                 double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1, bool monitorOnly = false, double linkTempo = 0, std::span<const ostfstudio::TakeSelection> auditions = {});
+                                 double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1, bool monitorOnly = false, std::span<const ostfstudio::TakeSelection> auditions = {});
     void renderBlock(float* const* output, int channels, int samples, const float* const* input = nullptr, int inputs = 0);
     // Call only on a private, prepared offline transport before its first block.
     juce::int64 setRenderTail(int seconds) {
@@ -227,13 +224,6 @@ private:
     double sampleRate_ = 0.0;
     ostfstudio::TempoMap clock_;
     double playbackTempoRate_ = 1.;
-    bool fixedLinkTempo_ = false;
-    ostfstudio::LinkSession* launchClock_ = nullptr;
-    std::int64_t launchMicros_ = 0;
-    ostfstudio::LinkSession* playbackLink_ = nullptr;
-    double linkBaseTempo_ = 0, linkQuantum_ = 4, linkStartBeat_ = 0, linkSubsample_ = 0;
-    std::atomic<double> linkBpm_{0};
-    double outputLatencyMicros_ = 0;
     juce::int64 ppq_ = 1;
     int meterBeats_ = 4, beatUnit_ = 4;
     std::vector<ostfstudio::MeterPoint> meters_;

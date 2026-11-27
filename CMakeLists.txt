@@ -35,22 +35,6 @@ if (OSTF_STUDIO_BUILD_GUI)
         GIT_SHALLOW TRUE
     )
     FetchContent_MakeAvailable(JUCE)
-    FetchContent_Declare(ableton_link
-        GIT_REPOSITORY https://github.com/Ableton/link.git
-        GIT_TAG 45931b8bd2a7066f1950f2a0beab81a0c51f28fe
-        GIT_SUBMODULES modules/asio-standalone
-        SOURCE_SUBDIR ostf-no-examples)
-    FetchContent_MakeAvailable(ableton_link)
-    include("${ableton_link_SOURCE_DIR}/AbletonLinkConfig.cmake")
-    add_library(ostf_link STATIC src/ui/LinkSession.cpp)
-    target_include_directories(ostf_link PUBLIC src)
-    target_link_libraries(ostf_link PRIVATE Ableton::Link)
-    if(WIN32)
-        target_link_libraries(ostf_link PRIVATE ws2_32 iphlpapi winmm)
-    endif()
-    add_executable(ostf_link_tests tests/link_session_tests.cpp)
-    target_link_libraries(ostf_link_tests PRIVATE ostf_link)
-    add_test(NAME link_transport COMMAND ostf_link_tests)
 
     set(JSONCONS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if(POLICY CMP0135)
@@ -177,7 +161,6 @@ if (OSTF_STUDIO_BUILD_GUI)
         target_compile_definitions(${studio_target} PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
         target_link_libraries(${studio_target} PRIVATE
             OSTFEnglishLexicon
-            ostf_link
             ostf_studio_core
             ostf_score_validation
             OSTFStudioAssets
@@ -223,7 +206,7 @@ if (OSTF_STUDIO_BUILD_GUI)
     add_executable(ostf_gm_channel_activity_tests tests/gm_channel_activity_tests.cpp src/ui/PreviewTransport.cpp
         src/ui/OstfpPreview.cpp src/ui/SongMidi.cpp)
     target_include_directories(ostf_gm_channel_activity_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
-    target_link_libraries(ostf_gm_channel_activity_tests PRIVATE OSTFGMSoundModule ostf_effect_dsp ostf_link
+    target_link_libraries(ostf_gm_channel_activity_tests PRIVATE OSTFGMSoundModule ostf_effect_dsp
         OSTFEnglishLexicon ostf_score_validation ostf_studio_core juce::juce_audio_devices juce::juce_audio_formats
         juce::juce_cryptography juce::juce_recommended_config_flags)
     add_test(NAME ostf_gm_channel_activity_tests COMMAND ostf_gm_channel_activity_tests

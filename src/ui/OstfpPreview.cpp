@@ -2442,6 +2442,31 @@ juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Arr
                 }
             }
     }
+    // A direction referring to the old scale still covers all pieces after a cut.
+    bool changedScaleReferences=false;
+    if (lane==TimelineLane::scale && remove.size()==1 && insert.size()>1 && insert[0]["id"]==remove[0]["id"]) {
+        const auto old=remove[0];
+        auto cursor=integer(old["start"]);
+        bool tiled=true;
+        for (const auto& piece:insert) {
+            tiled=tiled && integer(piece["start"])==cursor && same(piece["targets"],old["targets"]);
+            cursor+=integer(piece["duration"]);
+        }
+        if(tiled && cursor==integer(old["start"])+integer(old["duration"])) {
+            if(auto* tracks=score["tracks"].getArray()) for(const auto& track:*tracks)
+                if(auto* directions=track["directions"].getArray()) for(const auto& direction:*directions) {
+                    auto source=direction["parameters"]["pitchSource"];
+                    if(source["type"]!="harmonyScales") continue;
+                    if(auto* ids=source["scaleIds"].getArray()) {
+                        const auto index=ids->indexOf(old["id"]);
+                        if(index>=0) {
+                            for(int j=1;j<insert.size();++j) ids->insert(index+j,insert[j]["id"]);
+                            changedScaleReferences=true;
+                        }
+                    }
+                }
+        }
+    }
     // Keep any authored reference to a removed ID valid. A value edit retains the ID.
     const auto json = juce::JSON::toString(score, true, 17);
     for (const auto& item : remove) {
@@ -2454,7 +2479,9 @@ juce::Result OstfpPreview::changeGlobalEvents(TimelineLane lane, const juce::Arr
                 "Another score object refers to this event.");
     }
     reviseDocument(score, old, "timeline-" + juce::Uuid().toString());
-    auto bytes = editedScoreBytes(base, score, {"timeline", "harmony", "performancePlans", "document"});
+    auto bytes = changedScaleReferences
+        ? editedScoreBytes(base, score, {"timeline", "harmony", "performancePlans", "document", "tracks"})
+        : editedScoreBytes(base, score, {"timeline", "harmony", "performancePlans", "document"});
     validateVersion(parseObject(bytes)["version"].toString(), bytes);
     auto result = restoreNoteScore(bytes);
     if (result.wasOk())
