@@ -2,7 +2,7 @@
 
 [日本語](README.md) · [Studio user manual](../manual/en.md)
 
-Browse the bundled VST3s by what you want to do. Each entry shows the editor and suggests a first control to try. Public Alpha 1 includes 38 tools. The development build adds the OSTF Studio workstation instrument and SUPER KNOBBER LEAD.
+Browse the bundled VST3s by what you want to do. Each entry shows the editor and suggests a first control to try. Public Alpha 1 includes 38 tools. The development build adds the OSTF Studio workstation, SUPER KNOBBER LEAD synthesizer and SUPER KNOBBER REVERB stereo effect.
 
 ## [Composition and instruments (10)](workstations.en.md)
 
@@ -16,7 +16,9 @@ Browse the bundled VST3s by what you want to do. Each entry shows the editor and
 
 [EQ](eq-dynamics.en.md#eq) · [Parametric EQ](eq-dynamics.en.md#parametric-eq) · [8-Band EQ](eq-dynamics.en.md#8-band-eq) · [Graphic EQ](eq-dynamics.en.md#graphic-eq) · [Dynamic EQ](eq-dynamics.en.md#dynamic-eq) · [Filter](eq-dynamics.en.md#filter) · [High-Pass Filter](eq-dynamics.en.md#high-pass-filter) · [Low-Pass Filter](eq-dynamics.en.md#low-pass-filter) · [Compressor](eq-dynamics.en.md#compressor) · [Bus Compressor](eq-dynamics.en.md#bus-compressor) · [Multiband Compressor](eq-dynamics.en.md#multiband-compressor) · [Multiband Bus Compressor](eq-dynamics.en.md#multiband-bus-compressor) · [Limiter](eq-dynamics.en.md#limiter) · [Gate](eq-dynamics.en.md#gate) · [De-Esser](eq-dynamics.en.md#de-esser) · [Unmask](eq-dynamics.en.md#unmask)
 
-## [Space, modulation, guitars and racks (12)](space-and-tone.en.md)
+## [Space, modulation, guitars and racks (13)](space-and-tone.en.md)
+
+[SUPER KNOBBER REVERB](space-and-tone.en.md#super-knobber-reverb) (development build)
 
 [<img src="../images/plugins/chorus.png" alt="Chorus" width="360">](space-and-tone.en.md)
 

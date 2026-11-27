@@ -1,6 +1,16 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
-The [user manual](manual/en.md) covers the standalone workflow and the Windows development build of the workstation VST3. The [illustrated plug-in guide](plugins/en.md) covers the 38 instruments, effects and tools in Public Alpha 1 plus the hosted workstation and SUPER KNOBBER LEAD in development.
+The [user manual](manual/en.md) covers the standalone workflow and the Windows development build of the workstation VST3. The [illustrated plug-in guide](plugins/en.md) covers the 38 instruments, effects and tools in Public Alpha 1 plus the hosted workstation, SUPER KNOBBER LEAD and SUPER KNOBBER REVERB in development.
+
+## Offline arrangement rendering
+
+Standalone Studio and the hosted workspace prepare a private PreviewTransport on the message thread. Each enabled instrument and insert gets its own instance and a snapshot of the live plug-in state. The worker renders stereo blocks from tick zero at the selected sample rate. Mix export follows arrangement playback, including adopted takes, audio edits, buses, sends, master inserts and the selected tail. File replacement follows successful encoding. Hardware MIDI instruments require an audio recording of their output.
+
+A track bounce uses the source's score timing, instrument destination, track inserts and detector inputs. It prints before the channel fader, bus and master processing. Only a completed render adds a track. The new strip starts muted and its 48 kHz, 24-bit WAV audio is stored with the project. Long bounces split at score ticks within the existing per-asset and package limits. Imported Productions that require preservation of their original track layout support mix export.
+
+## SUPER KNOBBER REVERB
+
+The independent stereo effect `Skr1` uses the supplied Reverb v1.0 GenExpr delay network, the connected Max preset tables and 108 direct controls. The two shimmer pitches use Signalsmith Stretch. The resizable editor uses Studio's console finish and displays measured input, wet and pre-EQ spectra, band decay settings and wet level history.
 
 ## Assigned scale audition
 

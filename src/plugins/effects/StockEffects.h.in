@@ -7,7 +7,8 @@ struct StockEffect {
     const char* code;
     juce::String displayName() const {
         const juce::String bundle(name);
-        return bundle == "OSTF Formant Singer" || bundle == "OSTF Scale Editor" ? bundle : bundle.fromFirstOccurrenceOf("OSTF ", false, false);
+        return bundle.startsWith("OSTF ") && bundle != "OSTF Formant Singer" && bundle != "OSTF Scale Editor"
+            ? bundle.substring(5) : bundle;
     }
     juce::String classId() const {
         juce::String id = "ABCDEF019182FAEB4F737466";

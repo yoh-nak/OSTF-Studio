@@ -1329,6 +1329,65 @@ int checkSamplePlacement(const juce::File& file) {
         if (stems.clipOn(0)->timing.cycleTicks!=0 || stems.clipOn(1)->timing!=pitched) return 373;
     }
     {
+        auto ownedSession=std::make_unique<MainComponent>();
+        auto& session=*ownedSession;
+        session.newProject();
+        session.editTracks(ostfstudio::TrackKind::audio);
+        session.editTracks(ostfstudio::TrackKind::audio);
+        session.placeWav(file,0,0,false);
+        session.placeWav(file,1,0,false);
+        const auto wait=[&]{
+            if(!session.rendering_ || !session.renderJob_->waitForThreadToExit(60000))return false;
+            for(int i=0;i<30 && session.rendering_;++i){
+                juce::Thread::sleep(15);
+                juce::Timer::callPendingTimersSynchronously();
+            }
+            return !session.rendering_;
+        };
+        session.renderAudio(0,{},0);
+        if(!wait() || session.project_->sourceTrackCount()!=3 || !session.mixer_.channel(2).muted)return 379;
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatReader> one;
+        juce::int64 bounceFrames=0, endTick=0;
+        int bounceParts=0;
+        for(const auto& part:session.project_->audio){
+            if(part.track!=2)continue;
+            if(part.startTick!=endTick || part.embedded.isEmpty())return 380;
+            std::unique_ptr<juce::AudioFormatReader> reader(wav.createReaderFor(new juce::MemoryInputStream(part.embedded.read(),false),true));
+            if(!reader || reader->sampleRate!=48000 || reader->bitsPerSample!=24)return 380;
+            endTick+=part.durationTicks;
+            bounceFrames+=reader->lengthInSamples;
+            ++bounceParts;
+            if(!one)one=std::move(reader);
+        }
+        if(bounceParts<2 || endTick!=session.project_->playbackEndTick())return 380;
+        juce::TemporaryFile mix(".wav");
+        session.renderAudio({}, {},2,mix.getFile());
+        if(!wait())return 381;
+        std::unique_ptr<juce::AudioFormatReader> two(wav.createReaderFor(mix.getFile().createInputStream().release(),true));
+        if(!two || two->lengthInSamples-bounceFrames!=96000 || two->sampleRate!=48000){
+            std::cerr<<"Bounce frames "<<bounceFrames<<", mix frames "<<(two?two->lengthInSamples:-1)
+                     <<", rate "<<(two?two->sampleRate:0)<<", status "<<session.statusLabel_.getText()<<'\n';
+            return 382;
+        }
+        juce::AudioBuffer<float> a(2,4096),b(2,4096);
+        double sum=0,difference=0;
+        for(int pos=0;pos<std::min<juce::int64>(one->lengthInSamples,48000);pos+=4096){
+            one->read(&a,0,4096,pos,true,true);
+            two->read(&b,0,4096,pos,true,true);
+            for(int ch=0;ch<2;++ch)for(int j=0;j<4096;++j){
+                const auto single=a.getSample(ch,j);
+                if(std::abs(single)<.45f){sum+=std::abs(single);difference+=std::abs(2*single-b.getSample(ch,j));}
+            }
+        }
+        if(sum<1 || difference>sum*.001)return 383;
+        juce::MemoryOutputStream projectBytes;
+        if(ostfstudio::writeOstfpPreview(*session.project_,session.sessionMix(),projectBytes).failed())return 384;
+        std::unique_ptr<ostfstudio::OstfpPreview> loaded;
+        juce::MemoryInputStream stream(projectBytes.getData(),projectBytes.getDataSize(),false);
+        if(ostfstudio::readOstfpPreview(stream,loaded).failed() || loaded->audio.size()!=size_t(2+bounceParts))return 385;
+    }
+    {
         MainComponent view;
         view.setSize(1650, 1000);
         std::unique_ptr<ostfstudio::OstfpPreview> song;

@@ -48,6 +48,7 @@ struct DcBlock {
 class Delay {
   public:
     explicit Delay(int capacity) : samples(static_cast<size_t>(capacity) + 1) {}
+    void clear() { std::fill(samples.begin(),samples.end(),0.0); cursor=0; }
     double read(double delay) const {
         const auto whole = static_cast<size_t>(delay);
         const auto length = samples.size();

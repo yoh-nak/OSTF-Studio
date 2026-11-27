@@ -119,7 +119,7 @@ bool stackTimelineNavigation(int innerWidth, int workspaceHeight) {
 enum MenuCommand { openFile = 1, createProject, showPiano, showMixer, showDevices, showAbout, showPlugins,
                    saveScore, saveProject, showOutputs, addPitched, addDrums, addAudio, removeTrack,
                    exportMidi0, exportMidi1, languageSystem, languageEnglish, languageJapanese, showLeadSheet, showPartScore, importMedia, showArrangement, showSongInformation, addMelody, addChorus, addBus, addReturn, copyTrack, renameTrackItem, smallerUI, largerUI, showShortcuts, aiConnections, controllerSettings, initialPatchItem, cursorPatchItem, trackTakeMenu, externalSplice, externalMelodyne, externalLink, linkTempoItem, studioArrangement, studioLyric, studioVocal, exportMusicXml, exportChordPro, showSamplesPane, moveRowUp, moveRowDown,
-                   printLeadSheet, printPartScore, openLiveSession, pasteScaleReturn, exportSvpLead, exportSvpChorus, exportSvpAll };
+                   printLeadSheet, printPartScore, openLiveSession, pasteScaleReturn, exportSvpLead, exportSvpChorus, exportSvpAll, exportMixAudio, bounceTrackAudio };
 constexpr struct { const char* name; const char* first; const char* second; const char* third; } studioModes[] {
     {"AI Arrangement Studio", "Keep just piano and bass in the verse. Suggest an eight-bar build into the chorus.",
                               "Suggest two bass lines with different rhythms over these chords.",
@@ -1492,6 +1492,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addSeparator();
             menu.addItem(saveScore, TRANS("Save as OSTF..."), canEditTracks());
             menu.addItem(saveProject, TRANS("Save as OSTFP..."), canEditTracks());
+            menu.addItem(exportMixAudio, TRANS("Export mix as audio..."), canEditTracks() && !recordTrack_ && !rendering_);
             juce::PopupMenu midi;
             midi.addItem(exportMidi0, TRANS("Format 0 - single track"));
             midi.addItem(exportMidi1, TRANS("Format 1 - separate tracks"));
@@ -1600,6 +1601,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(11001,TRANS("Track colour"),editable && selectedTrack_ && *selectedTrack_<project_->sourceTrackCount());
             menu.addItem(renameTrackItem, TRANS("Rename track..."), editable && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
             menu.addItem(copyTrack, TRANS("Duplicate track"), add && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
+            menu.addItem(bounceTrackAudio, TRANS("Bounce to new audio track"), selectedTrack_ && canBounce(*selectedTrack_));
             menu.addItem(removeTrack, TRANS("Delete selected track..."), editable && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
             break;
         }
@@ -1739,6 +1741,8 @@ void MainComponent::menuItemSelected(int item, int) {
         case exportSvpAll: saveDocument(SaveFormat::svpAll); break;
         case exportChordPro: saveDocument(SaveFormat::chordPro); break;
         case exportMidi0: saveDocument(SaveFormat::midi0); break;
+        case exportMixAudio: chooseAudioExport(); break;
+        case bounceTrackAudio: if(selectedTrack_) renderAudio(*selectedTrack_,{},0); break;
         case exportMidi1: saveDocument(SaveFormat::midi1); break;
         case languageSystem:
         case languageEnglish:
@@ -2631,6 +2635,11 @@ void MainComponent::flashPad(int pitch) {
 }
 
 MainComponent::~MainComponent() {
+    if(renderJob_) {
+        renderJob_->signalThreadShouldExit();
+        renderJob_->waitForThreadToExit(-1);
+        renderJob_.reset();
+    }
     cellPlayers_.clear();
     surfaceDevices_ = {};
     songReader_.removeAllJobs(true, -1);
@@ -3915,6 +3924,7 @@ void MainComponent::showRowMenu(bool output, std::size_t index) {
         menu.addItem(trackTakeMenu, TRANS("Takes"), project_->trackKinds[index]!=ostfstudio::TrackKind::audio && !recordTrack_ && pendingReview_.empty());
     }
     menu.addItem(renameTrackItem, TRANS("Rename track..."));
+    if(!output) menu.addItem(bounceTrackAudio,TRANS("Bounce to new audio track"),canBounce(index));
     if (!output || index != 0) {
         menu.addItem(copyTrack, TRANS("Duplicate track"), room);
         menu.addItem(removeTrack, TRANS("Delete track..."), !output || mixer_.routing().canRemoveOutput(index));
@@ -3938,6 +3948,7 @@ void MainComponent::showRowMenu(bool output, std::size_t index) {
             if (choice == cursorPatchItem && !output) safe->showPatch(index, safe->cursorTick_);
             if (choice == initialPatchItem && !output) safe->showPatch(index, 0);
             if (choice == renameTrackItem) safe->renameTrack(index, output);
+            if (choice == bounceTrackAudio && !output) safe->renderAudio(index,{},0);
             if (choice == removeTrack) safe->confirmRemoval(output, index);
             if (choice == copyTrack) {
                 if (output) safe->editOutput(send, index);
@@ -4107,7 +4118,7 @@ void MainComponent::editOutput(bool send, std::optional<std::size_t> source, boo
 void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove,
                                std::optional<std::size_t> duplicate, ostfstudio::MixerTrackGroup group,
                                const ImportResultRow* import, juce::int64 tick,
-                               std::optional<ostfstudio::SessionMix::MidiRoute> sharedPart) {
+                               std::optional<ostfstudio::SessionMix::MidiRoute> sharedPart, Bounce* bounce) {
     if (!canEditTracks() || chordReviewBlocksSwitch()) return;
     stopTransport();
     std::unique_ptr<ostfstudio::OstfpPreview> updated;
@@ -4116,6 +4127,14 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
     else if (import && kind != ostfstudio::TrackKind::audio && import->index >= 0)
         newChannel = import->source.sourceMidiChannels[size_t(import->index)];
     auto result = project_->editTracks(kind, remove, updated, duplicate, group, newChannel);
+    if (result.wasOk() && bounce) {
+        const auto dest = updated->sourceTrackCount() - 1;
+        result = updated->renameTrack(dest,bounce->name);
+        if(result.wasOk()) for(auto& clip:bounce->clips){
+            clip.track=dest;
+            updated->audio.push_back(std::move(clip));
+        }
+    }
     if (result.wasOk() && import) {
         const auto dest = updated->sourceTrackCount() - 1;
         result = updated->renameTrack(dest, juce::String::fromUTF8(import->source.trackLanes[import->index].label));
@@ -4152,7 +4171,8 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
         mix.tracks.erase(mix.tracks.begin() + static_cast<std::ptrdiff_t>(*remove));
     } else {
         const auto added = static_cast<std::ptrdiff_t>(project_->sourceTrackCount() - 1);
-        const auto channel = duplicate ? mix.tracks[*duplicate] : ostfstudio::ChannelMix{};
+        auto channel = duplicate ? mix.tracks[*duplicate] : ostfstudio::ChannelMix{};
+        if(bounce)channel.muted=true;
         mix.tracks.insert(mix.tracks.begin() + added, channel);
         previous.insert(previous.begin() + added, nullptr);
     }

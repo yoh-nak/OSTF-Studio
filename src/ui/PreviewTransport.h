@@ -129,6 +129,11 @@ public:
     juce::Result preparePlayback(const ostfstudio::OstfpPreview&, std::span<const TrackSetup>, const Inserts&,
                                  double sampleRate, int blockSize, int semitones = 0, double tempoRate = 1, bool monitorOnly = false, double linkTempo = 0, std::span<const ostfstudio::TakeSelection> auditions = {});
     void renderBlock(float* const* output, int channels, int samples, const float* const* input = nullptr, int inputs = 0);
+    // Call only on a private, prepared offline transport before its first block.
+    juce::int64 setRenderTail(int seconds) {
+        lastSample_ += juce::int64(sampleRate_ * seconds);
+        return lastSample_;
+    }
     ostfstudio::MeterFrame takeMeters() noexcept;
     // Buffer indices are the packed active channels supplied by AudioDeviceManager.
     void setOutputPairs(int masterFirst, int cueFirst) noexcept {

@@ -78,4 +78,12 @@
 
 ![Effect Rackの操作画面](../images/plugins/effect-rack.png)
 
+## SUPER KNOBBER REVERB
+
+StudioやほかのVST3ホストで、トラックまたはリターンに挿します。上段で空間のタイプ、入力素材、スタイルを選びます。**Space & reflections → Pre Delay** を上げると、原音の立ち上がりと初期反射の間が空きます。トラックに挿したときは **Output → Dry / Wet** で原音とのバランスを調整できます。リターンでは通常100％にします。
+
+上部のアナライザーで、入力と残響のスペクトル、ポストEQの前後、5帯域の残響時間設定、残響レベルの推移を確認できます。
+
+![SUPER KNOBBER REVERBの空間と初期反射の調整画面](../images/plugins/super-knobber-reverb.png)
+
 [プラグイン図鑑の目次に戻る](README.md)

@@ -53,10 +53,18 @@ Use the lead sheet to read chords and lyrics, or select a track in the score vie
 | --- | --- |
 | The session in your usual DAW | Save the **host DAW project**. It stores Studio’s song and device state with the plug-in instance. |
 | A Studio production to reopen or move | Save an **OSTFP project** from Studio. The destination computer also needs the VST3s and any external sound libraries used by the project. |
-| The musical score to exchange with another tool | Save an **OSTF score**. If you edited it inside Scale Editor, save that plug-in’s copy of the score. |
+| The musical score to exchange with another tool | Save an **OSTF score** in Studio. In the development build this includes the scales you assigned in Scale Editor. |
 
 ## If you hear silence
 
 - **Studio is missing from the instrument browser.** Check that your build includes **OSTF Studio (VST3)**. Windows Setup installs it under `C:\Program Files\Common Files\VST3\OSTF Studio`. Enable the system VST3 folder in the host and rescan.
 - **The song position does not move.** Return the DAW to the song start and check **Follow DAW transport** and the host Play button.
 - **The timeline moves but the track is silent.** Check instrument assignments in Studio, then the Studio master meter and the host track’s stereo output in order. Install the demo’s instruments and effects on the same computer.
+
+## Export audio and bounce a track (development build)
+
+Choose **File → Export mix as audio** to render the arrangement from its beginning. Choose a format, sample rate and bit depth or encoding rate. **Effect tail after song end** keeps up to 30 seconds of reverb and delay. The stereo file includes track inserts, buses, returns and the master. Record an external MIDI instrument to an audio track before exporting its sound.
+
+WAV supports 16/24-bit PCM and 32-bit float. AIFF and FLAC offer 16/24-bit PCM. Ogg Vorbis and Opus offer encoding quality choices. Windows uses Media Foundation for MP3 and AAC (.m4a). macOS uses the system AAC converter and offers MP3 when LAME is installed in a standard Homebrew location.
+
+Right-click a source track and choose **Bounce to new audio track**. The new track contains the selected instrument or audio clips and its insert effects, at 48 kHz/24-bit. To audition it, mute the original and unmute the bounce. For a shared multichannel instrument, mute the original MIDI part as appropriate for your routing. Save as **OSTFP** to keep the rendered audio. The new strip starts at unity and routes to the master. Bus and return processing can be reassigned in the mixer.

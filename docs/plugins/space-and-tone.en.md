@@ -78,4 +78,12 @@ Sends the same audio into parallel effect chains. Add a chain with **+ Effect la
 
 ![Effect Rack editor](../images/plugins/effect-rack.png)
 
+## SUPER KNOBBER REVERB
+
+Insert this stereo effect on a track or return in Studio or another VST3 host. Choose the space, source profile and style along the top. In **Space & reflections**, adjust **Pre Delay** to separate the first reflections from the attack. Use **Output → Dry / Wet** to blend the result on an insert. A return usually works best fully wet.
+
+The analyzer switches between input/wet spectrum, before/after post EQ, the five configured decay times and wet level history.
+
+![SUPER KNOBBER REVERB space and reflection controls](../images/plugins/super-knobber-reverb.png)
+
 [Return to the plug-in guide](en.md)

@@ -1,5 +1,17 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — SUPER KNOBBER REVERB, mix export and track bounce
+
+Branch `codex/knobber-reverb-audio-export` adds the independent stereo VST3 effect `Skr1`. The source is the supplied SUPER KNOBBER REVERB v1.0 device, SHA-256 `95a376328808e8911e45ddd30ced3ad4396cf131e8befe1a0c5e61d9eca758de`. Run `python tools/import_knobber_reverb.py <device.amxd>` to regenerate the delay network and preset tables, then clang-format the three generated C++ files. The 49 algorithms, 13 source profiles and 10 styles use the original control mappings. The two shimmer harmonies use Signalsmith Stretch.
+
+In Studio, use **File → Export mix as audio** to render the arrangement. Each encoder supplies the available rate and quality choices. The optional tail can extend the master by up to 30 seconds. Right-click a source track and select **Bounce to new audio track** to print its instrument and inserts before the fader. The original remains available. The new track starts muted and contains stereo 48 kHz/24-bit WAV audio embedded in the project. Chunk boundaries follow score ticks so longer bounces fit the existing per-asset limit. The total package audio budget still applies.
+
+Build the usual Release targets plus `ostf_reverb_export_tests`. Its optional second argument after the VST3 path is an output directory for the Hall editor screenshot and Ambience, Hall and Shimmer impulse responses. The codec tests encode and decode stereo fixtures, check lossless resolution and confirm cancellation preserves the destination. The Studio track-view test exercises rendering through the actual workstation and saving the result to OSTFP. The development builds are local. macOS compilation and physical DAW testing remain outstanding for this change.
+
+Windows x64 Release compilation passed for the standalone, workstation VST3 and Reverb. All 49 CTests passed, including the rerun of the track-view test after fixing its temporary input buffer. All four installer-choice tests passed. Setup and the Portable ZIP were generated. The extracted application and all 41 VST3 binaries matched their build outputs by SHA-256. The installer itself was not run.
+
+For the original Max audio path, run `python tools/knobber_reverb_reference.py <device.amxd> <folder>` and open the generated patch in a separate Max instance. Channel three of `Max-Hall-trace.wav` marks the input impulse. At 48 kHz with Hall fully wet, the first second of stereo VST3 output measured 0.44 dB lower RMS than the Max reference. The sample correlation was 0.915. These measurements cover one preset and one input. The other presets, including both shimmer pitches, still need comparative listening on musical material.
+
 ## 2026-11-27 — assigned scale audition and FX chain controls
 
 Branch `codex/assigned-scale-audition`. Open Scale Editor inside Studio, select Harmony or a pitched track, then select a chord in the desired section. **Play section** and **Play song** audition saved pitch collections using the selected instrument and the score tempo map. Unassigned spans remain silent unless a song scale supplies the harmony default. Conflicting collections leave rests. **Stop** releases the preview independently of the Studio transport. The standard workspace opens directly. The basic JUCE editor remains available automatically if the system web view is unavailable.

@@ -13,6 +13,7 @@
 #include "ui/OstfpPreview.h"
 #include "ui/PluginBrowser.h"
 #include "ui/PreviewTransport.h"
+#include "ui/AudioExport.h"
 #include "ui/ViewButton.h"
 #include "ui/ArrangementRuler.h"
 #include "ui/AudioClipEditor.h"
@@ -214,10 +215,17 @@ private:
     std::array<int,128> capturePitchMap_{};
     std::atomic<bool> capturingTake_{false};
     std::optional<std::size_t> drumInputMonitor_;
+    struct Bounce { juce::String name; std::vector<ostfstudio::ProjectAudio> clips; };
+    bool canBounce(std::size_t track) const;
+    void chooseAudioExport();
+    void renderAudio(std::optional<std::size_t> track, ostfstudio::audioexport::Settings,
+                     int tailSeconds, const juce::File& target = {});
+    std::unique_ptr<juce::ThreadWithProgressWindow> renderJob_;
+    bool rendering_ = false;
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
                     std::optional<std::size_t> duplicate = {}, ostfstudio::MixerTrackGroup group = ostfstudio::MixerTrackGroup::pitched,
                     const ImportResultRow* import = nullptr, juce::int64 tick = 0,
-                    std::optional<ostfstudio::SessionMix::MidiRoute> sharedPart = {});
+                    std::optional<ostfstudio::SessionMix::MidiRoute> sharedPart = {}, Bounce* bounce = nullptr);
     juce::TextEditor renameEditor_{TRANS("Track name")};
     std::size_t renameRow_{};
     bool renameOutput_{};

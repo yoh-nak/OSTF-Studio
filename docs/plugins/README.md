@@ -2,7 +2,7 @@
 
 [English](en.md) · [Studio操作マニュアル](../manual/README.md)
 
-同梱VST3を用途から探せます。各項目に実際の操作画面と、最初に試す操作を載せました。公開アルファ1の38個に加え、開発版ではワークステーション音源 **OSTF Studio** とリードシンセ **SUPER KNOBBER LEAD** が使えます。
+同梱VST3を用途から探せます。各項目に実際の操作画面と、最初に試す操作を載せました。公開アルファ1の38個に加え、開発版ではワークステーション音源 **OSTF Studio**、リードシンセ **SUPER KNOBBER LEAD**、ステレオリバーブ **SUPER KNOBBER REVERB** が使えます。
 
 ## [作曲ツールと音源 (10)](workstations.md)
 
@@ -16,7 +16,9 @@
 
 [EQ](eq-dynamics.md#eq) · [Parametric EQ](eq-dynamics.md#parametric-eq) · [8-Band EQ](eq-dynamics.md#8-band-eq) · [Graphic EQ](eq-dynamics.md#graphic-eq) · [Dynamic EQ](eq-dynamics.md#dynamic-eq) · [Filter](eq-dynamics.md#filter) · [High-Pass Filter](eq-dynamics.md#high-pass-filter) · [Low-Pass Filter](eq-dynamics.md#low-pass-filter) · [Compressor](eq-dynamics.md#compressor) · [Bus Compressor](eq-dynamics.md#bus-compressor) · [Multiband Compressor](eq-dynamics.md#multiband-compressor) · [Multiband Bus Compressor](eq-dynamics.md#multiband-bus-compressor) · [Limiter](eq-dynamics.md#limiter) · [Gate](eq-dynamics.md#gate) · [De-Esser](eq-dynamics.md#de-esser) · [Unmask](eq-dynamics.md#unmask)
 
-## [空間・モジュレーション・ギター・ラック (12)](space-and-tone.md)
+## [空間・モジュレーション・ギター・ラック (13)](space-and-tone.md)
+
+[SUPER KNOBBER REVERB](space-and-tone.md#super-knobber-reverb)（開発版）
 
 [<img src="../images/plugins/chorus.png" alt="Chorus" width="360">](space-and-tone.md)
 

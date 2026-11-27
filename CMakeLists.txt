@@ -171,7 +171,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         target_sources(${studio_target} PRIVATE src/ui/MainComponent.cpp src/ui/SystemUsageMeter.cpp src/ui/ArrangementClipEdits.cpp src/ui/ChordReview.cpp src/ui/OstfpPreview.cpp
             src/ui/DeviceSettingsWindow.cpp src/ui/MixerPanel.cpp src/ui/PluginBrowser.cpp src/ui/PreviewTransport.cpp
             src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
-            src/ui/TheoryGuide.cpp src/ui/SynthVExport.cpp)
+            src/ui/TheoryGuide.cpp src/ui/SynthVExport.cpp src/ui/AudioExport.cpp src/ui/RenderAudio.cpp)
         target_include_directories(${studio_target} PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
         target_compile_definitions(${studio_target} PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
         target_compile_definitions(${studio_target} PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
@@ -189,7 +189,7 @@ if (OSTF_STUDIO_BUILD_GUI)
         )
         if (WIN32)
             target_sources(${studio_target} PRIVATE src/ui/NativePrint.cpp)
-            target_link_libraries(${studio_target} PRIVATE comdlg32 gdi32)
+            target_link_libraries(${studio_target} PRIVATE comdlg32 gdi32 mf mfplat mfreadwrite mfuuid)
         elseif (APPLE)
             set_target_properties(${studio_target} PROPERTIES OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED YES)
             target_sources(${studio_target} PRIVATE src/ui/NativePrint.mm)
