@@ -1,5 +1,9 @@
 # OSTF Studio
 
+**[ご意見・機能要望を送る](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml)** · [不具合を報告する](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml) · [届いている意見を見る](https://github.com/yoh-nak/OSTF-Studio/issues)
+
+日本語・英語で投稿できます。投稿は公開されます。
+
 **[画像付き操作マニュアル](docs/manual/README.md)** · **[全プラグインの図鑑](docs/plugins/README.md)** · [English manual](docs/manual/en.md)
 
 **公開アルファ1をダウンロード** · [Windows x64 インストーラー](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Setup.exe) · [Windows ポータブル ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Portable.zip) · [Appleシリコン Mac 用 DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_macOS_arm64.dmg) · [リリースノートと対応ソース](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1)

@@ -1,0 +1,15 @@
+name: Bug report / 不具合報告
+description: Tell us what happened in Studio or a plug-in.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened? / 発生した問題
+      description: Include the steps you took, the expected result and the actual result.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment / 使用環境
+      description: If known, include your OS, Studio version and DAW or plug-in name.
