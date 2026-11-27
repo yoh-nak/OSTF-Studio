@@ -33,6 +33,8 @@ To package the Windows Release build, use Python 3 and Inno Setup 6. Run the com
 
 Review [Inno Setup licensing](https://jrsoftware.org/inno-setup/downloads) before commercial use of the packaging workflow.
 
+To build the Windows installer for trying the workstation VST3, pass `-ForDAW` to `Package.ps1`. The output is `OSTF_Studio_VST3_Windows_x64_Setup.exe`. Its initial selection is the `daw` preset even on machines with a previous install. The regular installer also offers this preset. The plug-in list comes from the production session in the embedded Paper Lantern Replies project. The shared installer retains the same component IDs and VST3 locations for upgrades.
+
 The Windows alpha enables ASIO under the GPLv3 SDK option and also supports WASAPI. Drivers are supplied separately by the hardware manufacturer. The macOS build uses Core Audio. Keep the license texts, upstream notices and the corresponding source available alongside every release. [Distribution licenses](../licenses/NOTICE.md)
 
 Windows packages currently have no Authenticode signing configured or verified. Validate the installer and portable executable on Windows independently of compilation and archive verification.

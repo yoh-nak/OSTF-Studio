@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packaging"))
 from macos_package import distribution
-from plugin_choices import GROUPS, catalog, windows_files
+from plugin_choices import GROUPS, catalog, daw_demo_plugins, windows_files
 
 
 class InstallerChoices(unittest.TestCase):
@@ -44,7 +44,9 @@ class InstallerChoices(unittest.TestCase):
             for p in plugins:
                 code, group, name = p["code"], p["group"], p["name"]
                 component = group + "\\" + code
-                label = name if name in {"OSTF Studio", "OSTF Formant Singer", "OSTF Scale Editor"} else name.removeprefix("OSTF ")
+                label = name if name in {"OSTF Formant Singer", "OSTF Scale Editor"} else name.removeprefix("OSTF ")
+                if code == "Osd1":
+                    label = "OSTF Studio (VST3)"
                 with self.subTest(code=code):
                     self.assertIn(f'Name: "{component}"; Description: "{label}"; Types: full', components)
                     self.assertIn(f'Name: "{code}"; Description: "{label}"; Types: full', helper)
@@ -78,6 +80,19 @@ class InstallerChoices(unittest.TestCase):
     def test_mixed_dependencies(self):
         self.check_choices(wizard_fixture())
 
+    def test_daw_demo_preset(self):
+        plugins = catalog()
+        selected = daw_demo_plugins(plugins)
+        self.assertTrue({"Osd1", "Ogm1", "Osg1", "Ofm1", "Owt1", "Of01"} <= selected)
+        self.assertNotIn("Ose1", selected)
+        with tempfile.TemporaryDirectory() as folder:
+            stage = Path(folder)
+            windows_files(stage, plugins, selected)
+            lines = (stage / "components.iss").read_text(encoding="utf-8-sig").splitlines()
+            components = {line.split('"')[1] for line in lines if line.endswith("Types: full daw")}
+            self.assertEqual(components, {path for p in plugins if p["code"] in selected
+                                          for path in (p["group"], p["group"] + "\\" + p["code"])})
+
     def test_empty_and_populated_categories(self):
         self.check_choices([])
         self.check_choices([{"code": f"T{i:03}", "name": group, "group": group}
@@ -94,7 +109,7 @@ def windows_wizard(iscc):
     tests = Path(__file__).resolve().parent
     with tempfile.TemporaryDirectory() as folder:
         stage = Path(folder)
-        windows_files(stage, wizard_fixture())
+        windows_files(stage, wizard_fixture(), {"Fx01"})
         subprocess.run([iscc, "/Q", f"/O{stage}", f"/DStage={stage}",
                         f"/DChoiceScript={tests.parent / 'packaging/windows/StudioChoice.iss'}",
                         str(tests / "installer_wizard_smoke.iss")], check=True)

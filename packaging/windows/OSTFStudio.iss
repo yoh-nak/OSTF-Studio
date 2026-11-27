@@ -16,7 +16,12 @@ CloseApplications=yes
 RestartApplications=no
 ChangesAssociations=yes
 OutputDir={#OutputDir}
+#ifdef DawDefault
+OutputBaseFilename=OSTF_Studio_VST3_Windows_x64_Setup
+UsePreviousSetupType=no
+#else
 OutputBaseFilename=OSTF_Studio_Windows_x64_Setup
+#endif
 SetupIconFile=..\..\assets\AppIcon.ico
 WizardStyle=modern
 SetupLogging=yes
@@ -28,6 +33,8 @@ Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [CustomMessages]
 #include GroupLabels
+en.DawDemo=Studio VST3 for another DAW (with Paper Lantern Replies instruments and effects)
+ja.DawDemo=他のDAWで使う Studio VST3（デモ曲の音源・エフェクト付き）
 en.AllPlugins=Studio and all plug-ins
 ja.AllPlugins=Studio 本体とすべてのプラグイン
 en.AppOnly=Studio application only
@@ -48,7 +55,13 @@ en.ContinueAppOnly=Continue installing the Studio application now? To add plug-i
 ja.ContinueAppOnly=今回は Studio 本体のインストールを続けますか？ プラグインは、あとでこのインストーラーを再実行し、一覧から選んで追加できます。
 
 [Types]
+#ifdef DawDefault
+Name: "daw"; Description: "{cm:DawDemo}"
+#endif
 Name: "full"; Description: "{cm:AllPlugins}"
+#ifndef DawDefault
+Name: "daw"; Description: "{cm:DawDemo}"
+#endif
 Name: "apponly"; Description: "{cm:AppOnly}"
 Name: "custom"; Description: "{cm:ChoosePlugins}"; Flags: iscustom
 

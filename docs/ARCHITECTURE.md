@@ -260,6 +260,8 @@ The nine stock audio effects use separate VST3 component classes and share a JUC
 
 Both installers derive their selectable plug-ins from the build catalogues. Each plug-in has a stable four-character code and a display category. Windows Setup passes the selected codes to a separately elevated VST3 installer. Legacy migration runs only for codes that were successfully installed. Apple Installer associates each code with its own component package and receipt. A plug-in catalogue entry can declare a runtime dependency on the standalone application with `requiresStudio`. Both native checklists select and lock the application while any such plug-in is selected. Its checkbox becomes editable again when the last dependency is cleared.
 
+The Windows DAW preset selects the workstation VST3 and the bundled devices referenced by the Paper Lantern Replies production session. Setup shows the plug-in as **OSTF Studio (VST3)** to distinguish it from the optional standalone application. External hosts discover the instrument by its existing name and class ID.
+
 | Module | Responsibility |
 |---|---|
 | `ScoreDocument` (future) | exact official OSTF 5.0 parsing/validation; no invented fields |

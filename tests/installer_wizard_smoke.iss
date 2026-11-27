@@ -19,6 +19,7 @@ Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"
 [Types]
 Name: "full"; Description: "Full"
 Name: "apponly"; Description: "Application only"
+Name: "daw"; Description: "Workstation plug-in"
 Name: "custom"; Description: "Custom"; Flags: iscustom
 
 [Components]
@@ -63,6 +64,11 @@ begin
   WizardForm.TypesCombo.ItemIndex := 0;
   WizardForm.TypesCombo.OnChange(WizardForm.TypesCombo);
   Expect('full preset', True, False);
+  WizardForm.TypesCombo.ItemIndex := 2;
+  WizardForm.TypesCombo.OnChange(WizardForm.TypesCombo);
+  Expect('DAW preset omits standalone application', False, True);
+  if not WizardIsComponentSelected('effects\Fx01') or NeedsStudio then
+    Errors := Errors + 'DAW preset selected the wrong plug-ins';
   if Errors = '' then Errors := 'ok';
   SaveStringToFile(ExpandConstant('{param:RESULT}'), AnsiString(Errors), False);
 end;

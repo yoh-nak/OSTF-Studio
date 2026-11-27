@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — Windows installer for trying Studio in another DAW
+
+Branch `codex/studio-vst3-setup`. Pass `-ForDAW` to `packaging/windows/Package.ps1` with the usual Windows Release paths. The local output is `E:/OSTF-Studio-build-cache/studio-vst3-daw-installer/OSTF_Studio_VST3_Windows_x64_Setup.exe`. It starts with **OSTF Studio (VST3)** and the 15 bundled instruments and effects referenced by the embedded Paper Lantern Replies production session. The standalone application is optional. In an instrument track, open **OSTF Studio → File → Demo songs → Paper Lantern Replies** and start the host transport.
+
+The four installer-choice tests and native Windows wizard test passed. A file-free native wizard compiled with the production component and type definitions independently returned the exact 16 expected plug-in codes with the application unchecked. The external-host audio test passed using just these 16 copied bundles, including editor creation, project state recall, stereo playback and host stop. Verification used local Windows x64 and did not install into the user's DAW or run Ableton Live.
+
 ## 2026-11-27 — optional application in the component installers
 
 Branch `codex/optional-studio-installer`. The Windows and macOS installers use the catalogue's optional boolean `requiresStudio`. Selecting any marked plug-in selects and locks the standalone app. Deselecting the last one unlocks it. The 39 current VST3s can be installed independently, including the hosted workstation, Scale Editor and Formant Singer. Windows plugin-only selection omits the app payload, shortcuts, associations and app uninstaller. The shared VST3 installer retains its own uninstall entry.
