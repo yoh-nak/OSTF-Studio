@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — illustrated manual and plug-in guide
+
+Branch `codex/illustrated-manual` contains documentation and screenshots. The Japanese and English READMEs link to `docs/manual/` and `docs/plugins/`. The guides distinguish Public Alpha 1 (38 VST3s) from the subsequent development build (39, including the hosted workstation). Update both languages when the installer catalogue changes.
+
+Windows editor images came from Release builds. The workstation image uses the Paper Lantern Replies project, the analyzer uses a test signal, and the Scale Editor image shows its Japanese visual workspace. Check each catalogue entry against its gallery heading, image and index link in both languages. The external-host section documents the Windows playback, transport and recall checks from the hosted development build. Commercial-host and macOS playback were not tested for this documentation change.
+
 ## 2026-11-27 — all components selected on opening Setup
 
 Branch `codex/all-components-default`. Both Windows installer filenames now use the full preset on every ordinary launch, including upgrades. The DAW preset remains available by choice or via `/TYPE=daw`. Selecting a plug-in marked `requiresStudio` checks and locks the application until the last such plug-in is deselected. Independent VST3s and the standalone application can be deselected separately.

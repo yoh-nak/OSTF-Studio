@@ -1,5 +1,7 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+The [user manual](manual/en.md) covers the standalone workflow and the subsequent Windows development build of the workstation VST3. The [illustrated plug-in guide](plugins/en.md) identifies the 38 instruments, effects and tools in Public Alpha 1 and the additional hosted workstation in development.
+
 ## Studio as a hosted instrument
 
 `OSTFStudioPlugin_VST3` shares the standalone `MainComponent` and `PreviewTransport`. Each processor owns its workspace for the lifetime of the instance. An editor window can detach while playback continues. A virtual stereo output feeds Studio's existing audio callbacks from the host's process block. Host MIDI events retain their sample offsets. The hosted device manager bypasses hardware setup. The instrument catalog excludes Studio itself to prevent recursive loading.
