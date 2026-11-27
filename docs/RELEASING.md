@@ -21,7 +21,7 @@ The CMake project version is the numeric product version. The Git tag identifies
 
 Setup updates the current user's application in its previous directory using the existing Inno Setup `AppId`. Select the desired categories or individual VST3s on the components page. An administrator-approved helper installs the selection in `%CommonProgramFiles%\VST3\OSTF Studio`. Its uninstall entry is **OSTF Studio VST3 Plug-ins**. To add plug-ins later, rerun Setup. Previously installed plug-ins are retained when unchecked. Save and close a DAW before updating a changed binary it has loaded. Interactive Setup offers to continue with the application alone if elevation or shared installation fails.
 
-For unattended Setup, use `/TYPE=full`, `/TYPE=apponly`, or a selection such as `/TYPE=custom /COMPONENTS="studio,composition\Ose1"` for Studio and Scale Editor. Existing scripts can continue using `/TASKS=sharedvst3` or `/MERGETASKS=!sharedvst3`. Both installers write logs to the installing account's temporary directory.
+For unattended Setup, use `/TYPE=full`, `/TYPE=apponly`, or `/TYPE=custom /COMPONENTS="composition\Ose1"` for Scale Editor alone. Include `studio` in the comma-separated list to install the application too. Existing scripts can continue using `/TASKS=sharedvst3` or `/MERGETASKS=!sharedvst3`. Both installers write logs to the installing account's temporary directory.
 
 After a successful shared install, Setup checks the class IDs of previous per-user bundles and moves recognized copies to `%LOCALAPPDATA%\OSTF Studio\Previous VST3`. User settings, score files and third-party plug-ins remain outside the installers' inventories. The Portable ZIP keeps the plug-ins beside the application. Windows may need the Microsoft Visual C++ x64 Redistributable for binaries built with MSVC.
 
@@ -41,7 +41,7 @@ Windows packages currently have no Authenticode signing configured or verified. 
 
 Run **Install OSTF Studio and VST3.pkg** in the DMG. The customization page lets the user choose which VST3s to install in `/Library/Audio/Plug-Ins/VST3`. The application goes in `/Applications`. Dragging the app to Applications is also available. To build the DMG from an arm64 Release build, run `python3 packaging/macos_package.py <numeric-version>`. The packaging workflow checks a Scale Editor-only selection and then installs all plug-ins and verifies their arm64 binaries.
 
-Both installers read the effect and instrument catalogues under `src/plugins`. Set a plug-in's optional `installerGroup` to `effects`, `instruments`, `composition`, `learning`, `utilities`, or `games` when its user-facing category differs from its catalogue. Categories appear when they contain at least one plug-in.
+Both installers read the effect and instrument catalogues under `src/plugins`. Set a plug-in's optional `installerGroup` to `effects`, `instruments`, `composition`, `learning`, `utilities`, or `games` when its user-facing category differs from its catalogue. Categories appear when they contain at least one plug-in. Set `requiresStudio` to `true` only for a plug-in that needs the installed standalone application to run. Host integration, a shared code library or an optional drag target does not require installing the application.
 
 The current DMG contains a preview `.app` with no Developer ID signature or Apple notarization. For signed distribution:
 

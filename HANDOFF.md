@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## 2026-11-27 — optional application in the component installers
+
+Branch `codex/optional-studio-installer`. The Windows and macOS installers use the catalogue's optional boolean `requiresStudio`. Selecting any marked plug-in selects and locks the standalone app. Deselecting the last one unlocks it. The 39 current VST3s can be installed independently, including the hosted workstation, Scale Editor and Formant Singer. Windows plugin-only selection omits the app payload, shortcuts, associations and app uninstaller. The shared VST3 installer retains its own uninstall entry.
+
+Run `python tests/installer_choices.py` for both catalogue generators. On Windows run `python tests/installer_choices.py --windows-wizard "<path to ISCC.exe>"` to exercise the real Inno component list without installing software. Both checks passed, including two simultaneous dependencies, category selection, presets, and a command-line selection. The Windows Setup for the SVP-enabled build was generated locally under `E:/OSTF-Studio-build-cache/optional-studio-installer-windows`. Clean-machine installation and macOS Installer interaction have CI checks but were not run locally.
+
 ## 2026-11-27 — Synthesizer V vocal export
 
 Branch `feat/synthesizer-v-vocal-export` adds **File → Export Synthesizer V (.svp)** to the standalone and hosted workstation. Choose the lead, chorus, or both. The writer uses separate monophonic SVP tracks for distinct voices and simultaneous harmony notes. It preserves aligned lyric text, enabled arrangement notes, tempo and meter. Select voice databases in Synthesizer V. Formant Singer also assigns a group of equally many lyric units and notes one to one, preventing repeated syllables on short notes.

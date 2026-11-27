@@ -11,6 +11,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\OSTF Studio.exe
+Uninstallable=WizardIsComponentSelected('studio')
 CloseApplications=yes
 RestartApplications=no
 ChangesAssociations=yes
@@ -35,6 +36,8 @@ en.ChoosePlugins=Select individual plug-ins
 ja.ChoosePlugins=プラグインを選択
 en.Application=OSTF Studio application
 ja.Application=OSTF Studio 本体
+en.EmptySelection=Select the Studio application or at least one plug-in to install.
+ja.EmptySelection=インストールするStudio本体またはプラグインを選んでください。
 en.SharedTask=Install or update shared VST3 plug-ins for Studio and other DAWs (requires administrator approval)
 ja.SharedTask=Studio と他の DAW で使う共有 VST3 をインストール・更新する（管理者の許可が必要）
 en.SharedLaunchError=Windows could not start the shared VST3 installer. %1 (Windows error %2)
@@ -50,7 +53,7 @@ Name: "apponly"; Description: "{cm:AppOnly}"
 Name: "custom"; Description: "{cm:ChoosePlugins}"; Flags: iscustom
 
 [Components]
-Name: "studio"; Description: "{cm:Application}"; Types: full apponly custom; Flags: fixed
+Name: "studio"; Description: "{cm:Application}"; Types: full apponly custom
 #include PluginComponents
 
 [Tasks]
@@ -58,30 +61,31 @@ Name: "sharedvst3"; Description: "{cm:SharedTask}"
 
 [Files]
 Source: "{#PluginSetup}"; Flags: dontcopy nocompression
-Source: "{#Licenses}\*"; DestDir: "{app}\Licenses"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\assets\OstfScore.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\assets\OstfpPackage.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#GmLicense}"; DestDir: "{app}"; DestName: "TinySoundFont-License.txt"; Flags: ignoreversion
+Source: "{#Licenses}\*"; DestDir: "{app}\Licenses"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: studio
+Source: "{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion; Components: studio
+Source: "..\..\assets\OstfScore.ico"; DestDir: "{app}"; Flags: ignoreversion; Components: studio
+Source: "..\..\assets\OstfpPackage.ico"; DestDir: "{app}"; Flags: ignoreversion; Components: studio
+Source: "{#GmLicense}"; DestDir: "{app}"; DestName: "TinySoundFont-License.txt"; Flags: ignoreversion; Components: studio
 
 [Icons]
-Name: "{autoprograms}\OSTF Studio"; Filename: "{app}\OSTF Studio.exe"
+Name: "{autoprograms}\OSTF Studio"; Filename: "{app}\OSTF Studio.exe"; Components: studio
 
 [Registry]
-Root: HKCU; Subkey: "Software\Classes\.ostf"; ValueType: string; ValueName: ""; ValueData: "OSTFStudio.Score"; Check: CanSetDefault('.ostf')
-Root: HKCU; Subkey: "Software\Classes\.ostfp"; ValueType: string; ValueName: ""; ValueData: "OSTFStudio.Project"; Check: CanSetDefault('.ostfp')
-Root: HKCU; Subkey: "Software\Classes\.ostf\OpenWithProgids"; ValueType: string; ValueName: "OSTFStudio.Score"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKCU; Subkey: "Software\Classes\.ostfp\OpenWithProgids"; ValueType: string; ValueName: "OSTFStudio.Project"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Score"; ValueType: string; ValueName: ""; ValueData: "OSTF Score"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Score\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\OstfScore.ico"",0"
-Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Score\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\OSTF Studio.exe"" ""%1"""
-Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project"; ValueType: string; ValueName: ""; ValueData: "OSTF Studio Project"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\OstfpPackage.ico"",0"
-Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\OSTF Studio.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\.ostf"; ValueType: string; ValueName: ""; ValueData: "OSTFStudio.Score"; Check: CanSetDefault('.ostf'); Components: studio
+Root: HKCU; Subkey: "Software\Classes\.ostfp"; ValueType: string; ValueName: ""; ValueData: "OSTFStudio.Project"; Check: CanSetDefault('.ostfp'); Components: studio
+Root: HKCU; Subkey: "Software\Classes\.ostf\OpenWithProgids"; ValueType: string; ValueName: "OSTFStudio.Score"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty; Components: studio
+Root: HKCU; Subkey: "Software\Classes\.ostfp\OpenWithProgids"; ValueType: string; ValueName: "OSTFStudio.Project"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty; Components: studio
+Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Score"; ValueType: string; ValueName: ""; ValueData: "OSTF Score"; Flags: uninsdeletekey; Components: studio
+Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Score\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\OstfScore.ico"",0"; Components: studio
+Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Score\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\OSTF Studio.exe"" ""%1"""; Components: studio
+Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project"; ValueType: string; ValueName: ""; ValueData: "OSTF Studio Project"; Flags: uninsdeletekey; Components: studio
+Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\OstfpPackage.ico"",0"; Components: studio
+Root: HKCU; Subkey: "Software\Classes\OSTFStudio.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\OSTF Studio.exe"" ""%1"""; Components: studio
 
 [Code]
 var
   InstalledSelection: String;
+#include "StudioChoice.iss"
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
@@ -103,7 +107,12 @@ var
   ShowCommand: Integer;
 begin
   Result := '';
+  UpdateStudioChoice;
   Selection := SelectedPlugins;
+  if not WizardIsComponentSelected('studio') and ((Selection = '') or not WizardIsTaskSelected('sharedvst3')) then begin
+    Result := CustomMessage('EmptySelection');
+    exit;
+  end;
   if (Selection = '') or (Selection = InstalledSelection) or not WizardIsTaskSelected('sharedvst3') then exit;
   ExtractTemporaryFile('OSTF-Studio-VST3-Setup.exe');
   Params := '/TYPE=custom /COMPONENTS="' + Selection + '" /SUPPRESSMSGBOXES /NORESTART /SP- /NOCLOSEAPPLICATIONS';
@@ -123,7 +132,7 @@ begin
     InstalledSelection := Selection;
   if Result <> '' then begin
     Log(Result);
-    if not WizardSilent then
+    if not WizardSilent and WizardIsComponentSelected('studio') then
       if MsgBox(Result + #13#10#13#10 + CustomMessage('ContinueAppOnly'),
           mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then Result := '';
   end;

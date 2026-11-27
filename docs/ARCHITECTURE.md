@@ -258,7 +258,7 @@ Wave Analyzer uses the same catalog and a dedicated VST3 component/editor. A mon
 
 The nine stock audio effects use separate VST3 component classes and share a JUCE DSP library. The demo generator, packaging checks and Studio's VST3 identity mapping use the same effect catalog. The Production Session describes owned instruments and stock effects in processing order, bus destinations, gains, pan and post-fader sends. The Studio host extension carries edited stock effect state and accommodates legacy insert lists. The synthetic chord-voicing row keeps its settings in the extension. The offline audio test runs the same render path as the device callback.
 
-Both installers derive their selectable plug-ins from the build catalogues. Each plug-in has a stable four-character code and a display category. Windows Setup passes the selected codes to a separately elevated VST3 installer. Legacy migration runs only for codes that were successfully installed. Apple Installer associates each code with its own component package and receipt. Studio is required on both platforms.
+Both installers derive their selectable plug-ins from the build catalogues. Each plug-in has a stable four-character code and a display category. Windows Setup passes the selected codes to a separately elevated VST3 installer. Legacy migration runs only for codes that were successfully installed. Apple Installer associates each code with its own component package and receipt. A plug-in catalogue entry can declare a runtime dependency on the standalone application with `requiresStudio`. Both native checklists select and lock the application while any such plug-in is selected. Its checkbox becomes editable again when the last dependency is cleared.
 
 | Module | Responsibility |
 |---|---|

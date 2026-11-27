@@ -214,6 +214,8 @@ On Windows, run the Setup executable or extract the portable ZIP. On an Apple si
 
 Development builds of Windows Setup and the Apple silicon PKG let you uncheck individual VST3s or whole categories. On a fresh install all stock plug-ins are selected. Scale Editor appears under **Composition tools** and Wave Analyzer and Stem Separator under **Utilities**. To add a plug-in later, rerun the installer and select it. The Windows portable ZIP includes the full set.
 
+For use in another DAW, clear **OSTF Studio application** and select the VST3s you want. The current plug-ins can all run independently of the standalone application. Selecting a plug-in that requires the application automatically checks and locks Studio until the last such plug-in is deselected.
+
 ### MIDI export, language and view controls
 
 - Choose **File → Save as MIDI (SMF)** for a song-wide `.mid` file. Format 0 merges the parts into one track while retaining their MIDI channels. Format 1 writes a conductor track and named part tracks. Both preserve the source resolution, meter, tempo changes, notes, mapped GM percussion and supported channel events. Audio, plug-in state and vocal expression curves stay in the OSTF project. The derived Chord Voicing display does not create an extra MIDI part.

@@ -50,10 +50,10 @@ try {
     Set-Content -LiteralPath $migrationList -Value $migration -Encoding ascii
     & $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DOutputDir=$stage" "/DGmBundle=$GmBundle" "/DEffectsDir=$EffectsDir" "/DHelperComponents=$stage/helper.iss" "/DPluginFiles=$stage/files.iss" (Join-Path $PSScriptRoot 'StudioVST3.iss')
     if ($LASTEXITCODE -ne 0) { throw "VST3 installer build failed: $LASTEXITCODE" }
-    & $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DAppExe=$AppExe" "/DOutputDir=$OutputDir" "/DPluginSetup=$pluginSetup" "/DMigrationList=$migrationList" "/DGmLicense=$GmLicense" "/DLicenses=$Licenses" "/DPluginComponents=$stage/components.iss" "/DPluginSelection=$stage/selection.iss" "/DGroupLabels=$stage/groups.iss" $installer
+    & $InnoCompiler "/DAppVersion=$AppVersion" "/DBinaryVersion=$BinaryVersion" "/DAppExe=$AppExe" "/DOutputDir=$OutputDir" "/DPluginSetup=$pluginSetup" "/DMigrationList=$migrationList" "/DGmLicense=$GmLicense" "/DLicenses=$Licenses" "/DPluginComponents=$stage/components.iss" "/DStudioDependency=$stage/studio-dependency.iss" "/DPluginSelection=$stage/selection.iss" "/DGroupLabels=$stage/groups.iss" $installer
     if ($LASTEXITCODE -ne 0) { throw "Application installer build failed: $LASTEXITCODE" }
 } finally {
-    foreach ($temporary in @($migrationList, $pluginSetup) + @('components.iss','helper.iss','files.iss','selection.iss','groups.iss','plugins.json' | ForEach-Object { Join-Path $stage $_ })) {
+    foreach ($temporary in @($migrationList, $pluginSetup) + @('components.iss','helper.iss','files.iss','selection.iss','studio-dependency.iss','groups.iss','plugins.json' | ForEach-Object { Join-Path $stage $_ })) {
         if (Test-Path -LiteralPath $temporary -PathType Leaf) { Remove-Item -LiteralPath $temporary }
     }
     [IO.Directory]::Delete($stage)

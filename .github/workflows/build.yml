@@ -103,6 +103,7 @@ jobs:
           BINARY_VERSION: ${{ steps.version.outputs.binary }}
         run: |
           ./packaging/windows/Package.ps1 -AppVersion $env:APP_VERSION -BinaryVersion $env:BINARY_VERSION
+          python tests/installer_choices.py --windows-wizard "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
       - name: Verify app-only install and repair with a loaded VST3
         if: runner.os == 'Windows'
         shell: pwsh
@@ -123,7 +124,11 @@ jobs:
           $metadata = Join-Path $shared 'Resources/moduleinfo.json'
           $lock = [IO.File]::Open($dll, 'Open', 'Read', 'Read')
           try {
-            Install-Studio '/MERGETASKS=!sharedvst3'
+            Install-Studio '/TYPE=custom /COMPONENTS="effects\Of02" /TASKS=sharedvst3'
+            if (!(Test-Path (Join-Path $env:CommonProgramFiles 'VST3/OSTF Studio/OSTF Chorus.vst3/Contents/Resources/moduleinfo.json')) -or
+                (Test-Path (Join-Path $env:LOCALAPPDATA 'Programs/OSTF Studio/OSTF Studio.exe')) -or
+                (Test-Path 'HKCU:\Software\Classes\OSTFStudio.Score')) { throw 'Plug-in-only setup did not isolate the Studio payload' }
+            Install-Studio '/TYPE=apponly /MERGETASKS=!sharedvst3'
             if (!(Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs/OSTF Studio/OSTF Studio.exe')) -or
                 (Test-Path -LiteralPath $metadata) -or !(Test-Path -LiteralPath (Join-Path $oldRoot 'OSTF GM Sound Module.vst3'))) {
               throw 'App-only setup touched plug-ins or failed to install Studio'
@@ -162,12 +167,13 @@ jobs:
           changes="$RUNNER_TEMP/studio-choices.plist"
           python3 tests/installer_choices.py --mac-selection "$changes"
           sudo installer -pkg "$pkg" -target / -applyChoiceChangesXML "$changes"
-          test -x '/Applications/OSTF Studio.app/Contents/MacOS/OSTF Studio'
+          test ! -e '/Applications/OSTF Studio.app'
           plugins='/Library/Audio/Plug-Ins/VST3'
           test -d "$plugins/OSTF Scale Editor.vst3"
           test ! -e "$plugins/OSTF GM Sound Module.vst3"
           test ! -e "$plugins/OSTF Reverb.vst3"
           sudo installer -pkg "$pkg" -target /
+          test -x '/Applications/OSTF Studio.app/Contents/MacOS/OSTF Studio'
           while IFS= read -r name; do
             lipo "$plugins/$name.vst3/Contents/MacOS/$name" -verify_arch arm64
           done < <(jq -sr '["OSTF GM Sound Module", (.[][] | .name)][]' src/plugins/effects/catalog.json src/plugins/instruments/catalog.json)

@@ -1,5 +1,6 @@
 """Check both native installers against the stock VST3 catalogue."""
 import plistlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -17,8 +18,12 @@ class InstallerChoices(unittest.TestCase):
         mac = distribution(plugins, version, display_version).getroot()
         self.assertEqual(mac.findtext("title"), "OSTF Studio " + display_version)
         self.assertEqual(mac.find("options").get("customize"), "always")
-        self.assertEqual(mac.find("choice[@id='application']").get("enabled"), "false")
-        self.assertEqual(mac.find("choice[@id='application']").get("selected"), "true")
+        app = mac.find("choice[@id='application']")
+        self.assertEqual(app.get("start_selected"), "true")
+        required = [p for p in plugins if p.get("requiresStudio")]
+        expression = " || ".join(f"choices['{p['code']}'].selected" for p in required)
+        self.assertEqual(app.get("enabled"), f"!({expression})" if required else None)
+        self.assertEqual(app.get("selected"), f"my.choice.selected || {expression}" if required else None)
         groups = {p["group"] for p in plugins}
         self.assertEqual({line.get("choice") for line in mac.findall("choices-outline/line")},
                          {"application"} | groups)
@@ -28,6 +33,9 @@ class InstallerChoices(unittest.TestCase):
             def lines(name):
                 return (directory / (name + ".iss")).read_text(encoding="utf-8-sig").strip().splitlines()
             components = lines("components")
+            dep = " or ".join(p["group"] + "\\" + p["code"] for p in required)
+            self.assertEqual(lines("studio-dependency"),
+                             [f"Result := WizardIsComponentSelected('{dep}');" if dep else "Result := False;"])
             self.assertEqual(len(components), len(plugins) + len(groups))
             selections, payloads, helper = lines("selection"), lines("files"), lines("helper")
             self.assertEqual(len(selections), len(plugins))
@@ -62,7 +70,13 @@ class InstallerChoices(unittest.TestCase):
         self.assertEqual(groups["OSTF Studio"], "composition")
         self.assertEqual(groups["OSTF Wave Analyzer"], "utilities")
         self.assertEqual(groups["OSTF Stem Separator"], "utilities")
+        for p in plugins:
+            if p["code"] in {"Osd1", "Ose1", "Osg1", "Ogm1"}:
+                self.assertFalse(p.get("requiresStudio", False))
         self.check_choices(plugins)
+
+    def test_mixed_dependencies(self):
+        self.check_choices(wizard_fixture())
 
     def test_empty_and_populated_categories(self):
         self.check_choices([])
@@ -70,10 +84,35 @@ class InstallerChoices(unittest.TestCase):
                             for i, group in enumerate(GROUPS)])
 
 
+def wizard_fixture():
+    return [{"code": "Fx01", "name": "Independent FX", "group": "effects"},
+            {"code": "Tx01", "name": "Dependent FX", "group": "effects", "requiresStudio": True},
+            {"code": "Tx02", "name": "Dependent tool", "group": "utilities", "requiresStudio": True}]
+
+
+def windows_wizard(iscc):
+    tests = Path(__file__).resolve().parent
+    with tempfile.TemporaryDirectory() as folder:
+        stage = Path(folder)
+        windows_files(stage, wizard_fixture())
+        subprocess.run([iscc, "/Q", f"/O{stage}", f"/DStage={stage}",
+                        f"/DChoiceScript={tests.parent / 'packaging/windows/StudioChoice.iss'}",
+                        str(tests / "installer_wizard_smoke.iss")], check=True)
+        result = stage / "result.txt"
+        subprocess.run([str(stage / "wizard-test.exe"), "/VERYSILENT", "/SP-", "/SUPPRESSMSGBOXES",
+                        "/TYPE=custom", r"/COMPONENTS=effects\Tx01", f"/RESULT={result}"],
+                       check=True, timeout=60)
+        if result.read_text() != "ok":
+            raise RuntimeError(result.read_text())
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--mac-selection":
         changes = [{"choiceIdentifier": p["code"], "choiceAttribute": "selected",
                     "attributeSetting": int(p["name"] == "OSTF Scale Editor")} for p in catalog()]
+        changes.append({"choiceIdentifier": "application", "choiceAttribute": "selected", "attributeSetting": 0})
         Path(sys.argv[2]).write_bytes(plistlib.dumps(changes))
+    elif len(sys.argv) == 3 and sys.argv[1] == "--windows-wizard":
+        windows_wizard(sys.argv[2])
     else:
         unittest.main()

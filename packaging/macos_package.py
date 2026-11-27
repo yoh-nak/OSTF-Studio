@@ -16,17 +16,19 @@ def distribution(plugins, version, display_version=None):
     ET.SubElement(doc, "domains", enable_anywhere="false", enable_currentUserHome="false", enable_localSystem="true")
     outline = ET.SubElement(doc, "choices-outline")
 
-    def leaf(parent, code, label, required=False):
+    def leaf(parent, code, label):
         ET.SubElement(parent, "line", choice=code)
         choice = ET.SubElement(doc, "choice", id=code, title=label, description=label, start_selected="true")
-        if required:
-            choice.set("enabled", "false")
-            choice.set("selected", "true")
         receipt = "org.ostf.studio." + code.lower()
         ET.SubElement(choice, "pkg-ref", id=receipt)
         ET.SubElement(doc, "pkg-ref", id=receipt, version=version).text = code + ".pkg"
+        return choice
 
-    leaf(outline, "application", "OSTF Studio", required=True)
+    app = leaf(outline, "application", "OSTF Studio application")
+    required = " || ".join(f"choices['{p['code']}'].selected" for p in plugins if p.get("requiresStudio"))
+    if required:
+        app.set("enabled", f"!({required})")
+        app.set("selected", f"my.choice.selected || {required}")
     for group, (title, _) in GROUPS.items():
         children = [p for p in plugins if p["group"] == group]
         if children:
@@ -91,6 +93,8 @@ def build(build_dir, output, version, display_version=None):
             folder = resources / (lang + ".lproj")
             folder.mkdir(parents=True)
             strings = [f'"{labels[0]}" = "{labels[index]}";' for labels in GROUPS.values()]
+            if lang == "ja":
+                strings.append('"OSTF Studio application" = "OSTF Studio 本体";')
             (folder / "Localizable.strings").write_text("\n".join(strings), encoding="utf-16")
         run("productbuild", "--distribution", xml, "--package-path", work, "--resources", resources,
             dmgroot / "Install OSTF Studio and VST3.pkg")

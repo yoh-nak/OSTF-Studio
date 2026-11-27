@@ -28,10 +28,13 @@ def catalog():
         path = ROOT / "src/plugins" / group / "catalog.json"
         for item in json.loads(path.read_text(encoding="utf-8")):
             plugins.append({"code": item["code"], "name": item["name"],
-                            "group": item.get("installerGroup", group)})
+                            "group": item.get("installerGroup", group),
+                            "requiresStudio": item.get("requiresStudio", False)})
     for p in plugins:
         if p["group"] not in GROUPS or not re.fullmatch("[A-Za-z0-9]{4}", p["code"]):
             raise ValueError(f"Invalid installer choice: {p}")
+        if not isinstance(p.get("requiresStudio", False), bool):
+            raise ValueError(f"requiresStudio must be a boolean for {p['code']}")
     for key in ("code", "name"):
         if len({p[key].casefold() for p in plugins}) != len(plugins):
             raise ValueError(f"Duplicate plug-in {key}")
@@ -57,8 +60,11 @@ def windows_files(stage, plugins):
             files.append(f'Source: "{source}\\*"; DestDir: "{{commoncf64}}\\VST3\\OSTF Studio\\{bundle}"; '
                          f'Components: {code}; Flags: replacesameversion recursesubdirs createallsubdirs')
             selection.append(f"if WizardIsComponentSelected('{component}') then Result := Result + ',{code}';")
+    dependencies = [p["group"] + "\\" + p["code"] for p in plugins if p.get("requiresStudio")]
+    required = "WizardIsComponentSelected('" + " or ".join(dependencies) + "')" if dependencies else "False"
     for name, lines in {"components": components, "helper": flat, "files": files,
-                        "selection": selection, "groups": labels}.items():
+                        "selection": selection, "groups": labels,
+                        "studio-dependency": [f"Result := {required};"]}.items():
         (stage / (name + ".iss")).write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
 
 
