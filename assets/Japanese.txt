@@ -1352,3 +1352,6 @@ countries: jp
 "Ctrl/Cmd-click tracks or clips to select for bounce" = "Ctrl／⌘クリックでバウンスするトラックやクリップを複数選択"
 
 "Move selected clips to cursor" = "選択クリップをカーソルへ移動"
+"Remove boundary" = "境界を削除"
+"Note positions and lengths stay at their original ticks." = "入力済みの音符の位置と長さ（ティック）は保持されます。"
+"Choose an interior boundary." = "曲の途中の境界を選んでください。"

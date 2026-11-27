@@ -228,6 +228,23 @@ std::unique_ptr<OstfpPreview> projectScore(const juce::var& core, bool retainVoi
     readCompChoices(score,*out);
     out->documentId = score["document"]["id"].toString();
     out->durationTicks = duration;
+    for (const auto lane : {TimelineLane::section, TimelineLane::chord, TimelineLane::key,
+                            TimelineLane::meter, TimelineLane::scale}) {
+        const auto source = globalSource(lane);
+        const auto events = score[source.group][source.events];
+        auto& edges = out->globalEdges[lane];
+        if (const auto* list = events.getArray()) for (const auto& item : *list) {
+            if (lane == TimelineLane::scale && item.hasProperty("targets")) continue;
+            const auto at = integer(item[source.span ? "start" : "at"]);
+            if (at > 0 && at < duration) edges.push_back(at);
+            if (lane == TimelineLane::scale) {
+                const auto end = at + integer(item["duration"]);
+                if (end > 0 && end < duration) edges.push_back(end);
+            }
+        }
+        std::sort(edges.begin(), edges.end());
+        edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+    }
     out->ticksPerBar = ticksPerBar;
     out->ppq = ppq;
     require(denominator <= std::numeric_limits<int>::max(), "Unsupported meter denominator");

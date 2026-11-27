@@ -1,8 +1,12 @@
 # OSTF Studio
 
+[![Support OSTF Studio on Buy Me a Coffee](docs/images/support-development.svg)](https://buymeacoffee.com/yohsukenak)
+
 **[Share feedback or request a feature](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml)** · [Report a bug](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml) · [Read existing feedback](https://github.com/yoh-nak/OSTF-Studio/issues)
 
 Posts are public. English and Japanese are welcome.
+
+[Current OSTF specification and development status](https://github.com/yoh-nak/Open-Song-Timeline-Format). See the feature inventory below for the versions supported by Studio.
 
 OSTF Studio is a desktop music workstation for arranging, playing and editing Open Song Timeline Format scores.
 

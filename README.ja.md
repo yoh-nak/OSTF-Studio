@@ -1,8 +1,12 @@
 # OSTF Studio
 
+[![Buy Me a CoffeeでOSTF Studioの開発を応援する](docs/images/support-development.svg)](https://buymeacoffee.com/yohsukenak)
+
 **[ご意見・機能要望を送る](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml)** · [不具合を報告する](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml) · [届いている意見を見る](https://github.com/yoh-nak/OSTF-Studio/issues)
 
 日本語・英語で投稿できます。投稿は公開されます。
+
+[最新のOSTF仕様・開発状況](https://github.com/yoh-nak/Open-Song-Timeline-Format)。Studioの対応範囲はこのページの機能一覧で確認できます。
 
 **[画像付き操作マニュアル](docs/manual/README.md)** · **[全プラグインの図鑑](docs/plugins/README.md)** · [English manual](docs/manual/en.md)
 

@@ -1,0 +1,92 @@
+"""Incremental CMake/Ninja builds. Run from a native compiler environment."""
+import argparse
+import ctypes
+import os
+import platform
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+GIB = 1024 ** 3
+
+
+def available_memory():
+    if os.name == "nt":
+        class Memory(ctypes.Structure):
+            _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong),
+                        ("total", ctypes.c_ulonglong), ("free", ctypes.c_ulonglong),
+                        ("remaining", ctypes.c_ulonglong * 5)]
+        memory = Memory()
+        memory.length = ctypes.sizeof(memory)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memory)):
+            return memory.free
+    elif platform.system() == "Darwin":
+        import re
+        stats = subprocess.check_output(["vm_stat"], text=True)
+        size = re.search(r"page size of (\d+) bytes", stats)
+        pages = re.findall(r"Pages (?:free|inactive|speculative):\s+(\d+)\.", stats)
+        if size and pages:
+            return int(size[1]) * sum(map(int, pages))
+    elif Path("/proc/meminfo").is_file():
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) * 1024
+    return 4 * GIB
+
+
+def parallel_jobs():
+    override = os.getenv("CMAKE_BUILD_PARALLEL_LEVEL")
+    if override:
+        if not override.isdecimal() or int(override) < 1:
+            raise SystemExit("CMAKE_BUILD_PARALLEL_LEVEL must be a positive integer")
+        return int(override)
+    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count() or 1
+    return max(1, min(cpus, (available_memory() - GIB) // (2 * GIB)))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=["dev", "release", "clean"], default="dev")
+    parser.add_argument("--core", action="store_true", help="only the dependency-free core and its tests")
+    parser.add_argument("--target", action="append", help="build a particular CMake target (repeatable)")
+    parser.add_argument("--test", action="store_true", help="run CTest after building all targets")
+    parser.add_argument("--build-dir", type=Path, help="persistent directory, or parent of a new clean tree")
+    parser.add_argument("--jobs-only", action="store_true", help="print the safe parallel build count for CI")
+    parser.add_argument("-D", dest="definitions", action="append", default=[], metavar="NAME=VALUE")
+    args = parser.parse_args()
+    jobs = parallel_jobs()
+    if args.jobs_only:
+        print(jobs)
+        return
+    if args.target and (args.test or args.mode == "release"):
+        parser.error("Full testing and release builds require all targets.")
+    profile = "core" if args.core else "studio"
+    tree = args.build_dir or ROOT / f"build-{args.mode}-{profile}"
+    if args.mode == "clean":
+        tree.mkdir(parents=True, exist_ok=True)
+        tree = Path(tempfile.mkdtemp(prefix="clean-", dir=tree))
+    tree = tree.resolve()
+    env = os.environ.copy()
+    env["CMAKE_BUILD_PARALLEL_LEVEL"] = str(jobs)
+    configure = ["cmake", "-S", str(ROOT), "-B", str(tree), "-G", "Ninja",
+                 "-DCMAKE_BUILD_TYPE=Release", f"-DOSTF_STUDIO_BUILD_GUI={'OFF' if args.core else 'ON'}"]
+    cache = shutil.which("sccache") or shutil.which("ccache")
+    if cache and not (tree / "CMakeCache.txt").exists():
+        configure.extend(f"-DCMAKE_{lang}_COMPILER_LAUNCHER={cache}" for lang in ("C", "CXX", "OBJCXX"))
+    configure.extend("-D" + definition for definition in args.definitions)
+    build = ["cmake", "--build", str(tree), "--parallel", str(jobs)]
+    if args.target:
+        build.extend(["--target", *args.target])
+    print(f"{tree} ({jobs} parallel jobs)", flush=True)
+    for command in (configure, build):
+        subprocess.run(command, cwd=ROOT, env=env, check=True)
+    if args.test or args.mode == "release":
+        subprocess.run(["ctest", "--test-dir", str(tree), "-C", "Release", "--output-on-failure",
+                        "--no-tests=error"], cwd=ROOT, env=env, check=True)
+
+
+if __name__ == "__main__":
+    main()

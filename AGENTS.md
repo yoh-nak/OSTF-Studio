@@ -1,7 +1,7 @@
 # Codex project instructions — OSTF Studio
 
 ## Mission
-Build a cross-platform, AI-native OSTF-based DAW. OSTF 5.0 is the canonical musical score; OSTFP is the standard project container. This repository is **a UI bootstrap only**, not a completed DAW.
+Build a cross-platform, AI-native OSTF-based DAW. OSTF is the canonical musical score; OSTFP is the standard project container. This repository is **a UI bootstrap only**, not a completed DAW.
 
 ## Development and GitHub workflow
 - Drive development through natural-language Codex requests. Automate source changes, tests, Git operations and GitHub Actions builds where practical.
@@ -11,7 +11,7 @@ Build a cross-platform, AI-native OSTF-based DAW. OSTF 5.0 is the canonical musi
 - Read `HANDOFF.md` when resuming development. Update it in the same change as significant implementations, fixes or validation results. Keep branch context, platform verification and unresolved work reproducible from a fresh clone.
 
 ## Do not fabricate OSTF standard details
-- Before implementing OSTF/OSTFP serialization, obtain the official user's final OSTF 5.0 release package (schemas, spec, sample files) from the user or an authorized repository.
+- For every format change, consult the current default branch, STATUS.json, registry and releases in the [official OSTF repository](https://github.com/yoh-nak/Open-Song-Timeline-Format). Check the released specification, schemas and examples for the particular file version. Record the reviewed revision and test fixtures when adding support. Keep historical readers and their pinned schemas reproducible. A draft or SDK milestone alone does not enable a new writer.
 - The official spec governs exact key names, normative package structure, hash links, vocal, production and distributed profiles. No guessed fields.
 - .ostf score must remain portable and DAW-independent. Hardware IDs/credentials stay in local settings, not the score.
 - OSTFP should preserve supported session metadata and assets without embedding third-party plugins or proprietary binaries.
@@ -20,8 +20,8 @@ Build a cross-platform, AI-native OSTF-based DAW. OSTF 5.0 is the canonical musi
 ## Build + tooling
 - C++20, JUCE 9.0.5, CMake 3.22+. Use shared source for Windows x64, macOS arm64 and macOS x86_64. Keep platform-specific code at its integration boundary.
 - Keep core/model code independent of OS and JUCE wherever practical.
-- `cmake -S . -B build-core -DOSTF_STUDIO_BUILD_GUI=OFF && cmake --build build-core && ctest --test-dir build-core --output-on-failure` checks the core without downloading JUCE.
-- `cmake -S . -B build -DOSTF_STUDIO_BUILD_GUI=ON && cmake --build build --config Release` fetches JUCE and builds the GUI.
+- Use the persistent Ninja tree by default. Run `python tools/build.py`, or pass `--target OSTFStudio` or a device target. Run `python tools/build.py --core --test` for the JUCE-free core. Use the same generator and toolchain in each tree.
+- Follow [Incremental builds](docs/BUILDING.md) for parallel job budgets, compiler caches, release validation and isolated clean builds. Keep existing build directories during normal development. Keep version strings, device wrappers, DSP, validation and future SDK code in their own dependency scopes. Benchmark PCH changes before enabling them.
 - Investigate and fix reproducible Windows or macOS build failures where possible. CI compilation, test results, and package generation are separate from real-device app behavior.
 
 ## Builds, distribution and updates

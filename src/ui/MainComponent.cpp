@@ -1,3 +1,4 @@
+#include "app/StudioVersion.h"
 #include "plugins/studio/HostAudio.h"
 #include "ui/Notation.h"
 #include "plugins/scale/ScoreExchange.h"
@@ -1192,7 +1193,7 @@ MainComponent::MainComponent(ostfstudio::HostAudio* host) : hostAudio_(host) {
     if (!hostAudio_ && viewPreferences_.getUserSettings()->getBoolValue("studioChatGptBrowserLogin", false)) updateAiConnection(AccountAction::restore);
     addChildComponent(audioEditor_);
     addChildComponent(globalEditor_);
-    globalEditor_.navigate = [this](juce::int64 tick) { selectedGlobalTick_=tick; refreshEditor(); repaint(); };
+    globalEditor_.navigate = [this](juce::int64 tick) { boundarySelected_=false; selectedGlobalTick_=tick; refreshEditor(); repaint(); };
     globalEditor_.commit = [this](juce::Array<juce::var> remove, juce::Array<juce::var> insert) {
         if (selectedGlobal_) applyGlobalChange(*selectedGlobal_,std::move(remove),std::move(insert));
     };
@@ -1801,7 +1802,7 @@ void MainComponent::menuItemSelected(int item, int) {
         case showShortcuts: showShortcutList(); break;
         case showAbout:
             juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
-                TRANS("About OSTF Studio"), "OSTF Studio " OSTF_STUDIO_DISPLAY_VERSION "\n"
+                TRANS("About OSTF Studio"), juce::String("OSTF Studio ") + ostfstudio::displayVersion() + "\n"
                 + TRANS("OSTF 5.0 timeline, piano roll and session mixer.") + "\n\n"
                 + TRANS("Original Studio code: GNU GPL version 3. Provided without warranty.")
                 + "\n" + TRANS("See the included Licenses folder and the corresponding source on GitHub Releases."));
@@ -3121,6 +3122,12 @@ bool MainComponent::keyPressed(const juce::KeyPress& key) {
         if (key.isKeyCode('J')) { clipCommand(ClipOp::join, hit, track, 0); return true; }
     }
     if (selectedGlobal_ && hasKeyboardFocus(false)) {
+        if (boundarySelected_ && ((!mods.isAnyModifierKeyDown() &&
+             (key.isKeyCode(juce::KeyPress::deleteKey) || key.isKeyCode(juce::KeyPress::backspaceKey))) ||
+             (mods.isCommandDown() && key.isKeyCode('J')))) {
+            chooseBoundaryValue();
+            return true;
+        }
         if (mods.isCommandDown() && !mods.isAltDown()) {
             if (key.isKeyCode('C')) {
                 globalCommand(2);
@@ -3439,6 +3446,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     copiedAudio_.reset();
     selectedAudioId_.clear();
     arrangementClipFocus_ = false;
+    boundarySelected_ = false;
     ++projectGeneration_;
     pendingReview_.clear();
     chordReview_.setVisible(false);
@@ -4069,6 +4077,7 @@ void MainComponent::editOutput(bool send, std::optional<std::size_t> source, boo
     copiedAudio_.reset();
     selectedAudioId_.clear();
     arrangementClipFocus_ = false;
+    boundarySelected_ = false;
     ++projectGeneration_;
     workspaceMode_ = WorkspaceMode::arrangement;
     showOutputTracks_ = true;
@@ -4154,6 +4163,7 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
     copiedAudio_.reset();
     selectedAudioId_.clear();
     arrangementClipFocus_ = false;
+    boundarySelected_ = false;
     ++projectGeneration_;
     if (remove) {
         previous.erase(previous.begin() + static_cast<std::ptrdiff_t>(*remove));
@@ -6561,7 +6571,18 @@ void MainComponent::editGlobalBoundary(bool split) {
     auto result = ostfstudio::globalBoundaryEdit(juce::JSON::parse(project_->sourceScore.toString()), *selectedGlobal_,
         tick, project_->durationTicks, split, joinKeepsRight_, removed, added);
     if (result.failed()) statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
-    else applyGlobalChange(*selectedGlobal_, removed, added);
+    else {
+        const auto lane = *selectedGlobal_;
+        applyGlobalChange(lane, removed, added);
+        const auto edges = project_->globalEdges.find(lane);
+        if (split && edges != project_->globalEdges.end() &&
+            std::binary_search(edges->second.begin(), edges->second.end(), tick)) {
+            selectedGlobalTick_ = tick;
+            boundarySelected_ = true;
+            grabKeyboardFocus();
+            repaint();
+        }
+    }
 }
 
 void MainComponent::globalCommand(int command) {
@@ -6749,30 +6770,52 @@ void MainComponent::globalCommand(int command) {
         true);
 }
 
-void MainComponent::mouseMove(const juce::MouseEvent& event) {
-    bool edge=false;
-    if (project_ && rowOverlay_.isVisible() && clipTool_==ClipTool::select && !recordTrack_ &&
-        event.x>=rowOverlay_.getX()+trackHeaderWidth) {
-        const auto lane=globalLaneAt(event.getPosition());
-        if (lane && GlobalLaneEditor::supports(*lane)) {
-            const auto lo=arrangementTickAt(event.x-5), hi=arrangementTickAt(event.x+5);
-            auto near=[&](double bar){
-                const auto at=std::llround((bar-1)*project_->ticksPerBar);
-                return at>0 && at<project_->durationTicks && at>=lo && at<=hi;
-            };
-            for(const auto& row:project_->globalLanes) if(row.kind==*lane)
-                for(const auto& r:row.regions) {
-                    const auto begin=r.exactBars?r.exactBars->start:double(r.bars.firstBar);
-                    const auto end=r.exactBars?r.exactBars->end:double(r.bars.endBar);
-                    if(near(begin) || (*lane==TimelineLane::scale && near(end))) {edge=true;break;}
-                }
+std::optional<juce::int64> MainComponent::globalBoundaryAt(TimelineLane lane, int x) const {
+    if (!project_ || x < rowOverlay_.getX() + trackHeaderWidth) return {};
+    const auto found = project_->globalEdges.find(lane);
+    if (found == project_->globalEdges.end()) return {};
+    const auto& edges = found->second;
+    const auto tick = arrangementTickAt(x), last = arrangementTickAt(x + 5);
+    auto first = std::lower_bound(edges.begin(), edges.end(), arrangementTickAt(x - 5));
+    std::optional<juce::int64> closest;
+    for (; first != edges.end() && *first <= last; ++first)
+        if (!closest || std::abs(tick - *first) < std::abs(tick - *closest)) closest = *first;
+    return closest;
+}
+
+void MainComponent::chooseBoundaryValue() {
+    if (!project_ || !selectedGlobal_ || recordTrack_ || chordReviewBlocksSwitch()) return;
+    const auto lane = *selectedGlobal_;
+    const auto at = selectedGlobalTick_;
+    juce::PopupMenu menu;
+    menu.addSectionHeader(TRANS("Remove boundary"));
+    if (lane == TimelineLane::meter) menu.addSectionHeader(TRANS("Note positions and lengths stay at their original ticks."));
+    menu.addItem(1, TRANS("Keep earlier value"));
+    menu.addItem(2, TRANS("Keep later value"));
+    menu.showMenuAsync({}, [safe = juce::Component::SafePointer<MainComponent>(this), lane, at,
+                            generation = projectGeneration_](int choice) {
+        if (!safe || !choice || !safe->project_ || safe->projectGeneration_ != generation ||
+            safe->recordTrack_ || safe->selectedGlobal_ != lane || safe->selectedGlobalTick_ != at) return;
+        juce::Array<juce::var> remove, insert;
+        const auto result = ostfstudio::removeGlobalBoundary(juce::JSON::parse(safe->project_->sourceScore.toString()),
+            lane, at, safe->project_->durationTicks, choice == 2, remove, insert);
+        if (result.failed()) safe->statusLabel_.setText(juce::translate(result.getErrorMessage()), juce::dontSendNotification);
+        else {
+            safe->boundarySelected_ = false;
+            safe->applyGlobalChange(lane, remove, insert);
         }
-    }
-    setMouseCursor(edge?juce::MouseCursor::LeftRightResizeCursor:juce::MouseCursor::NormalCursor);
+    });
+}
+
+void MainComponent::mouseMove(const juce::MouseEvent& event) {
+    const auto lane = globalLaneAt(event.getPosition());
+    const bool edge = rowOverlay_.isVisible() && !recordTrack_ && lane && globalBoundaryAt(*lane, event.x);
+    setMouseCursor(edge && clipTool_ != ClipTool::join ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
 }
 
 void MainComponent::mouseDown(const juce::MouseEvent& event) {
     globalEdgeDrag_.reset();
+    boundarySelected_ = false;
     reorderSource_.reset();
     reorderTarget_.reset();
     if (rowOverlay_.isVisible() && viewportPan_.begin(*this, event, rowOverlay_.getBounds().withTrimmedLeft(trackHeaderWidth))) return;
@@ -6790,26 +6833,19 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
         selectedGlobal_ = lane;
         selectedGlobalTick_ = event.x < rowOverlay_.getX() + trackHeaderWidth
             ? std::max<juce::int64>(0, cursorTick_) : arrangementTickAt(event.x);
-        if (clipTool_ == ClipTool::select && GlobalLaneEditor::supports(*lane) && !recordTrack_
-            && event.mods.isLeftButtonDown() && !event.mods.isPopupMenu() && event.x >= rowOverlay_.getX()+trackHeaderWidth) {
-            const auto score = juce::JSON::parse(project_->sourceScore.toString());
-            const auto source = ostfstudio::globalSource(*lane);
-            const auto entries = score[source.group][source.events];
-            const auto lo = arrangementTickAt(event.x-5), hi = arrangementTickAt(event.x+5);
-            juce::int64 closest = -1;
-            if (const auto* list = entries.getArray()) for (const auto& item : *list) {
-                const juce::int64 at = item[source.span ? "start" : "at"];
-                if (*lane == TimelineLane::scale && item.hasProperty("targets")) continue;
-                auto consider=[&](juce::int64 edge){
-                    if(edge>0 && edge<project_->durationTicks && edge>=lo && edge<=hi &&
-                       (closest<0 || std::abs(edge-selectedGlobalTick_)<std::abs(closest-selectedGlobalTick_))) closest=edge;
-                };
-                consider(at);
-                if(*lane==TimelineLane::scale) consider(at+juce::int64(item["duration"]));
+        if (!recordTrack_) if (auto edge = globalBoundaryAt(*lane, event.x)) {
+            selectedGlobalTick_ = *edge;
+            boundarySelected_ = true;
+            grabKeyboardFocus();
+            repaint();
+            if (event.mods.isPopupMenu() || clipTool_ == ClipTool::join) {
+                chooseBoundaryValue();
+                return;
             }
-            if (closest > 0) globalEdgeDrag_=GlobalEdgeDrag{*lane,closest,closest,projectGeneration_};
+            if (event.mods.isLeftButtonDown())
+                globalEdgeDrag_ = GlobalEdgeDrag{*lane, *edge, *edge, projectGeneration_};
         }
-        if (clipTool_ != ClipTool::select && event.mods.isLeftButtonDown() && !event.mods.isPopupMenu()
+        if (!globalEdgeDrag_ && clipTool_ != ClipTool::select && event.mods.isLeftButtonDown() && !event.mods.isPopupMenu()
             && event.x >= rowOverlay_.getX() + trackHeaderWidth) { editGlobalBoundary(clipTool_ == ClipTool::split); return; }
         if (*lane == TimelineLane::tempo || GlobalLaneEditor::supports(*lane)) {
             trackEditorOpen_ = true;
@@ -8663,6 +8699,24 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
     };
     for (std::size_t i = 0; i < view.globalLanes.size(); ++i) {
         drawLane(view.globalLanes[i], y, juce::Colour((blueTheme() ? blueGlobal : globalColours)[i % std::size(globalColours)]));
+        if (project_) {
+            const auto lane = view.globalLanes[i].kind;
+            const auto edges = project_->globalEdges.find(lane);
+            if (edges != project_->globalEdges.end()) {
+                const auto& ticks = edges->second;
+                const auto first = std::lower_bound(ticks.begin(), ticks.end(), arrangementTickAt(area.getX()));
+                for (auto it = first; it != ticks.end(); ++it) {
+                    const auto x = positionX(1. + double(*it) / project_->ticksPerBar, area);
+                    if (x >= area.getRight()) break;
+                    const auto active = boundarySelected_ && selectedGlobal_ == lane && selectedGlobalTick_ == *it;
+                    g.setColour(active ? juce::Colour(0xffffc670) : juce::Colour(0xffa4c4cd));
+                    g.fillRect(x, y + 3, 1, globalLaneHeight - 6);
+                    juce::Path grip;
+                    grip.addTriangle(float(x - 3), float(y + 2), float(x + 4), float(y + 2), float(x), float(y + 7));
+                    g.fillPath(grip);
+                }
+            }
+        }
         if (globalEdgeDrag_ && globalEdgeDrag_->lane == view.globalLanes[i].kind && globalEdgeDrag_->to != globalEdgeDrag_->from) {
             g.setColour(juce::Colour(0xffffc670));
             const auto x=positionX(1.+double(globalEdgeDrag_->to)/project_->ticksPerBar,area);

@@ -164,6 +164,9 @@ private:
     juce::int64 snapLaneTick(ostfstudio::TimelineLane, juce::int64, juce::int64 ignoredMeter = -1) const;
     struct GlobalEdgeDrag { ostfstudio::TimelineLane lane; juce::int64 from, to; std::size_t generation; };
     std::optional<GlobalEdgeDrag> globalEdgeDrag_;
+    bool boundarySelected_ = false;
+    std::optional<juce::int64> globalBoundaryAt(ostfstudio::TimelineLane, int x) const;
+    void chooseBoundaryValue();
     void insertTimelineBars(juce::int64 at,int count);
     void applyGlobalChange(ostfstudio::TimelineLane, juce::Array<juce::var> remove, juce::Array<juce::var> insert);
     std::optional<ostfstudio::TimelineLane> selectedGlobal_, copiedLane_;

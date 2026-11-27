@@ -256,6 +256,7 @@ struct OstfpPreview {
                                     const juce::Array<juce::var>& insert, juce::MemoryBlock& before);
     juce::Result applySongMusic(const SongMusicEdit&, juce::MemoryBlock& before);
     juce::Result checkAudition(int shift, double rate) const;
+    std::map<TimelineLane, std::vector<juce::int64>> globalEdges;
     std::vector<ArrangementLane> globalLanes, trackLanes;
     const char* displayLyricAt(size_t track, juce::int64 tick) const;
     std::map<size_t, std::vector<ArrangementLane>> partLyricLanes;

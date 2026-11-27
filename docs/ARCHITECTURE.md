@@ -1,5 +1,10 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+The [current OSTF specification and registry](https://github.com/yoh-nak/Open-Song-Timeline-Format) govern format work. Review its default branch before changing a reader or writer. Studio embeds the reviewed schemas for the file versions it implements. The upstream status reviewed at [e207a09](https://github.com/yoh-nak/Open-Song-Timeline-Format/blob/e207a097bfee7c57e53c5fb86216b75b0cea1595/STATUS.json) identifies 5.4.0 as the source baseline and 6.0.0 as draft design.
+
+Global boundary edits operate in source-score ticks. The arrangement reads shared edge positions from the score when it builds the preview. Moving one shared edge resizes both neighboring spans. Removing a meter change keeps MIDI ticks and audio placement while changing the meter map. [Build targets and cache policy](BUILDING.md)
+
+
 The [user manual](manual/en.md) covers standalone Studio and the hosted workstation. The [illustrated device inventory](plugins/en.md) covers all 41 VST3 editors in the Windows build of Public Alpha 2. Public Alpha 1 shipped 38. The subsequent three are the workstation VST3, SUPER KNOBBER LEAD and SUPER KNOBBER REVERB.
 
 The workstation plug-in and standalone app share arrangement, notation and piano-roll editing. With host transport follow enabled, the workstation maps the host time position through the score tempo map. The embedded Scale Editor reads the active Studio project and writes shared or track-specific scale assignments there. The [timeline guide](manual/en.md#timeline-edit) describes the boundary rules, and the [export guide](manual/en.md#audio-export) shows how a track or clip selection becomes a separate audio track.

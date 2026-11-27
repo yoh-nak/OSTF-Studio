@@ -33,14 +33,25 @@ if (OSTF_STUDIO_BUILD_GUI)
         GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
         GIT_TAG 9.0.5
         GIT_SHALLOW TRUE
+        UPDATE_DISCONNECTED TRUE
     )
     FetchContent_MakeAvailable(JUCE)
+    if(EXISTS "${juce_SOURCE_DIR}/.git")
+        find_package(Git REQUIRED)
+        execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${juce_SOURCE_DIR}" rev-parse HEAD
+            OUTPUT_VARIABLE juce_revision OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+        if(NOT juce_revision STREQUAL "d60b7a78030661574a615b586d9325ba7a7fa7dd")
+            message(FATAL_ERROR "JUCE checkout does not match the pinned 9.0.5 revision: ${juce_revision}")
+        endif()
+    endif()
 
     set(JSONCONS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if(POLICY CMP0135)
         cmake_policy(SET CMP0135 NEW)
     endif()
+    set(OSTF_DOWNLOAD_DIR "${CMAKE_BINARY_DIR}/downloads" CACHE PATH "Verified dependency archives")
     FetchContent_Declare(jsoncons
+        DOWNLOAD_DIR "${OSTF_DOWNLOAD_DIR}/jsoncons-v1.5.0"
         URL https://codeload.github.com/danielaparker/jsoncons/zip/refs/tags/v1.5.0
         URL_HASH SHA256=6de746d3fd381937c9fc58ed47df7404792881b9ba924d43124dc6fb7c22f741)
     FetchContent_MakeAvailable(jsoncons)
@@ -150,6 +161,10 @@ if (OSTF_STUDIO_BUILD_GUI)
     elseif (APPLE)
         enable_language(OBJCXX)
     endif()
+    configure_file(cmake/StudioVersion.cpp.in generated/StudioVersion.cpp @ONLY)
+    add_library(ostf_studio_version STATIC "${CMAKE_CURRENT_BINARY_DIR}/generated/StudioVersion.cpp")
+    set_target_properties(ostf_studio_version PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+    target_include_directories(ostf_studio_version PRIVATE src)
     foreach(studio_target IN ITEMS OSTFStudio OSTFStudioPlugin)
         juce_generate_juce_header(${studio_target})
         target_sources(${studio_target} PRIVATE src/ui/MainComponent.cpp src/ui/SystemUsageMeter.cpp src/ui/ArrangementClipEdits.cpp src/ui/ChordReview.cpp src/ui/OstfpPreview.cpp
@@ -157,7 +172,7 @@ if (OSTF_STUDIO_BUILD_GUI)
             src/ui/SongMidi.cpp src/ui/StudioLanguage.cpp src/ui/Notation.cpp src/ui/ScoreView.cpp src/ui/AnalysisService.cpp src/ui/ScorePdfPages.cpp src/ui/MediaImport.cpp src/ui/StemTranscription.cpp src/ui/MusicXmlImport.cpp
             src/ui/TheoryGuide.cpp src/ui/SynthVExport.cpp src/ui/AudioExport.cpp src/ui/RenderAudio.cpp)
         target_include_directories(${studio_target} PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
-        target_compile_definitions(${studio_target} PRIVATE OSTF_STUDIO_DISPLAY_VERSION="${OSTF_STUDIO_DISPLAY_VERSION}")
+        target_link_libraries(${studio_target} PRIVATE ostf_studio_version)
         target_compile_definitions(${studio_target} PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_VST3_CAN_REPLACE_VST2=0)
         target_link_libraries(${studio_target} PRIVATE
             OSTFEnglishLexicon

@@ -1,5 +1,9 @@
 # OSTF Studio development handoff
 
+## 2026-11-28 — Incremental builds and global boundaries
+
+Branch `codex/incremental-build-timeline`. See [build modes and measurements](docs/BUILDING.md). Test a split with scissors still active, drag the triangle, then remove it with either value and undo. The track-view smoke test checks both meter choices against the saved score. The homepage links directly to the current OSTF registry and the development support page. Release history is in [RELEASING.md](docs/RELEASING.md).
+
 ## 2026-11-28 — Public Alpha 2
 
 Release branch `codex/public-alpha-2` integrates the Windows-tested development snapshot `d433b0b` and the illustrated guide from public main `19e600a`. The release candidate uses version `1.0.0-public-alpha.2`. Build, install and test the same revision on Windows x64, Apple silicon and Intel macOS. The draft publisher validates names, lengths and digests before exposing downloads. Track runner results independently of physical hardware and external DAW verification. [Release notes](docs/releases/v1.0.0-public-alpha.2.md) · [Release procedure](docs/RELEASING.md)
