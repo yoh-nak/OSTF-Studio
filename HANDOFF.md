@@ -10,6 +10,8 @@ Windows x64 Release builds of standalone Studio, the workstation VST3 and Scale 
 
 The public homepage feedback update is [PR #10](https://github.com/yoh-nak/OSTF-Studio/pull/10). The English and Japanese READMEs link to bilingual issue forms. The development binaries are local.
 
+Windows Setup and the Portable ZIP were generated. The ZIP extracted successfully with 40 VST3 bundles. SHA-256 hashes for the extracted standalone application, Scale Editor and SUPER KNOBBER LEAD matched their tested build outputs. All four installer-choice tests passed. Interactive installation was not exercised.
+
 ## 2026-11-27 — SUPER KNOBBER LEAD v1.2
 
 Branch `codex/super-knobber-lead` adds the independent Skl1 VST3, its preset bank, illustrated guide and host test. Source device SHA-256 is `9db41af6660b1ac8c8ba2a052fefa3f6c92dc22519f2fa4aef7c04a0f46811d5`. The editor groups 132 original sound controls into 19 sections across five resizable pages. It exposes direct automation, mono/three-voice playing, sustain, bend and MPE. The Max for Live Blue Hand proxies and assignment switches were retired for this port.
