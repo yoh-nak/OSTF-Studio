@@ -57,6 +57,9 @@ jobs:
         run: bash tests/release-version.sh
       - name: Check installer catalogue and choices
         run: python tests/installer_choices.py
+      - name: Exercise macOS installer dependencies
+        if: runner.os == 'macOS'
+        run: python3 tests/installer_choices.py --mac-dependency-install
       - name: Check illustrated manuals and device inventory
         run: python tests/illustrated_guides.py
       - name: Configure standalone core
@@ -178,6 +181,7 @@ jobs:
           changes="$RUNNER_TEMP/studio-choices.plist"
           python3 tests/installer_choices.py --mac-selection "$changes"
           sudo installer -pkg "$pkg" -target / -applyChoiceChangesXML "$changes"
+          set -x
           test -x '/Applications/OSTF Studio.app/Contents/MacOS/OSTF Studio'
           plugins='/Library/Audio/Plug-Ins/VST3'
           test -d "$plugins/OSTF Scale Editor.vst3"

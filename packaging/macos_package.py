@@ -35,7 +35,11 @@ def distribution(plugins, version, display_version=None, arch="arm64"):
             parent = ET.SubElement(outline, "line", choice=group)
             ET.SubElement(doc, "choice", id=group, title=title, description=title)
             for p in children:
-                leaf(parent, p["code"], display_name(p))
+                choice = leaf(parent, p["code"], display_name(p))
+                if p.get("requiresStudio"):
+                    # A scripted installer can override a disabled checkbox.
+                    # Bind the dependency to the payload as well as to the UI.
+                    ET.SubElement(choice, "pkg-ref", id=app.find("pkg-ref").get("id"))
     return ET.ElementTree(doc)
 
 

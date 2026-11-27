@@ -1,5 +1,6 @@
 """Check both native installers against the stock VST3 catalogue."""
 import plistlib
+import platform
 import subprocess
 import sys
 import tempfile
@@ -67,6 +68,8 @@ class InstallerChoices(unittest.TestCase):
                     package = mac.find(f"pkg-ref[@id='{receipt}']")
                     self.assertEqual(package.text, code + ".pkg")
                     self.assertEqual(package.get("version"), version)
+                    extra = [ref.get("id") for ref in choice.findall("pkg-ref")[1:]]
+                    self.assertEqual(extra, ["org.ostf.studio.application"] if p.get("requiresStudio") else [])
 
     def test_stock_choices(self):
         plugins = catalog()
@@ -134,6 +137,39 @@ def windows_wizard(iscc):
                     raise RuntimeError(result.read_text())
 
 
+def macos_dependency_install():
+    # Exercise Apple's selection engine with tiny payloads before the native build.
+    plugins = wizard_fixture()[:2]
+    with tempfile.TemporaryDirectory() as folder:
+        work = Path(folder)
+        target = work / "installed"
+        target.mkdir()
+        xml = distribution(plugins, "1.0.0", arch=platform.machine())
+        for ref in xml.getroot().iter("pkg-ref"):
+            ref.set("id", ref.get("id").replace("org.ostf.studio.", "org.ostf.test." + work.name + "."))
+        for ref in xml.getroot().findall("pkg-ref"):
+            payload = work / Path(ref.text).stem
+            payload.mkdir()
+            (payload / payload.name).write_text("test", encoding="utf-8")
+            subprocess.run(["pkgbuild", "--root", payload, "--ownership", "preserve",
+                            "--identifier", ref.get("id"), "--version", "1",
+                            "--install-location", target, work / ref.text], check=True)
+        definition = work / "Distribution.xml"
+        xml.write(definition, encoding="utf-8", xml_declaration=True)
+        package = work / "choices.pkg"
+        subprocess.run(["productbuild", "--distribution", definition, "--package-path", work, package], check=True)
+        for selected in ("Fx01", "Tx01"):
+            changes = [{"choiceIdentifier": code, "choiceAttribute": "selected", "attributeSetting": int(code == selected)}
+                       for code in ("Fx01", "Tx01", "application")]
+            selection = work / "changes.plist"
+            selection.write_bytes(plistlib.dumps(changes))
+            subprocess.run(["sudo", "installer", "-pkg", package, "-target", "/", "-applyChoiceChangesXML", selection], check=True)
+            expected = {"Fx01"} if selected == "Fx01" else {"Fx01", "Tx01", "application"}
+            present = {p.name for p in target.iterdir()}
+            if present != expected:
+                raise RuntimeError(f"{selected}: expected {expected}, installed {present}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--mac-selection":
         changes = [{"choiceIdentifier": p["code"], "choiceAttribute": "selected",
@@ -142,5 +178,7 @@ if __name__ == "__main__":
         Path(sys.argv[2]).write_bytes(plistlib.dumps(changes))
     elif len(sys.argv) == 3 and sys.argv[1] == "--windows-wizard":
         windows_wizard(sys.argv[2])
+    elif sys.argv[1:] == ["--mac-dependency-install"]:
+        macos_dependency_install()
     else:
         unittest.main()

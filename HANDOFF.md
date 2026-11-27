@@ -6,6 +6,8 @@ Release branch `codex/public-alpha-2` integrates the Windows-tested development 
 
 Local Windows Release passed 48/48 CTests. The first Apple silicon build passed 46/47 GUI-build tests. The external-host recall check returned before its 18-second playback window. The macOS command-line test host now creates the AppKit application before starting the same event loop a DAW provides and reports processed audio blocks on failure.
 
+The corrected Apple silicon host passed all 47 tests. Verifying a customized install then exposed an issue with the Studio application dependency. Each dependent Mac choice now references the application package directly. A pre-build test installs tiny independent and dependent fixtures with Apple's actual Installer before testing the shipping DMG.
+
 ## 2026-11-27 — Windows development UI and bilingual illustrated guides
 
 Documentation branch `codex/illustrated-guide-refresh` started at public main `eacc148`. The screen captures use the local Windows x64 Release build of `codex/timeline-snap-audition-controls` at `d433b0b`. The public download links still identify Public Alpha 1. Its 38 plug-ins predate the workstation VST3 and both SUPER KNOBBER devices shown in the development guide.
