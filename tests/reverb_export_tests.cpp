@@ -151,6 +151,20 @@ static AudioProcessorParameter &param(AudioProcessor &p, String name) {
   throw std::runtime_error(("Missing " + name).toStdString());
 }
 static void reverbTests(const File &file, const File &samples) {
+  knobverb::WetWaveform waveform;
+  waveform.prepare(48000);
+  for (int i=0; i<960; ++i) waveform.push(i==2 ? -.3f : 0.f, i==8 ? .7f : 0.f);
+  auto history=waveform.read();
+  require(history.back().low==-.3f && history.back().high==.7f && history.front().high==0,"Stereo waveform timing");
+  knobber::Delay left(4096), right(4096);
+  knobverb::Predelay transition;
+  auto tap=transition.read(left,right,.75,-.5,0,48000);
+  for (int i=0; i<=960; ++i) {
+    const auto next=transition.read(left,right,.75,-.5,1500,48000);
+    require(std::abs(next.left-tap.left)<.001 && std::abs(next.right-tap.right)<.001,"Pre-delay discontinuity");
+    tap=next;
+  }
+  require(std::abs(tap.left)<.00001 && std::abs(tap.right)<.00001,"Pre-delay did not settle");
   VST3PluginFormat vst;
   OwnedArray<PluginDescription> types;
   vst.findAllTypesForFile(types, file.getFullPathName());
@@ -170,6 +184,21 @@ static void reverbTests(const File &file, const File &samples) {
   p->setStateInformation(state.getData(), int(state.getSize()));
   require(std::abs(param(*p, "Dry / Wet").getValue() - .37f) < .001f,
           "State recall");
+  {
+    auto dry=std::make_unique<knobverb::Reverb>();
+    dry->state.getParameter("mixamount")->setValueNotifyingHost(0);
+    dry->setRateAndBufferSizeDetails(48000,256);
+    dry->prepareToPlay(48000,256);
+    AudioBuffer<float> audio(2,256);
+    MidiBuffer events;
+    for(int b=0;b<100;++b) {
+      for(int ch=0;ch<2;++ch)
+        for(int i=0;i<256;++i) audio.setSample(ch,i,.5f*std::sin((256*b+i)*.06f));
+      dry->processBlock(audio,events);
+    }
+    require(dry->wetPeak.load()==0 && dry->inputPeak.load()>.45f && dry->outputPeak.load()>.1f,
+            "Dry-only mix must meter input and output but no audible wet signal");
+  }
   if (samples != File{})
     samples.createDirectory();
   for (int program : {0, 9, 29}) {

@@ -2,6 +2,7 @@
 #pragma once
 #include "../../instruments/knobber/Primitives.h"
 #include "Controls.h"
+#include "Predelay.h"
 namespace knobverb {
 struct Engine {
   knobber::Delay preL{144000};
@@ -139,7 +140,8 @@ struct Engine {
   double boomLowR = 0;
   double boomTailL = 0;
   double boomTailR = 0;
-  double beforeLeft{}, beforeRight{};
+  Predelay preDelayTap;
+  double beforeLeft{}, beforeRight{}, filteredLeft{}, filteredRight{};
   void reset();
   knobber::Stereo process(double in1, double in2, double samplerate, int rtype,
                           const std::array<double, 108> &controls);

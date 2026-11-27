@@ -10,7 +10,9 @@ OSTF Studio is a desktop music workstation for arranging, playing and editing Op
 
 The development build includes a lead synth with 188 factory sounds from the M4L instrument and selectable 2x oversampling. [SUPER KNOBBER LEAD controls and screenshot](docs/plugins/workstations.en.md#super-knobber-lead)
 
-The development build also includes **SUPER KNOBBER REVERB**, stereo mix export and track bounce. Choose **File → Export mix as audio** for a master file, or right-click a source track and choose **Bounce to new audio track**. [Reverb controls and screenshot](docs/plugins/space-and-tone.en.md#super-knobber-reverb)
+In the development build, choose **File → Export mix as audio** to write the stereo master. Ctrl/Cmd-click track headers to select a group, then right-click to bounce the group to one audio track. Ctrl/Cmd-click clips to bounce just their time span. Open **Score → Piano Roll** to edit MIDI while reading the selected part. [Audio and notation workflows](docs/manual/en.md)
+
+[SUPER KNOBBER REVERB controls and analyzer](docs/plugins/space-and-tone.en.md#super-knobber-reverb)
 
 **Download Public Alpha 1** · [Windows x64 Setup](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Setup.exe) · [Windows Portable ZIP](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_Windows_x64_Portable.zip) · [Apple silicon DMG](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.1/OSTF_Studio_macOS_arm64.dmg) · [Release notes and corresponding source](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1)
 

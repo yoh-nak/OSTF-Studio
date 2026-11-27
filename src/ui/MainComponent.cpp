@@ -1589,7 +1589,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
             menu.addItem(11001,TRANS("Track colour"),editable && selectedTrack_ && *selectedTrack_<project_->sourceTrackCount());
             menu.addItem(renameTrackItem, TRANS("Rename track..."), editable && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
             menu.addItem(copyTrack, TRANS("Duplicate track"), add && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
-            menu.addItem(bounceTrackAudio, TRANS("Bounce to new audio track"), selectedTrack_ && canBounce(*selectedTrack_));
+            menu.addItem(bounceTrackAudio, TRANS("Bounce tracks to one audio track") + (selectedTrack_ ? " (" + juce::String(int(bounceSelection(*selectedTrack_).size())) + ")" : juce::String{}), selectedTrack_ && canBounce(*selectedTrack_));
             menu.addItem(removeTrack, TRANS("Delete selected track..."), editable && selectedTrack_ && *selectedTrack_ < project_->sourceTrackCount());
             break;
         }
@@ -1730,7 +1730,7 @@ void MainComponent::menuItemSelected(int item, int) {
         case exportChordPro: saveDocument(SaveFormat::chordPro); break;
         case exportMidi0: saveDocument(SaveFormat::midi0); break;
         case exportMixAudio: chooseAudioExport(); break;
-        case bounceTrackAudio: if(selectedTrack_) renderAudio(*selectedTrack_,{},0); break;
+        case bounceTrackAudio: if(selectedTrack_) bounceTracks(*selectedTrack_); break;
         case exportMidi1: saveDocument(SaveFormat::midi1); break;
         case languageSystem:
         case languageEnglish:
@@ -1745,6 +1745,15 @@ void MainComponent::menuItemSelected(int item, int) {
         }
         case showPiano:
         case showMixer:
+            if (item == showPiano && workspaceMode_ == WorkspaceMode::score && scoreView_) {
+                scorePiano_ = !scorePiano_;
+                if (scorePiano_) {
+                    if (auto track = scoreView_->selectedPartTrack(); track && selectedTrack_!=track) selectTrack(*track);
+                    if (!selectedTrack_ || selectedTrack_ != scoreView_->selectedPartTrack()) scorePiano_ = false;
+                }
+                refreshEditor();
+                break;
+            }
             if (workspaceMode_==WorkspaceMode::live) { liveShowsMixer_=item==showMixer; refreshEditor(); break; }
             if (item == showMixer) {
                 mixerSelected_ = workspaceMode_ != WorkspaceMode::arrangement || !mixerSelected_;
@@ -1939,7 +1948,11 @@ void MainComponent::scrollBarMoved(juce::ScrollBar* bar, double) {
     if (bar == &arrangementScroll_ && chordReview_.isVisible()) chordReview_.resized();
     chordReview_.repaint();
     if (bar == &verticalScroll_) resized();
-    if (bar == &arrangementScroll_) tempoEditor_.repaint();
+    if (bar == &arrangementScroll_) {
+        tempoEditor_.repaint();
+        if (workspaceMode_==WorkspaceMode::score && scorePiano_ && scoreView_)
+            scoreView_->revealBar(int(std::floor(arrangementScroll_.getCurrentRangeStart()))-1);
+    }
     repaint();
 }
 
@@ -3422,6 +3435,7 @@ void MainComponent::adoptProject(std::unique_ptr<ostfstudio::OstfpPreview> next,
     pendingReview_.clear();
     chordReview_.setVisible(false);
     selectedTrack_.reset();
+    bounceTracks_.clear(); bounceClipIds_.clear();
     trackRows_.clear();
     verticalScroll_.setCurrentRangeStart(0, juce::dontSendNotification);
     groupDefaults_.fill(TrackRowSize::minimum);
@@ -3892,7 +3906,7 @@ void MainComponent::showRowMenu(bool output, std::size_t index) {
         menu.addItem(trackTakeMenu, TRANS("Takes"), project_->trackKinds[index]!=ostfstudio::TrackKind::audio && !recordTrack_ && pendingReview_.empty());
     }
     menu.addItem(renameTrackItem, TRANS("Rename track..."));
-    if(!output) menu.addItem(bounceTrackAudio,TRANS("Bounce to new audio track"),canBounce(index));
+    if(!output) menu.addItem(bounceTrackAudio,TRANS("Bounce tracks to one audio track") + " (" + juce::String(int(bounceSelection(index).size())) + ")",canBounce(index));
     if (!output || index != 0) {
         menu.addItem(copyTrack, TRANS("Duplicate track"), room);
         menu.addItem(removeTrack, TRANS("Delete track..."), !output || mixer_.routing().canRemoveOutput(index));
@@ -3916,7 +3930,7 @@ void MainComponent::showRowMenu(bool output, std::size_t index) {
             if (choice == cursorPatchItem && !output) safe->showPatch(index, safe->cursorTick_);
             if (choice == initialPatchItem && !output) safe->showPatch(index, 0);
             if (choice == renameTrackItem) safe->renameTrack(index, output);
-            if (choice == bounceTrackAudio && !output) safe->renderAudio(index,{},0);
+            if (choice == bounceTrackAudio && !output) safe->bounceTracks(index);
             if (choice == removeTrack) safe->confirmRemoval(output, index);
             if (choice == copyTrack) {
                 if (output) safe->editOutput(send, index);
@@ -4147,6 +4161,7 @@ void MainComponent::editTracks(ostfstudio::TrackKind kind, std::optional<std::si
     pendingReview_.clear();
     chordReview_.setVisible(false);
     selectedTrack_.reset();
+    bounceTracks_.clear(); bounceClipIds_.clear();
     pendingMidiDrag_.reset();
     pluginDropHighlight_.reset();
     outputDropHighlight_.reset();
@@ -5674,6 +5689,9 @@ void MainComponent::midiClipMenu(size_t track, double bar) {
     juce::int64 period = 0;
     if (hit) {
         menu.addSeparator();
+        const auto count=bounceClipSelection(*hit).size();
+        menu.addItem(5, count==1 ? TRANS("Bounce this clip to a new audio track") :
+                     TRANS("Bounce selected clips") + " (" + juce::String(int(count))+")", canBounce(track));
         menu.addItem(1, TRANS("Split clip here"), here > hit->start && here < hit->end);
         menu.addItem(2, TRANS("Split clip at cursor"), cursor > hit->start && cursor < hit->end);
         bool following = false;
@@ -5691,7 +5709,8 @@ void MainComponent::midiClipMenu(size_t track, double bar) {
                             track, hit, here, cursor, period](int choice) {
         if (!safe || safe->projectGeneration_ != generation || !choice) return;
         using Edit = ostfstudio::OstfpPreview::MidiClipEdit;
-        if (choice == 1 || choice == 2) safe->clipCommand(ClipOp::split, hit, track, choice == 1 ? here : cursor);
+        if (choice == 5 && hit) safe->renderAudio(track,{},0,{}, {},safe->bounceClipSelection(*hit));
+        else if (choice == 1 || choice == 2) safe->clipCommand(ClipOp::split, hit, track, choice == 1 ? here : cursor);
         else if (choice == 3 || choice == 4) safe->editMidiClip(track, hit->id, choice == 3 ? Edit::toggleLoop : Edit::resizeLoop, hit->end + period);
         else safe->clipCommand(ClipOp(choice), hit, track, choice == int(ClipOp::move) ? cursor : here);
     });
@@ -6795,6 +6814,38 @@ void MainComponent::mouseDown(const juce::MouseEvent& event) {
                 reorderSource_ = i;
                 return;
             }
+            if (event.mods.isLeftButtonDown() && i < project_->sourceTrackCount()
+                && event.x < trackRows_[i].getX()+trackHeaderWidth
+                && (event.mods.isCommandDown() || event.mods.isShiftDown()) && !recordTrack_) {
+                bounceClipIds_.clear();
+                const auto anchor = selectedTrack_.value_or(i);
+                if (bounceTracks_.isEmpty() && anchor < project_->sourceTrackCount()) bounceTracks_.add(project_->trackIds[int(anchor)]);
+                if (event.mods.isShiftDown() && anchor < project_->sourceTrackCount()) {
+                    bounceTracks_.clear();
+                    for (size_t j=std::min(anchor,i); j<=std::max(anchor,i); ++j) bounceTracks_.add(project_->trackIds[int(j)]);
+                } else {
+                    auto id=project_->trackIds[int(i)];
+                    if (bounceTracks_.contains(id)) bounceTracks_.removeString(id);
+                    else bounceTracks_.add(id);
+                }
+                repaint();
+                return;
+            }
+            if (event.mods.isCommandDown() && event.mods.isLeftButtonDown() && clipTool_==ClipTool::select
+                && trackRows_[i].withTrimmedLeft(trackHeaderWidth).contains(event.getPosition()) && !recordTrack_) {
+                if (auto hit = clipAt(i,arrangementTickAt(event.x))) {
+                    if (bounceClipIds_.empty() && selectedTrack_ && clipLane_.selected) {
+                        if (auto focus=clipAt(*selectedTrack_,std::llround((*clipLane_.selected-1)*project_->ticksPerBar)))
+                            bounceClipIds_.emplace(project_->trackIds[int(focus->track)],focus->id);
+                    }
+                    auto key=std::make_pair(project_->trackIds[int(i)],hit->id);
+                    if (!bounceClipIds_.erase(key)) bounceClipIds_.insert(key);
+                    bounceTracks_.clear();
+                    repaint();
+                }
+                return;
+            }
+            bounceTracks_.clear(); bounceClipIds_.clear();
             if (event.mods.isLeftButtonDown() && trackRows_[i].withWidth(trackNameWidth).contains(event.getPosition())
                 && canExportTrack(i))
                 pendingMidiDrag_ = i;
@@ -7206,7 +7257,7 @@ juce::String MainComponent::getTooltip() {
         if (trackRows_[i].withWidth(trackNameWidth).contains(p) && !trackRows_[i].isEmpty())
             return juce::String::fromUTF8(project_->trackLanes[i].label) + "  /  " +
                 (project_->trackKinds[i] == ostfstudio::TrackKind::drum ? TRANS("Drum / percussion") :
-                 project_->trackKinds[i] == ostfstudio::TrackKind::audio ? TRANS("Audio track") : TRANS("Pitched track"));
+                 project_->trackKinds[i] == ostfstudio::TrackKind::audio ? TRANS("Audio track") : TRANS("Pitched track")) + "  /  " + TRANS("Ctrl/Cmd-click tracks or clips to select for bounce");
         const auto row = trackRows_[i].withTrimmedLeft(trackHeaderWidth);
         if (row.isEmpty()) continue;
         if (!row.contains(p) || !theory_ || i >= clipFits_.size() || (!chordFitVisible_ && !scaleFitVisible_) ||
@@ -7495,6 +7546,7 @@ void MainComponent::setWorkspaceMode(WorkspaceMode mode) {
     if (mode!=WorkspaceMode::live) cellPlayers_.clear();
     if (mode != WorkspaceMode::arrangement && !project_) return;
     if (workspaceMode_ == mode) return;
+    scorePiano_ = false;
     const bool wasLive=workspaceMode_==WorkspaceMode::live;
     if (wasLive || mode==WorkspaceMode::live) pianoTrack_.reset();
     workspaceMode_ = mode;
@@ -7714,10 +7766,18 @@ void MainComponent::refreshEditor() {
     const bool reading = project_ && !arranging && !live;
     if (reading && !scoreView_) {
         scoreView_ = std::make_unique<ScoreView>();
+        scoreView_->barsChanged = [this](int bar) {
+            if (workspaceMode_==WorkspaceMode::score && scorePiano_)
+                arrangementScroll_.setCurrentRangeStart(bar+1.,juce::sendNotificationSync);
+        };
+        scoreView_->partChanged = [this](size_t track) {
+            if (workspaceMode_ == WorkspaceMode::score && scorePiano_) selectTrack(track);
+        };
         addChildComponent(*scoreView_);
     }
     if (scoreView_) {
         if (reading) {
+            scoreView_->enablePartSelection(!recordTrack_ && pendingReview_.empty());
             const bool lead = workspaceMode_ == WorkspaceMode::leadSheet;
             if (!scoreView_->isVisible() || lead != scoreView_->showsLeadSheet())
                 scoreView_->showScore(*project_, lead, selectedTrack_);
@@ -7751,7 +7811,9 @@ void MainComponent::refreshEditor() {
     }
     const bool liveNotes = matrix && !liveShowsMixer_ && selectedTrack_ && project_->trackKinds[*selectedTrack_] != ostfstudio::TrackKind::audio
         && (!matrix || *selectedTrack_ < project_->sourceTrackCount());
-    const bool piano = (editing && !audio && !tempo && !musical) || liveNotes;
+    const bool scoreNotes = workspaceMode_ == WorkspaceMode::score && scorePiano_ && scoreView_ && project_
+        && selectedTrack_ && selectedTrack_ == scoreView_->selectedPartTrack();
+    const bool piano = scoreNotes || (editing && !audio && !tempo && !musical) || liveNotes;
     takeButton_.setVisible(piano && selectedTrack_ && *selectedTrack_<project_->sourceTrackCount());
     takeButton_.setEnabled(!recordTrack_ && pendingReview_.empty());
     if (takeButton_.isVisible()) {
@@ -7800,7 +7862,7 @@ void MainComponent::refreshEditor() {
     if (!pianoGrid_.isVisible()) pianoVelocity_.setVisible(false);
     pianoSnap_.setVisible(piano && pianoGrid_.editable);
     pianoColours_.setVisible(piano && pitchedSelection());
-    pianoButton_.setToggleState(editing || (live && !liveShowsMixer_), juce::dontSendNotification);
+    pianoButton_.setToggleState(scoreNotes || editing || (live && !liveShowsMixer_), juce::dontSendNotification);
     outputButton_.setToggleState(arranging && showOutputTracks_, juce::dontSendNotification);
     for (auto* button : {&pianoButton_, &mixerButton_, &leadButton_, &scoreButton_, &printLeadButton_, &printScoreButton_}) button->setEnabled(project_ != nullptr);
     outputButton_.setEnabled(arranging && project_ != nullptr);
@@ -7862,7 +7924,7 @@ void MainComponent::refreshEditor() {
     heightScope_.setVisible(arrangementZoom_.isVisible());
     groupHeight_.setVisible(arrangementZoom_.isVisible());
     refreshGroupHeight();
-    arrangementScroll_.setVisible(arranging && project_ != nullptr);
+    arrangementScroll_.setVisible((arranging || scoreNotes) && project_ != nullptr);
     pianoInspectorView_.setVisible(piano && pianoGrid_.editable && !steps);
     pianoDivider_.setVisible(matrix || (arranging && project_ && lowerPaneOpen()));
     pianoDivider_.setTooltip(showMixer ? TRANS("Drag to resize the arrangement and mixer.") : TRANS("Drag to resize the arrangement and piano roll."));
@@ -7991,7 +8053,15 @@ void MainComponent::resized() {
             livePianoScroll_.setBounds(editor.removeFromBottom(14));
             livePianoPanel_ = editor;
             layoutPianoPanel(editor, 0);
-        } else if (scoreView_) scoreView_->setBounds(editor);
+        } else if (scoreView_) {
+            if (pianoGrid_.isVisible() && workspaceMode_ == WorkspaceMode::score) {
+                arrangementScroll_.setBounds(editor.removeFromBottom(14));
+                scoreView_->setBounds(editor.removeFromTop(editor.getHeight()/2));
+                editor.removeFromTop(4);
+                scorePianoBounds_ = editor;
+                layoutPianoPanel(editor, 0);
+            } else scoreView_->setBounds(editor);
+        }
         return;
     }
     const int reviewHeight = chordReviewHeight();
@@ -8305,6 +8375,10 @@ void MainComponent::paint(juce::Graphics& g) {
                 hint=juce::String::fromUTF8(project_->trackLanes[*selectedTrack_].label)+"   /   "+TRANS("Audio");
             g.drawText(hint, livePianoPanel_, juce::Justification::centred);
         }
+        return;
+    }
+    if (workspaceMode_ == WorkspaceMode::score && pianoGrid_.isVisible()) {
+        drawPianoRoll(g, scorePianoBounds_.withTrimmedTop(30));
         return;
     }
     if (workspaceMode_ != WorkspaceMode::arrangement) return;
@@ -8644,7 +8718,15 @@ void MainComponent::drawArrangement(juce::Graphics& g, juce::Rectangle<int> area
                 }
             }
             const juce::Rectangle<int> hit(labels.getX(), y, labels.getWidth() + area.getWidth(), rowHeight);
-            if (selectedTrack_ == i) {
+            if (!bounceClipIds_.empty()) {
+                const auto timeline=trackRows_[i].withTrimmedLeft(trackHeaderWidth);
+                g.setColour(juce::Colour(0xffffce71));
+                for (const auto& clip : clipsOn(i)) if (bounceClipIds_.contains({project_->trackIds[int(i)],clip.id})) {
+                    const auto marked=clipBounds({1.+double(clip.start)/project_->ticksPerBar,1.+double(clip.end)/project_->ticksPerBar},timeline);
+                    g.drawRect(marked.getIntersection(timeline),2);
+                }
+            }
+            if (bounceTracks_.isEmpty() ? selectedTrack_ == i : bounceTracks_.contains(project_->trackIds[int(i)])) {
                 g.setColour(juce::Colour(accent));
                 g.drawRoundedRectangle(hit.toFloat().reduced(0.5f), 4.0f, 1.5f);
             }

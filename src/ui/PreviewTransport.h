@@ -42,6 +42,7 @@ public:
         float monitorGain = 1.f;
         bool playSource = true;
         bool auditionToMaster = false;
+        juce::StringArray onlyClips;
     };
     static bool supportsInstrument(const juce::AudioPluginInstance& instrument);
     static bool supportsInsert(const juce::AudioPluginInstance& effect);

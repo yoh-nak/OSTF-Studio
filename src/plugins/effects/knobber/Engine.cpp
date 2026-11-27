@@ -138,7 +138,8 @@ void Engine::reset() {
   boomLowR = 0;
   boomTailL = 0;
   boomTailR = 0;
-  beforeLeft = beforeRight = 0;
+  preDelayTap = {};
+  beforeLeft = beforeRight = filteredLeft = filteredRight = 0;
 }
 Stereo Engine::process(double in1, double in2, double samplerate, int rtype,
                        const std::array<double, 108> &values) {
@@ -599,8 +600,8 @@ Stereo Engine::process(double in1, double in2, double samplerate, int rtype,
   envH = (ins > envH) ? envH + (ins - envH) * ea : envH + (ins - envH) * er;
   // Predelay.
   double pds = clamp(predelay, 0, 300) * .001 * sr;
-  double pdL = (pds < 1) ? fL : preL.read(clamp(pds, 1, 140000));
-  double pdR = (pds < 1) ? fR : preR.read(clamp(pds, 1, 140000));
+  const auto taps = preDelayTap.read(preL,preR,fL,fR,pds,sr);
+  double pdL = taps.left, pdR = taps.right;
   preL.write(fL);
   preR.write(fR);
   // Type topology factors. v0.11 expands the family list while keeping a shared
@@ -3745,6 +3746,7 @@ Stereo Engine::process(double in1, double in2, double samplerate, int rtype,
   grainR.advance();
   resL.advance();
   resR.advance();
+  filteredLeft = out5; filteredRight = out6;
   beforeLeft = out3;
   beforeRight = out4;
   return {out1, out2};

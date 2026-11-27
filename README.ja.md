@@ -8,7 +8,9 @@
 
 開発版には、M4L版の188音色を収録し、通常処理と2倍オーバーサンプリングを切り替えられるリードシンセを追加しました。[SUPER KNOBBER LEADの操作画面](docs/plugins/workstations.md#super-knobber-lead)
 
-開発版には **SUPER KNOBBER REVERB**、ステレオミックスの書き出し、トラックのバウンスを追加しました。ミックスは「ファイル → 曲全体をオーディオに書き出す」、バウンスはトラックを右クリックして「新しいオーディオトラックにバウンス」から操作できます。[REVERBの操作画面](docs/plugins/space-and-tone.md#super-knobber-reverb)
+開発版では「ファイル → 曲全体をオーディオに書き出す」からステレオミックスを保存できます。Ctrl／⌘クリックで複数のトラック名やクリップを選び、右クリックから1本のオーディオトラックにバウンスできます。「楽譜」を開いて「ピアノロール」を押すと、同じパートの楽譜を見ながらノートを編集できます。[バウンスと楽譜の操作](docs/manual/README.md)
+
+[SUPER KNOBBER REVERBの操作とアナライザー](docs/plugins/space-and-tone.md#super-knobber-reverb)
 
 開発版のScale Editorでは、書き込み先を選び、**「構成を試聴」または「全曲を試聴」** を押すと、設定済みのスケールを選択中の音源で聴けます。曲のテンポに合わせて音階が8分音符で上行し、未設定区間は休符になります。試聴はStudioの再生とは独立して停止できます。
 

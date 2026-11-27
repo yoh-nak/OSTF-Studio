@@ -238,7 +238,8 @@ juce::Result PreviewTransport::preparePlayback(const ostfstudio::OstfpPreview& p
     }
     ostfstudio::AudioRegionPlayback::SourceCache sources;
     if (!monitorOnly) for (const auto& audio : project.audio) {
-        if (audio.track >= instruments_.size() || (audio.track<tracks.size() && !tracks[audio.track].playSource)) continue;
+        if (audio.track >= instruments_.size() || (audio.track<tracks.size() && (!tracks[audio.track].playSource ||
+            (!tracks[audio.track].onlyClips.isEmpty() && !tracks[audio.track].onlyClips.contains(audio.regionId))))) continue;
         auto& region = instruments_[audio.track].regions.emplace_back();
         if (auto r = region.load(audio, clock_, sampleRate_, int(lastSample_), &sources); r.failed()) return r;
         outputChannels = 2;
@@ -366,6 +367,7 @@ juce::Result PreviewTransport::makeMidiTimelines(const ostfstudio::OstfpPreview&
         };
         const int shift = track < project.trackKinds.size() && project.trackKinds[track] != ostfstudio::TrackKind::pitched ? 0 : semitones;
         const auto audible = [&](const ostfstudio::PitchedNote& note) {
+            if (!setup.onlyClips.isEmpty() && !setup.onlyClips.contains(note.clipId)) return false;
             for (const auto& c : auditions) if (c.track==track && c.ticks.contains(note.startTick)) {
                 const auto& state=project.takes(track);
                 return state.takeOf(note.id)==c.number && (note.enabled || state.suppressed.contains(note.id));

@@ -52,11 +52,11 @@ for var,unpack,count in [("sourceMap","genre-unpack",12),("styleMap","style-unpa
 default_index = int(boxes["load-type"]["text"].split()[-1])
 data+=f"inline constexpr int initialType = {items('type-menu').index(items('type-menu-az-v067')[default_index])};\n"
 emit("Controls.h",data+"}\n")
-engine = '#pragma once\n#include "../../instruments/knobber/Primitives.h"\n#include "Controls.h"\nnamespace knobverb {\nstruct Engine {\n'
+engine = '#pragma once\n#include "../../instruments/knobber/Primitives.h"\n#include "Controls.h"\n#include "Predelay.h"\nnamespace knobverb {\nstruct Engine {\n'
 for t,n,v in declarations:
     if t=="Delay": engine+=f"knobber::Delay {n}{{{v}}};\n"
     if t=="History": engine+=f"double {n} = {v};\n"
-engine+="double beforeLeft{}, beforeRight{};\nvoid reset();\nknobber::Stereo process(double in1,double in2,double samplerate,int rtype,const std::array<double,108>& controls);\n};\n}\n"
+engine+="Predelay preDelayTap;\ndouble beforeLeft{}, beforeRight{}, filteredLeft{}, filteredRight{};\nvoid reset();\nknobber::Stereo process(double in1,double in2,double samplerate,int rtype,const std::array<double,108>& controls);\n};\n}\n"
 emit("Engine.h",engine)
 plain=re.sub(r"//[^\n]*","",body)
 locals_=list(dict.fromkeys(n for n in re.findall(r'\b(\w+)\s*(?:=(?!=)|\+=|-=|\*=|/=)',plain) if n not in histories|params))
@@ -64,7 +64,7 @@ source='#include "Engine.h"\nnamespace knobverb {\nusing namespace knobber;\nvoi
 for t,n,v in declarations:
     if t=="Delay": source+=f"{n}.clear();\n"
     if t=="History": source+=f"{n}={v};\n"
-source+='beforeLeft=beforeRight=0;\n}\nStereo Engine::process(double in1,double in2,double samplerate,int rtype,const std::array<double,108>& values){\n'
+source+='preDelayTap={}; beforeLeft=beforeRight=filteredLeft=filteredRight=0;\n}\nStereo Engine::process(double in1,double in2,double samplerate,int rtype,const std::array<double,108>& values){\n'
 for i,(n,*_) in enumerate(controls):
     if n in params: source+=f"const double {n}=values[{i}];\n"
 source+="using std::abs;\n"
@@ -80,7 +80,9 @@ for m in re.finditer(r'[{}]|\b(\w+)\s*=(?!=)',plain):
 for n in locals_:
     if n in hoisted: source+=f"double {n} = 0;\n"
     else: body=re.sub(r'\b'+n+r'\s*=(?!=)',f'double {n} = ',body,count=1)
+body, changes = re.subn(r"double pdL\s*=.*?;\s*double pdR\s*=.*?;", "const auto taps=preDelayTap.read(preL,preR,fL,fR,pds,sr); double pdL=taps.left,pdR=taps.right;", body, count=1)
+assert changes == 1
 source+=body+'\n'
 for t,n,v in declarations:
     if t=="Delay": source+=f"{n}.advance();\n"
-emit("Engine.cpp",source+"beforeLeft=out3; beforeRight=out4;\nreturn {out1,out2};\n}\n}\n")
+emit("Engine.cpp",source+"filteredLeft=out5; filteredRight=out6; beforeLeft=out3; beforeRight=out4;\nreturn {out1,out2};\n}\n}\n")

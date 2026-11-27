@@ -129,7 +129,10 @@ void Reverb::reset() {
   inputSpectrum.prepare(getSampleRate());
   wetSpectrum.prepare(getSampleRate());
   preEqSpectrum.prepare(getSampleRate());
-  wetPeak = 0;
+  postEqSpectrum.prepare(getSampleRate());
+  filteredSpectrum.prepare(getSampleRate());
+  waveform.prepare(getSampleRate());
+  wetPeak = 0; inputPeak = 0; outputPeak = 0;
 }
 void Reverb::releaseResources() { engine.reset(); }
 void Reverb::processBlock(juce::AudioBuffer<float> &audio, juce::MidiBuffer &) {
@@ -148,7 +151,7 @@ void Reverb::processBlock(juce::AudioBuffer<float> &audio, juce::MidiBuffer &) {
   calibration.setTargetValue(float(trims[type]));
   for (int v = 0; v < 2; ++v)
     voices[v].setTransposeSemitones(float(values[51 + v]));
-  float peak = 0;
+  float peak = 0, inPeak = 0, outPeak = 0;
   for (int start = 0; start < audio.getNumSamples();) {
     const int count =
         std::min(wet.getNumSamples(), audio.getNumSamples() - start);
@@ -156,9 +159,12 @@ void Reverb::processBlock(juce::AudioBuffer<float> &audio, juce::MidiBuffer &) {
       const auto l = audio.getSample(0, start + i),
                  r = audio.getSample(right, start + i);
       inputSpectrum.push(l, r);
+      inPeak = std::max({inPeak, std::abs(l), std::abs(r)});
       const auto out = engine->process(l, r, rate, type, values);
       wet.setSample(0, i, float(out.left));
       wet.setSample(1, i, float(out.right));
+      filteredSpectrum.push(float(engine->filteredLeft), float(engine->filteredRight));
+      postEqSpectrum.push(float(out.left), float(out.right));
       preEqSpectrum.push(float(engine->beforeLeft), float(engine->beforeRight));
     }
     for (int v = 0; v < 2; ++v)
@@ -175,23 +181,27 @@ void Reverb::processBlock(juce::AudioBuffer<float> &audio, juce::MidiBuffer &) {
             .5f * (shift[0].getSample(ch, i) + shift[1].getSample(ch, i));
         wetPair[ch] =
             std::tanh(level * ((1 - sh) * wet.getSample(ch, i) + sh * shifted));
-        peak = std::max(peak, std::abs(wetPair[ch]));
+        peak = std::max(peak, std::abs(out * mix * wetPair[ch]));
       }
-      wetSpectrum.push(wetPair[0], wetPair[1]);
+      wetSpectrum.push(out * mix * wetPair[0], out * mix * wetPair[1]);
+      waveform.push(out * mix * wetPair[0], out * mix * wetPair[1]);
       for (int ch = 0; ch < audio.getNumChannels(); ++ch) {
         const auto value =
             right ? wetPair[ch] : .5f * (wetPair[0] + wetPair[1]);
-        audio.setSample(
-            ch, start + i,
-            out * ((1 - mix) * audio.getSample(ch, start + i) + mix * value));
+        const float sample = out * ((1 - mix) * audio.getSample(ch, start + i) + mix * value);
+        outPeak = std::max(outPeak, std::abs(sample));
+        audio.setSample(ch, start + i, sample);
       }
     }
     start += count;
   }
-  auto previous = wetPeak.load(std::memory_order_relaxed);
-  while (previous < peak && !wetPeak.compare_exchange_weak(
-                                previous, peak, std::memory_order_relaxed)) {
-  }
+  const auto publish = [](std::atomic<float>& meter, float value) {
+    auto previous = meter.load(std::memory_order_relaxed);
+    while (previous < value && !meter.compare_exchange_weak(previous, value, std::memory_order_relaxed)) {}
+  };
+  publish(inputPeak, inPeak);
+  publish(wetPeak, peak);
+  publish(outputPeak, outPeak);
 }
 } // namespace knobverb
 juce::AudioProcessor *JUCE_CALLTYPE createPluginFilter() {

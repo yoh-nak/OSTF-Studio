@@ -2,6 +2,7 @@
 #include "../../../ui/MasterSpectrum.h"
 #include "../../StudioPluginEditor.h"
 #include "Engine.h"
+#include "WetWaveform.h"
 #include <signalsmith-stretch.h>
 
 namespace knobverb {
@@ -33,7 +34,9 @@ public:
   juce::AudioProcessorValueTreeState state;
   std::atomic<int> sourceIndex{0}, styleIndex{0};
   MasterSpectrum inputSpectrum, wetSpectrum, preEqSpectrum;
-  std::atomic<float> wetPeak{0};
+  std::atomic<float> wetPeak{0}, inputPeak{0}, outputPeak{0};
+  MasterSpectrum postEqSpectrum, filteredSpectrum;
+  WetWaveform waveform;
 
 private:
   juce::AudioParameterChoice *algorithm;

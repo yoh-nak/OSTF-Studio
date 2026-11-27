@@ -79,6 +79,27 @@ public:
   }
 };
 } // namespace
+std::vector<MainComponent::ClipHit> MainComponent::bounceClipSelection(const ClipHit& clicked) const {
+  if (!bounceClipIds_.contains({project_->trackIds[int(clicked.track)],clicked.id})) return {clicked};
+  std::vector<ClipHit> selection;
+  for (size_t i=0; i<project_->sourceTrackCount(); ++i)
+    for (const auto& clip : clipsOn(i)) if (bounceClipIds_.contains({project_->trackIds[int(i)],clip.id})) selection.push_back(clip);
+  return selection;
+}
+std::set<size_t> MainComponent::bounceSelection(size_t clicked) const {
+  std::set<size_t> selected;
+  for (const auto& id : bounceTracks_) {
+    const int i = project_->trackIds.indexOf(id);
+    if (i >= 0 && size_t(i)<project_->sourceTrackCount()) selected.insert(size_t(i));
+  }
+  if (selected.empty() || (!selected.contains(clicked) && selectedTrack_ != clicked)) return {clicked};
+  return selected;
+}
+void MainComponent::bounceTracks(size_t clicked) {
+  auto selected = bounceSelection(clicked);
+  const auto first = *selected.begin();
+  renderAudio(first,{},0,{},std::move(selected));
+}
 bool MainComponent::canBounce(size_t track) const {
   return canEditTracks() && !recordTrack_ && !rendering_ &&
          track < project_->sourceTrackCount() &&
@@ -172,7 +193,7 @@ void MainComponent::chooseAudioExport() {
 }
 void MainComponent::renderAudio(std::optional<size_t> track,
                                 ae::Settings settings, int tail,
-                                const juce::File &target) {
+                                const juce::File &target, std::set<size_t> sources, std::vector<ClipHit> clips) {
   if (!canEditTracks() || rendering_ || recordTrack_ ||
       (track && !canBounce(*track)))
     return;
@@ -215,18 +236,22 @@ void MainComponent::renderAudio(std::optional<size_t> track,
   const auto dest = [&](size_t i) {
     return trackControls_[i]->outputTrack.value_or(i);
   };
-  const auto owner = track ? dest(*track) : 0;
-  if (track && owner >= routes.size()) {
-    report(TRANS("Choose a local instrument before bouncing."));
-    return;
+  if (track) sources.insert(*track);
+  for (const auto& clip : clips) sources.insert(clip.track);
+  std::set<size_t> owners, keys;
+  for (auto source : sources) {
+    if (!canBounce(source) || dest(source)>=routes.size()) {
+      report(TRANS("Missing instrument destination."));
+      return;
+    }
+    owners.insert(dest(source));
   }
-  std::set<size_t> keys;
-  if (track)
+  for (auto owner : owners)
     for (const auto &fx : trackControls_[owner]->effects.slots) {
       int key = project_->trackIds.indexOf(fx.keyTrackId);
-      if (key >= 0 && fx.effect && !fx.power.bypassed->load())
-        keys.insert(dest(size_t(key)));
+      if (key >= 0 && fx.effect && !fx.power.bypassed->load()) keys.insert(dest(size_t(key)));
     }
+  for (auto owner : owners) keys.erase(owner);
   auto chain = [&](const EffectChain &slots, size_t index) {
     for (size_t i = 0; i < slots.slots.size() && error.isEmpty(); ++i) {
       const auto &fx = slots.slots[i];
@@ -257,8 +282,9 @@ void MainComponent::renderAudio(std::optional<size_t> track,
     auto &route = routes[i];
     route.outputTrack = ctl.outputTrack;
     route.midiChannel = ctl.midiChannel;
-    route.playSource = !track || i == *track || keys.contains(destination);
-    const bool renderStrip = !track || i == owner || keys.contains(i);
+    route.playSource = !track || sources.contains(i) || keys.contains(destination);
+    for (const auto& clip : clips) if (clip.track==i) route.onlyClips.add(clip.id);
+    const bool renderStrip = !track || owners.contains(i) || keys.contains(i);
     if (route.playSource && midiOutputs_.contains(project_->trackIds[int(i)])) {
       if (track || mixer_.isAudible(i)) {
         error = TRANS("Record the external MIDI instrument to audio first.") +
@@ -276,16 +302,19 @@ void MainComponent::renderAudio(std::optional<size_t> track,
         error =
             TRANS("Plug-in unavailable") + "  " + ctl.plugin.getButtonText();
     }
-    if (track && i == *track &&
+    if (sources.contains(i) &&
         project_->trackKinds[i] != ostfstudio::TrackKind::audio &&
-        !trackControls_[owner]->playableInstrument) {
+        !trackControls_[destination]->playableInstrument) {
       error = TRANS("Choose a local instrument before bouncing.");
     }
-    if (!track || i == owner)
+    if (!track || owners.contains(i))
       chain(ctl.effects, PreviewTransport::outputCount + i);
-    job->transport.setChannelMix(
-        i, track ? ostfstudio::ChannelMix{} : mixer_.channel(i),
-        track ? i == owner : mixer_.isAudible(i), 0);
+    auto mix = track ? ostfstudio::ChannelMix{} : mixer_.channel(i);
+    if (sources.size()>1) {
+      mix.volumeDb = mixer_.channel(i).volumeDb;
+      mix.pan = mixer_.channel(i).pan;
+    }
+    job->transport.setChannelMix(i, mix, track ? owners.contains(i) : mixer_.isAudible(i), 0);
   }
   if (error.isNotEmpty()) {
     report(error);
@@ -308,9 +337,21 @@ void MainComponent::renderAudio(std::optional<size_t> track,
         " - Bounce";
     // Split at score ticks so each embedded 24-bit WAV fits the existing OSTFP
     // asset limit.
-    const auto end = project_->playbackEndTick();
+    if (sources.size()>1) job->trackName = TRANS("Tracks") + " (" + juce::String(int(sources.size())) + ") - Bounce";
+    Tick end = project_->playbackEndTick(), start = 0;
+    if (!clips.empty()) {
+      start = std::min_element(clips.begin(), clips.end(), [](const auto& a,const auto& b){return a.start<b.start;})->start;
+      end = std::min(end,std::max_element(clips.begin(), clips.end(), [](const auto& a,const auto& b){return a.end<b.end;})->end);
+    }
+    const auto toFrame = [&](Tick t){ return Tick(std::llround(project_->clock.secondsAt(t)*settings.rate)); };
+    if (!clips.empty()) {
+      if (start<0 || end<=start || toFrame(end)<=toFrame(start)) { report(TRANS("Empty clip")); return; }
+      job->transport.seekToTick(start);
+      job->position = toFrame(start);
+      job->frames = toFrame(end);
+    }
     constexpr Tick maxFrames = (16 * 1024 * 1024 - 8192) / 6;
-    Tick frame = 0, tick = 0;
+    Tick frame = job->position, tick = start;
     while (frame < job->frames) {
       const bool last = job->frames - frame <= maxFrames;
       const auto next = last ? end
@@ -329,7 +370,7 @@ void MainComponent::renderAudio(std::optional<size_t> track,
       frame = boundary;
     }
     std::set<juce::String> media;
-    Tick bytes = job->frames * 6 + 8192 * job->segments.size();
+    Tick bytes = (job->frames - job->position) * 6 + 8192 * job->segments.size();
     for (const auto &a : project_->audio)
       if (media.insert(a.mediaKey()).second)
         bytes += a.embedded.isEmpty() ? a.localFile.getSize()

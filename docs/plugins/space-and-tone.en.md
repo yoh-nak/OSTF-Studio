@@ -80,9 +80,9 @@ Sends the same audio into parallel effect chains. Add a chain with **+ Effect la
 
 ## SUPER KNOBBER REVERB
 
-Insert this stereo effect on a track or return in Studio or another VST3 host. Choose the space, source profile and style along the top. In **Space & reflections**, adjust **Pre Delay** to separate the first reflections from the attack. Use **Output → Dry / Wet** to blend the result on an insert. A return usually works best fully wet.
+Choose a space, source profile and style. Dry / Wet, Decay, Pre Delay and Output stay visible above the detail pages. On a return, use 100% wet. The IN, WET and OUT meters show the peaks of the input, the reverb contribution after mixing, and the combined output.
 
-The analyzer switches between input/wet spectrum, before/after post EQ, the five configured decay times and wet level history.
+Use the analyzer to compare input with wet, hear and see the effect of input filtering or post EQ, inspect the five decay targets, or follow a tail in the wet history and stereo waveform. Changing pre-delay blends the two delay positions over 20 ms.
 
 ![SUPER KNOBBER REVERB space and reflection controls](../images/plugins/super-knobber-reverb.png)
 

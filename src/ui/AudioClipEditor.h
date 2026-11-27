@@ -13,7 +13,11 @@ public:
         loop.setComponentID("audio-loop");
         warp.setComponentID("audio-warp");
         setWantsKeyboardFocus(true);
-        for (auto* button : {&loop, &warp, &link}) addAndMakeVisible(button);
+        for (auto* button : {&loop, &warp, &link, &lower, &raise, &restore}) addAndMakeVisible(button);
+        lower.setComponentID("audio-pitch-down"); raise.setComponentID("audio-pitch-up");
+        lower.onClick = [this] { adjustPitch(-1); };
+        raise.onClick = [this] { adjustPitch(1); };
+        restore.onClick = [this] { adjustPitch(0); };
         link.setClickingTogglesState(true);
         link.setTooltip(TRANS("Apply warp changes to aligned clips on other tracks with the same length and warp map"));
         addAndMakeVisible(beats);
@@ -87,7 +91,7 @@ public:
     void resized() override {
         const auto left = std::clamp(timelineLeft, 0, getWidth());
         auto tools = getLocalBounds().withWidth(left).reduced(8, 3);
-        const int h = std::clamp(tools.getHeight() / 4, 1, 29);
+        const int h = std::clamp(tools.getHeight() / 6, 1, 29);
         auto row = tools.removeFromTop(h);
         channels.setBounds(row.removeFromLeft(row.getWidth() / 2).reduced(2, 1));
         loop.setBounds(row.reduced(2, 1));
@@ -96,6 +100,12 @@ public:
         beatCaption = row.removeFromRight(std::min(40, row.getWidth() / 3));
         beats.setBounds(row.reduced(2, 1));
         link.setBounds(tools.removeFromTop(h).reduced(2,1));
+        pitchCaption = tools.removeFromTop(h);
+        row = tools.removeFromTop(h);
+        lower.setBounds(row.removeFromLeft(row.getWidth()/3).reduced(2,1));
+        raise.setBounds(row.removeFromLeft(row.getWidth()/2).reduced(2,1));
+        restore.setBounds(row.reduced(2,1));
+        warpHint = tools.removeFromTop(40);
         recordRuler.setBounds(left, 0, std::max(0, std::min(timelineRight, getWidth()) - left), std::min(23, getHeight()));
     }
     void paint(juce::Graphics& g) override {
@@ -103,6 +113,14 @@ public:
         const auto area = canvas();
         g.setColour(juce::Colour(0xffd2e5ee));
         g.drawText(TRANS("beats"), beatCaption, juce::Justification::centredLeft);
+        const bool hasNote=juce::isPositiveAndBelow(selectedNote,int(guide.size()));
+        juce::String label=TRANS("Pitch") + "  /  ";
+        if (hasNote) {
+            const auto& note=guide[size_t(selectedNote)];
+            label+=juce::MidiMessage::getMidiNoteName(note.pitch+offset(note),true,true,4);
+        } else label+=TRANS("Select a note below the waveform");
+        g.drawFittedText(label,pitchCaption,juce::Justification::centredLeft,2);
+        g.drawFittedText(TRANS("Double-click the waveform to add a warp marker. Drag markers sideways and notes vertically."),warpHint,juce::Justification::centredLeft,2);
         if (area.isEmpty() || !recordRuler.visibleBars) return;
         g.setColour(juce::Colour(0xff1b303d));
         g.fillRect(area);
@@ -115,7 +133,7 @@ public:
         auto* clip = sourceClip();
         if (!clip || nativeLength <= 0) {
             g.setColour(juce::Colour(0xffd2e5ee));
-            g.drawFittedText(clip ? TRANS("Missing WAV") : TRANS("Drop a WAV from Splice or a folder onto this audio track"),
+            g.drawFittedText(clip ? TRANS("Missing WAV") : TRANS("Drop a WAV onto this audio track"),
                              area, juce::Justification::centred, 2);
             return;
         }
@@ -220,8 +238,10 @@ public:
                 selectedNote=index;
                 pitchDrag=index; pitchInitial=offset(guide[size_t(index)]); pitchDelta=0;
             }
+            updatePitchButtons(); repaint();
             return;
         }
+        updatePitchButtons(); repaint();
         if (timing.cycleTicks > 0 && warp.isEnabled()) {
             dragCycle = cycleStart(e.x);
             drag = hit(e.x);
@@ -271,6 +291,16 @@ private:
     struct Note { double start,end; int pitch; bool overlap=false; };
     static bool sameRange(ostfstudio::PitchChange p,const Note& n) {
         return std::abs(p.start-n.start)<1.e-12 && std::abs(p.end-n.end)<1.e-12;
+    }
+    void updatePitchButtons() {
+        const bool valid=warp.isEnabled() && juce::isPositiveAndBelow(selectedNote,int(guide.size())) && !guide[size_t(selectedNote)].overlap;
+        const int shift=valid ? offset(guide[size_t(selectedNote)]) : 0;
+        lower.setEnabled(valid && shift>-24); raise.setEnabled(valid && shift<24); restore.setEnabled(valid && shift!=0);
+    }
+    void adjustPitch(int delta) {
+        if (!juce::isPositiveAndBelow(selectedNote,int(guide.size())) || !warp.isEnabled()) return;
+        const auto n=guide[size_t(selectedNote)];
+        if (!n.overlap) setOffset(n,delta ? std::clamp(offset(n)+delta,-24,24) : 0);
     }
     void setOffset(const Note& n,int steps) {
         auto edit=timing;
@@ -412,6 +442,7 @@ private:
     }
     void commit(ostfstudio::ClipTiming edit) { if (edit.valid() && onEdit) onEdit(edit); }
     void sync() {
+        updatePitchButtons();
         loop.setToggleState(timing.loop, juce::dontSendNotification);
         warp.setToggleState(timing.cycleTicks > 0, juce::dontSendNotification);
         beats.setEnabled(warp.isEnabled() && timing.cycleTicks > 0);
@@ -433,7 +464,8 @@ private:
     int drag = -1, timelineLeft = 0, timelineRight = 0, firstBar = 1;
     juce::int64 ticksPerBar = 1;
     double dragCycle = 0;
-    juce::Rectangle<int> beatCaption;
+    juce::Rectangle<int> beatCaption, pitchCaption, warpHint;
+    juce::TextButton lower{TRANS("-1 semitone")}, raise{TRANS("+1 semitone")}, restore{TRANS("Reset pitch")};
     juce::TextButton loop{TRANS("Loop")}, warp{TRANS("Warp")}, link{TRANS("Link aligned stems")};
     juce::ComboBox beats;
 };

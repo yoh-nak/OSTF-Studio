@@ -217,10 +217,17 @@ private:
     std::atomic<bool> capturingTake_{false};
     std::optional<std::size_t> drumInputMonitor_;
     struct Bounce { juce::String name; std::vector<ostfstudio::ProjectAudio> clips; };
+    struct ClipHit { size_t track; juce::String id; juce::int64 start, end; bool audio; };
+    juce::StringArray bounceTracks_;
+    std::set<std::pair<juce::String,juce::String>> bounceClipIds_;
+    std::vector<ClipHit> bounceClipSelection(const ClipHit&) const;
+    std::set<size_t> bounceSelection(size_t clicked) const;
+    void bounceTracks(size_t clicked);
     bool canBounce(std::size_t track) const;
     void chooseAudioExport();
     void renderAudio(std::optional<std::size_t> track, ostfstudio::audioexport::Settings,
-                     int tailSeconds, const juce::File& target = {});
+                     int tailSeconds, const juce::File& target = {}, std::set<size_t> sources = {},
+                     std::vector<ClipHit> clips = {});
     std::unique_ptr<juce::ThreadWithProgressWindow> renderJob_;
     bool rendering_ = false;
     void editTracks(ostfstudio::TrackKind kind, std::optional<std::size_t> remove = {},
@@ -564,7 +571,6 @@ private:
     juce::ThreadPool aiConnectionWorker_{1};
     EditorClipLane clipLane_;
     void refreshClipLane();
-    struct ClipHit { size_t track; juce::String id; juce::int64 start, end; bool audio; };
     enum class ClipOp { copy = 10, paste, duplicate, move, split, join };
     std::vector<ClipHit> clipsOn(size_t track) const;
     std::optional<ClipHit> clipAt(size_t track, juce::int64 tick) const;
@@ -603,6 +609,8 @@ private:
     MixerPanel mixer_;
     std::unique_ptr<DeviceSettingsWindow> deviceSettings_;
     std::unique_ptr<ScoreView> scoreView_;
+    bool scorePiano_ = false;
+    juce::Rectangle<int> scorePianoBounds_;
     std::unique_ptr<juce::DocumentWindow> importWindow_;
     PreviewTransport transport_;
     bool transportActive_ = false;

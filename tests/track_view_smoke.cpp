@@ -1307,6 +1307,26 @@ int checkSamplePlacement(const juce::File& file) {
         std::unique_ptr<ostfstudio::OstfpPreview> loaded;
         juce::MemoryInputStream stream(projectBytes.getData(),projectBytes.getDataSize(),false);
         if(ostfstudio::readOstfpPreview(stream,loaded).failed() || loaded->audio.size()!=size_t(2+bounceParts))return 385;
+        session.bounceTracks_.add(session.project_->trackIds[0]);
+        session.bounceTracks_.add(session.project_->trackIds[1]);
+        session.bounceTracks(1);
+        if(!wait() || session.project_->sourceTrackCount()!=4) return 390;
+        auto* combined=session.clipOn(3);
+        std::unique_ptr<juce::AudioFormatReader> group(combined ? wav.createReaderFor(new juce::MemoryInputStream(combined->embedded.read(),false),true) : nullptr);
+        if (!group || !group->read(&a,0,4096,0,true,true) || !two->read(&b,0,4096,0,true,true)) return 391;
+        a.addFrom(0,0,b,0,0,4096,-1.f);
+        if (a.getMagnitude(0,0,4096)>.00001f) return 392;
+        const auto tick=session.project_->ticksPerBar;
+        session.placeWav(file,0,tick,false);
+        auto hit=session.clipsOn(0).back();
+        session.renderAudio(0,{},0,{}, {},{hit});
+        if(!wait() || session.project_->sourceTrackCount()!=5) return 393;
+        auto* excerpt=session.clipOn(4);
+        if (!excerpt || excerpt->startTick!=tick || excerpt->durationTicks!=hit.end-hit.start) return 394;
+        std::unique_ptr<juce::AudioFormatReader> sliced(wav.createReaderFor(new juce::MemoryInputStream(excerpt->embedded.read(),false),true));
+        if(!sliced || !sliced->read(&b,0,4096,0,true,true) || !one->read(&a,0,4096,0,true,true)) return 395;
+        a.addFrom(0,0,b,0,0,4096,-1.f);
+        if(a.getMagnitude(0,0,4096)>.00001f) return 396;
     }
     {
         MainComponent view;
@@ -1317,6 +1337,23 @@ int checkSamplePlacement(const juce::File& file) {
         if (!input.openedOk() || ostfstudio::readOstfpPreview(input,song).failed()) return 374;
         song->savedMix.reset();
         view.openImportedSong(std::move(song));
+        view.selectTrack(0);
+        view.scoreButton_.onClick(); view.pianoButton_.onClick();
+        if(!view.scoreView_->isVisible() || !view.pianoGrid_.isVisible() || !view.pianoGrid_.editable
+            || view.scoreView_->getBounds().intersects(view.pianoGrid_.getBounds())) return 397;
+        const auto originalNotes=view.project_->sourceScore;
+        if(view.pianoGrid_.notes.empty()) return 399;
+        auto note=view.pianoGrid_.notes.front();
+        const auto oldPitch=note.pitch;
+        ++note.pitch;
+        view.pianoGrid_.commit({{ostfstudio::NoteEdit::change,note}});
+        if(view.project_->sourceScore==originalNotes || view.pianoGrid_.notes.front().pitch!=oldPitch+1
+           || !view.scoreView_->isVisible()) return 400;
+        view.undoPianoEdit(false);
+        if(view.project_->sourceScore!=originalNotes) return 401;
+        view.pianoButton_.onClick();
+        if(!view.scoreView_->isVisible() || view.pianoGrid_.isVisible()) return 398;
+        view.arrangementButton_.onClick();
         view.setVisible(true);
         const auto area=view.rowOverlay_.getBounds();
         const int x=area.getX()+view.trackHeaderWidth+20;

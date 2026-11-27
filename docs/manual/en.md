@@ -67,4 +67,10 @@ Choose **File → Export mix as audio** to render the arrangement from its begin
 
 WAV supports 16/24-bit PCM and 32-bit float. AIFF and FLAC offer 16/24-bit PCM. Ogg Vorbis and Opus offer encoding quality choices. Windows uses Media Foundation for MP3 and AAC (.m4a). macOS uses the system AAC converter and offers MP3 when LAME is installed in a standard Homebrew location.
 
-Right-click a source track and choose **Bounce to new audio track**. The new track contains the selected instrument or audio clips and its insert effects, at 48 kHz/24-bit. To audition it, mute the original and unmute the bounce. For a shared multichannel instrument, mute the original MIDI part as appropriate for your routing. Save as **OSTFP** to keep the rendered audio. The new strip starts at unity and routes to the master. Bus and return processing can be reassigned in the mixer.
+Click a track name, then Ctrl-click (Command-click on macOS) other track names. Shift-click selects a contiguous range. Right-click a selected header and choose **Bounce tracks to one audio track**. The number beside the command is the number of source tracks. The piano roll keeps its editing focus while you extend the selection. A single source prints its instrument and inserts before its fader. Multiple sources are summed with their strip levels and pan before bus and master processing.
+
+To render an excerpt, select the clip in the arrangement and right-click it. Ctrl/Cmd-click additional clips to select passages across tracks. The new audio starts at the earliest selected clip and ends at the last selected clip boundary. Gaps keep their original duration. The new 48 kHz, 24-bit track starts muted. Save the project as OSTFP to keep its audio.
+
+Open **Score** and click **Piano Roll** in the top toolbar. Picking a part in the score updates the editor below it. Move or draw a note in the piano roll to update the staff. Click **Piano Roll** again for a full-height score.
+
+On an audio clip, double-click the upper waveform to add a warp marker and drag sideways to change its timing. Select a detected note below the waveform, then drag vertically or use the semitone buttons. **Reset pitch** restores that note. Pitch edits apply to the selected clip. **Link aligned stems** shares timing edits with matching clips.

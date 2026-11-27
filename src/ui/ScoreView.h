@@ -12,6 +12,11 @@ class ScoreView final : public juce::Component {
     void showScore(const ostfstudio::OstfpPreview&, bool lead, std::optional<std::size_t> track);
     void refresh(const ostfstudio::OstfpPreview&);
     bool showsLeadSheet() const;
+    std::optional<std::size_t> selectedPartTrack() const;
+    std::function<void(std::size_t)> partChanged;
+    std::function<void(int)> barsChanged;
+    void revealBar(int zeroBasedBar);
+    void enablePartSelection(bool);
     void playbackPosition(juce::int64 tick);
 
   private:
