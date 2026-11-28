@@ -6,6 +6,8 @@
 
 [Reverb](#reverb) · [Delay](#delay) · [Chorus](#chorus) · [Phaser](#phaser) · [Flanger](#flanger) · [Harmonizer](#harmonizer) · [Distortion](#distortion) · [Guitar Amp](#guitar-amp) · [Electric Guitar Rig](#electric-guitar-rig) · [Acoustic Guitar Rig](#acoustic-guitar-rig) · [Bass Rig](#bass-rig) · [Effect Rack](#effect-rack) · [SUPER KNOBBER REVERB](#super-knobber-reverb)
 
+Windows開発版のReverb、Delay、Chorus、Phaser、Flangerでは、フレーズを再生しながら **Wet %** フェーダーで原音と処理音のバランスを調整できます。左右のメーターはエフェクト出力のピークです。[トラックのFXチェーンを並べ替える](../manual/README.md#fx-rack)
+
 ## Reverb
 
 音に部屋の響きを加えます。リターンで使うときは **Wet %** を100にし、各トラックのセンドで残響量を調整します。**Room size %** で空間の大きさが変わります。

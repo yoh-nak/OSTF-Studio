@@ -1,6 +1,6 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
-The [illustrated manual](manual/en.md#track-tools) distinguishes the 41 VST3s in Public Alpha 2 from the 46 in the Windows development build. In that build, Studio hosts scope-compatible editing tools alongside the track instrument. Note edits can target an individual take. Motif Expander can capture a phrase, audition a variation and write it to an alternate take while preserving the adopted performance. The [plug-in guide](plugins/en.md) identifies the five development additions.
+The [illustrated manual](manual/en.md#track-tools) covers the 41 VST3s in Public Alpha 2 and the Windows development build with 55. Studio can host editing tools alongside a track instrument and apply their edits to a take. The [device catalogue](plugins/en.md) labels all fourteen development additions. The velocity-range tool uses a validated proposal to update existing note velocities. Its [editing workflow](manual/en.md#velocity) includes selecting a take, previewing the affected notes and applying one undoable operation.
 
 The [current OSTF specification and registry](https://github.com/yoh-nak/Open-Song-Timeline-Format) govern format work. Review its default branch before changing a reader or writer. Studio embeds the reviewed schemas for the file versions it implements. The upstream status reviewed at [e207a09](https://github.com/yoh-nak/Open-Song-Timeline-Format/blob/e207a097bfee7c57e53c5fb86216b75b0cea1595/STATUS.json) identifies 5.4.0 as the source baseline and 6.0.0 as draft design.
 

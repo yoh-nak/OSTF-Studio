@@ -45,21 +45,41 @@ Open the Studio application, choose your audio output under **Settings**, then c
 
 In the development build, select **Plug-ins → OSTF Tools** to show devices marked with a blue wrench. In a narrow browser the button reads **Tools**. You can also choose a manufacturer or enter a search term, then drag the tool onto a compatible MIDI track.
 
+<a name="fx-rack"></a>
+
+### Reorder and bypass effects (Windows development build)
+
+Open **FX** on a track to see its signal path from top to bottom. Drag a slot by the left grip to move it. Bypassing a slot lights its amber indicator and changes the button label. A processor with a sidechain input has a key selector on its rack unit.
+
+![Two effects in the track rack with drag handles on the left and sidechain inputs on the right](../images/effect-chain-rack.png)
+
 <a name="track-tools"></a>
 
 ### Try a phrase in a different take (Windows development build)
 
-In a track header, the keyboard opens the instrument slot, the wrench opens OSTF Tools, the overlapping boxes open the FX chain and the faders open mix settings. The wrench beside the prompt guide arrows opens global Tools. The voicing and audio track wrenches list tools compatible with those tracks.
+In a track header, the keyboard opens the instrument slot, the wrench opens OSTF Tools, **FX** opens the effect chain and the faders open mix settings. Drop Scale Editor on the scale or chord lane, then open it from the wrench beside the prompt guide arrows. The voicing and audio track wrenches list tools compatible with those tracks.
 
-![The global wrench beside the prompt arrows and the instrument, Tools, FX and mix buttons on the Chord Voicing track](../images/track-tools.png)
+![The Lead Vocal track with its instrument, tool wrench, FX button showing two effects, and mix settings](../images/track-tools.png)
 
 1. Open the take you want on a pitched MIDI track with an instrument assigned. Select a phrase in its piano roll.
 2. Open **OSTF Motif Expander** from that track’s wrench and capture the selection. Generate a variation and listen to both versions. For an AI variation, the tool window’s title bar gives access to Studio’s shared AI connection.
-3. Choose **New take here** to keep both performances at the same position. The original stays adopted. To place the phrase later, move the cursor to an empty span on the destination track and take, then choose **Place at cursor**.
+3. Choose **New take here** to keep both performances at the same position. Their lanes appear below the source track, with **Adopted** on the current performance. To place the phrase later, move the cursor to an empty span on the destination track and take, then choose **Place at cursor**. Use this placement to write a variation of a lyric-linked phrase as MIDI.
 
 ![Motif Expander showing the source track, take and bar above the original notes and their variation](../images/plugins/ostf-motif-expander.png)
 
-Use Velocity Shaper for accents, Guitar Voicer for fret positions, or Note Split for repeated notes. [See the tool controls](../plugins/workstations.en.md#ostf-velocity-shaper)
+In Velocity Shaper, choose a section and take, balance its overall level, then shape the entrance and ending. Click a bar number for its rhythmic accent, or select the specific chord change. The prompt guide supplies editable AI examples. Audition the result before applying. Guitar Voicer compares fret positions and Note Split creates repeated notes. [See the tool controls](../plugins/workstations.en.md#ostf-velocity-shaper)
+
+For a harmony part, select root notes and use **Chord Trigger**. For a beat, place the cursor in the destination bar and use **Rhythm Generator** on a pitched or drum track. To tighten an existing performance, select the notes and use **Quantize**. Each tool previews its edits and writes them to the score when you press **Apply**. One Undo reverses the whole edit. [MIDI tool controls](../plugins/workstations.en.md#ostf-chord-trigger)
+
+<a name="velocity"></a>
+
+### Balance a phrase’s dynamics (Windows development build)
+
+To lift quiet notes or tame loud accents, select the phrase in the take you are editing. Open **OSTF Velocity Range** from the track wrench and read the selection. For example, with a floor of 60 and a ceiling of 100, a velocity of 45 rises to 60, 112 falls to 100, and 80 stays at 80.
+
+Review the change count, then press **Apply**. One Undo restores the original values. For uniform hits, set the start velocity in the piano roll and press **Fixed**. For a crescendo across a section, shape its entry and ending with [Velocity Shaper](../plugins/workstations.en.md#ostf-velocity-shaper).
+
+![Velocity Range’s floor, ceiling and curve mapping played velocities to edited values](../images/plugins/ostf-velocity-range.png)
 
 ### Arrangement and mixer
 
@@ -152,6 +172,10 @@ To render an excerpt, select the clip in the arrangement and right-click it. Ctr
 Open **Mixer** to see the track instruments, inserts, sends, output routing and master. Set the input and arm each track you want to play or record.
 
 ![Studio mixer with the track faders, sends and output meters](../images/mixer.png)
+
+**Windows development build.** The arrangement shows a knob and number for each configured return. Match the number to the mixer return strip to see its name and the send percentage. Each mixer track has separate full-width input and output selectors. MIDI Capture sits below the routes on MIDI tracks.
+
+![Full-width input and output selectors, with MIDI Capture below](../images/mixer-routing.png)
 
 Open **Details** beside the song information strip to edit the song and its credits. Print preview lets you select which of the stored credits to display.
 

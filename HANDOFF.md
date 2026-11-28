@@ -1,5 +1,9 @@
 # OSTF Studio development handoff
 
+## Illustrated guide and international homepage · 2026-11-29
+
+The public guides document Windows development build `78d6764` and identify the 41 plug-ins shipped in Public Alpha 2. The gallery has 55 illustrated entries in both English and Japanese. The other six language pages provide downloads, a hosted demo walkthrough and the optional donation link. Windows captures include the current Live Session, track and mixer controls, effect rack, drum pads and MIDI tools. Run `python tests/illustrated_guides.py` to check the indexes and language navigation. Validation matched all 55 entries against the development catalogue, decoded the published PNGs, parsed the SVG buttons, and checked links in 26 pages. The Live Session and two MIDI editor capture fixtures passed on Windows. The four download buttons point to assets on the existing Public Alpha 2 release.
+
 ## 2026-11-28 — Homepage and illustrated guides
 
 The bilingual manuals and plug-in guides show the Windows development interface at Studio revision `7c12476`. Public Alpha 2 packages contain 41 devices. The additional five entries carry a visible Windows development label. The manuals cover the global and track wrenches, host transport and source-take audition and placement. The homepage download table points to the four platform assets of Public Alpha 2.

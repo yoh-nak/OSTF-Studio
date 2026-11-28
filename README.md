@@ -1,8 +1,12 @@
 # OSTF Studio
 
-Arrange chords, lyrics and takes on one musical timeline. Play the song in standalone Studio or load the workstation as a VST3 instrument in your usual DAW. [日本語](README.ja.md)
+🌐 **English** · [日本語](README.ja.md) · [Español](docs/languages/es.md) · [Français](docs/languages/fr.md) · [Deutsch](docs/languages/de.md) · [Português (Brasil)](docs/languages/pt-BR.md) · [简体中文](docs/languages/zh-CN.md) · [한국어](docs/languages/ko.md)
+
+Arrange chords, lyrics and takes on one musical timeline. Play the song in standalone Studio or load the workstation as a VST3 instrument in your usual DAW.
 
 [![Download](docs/images/navigation/download-en.svg)](#downloads) [![User manual](docs/images/navigation/manual-en.svg)](docs/manual/en.md) [![Plug-in guide](docs/images/navigation/plugins-en.svg)](docs/plugins/en.md) [![Support OSTF Studio on Buy Me a Coffee](docs/images/support-development.svg)](https://buymeacoffee.com/yohsukenak)
+
+Studio is free to download. A coffee helps fund the next round of instrument development, testing and documentation.
 
 ![Paper Lantern Replies in Live Session, with current and upcoming chords above the section and take grid](docs/images/ostf-studio-live-session.png)
 
@@ -10,25 +14,23 @@ Arrange chords, lyrics and takes on one musical timeline. Play the song in stand
 
 ## Download Public Alpha 2
 
-The release includes the standalone workstation and 41 VST3s. Choose Portable to try Studio on Windows without installing it, or choose the disk image for your Mac’s processor.
+The release includes the standalone workstation and 41 VST3s. On Windows x64, choose Setup to install Studio or Portable to try it without installation. On Mac, choose the disk image for your processor.
 
-| Platform | Download |
-| --- | --- |
-| Windows x64 | [Setup (.exe)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Setup.exe) · [Portable (.zip)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Portable.zip) |
-| macOS · Apple silicon | [DMG · arm64](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_arm64.dmg) |
-| macOS · Intel | [DMG · x86_64](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_x86_64.dmg) |
+[![Windows Setup (exe)](docs/images/navigation/win-setup.svg)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Setup.exe) [![Windows Portable (zip)](docs/images/navigation/win-portable.svg)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Portable.zip) [![Mac · Apple silicon (dmg)](docs/images/navigation/mac-arm.svg)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_arm64.dmg) [![Mac · Intel (dmg)](docs/images/navigation/mac-intel.svg)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_x86_64.dmg)
 
 [Release notes and corresponding source](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.2) · [Previous Public Alpha 1](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1) · [Changelog](CHANGELOG.md)
 
 ## In the development build
 
-The illustrated manual shows how to open a track’s wrench, reshape selected notes and audition a variation while keeping the original take. The gallery covers all 46 devices, including the five development additions. [Try the track tools](docs/manual/en.md#track-tools) · [Current OSTF specification](https://github.com/yoh-nak/Open-Song-Timeline-Format)
+Drag rack units to reorder effects, audition twelve drum voices from the pads, or open a track’s wrench to turn a held chord into an arpeggio. The illustrated Windows development guide covers 55 devices, including the 14 added after Public Alpha 2.
+
+[Reorder the FX rack](docs/manual/en.md#fx-rack) · [Shape the dynamics of a phrase](docs/manual/en.md#velocity) · [Current OSTF specification](https://github.com/yoh-nak/Open-Song-Timeline-Format)
 
 ## Feedback
 
-[![Share feedback](docs/images/navigation/feedback-en.svg)](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml)
+[![Share feedback](docs/images/navigation/feedback-en.svg)](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml) [![Report a bug](docs/images/navigation/bug-en.svg)](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml)
 
-Posts are public. English and Japanese are welcome. [Report a bug](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml) · [Read existing feedback](https://github.com/yoh-nak/OSTF-Studio/issues)
+Posts are public. English and Japanese are welcome. [Read existing feedback](https://github.com/yoh-nak/OSTF-Studio/issues)
 
 ## OSTF 5.2 studio preview
 
@@ -102,7 +104,7 @@ Choose **OSTF Instrument Rack** as the track sound, then **+ Instrument layer** 
 
 Arm a MIDI track with R, play, and use Capture MIDI on its mixer strip or input menu. Stopped performances start at the edit cursor. During playback notes use the arrangement position. The IN selector is shared by the mixer and track header. Drop an instrument or effect from the browser onto the channel strip. The output selectors on Master and Cue offer physical channels and device settings.
 
-The transport, prompt guide and current vocal lyrics use black inset displays. Source track headers group the fader, pan and input controls above eight send slots. On narrow expanded headers the sends wrap when there is room for two rows. Each assigned return enables its corresponding send in the header and mixer.
+The transport, prompt guide and current vocal lyrics use black inset displays. Source track headers group the fader, pan and input controls above a compact row of numbered sends. Each assigned return enables its corresponding send in the header and mixer.
 
 **Paper Lantern Replies** displays its English lyrics in English and uses note-aligned katakana for the singer. Japanese verse text retains its original spelling.
 
@@ -118,7 +120,7 @@ The lead sheet and part score offer an A4 print preview with page navigation, ad
 
 Japanese long-vowel marks within one unit extend the vowel recording. With English dictionary input, the Japanese bank uses a closed sound and a short release for B, D and G. Connected recorded vowels align their glottal pulses as the voice changes syllable.
 
-The mixer pins the master on the far right. Independent white markers hold left and right peaks for 1.5 seconds. The headphone switch lights when Cue is active in the track header and mixer. Chord Voicing opens at 100 px and defaults to muted when the project has no saved voicing mix. Each source track has a pan knob and an independent named send knob for every return in both the expanded track header and the mixer. Buses and returns each support one to eight strips. Its two VU needles show the post-fader left and right signals, with a phase scope underneath. Source strips show one needle for mono and two for stereo. Bus, return and Cue meters follow their own signals. The master shows loudness, true peak, spectrum and phase alongside its stereo VUs. Click Instrument to open the instrument editor. Click FX to reopen the selected insert, or use its arrow to select another insert. A steady sine at −18 dBFS reads 0 VU.
+The mixer pins the master on the far right. Independent white markers hold left and right peaks for 1.5 seconds. The headphone switch lights when Cue is active in the track header and mixer. Chord Voicing opens at 100 px and defaults to muted when the project has no saved voicing mix. Each source track has a pan knob and one numbered send per configured return. The mixer shows each destination name and its editable send percentage. Buses and returns each support one to eight strips. Its two VU needles show the post-fader left and right signals, with a phase scope underneath. Source strips show one needle for mono and two for stereo. Bus, return and Cue meters follow their own signals. The master shows loudness, true peak, spectrum and phase alongside its stereo VUs. Click Instrument to open the instrument editor. Click FX to reopen the selected insert, or use its arrow to select another insert. A steady sine at −18 dBFS reads 0 VU.
 
 During playback and seeking, each vocal part shows the current chord’s written lyric beside its lyric lanes. The pronunciation lane follows individual notes.
 
@@ -198,6 +200,10 @@ Select an audio track to open its waveform below the arrangement. Enable **Loop*
 
 The lower audio editor supports warp markers and semitone edits for detected notes. [Audio editing and export](docs/manual/en.md)
 
+## Universal Tuner (development build)
+
+Insert **Universal Tuner** on a microphone or instrument track to see the note, frequency and cent offset. Its twelve instrument profiles and segmented display come from the original Max for Live device. Mute the output for silent tuning on stage. [Universal Tuner controls and screenshot](docs/plugins/analysis.en.md#universal-tuner)
+
 ## Wave Analyzer (development build)
 
 Insert **Wave Analyzer** on a track or master bus. It shows left and right waveforms, a 4096-sample spectrum, sample peak and RMS, stereo correlation, momentary/short-term/integrated LUFS and maximum 4× interpolated true peak. Hover over the spectrum for frequency and level. Freeze holds the display while measurement continues. Reset meters starts a fresh measurement on the next audio block. The plug-in runs locally and passes its input to the output with zero added latency.
@@ -268,7 +274,7 @@ For use in another DAW, clear **OSTF Studio application** and select the VST3s y
 - Track colours link arrangement rows and mixer channels. Open the track menu to choose a colour. Mixer strips show the instrument, insert count and recording input activity.
 - Use **File** to open a project or demo, **View** to switch editors, and **Settings → Audio / MIDI Devices** to select devices. The Windows x64 alpha supports **Windows Audio (WASAPI)** and **ASIO** with a compatible manufacturer driver installed. Apple silicon Macs use **Core Audio**.
 - Arrangement rows have a horizontal volume fader, mute, solo, and an **Instrument** slot. **Mix** opens track-local volume, pan, output bus and return-send controls backed by the same mixer state. The row and Mix controls display the preset name when the plug-in reports it.
-- The startup screen shows workspace preparation. **Plug-ins** opens a manufacturer-grouped VST3 browser. Search by plug-in name, manufacturer or category and combine the search with the instrument/effect filter. The first opening without a cache starts the scanner in a separate process and shows the current plug-in and scan progress. Subsequent openings use the saved local XML catalogue. Drag a plug-in onto an arrangement row to instantiate it without a new directory scan. **Scan VST3** checks for additions or changed files. Track slots display when an individual plug-in is loading.
+- The startup screen shows workspace preparation. **Plug-ins** opens a manufacturer-grouped VST3 browser. In the development build, select **All**, **Inst**, **FX** or **OSTF Tools** and combine the type with a name search and manufacturer. A blue wrench identifies OSTF tool candidates. The first opening without a cache starts the scanner in a separate process and shows the current plug-in and scan progress. Subsequent openings use the saved local XML catalogue. Drag a plug-in onto an arrangement row to instantiate it without a new directory scan. **Scan VST3** checks for additions or changed files. Track slots display when an individual plug-in is loading.
 - The Mixer puts voicing-role, vocal-role and pitched tracks on the left. Source chord voicings are shown as Global Timeline context when present. Use **Out** for Master or one of the project buses, **Send** for per-return send levels, and **+ Return** to add up to eight returns. Buses and post-fader returns sum to Master. Each headphone switch sends the track to the stereo Cue bus before its fader. The Cue strip meters the sum after its own fader, including on stereo devices. Enable four device outputs for a separate Cue feed on 3–4. To audition Cue through the main speakers or headphones, toggle **Listen on 1–2** on the Cue strip. Toggle it again to hear Master. Tracks that share one instrument show its combined audio level on the track hosting the instrument.
 
 ### Level meters and track height
@@ -284,6 +290,8 @@ OSTF Core stores chord voicing snapshots under `harmony.chords[].voicing` and pe
 ### Factory synthesizers and audio samples
 
 In **File → Demo songs → First Light Vector**, Prism Arpeggio plays the FM synth, Offbeat Sub the analog synth, Drums the drum machine, and Wide Halo Pad the wavetable synth. Each VST3 has four factory presets numbered PC 0–3. Select **Program Change** in a MIDI track's performance lane and use **Enter value…** to set the tick and program number. At bar 49 all four tracks switch to PC 2. Open the pad's Wave Analyzer insert to see the change in its spectrum.
+
+The Windows development build adds hardware-style editors for the three [guitar and bass rigs](docs/plugins/space-and-tone.en.md#electric-guitar-rig) and interactive synthesis displays for [FM, Analog and Wavetable Synth](docs/plugins/workstations.en.md#fm-synth).
 
 Open **Plug-in Browser → Audio files** and choose a local sample folder. Drag a WAV, AIFF, FLAC or MP3 onto an audio track at the desired time. Studio offers to replace the clip on occupied tracks. Compressed audio and AIFF are decoded to PCM WAV for project playback. The current import limit is 16 MiB per asset, mono or stereo.
 

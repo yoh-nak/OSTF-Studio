@@ -6,6 +6,8 @@ Add space, echoes, movement or drive. This group also includes instrument-specif
 
 [Reverb](#reverb) · [Delay](#delay) · [Chorus](#chorus) · [Phaser](#phaser) · [Flanger](#flanger) · [Harmonizer](#harmonizer) · [Distortion](#distortion) · [Guitar Amp](#guitar-amp) · [Electric Guitar Rig](#electric-guitar-rig) · [Acoustic Guitar Rig](#acoustic-guitar-rig) · [Bass Rig](#bass-rig) · [Effect Rack](#effect-rack) · [SUPER KNOBBER REVERB](#super-knobber-reverb)
 
+In the Windows development rack panels for Reverb, Delay, Chorus, Phaser and Flanger, play a phrase and move the **Wet %** fader to hear the blend. The two peak meters show the processed output. [Reorder the track’s FX chain](../manual/en.md#fx-rack)
+
 ## Reverb
 
 Adds room reflections and a reverb tail. On a return, set **Wet %** to 100 and control the amount from the track send. Change **Room size %** to vary the space.

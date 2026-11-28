@@ -4,7 +4,7 @@
 
 Load the workstation or a playable instrument in your DAW’s instrument slot. To edit the notes of a Studio project in the development build, open an OSTF Tool from a compatible track’s wrench inside Studio.
 
-[OSTF Studio](#ostf-studio) · [OSTF Scale Editor](#ostf-scale-editor) · [OSTF Velocity Shaper](#ostf-velocity-shaper) · [OSTF Guitar Voicer](#ostf-guitar-voicer) · [OSTF Note Split](#ostf-note-split) · [OSTF Motif Expander](#ostf-motif-expander) · [GM Sound Module](#gm-sound-module) · [OSTF Formant Singer](#ostf-formant-singer) · [FM Synth](#fm-synth) · [Analog Synth](#analog-synth) · [Wavetable Synth](#wavetable-synth) · [Drum Machine](#drum-machine) · [Instrument Rack](#instrument-rack) · [SUPER KNOBBER LEAD](#super-knobber-lead)
+[OSTF Studio](#ostf-studio) · [OSTF Scale Editor](#ostf-scale-editor) · [OSTF Velocity Shaper](#ostf-velocity-shaper) · [OSTF Guitar Voicer](#ostf-guitar-voicer) · [OSTF Motif Expander](#ostf-motif-expander) · [OSTF Note Split](#ostf-note-split) · [GM Sound Module](#gm-sound-module) · [OSTF Formant Singer](#ostf-formant-singer) · [FM Synth](#fm-synth) · [Analog Synth](#analog-synth) · [Wavetable Synth](#wavetable-synth) · [Drum Machine](#drum-machine) · [Instrument Rack](#instrument-rack) · [SUPER KNOBBER LEAD](#super-knobber-lead) · [SUPER KNOBBER PAD](#super-knobber-pad) · [SUPER KNOBBER PIANO](#super-knobber-piano) · [OSTF Chord Trigger](#ostf-chord-trigger) · [OSTF Rhythm Generator](#ostf-rhythm-generator) · [OSTF Quantize](#ostf-quantize) · [SUPER KNOBBER ORGAN](#super-knobber-organ) · [OSTF Arpeggiator](#ostf-arpeggiator) · [OSTF Velocity Range](#ostf-velocity-range) · [OSTF Legato](#ostf-legato)
 
 ## OSTF Studio
 
@@ -30,6 +30,12 @@ Select the section in the header and click **Play section**, or choose **Play so
 
 **Windows development preview**
 
+Select **Sections**, the section and its take. In **Dynamics**, set **Overall level** to balance the section against the rest of the song. Shape **Entry** and **Ending** to build or relax inside the section. The graph shows one bar per note, with a line for its original velocity. Click **Listen A / B**, then **Apply**.
+
+Click a bar number on the ruler to adjust that measure’s pulse. Use **Chords** when the gesture follows a harmony change halfway through the bar. The levels add together. Revising the section later preserves an applied bar or chord adjustment. Double-click the graph to return to the parent target.
+
+**Prompt guide** inserts an editable instruction such as “Keep the verse quieter than the chorus and build towards its ending.” **AI proposal** uses the selected target, take, section levels, meter and chord context to fill the four controls. Audition the proposal before applying it.
+
 In the development build, click **Sections** to see the named section tabs. Choose a section, take and shape to compare the original velocities with the proposed bars. **Beat controls** exposes one vertical fader per rhythmic position.
 
 Open the tool on a MIDI track, then choose a section, take and shape. Gentle, Beat accents and Lift apply offsets to the played velocities. Choose an immediate switch or a blend over 1, 2 or 4 beats. Apply sections in song order to blend from the preceding adopted take's shape. An unconfigured predecessor uses the original dynamics. Reapplying the same shape preserves the previously calculated velocities.
@@ -40,13 +46,15 @@ Click **Preview edits** to inspect the count, then **Listen A** or **Listen B** 
 
 Choose **Piano roll · selected notes**, one **Chord** by bar and beat, a section, a take range or **Entire MIDI track**. The take selector shows the available performances for that range. A whole track spanning multiple comp regions uses the adopted performance. Choose one take range to edit an alternate. Piano-roll selection uses the notes in the displayed take.
 
-In **Beat controls**, adjust downbeats, offbeats, contrast or limits. **Velocity offset** adds a fixed amount to the current values. The graph updates before you apply. Each grey mark shows the played velocity and each green bar shows the proposed velocity, in onset order. Hover for exact values. Dense columns show the peak. Click or drag across the graph to restrict the edit to individual notes, or double-click to include the whole target again. **Apply** writes the previewed changes in one Studio Undo step.
+In **Beat controls**, adjust downbeats, offbeats, contrast or limits. **Velocity offset** adds a fixed amount to the current values. The graph updates before you apply. Each grey mark shows the played velocity and each green bar shows the proposed velocity, at its position on the bar ruler. Notes struck together appear side by side. Hover for exact values. Click or drag across the graph to restrict the edit to individual notes, or double-click to include the whole target again. **Apply** writes the previewed changes in one Studio Undo step.
 
-![Velocity Shaper comparing played and proposed velocities on a chord in Take 2](../images/plugins/ostf-velocity-shaper.png)
+![Velocity Shaper comparing the original and proposed phrase dynamics on a bar ruler](../images/plugins/ostf-velocity-shaper.png)
 
 ## OSTF Guitar Voicer
 
 **Windows development preview**
+
+After creating a take, find its lane below the source track over the same section. The highlight marks the adopted performance. Click the lane to open the take menu.
 
 Open **Tools → OSTF Guitar Voicer** on a pitched MIDI track. Select a section and take, set a fret range and preview. The fretboard shows the first voicing, from low E at the bottom to high E at the top. **Link positions** also considers the preceding chord when choosing a fingering. The target can be changed to the current piano-roll note selection.
 
@@ -59,6 +67,8 @@ Click a section tab to see its first fingering. Try Open, Low, Middle or High, o
 ## OSTF Motif Expander
 
 **Windows development preview**
+
+You can capture and audition a vocal melody with linked lyrics. Place the variation as MIDI in a gap. Linked vocal clips require an authored take map to fork their lyrics.
 
 Open the wrench on a pitched MIDI track, add **OSTF Motif Expander**, select 1–96 piano-roll notes in one take and click **Capture selection**. The header identifies the source track, take and bar. Choose a variation style and similarity, then click **Generate**. The two lanes share a time axis and pitch range. Use **Hear source** and **Hear variation** to compare them. **AI variation** sends the captured notes and settings to the AI connected to Studio. Manage that connection from the top of any tool window.
 
@@ -111,6 +121,8 @@ Turn **Tone** to move the highlighted reference waveform through the table. Comp
 
 ## Drum Machine
 
+In the Windows development build, click any of the twelve pads to audition its voice. The pad also lights when its MIDI note arrives. Choose a kit in the header and use the output fader to match levels.
+
 A drum instrument that maps MIDI notes to percussion voices. Play the same beat with **Studio Kit** and **Tight Machine** to compare the length and tone of the hits.
 
 ![Drum Machine showing Studio Kit preset and level fader](../images/plugins/drum-machine.png)
@@ -131,4 +143,74 @@ Play the LEAD v1.2 instrument on a MIDI track in Studio or another VST3 host. Ch
 
 [Signal path and controls](super-knobber-lead.en.md)
 
+## SUPER KNOBBER PAD
+
+**Windows development preview**
+
+Choose **GM → GM 093 Pad 5 bowed** and sustain a chord. On the Oscillators page, String Mix blends the bowed layer, Bow Noise adds bow texture and Ensemble changes its stereo motion. The bank contains 188 factory programs from the PAD v1.0 device.
+
+![SUPER KNOBBER PAD oscillator and string controls](../images/plugins/super-knobber-pad.png)
+
 [Return to the plug-in guide](en.md)
+
+## SUPER KNOBBER PIANO
+
+**Windows development preview**
+
+Choose **GM → GM 001 Acoustic Grand Piano**. Play a three-note chord, hold the sustain pedal and release the keys. **Damper**, **Sympathetic** and **Pedal Resonance** shape the tail. Compare **GM 005 Electric Piano 1** for a different attack. The instrument ports 119 programs across 38 banks from PIANO v1.5. It shares LEAD’s quality selector, MIDI CC learn and effects layout.
+
+![SUPER KNOBBER PIANO showing hammer, strings, resonances and damper](../images/plugins/super-knobber-piano.png)
+
+## OSTF Chord Trigger
+
+**Windows development preview**
+
+Select the root notes in the piano roll, open Chord Trigger from the track wrench and choose Major, Minor, Sus2, Sus4, 7, Maj7, m7, Dim or Aug. Set an inversion, check the additional pitches, then press **Apply**. The roots retain their timing and velocity. Existing pitches at the same onset are skipped.
+
+![OSTF Chord Trigger](../images/plugins/ostf-chord-trigger.png)
+
+## OSTF Rhythm Generator
+
+**Windows development preview**
+
+Place the edit cursor in a complete bar on a MIDI or drum track. Choose the step count, hits per bar and MIDI pitch or kit sound. The tool spreads the hits across the actual meter and accents the first hit. Press **Read cursor bar** after moving the cursor. **Apply** writes the pattern to the editing take. An empty selection is valid. Use Rotate to shift the hits and first accent around the bar while retaining the pulse count.
+
+![OSTF Rhythm Generator](../images/plugins/ostf-rhythm-generator.png)
+
+## OSTF Quantize
+
+**Windows development preview**
+
+Select pitched or drum notes and choose a straight or triplet grid. **Strength** sets how far the attacks move. **Swing** delays every other grid point. The amber marks show original attacks and the green notes show the proposed positions. Press **Apply** to keep the new timing. Durations and velocities are retained.
+
+![OSTF Quantize](../images/plugins/ostf-quantize.png)
+
+## SUPER KNOBBER ORGAN
+
+**Windows development preview**
+
+Select **GM / Core → GM 017 Drawbar Organ**. Pull the 16-foot and 8-foot drawbars toward you to bring out the lower harmonics, then raise Rotary Mix and change Rotary Speed while holding a chord. Compare the rock, church and reed programs. The v1.0 factory bank contains 242 programs in 40 categories. The three-voice instrument shares LEAD’s effects, MIDI CC Learn and 2× quality switch.
+
+![SUPER KNOBBER ORGAN](../images/plugins/super-knobber-organ.png)
+
+## OSTF Arpeggiator
+
+**Windows development preview**
+
+Select simultaneous notes in one clip. Choose Up, Down or Up / Down, set the number of steps per quarter and the gate, then press Apply. The pattern repeats until the shortest selected note ends. Chords too short for one pass and chords with lyrics are skipped.
+
+![OSTF Arpeggiator](../images/plugins/ostf-arpeggiator.png)
+
+## OSTF Velocity Range
+
+**Windows development preview** · Select notes in the piano roll and open this tool from the track wrench. Read the selection, set the floor and ceiling, and check how many notes will change. Quiet notes rise to the floor, loud notes fall to the ceiling, and notes in between keep their original dynamics. Both limits can meet at one fixed velocity. Notes with inherited velocity keep that inheritance.
+
+![OSTF Velocity Range](../images/plugins/ostf-velocity-range.png)
+
+## OSTF Legato
+
+**Windows development preview**
+
+Select a phrase, choose 100%, 90% or 75%, then set the largest interval to connect in quarter notes. The last selected onset in each clip keeps its release. For a quick 100% connection with a four-quarter limit, press Legato in the piano-roll inspector.
+
+![OSTF Legato](../images/plugins/ostf-legato.png)

@@ -12,6 +12,8 @@ Start with EQ to adjust a frequency range, Compressor to control loud passages, 
 
 ## EQ
 
+In the Windows development editor, move a low, mid or high fader to see the gain curve change across the frequency range. Play audio to read the actual output peaks beside the curve.
+
 Three broad controls for lows, mids and highs. Move **Mid 1 kHz dB** a little in each direction to hear how the midrange changes.
 
 ![EQ showing low shelf, 1 kHz mid and high shelf](../images/plugins/eq.png)

@@ -4,7 +4,7 @@
 
 ワークステーション・音源はDAWの音源枠に挿します。Studioのプロジェクトを編集する開発版のOSTFツールは、Studio内の対応トラックのスパナから開けます。
 
-[OSTF Studio](#ostf-studio) · [OSTF Scale Editor](#ostf-scale-editor) · [OSTF Velocity Shaper](#ostf-velocity-shaper) · [OSTF Guitar Voicer](#ostf-guitar-voicer) · [OSTF Note Split](#ostf-note-split) · [OSTF Motif Expander](#ostf-motif-expander) · [GM Sound Module](#gm-sound-module) · [OSTF Formant Singer](#ostf-formant-singer) · [FM Synth](#fm-synth) · [Analog Synth](#analog-synth) · [Wavetable Synth](#wavetable-synth) · [Drum Machine](#drum-machine) · [Instrument Rack](#instrument-rack) · [SUPER KNOBBER LEAD](#super-knobber-lead)
+[OSTF Studio](#ostf-studio) · [OSTF Scale Editor](#ostf-scale-editor) · [OSTF Velocity Shaper](#ostf-velocity-shaper) · [OSTF Guitar Voicer](#ostf-guitar-voicer) · [OSTF Motif Expander](#ostf-motif-expander) · [OSTF Note Split](#ostf-note-split) · [GM Sound Module](#gm-sound-module) · [OSTF Formant Singer](#ostf-formant-singer) · [FM Synth](#fm-synth) · [Analog Synth](#analog-synth) · [Wavetable Synth](#wavetable-synth) · [Drum Machine](#drum-machine) · [Instrument Rack](#instrument-rack) · [SUPER KNOBBER LEAD](#super-knobber-lead) · [SUPER KNOBBER PAD](#super-knobber-pad) · [SUPER KNOBBER PIANO](#super-knobber-piano) · [OSTF Chord Trigger](#ostf-chord-trigger) · [OSTF Rhythm Generator](#ostf-rhythm-generator) · [OSTF Quantize](#ostf-quantize) · [SUPER KNOBBER ORGAN](#super-knobber-organ) · [OSTF Arpeggiator](#ostf-arpeggiator) · [OSTF Velocity Range](#ostf-velocity-range) · [OSTF Legato](#ostf-legato)
 
 ## OSTF Studio
 
@@ -30,6 +30,12 @@
 
 **Windows開発版**
 
+**構成** タブで構成名とテイクを選び、**構成と抑揚** を開きます。まず **全体の強さ** でAメロとサビの差を決めます。次に **入り** と **終わり** で、構成の入りから終わりまでの盛り上がりを調整します。グラフの棒は各音符の変更後の強さ、横線は変更前の強さです。**元を試聴／案を試聴** で比べ、良ければ **適用** を押します。
+
+拍に合わせたいときはグラフの小節番号をクリックして **強拍** を調整します。小節の途中で和音が変わり、その入りを立てたいときは **コード** タブで該当するコードを選びます。適用済みの調整は重なるため、後から構成全体を弱めても、その小節やコードにつけた表情が残ります。グラフのダブルクリックで対象全体に戻れます。
+
+**指示の例** で「Aメロはサビより控えめに。後半から徐々に強くする。」などの文章を入れて編集できます。**AIで提案** は、対象、テイク、構成ごとの強さ、拍子、コードを使って4つの調整値を提案します。試聴してから適用してください。
+
 開発版では **構成** を押すと構成名が横に並びます。構成、テイク、シェイプの順にタブを選ぶと、グラフで変更前後を確認できます。**拍別パラメーター** では縦フェーダーで各拍の強さを調節します。
 
 MIDIトラックの **Tools → OSTF Velocity Shaper** で構成とテイクを選びます。「穏やか」「強拍を強調」「全体を強める」は、演奏時のベロシティーに差分を加えます。「自動移行・1拍」は構成の先頭で直前の構成のシェイプから切り替えます。前の構成に設定がなければ元の強弱から始まります。サビ頭を強調するときは「即時切替」を選びます。構成を曲順に適用すると、次の構成が直前の設定を参照できます。
@@ -40,13 +46,15 @@ MIDIトラックの **Tools → OSTF Velocity Shaper** で構成とテイクを�
 
 対象欄では、ピアノロールの選択ノート、小節・拍で区別したコード1回分、構成、テイク区間、このMIDIトラック全体から選べます。右隣で、その範囲の採用テイクまたは別テイクを指定します。トラック全体に複数のコンプ区間がある場合は採用中の演奏が対象です。特定の別テイクを編集するときは、そのテイク区間を選びます。ピアノロールの選択ノートには、表示中のテイクが使われます。
 
-**拍別パラメーター** で強拍・裏拍・コントラストなどを調整すると、発音順のグラフが更新されます。灰色の線が元のベロシティ、緑の棒が適用後の値です。ノートが密な列には最大値を表示します。ポインターを重ねると数値を確認できます。**オフセット** では現在値に一定量を加減します。グラフをクリックまたはドラッグすると対象をさらに絞れます。ダブルクリックで範囲内の全音符に戻ります。**適用** 後はStudioの「元に戻す」1回で取り消せます。
+**拍別パラメーター** で強拍・裏拍・コントラストなどを調整すると、小節・拍に沿ってグラフが更新されます。灰色の線が元のベロシティ、緑の棒が適用後の値です。同時に鳴るノートは横に並びます。ポインターを重ねると数値を確認できます。**オフセット** では現在値に一定量を加減します。グラフをクリックまたはドラッグすると対象をさらに絞れます。ダブルクリックで範囲内の全音符に戻ります。**適用** 後はStudioの「元に戻す」1回で取り消せます。
 
-![コードとテイクを選んでベロシティの変更前後を比較する画面](../images/plugins/ostf-velocity-shaper.png)
+![小節・拍に沿って元のベロシティと抑揚を付けた結果を比較する画面](../images/plugins/ostf-velocity-shaper.png)
 
 ## OSTF Guitar Voicer
 
 **Windows開発版**
+
+「別テイクへ」を押すと、アレンジ画面の元トラックの下に、同じ区間のテイクが並びます。採用テイクには印が付きます。レーンを押すと、その区間の採用メニューを開けます。
 
 音程のあるMIDIトラックで **Tools → OSTF Guitar Voicer** を開き、構成、テイク、最低・最高フレットを選びます。標準チューニングの6弦に各和音を振り分け、最初の和音の押弦位置を指板に表示します。「前の和音に寄せる」は直前の構成の最後の和音と、同じ構成内の直前の和音を参考にします。
 
@@ -59,6 +67,8 @@ MIDIトラックの **Tools → OSTF Velocity Shaper** で構成とテイクを�
 ## OSTF Motif Expander
 
 **Windows開発版**
+
+歌詞付きメロディーも取得して変奏を試聴できます。変奏のMIDIノートは空き区間に配置できます。歌詞の紐付けを伴う別テイクへの複製には専用の対応表が必要です。
 
 音程のあるMIDIトラックでスパナを押し、**OSTF Motif Expander** を追加します。ピアノロールで同じテイクの音符を1～96音選び、**選択ノートを取得** を押します。上段に元のフレーズ、見出しにトラック名・テイク名・開始小節が表示されます。
 
@@ -113,6 +123,8 @@ OSTFの旋律と歌詞を歌わせる音源です。普段のDAWでは **Load OS
 
 ## Drum Machine
 
+開発版の12パッドはクリックで試聴でき、対応するMIDIノートを受けると点灯します。
+
 MIDIノートをキック、スネア、ハイハットなどに割り当てるドラム音源です。同じパターンを **Studio Kit** と **Tight Machine** で再生し、キットによる減衰の違いを比べられます。
 
 ![Drum Machineの画面。Studio Kitプリセットと出力フェーダー](../images/plugins/drum-machine.png)
@@ -133,4 +145,74 @@ M4L版LEAD v1.2の音色を、Studioや他のDAWのMIDIトラックで演奏で�
 
 [詳しい操作と入出力](super-knobber-lead.md)
 
+## SUPER KNOBBER PAD
+
+**Windows開発版**
+
+**GM → GM 093 Pad 5 bowed** で和音を伸ばしてみてください。Oscillators ページの **String Mix** で弦の層を加え、**Bow Noise** で弓の擦れ、**Ensemble** で左右の揺れを調整できます。M4L版PAD v1.0の188音色を収録しています。
+
+![SUPER KNOBBER PADのオシレーターと弦の操作画面](../images/plugins/super-knobber-pad.png)
+
 [プラグイン図鑑の目次に戻る](README.md)
+
+## SUPER KNOBBER PIANO
+
+**Windows開発版**
+
+**GM → GM 001 Acoustic Grand Piano** で3音の和音を弾き、ペダルを踏んだまま鍵盤を離します。**Damper**、**Sympathetic**、**Pedal Resonance** で離鍵後の響きを変えられます。エレピのアタックは **GM 005 Electric Piano 1** と聴き比べられます。PIANO v1.5の38分類・119音色を収録し、LEADと同じ操作で品質切替、MIDI CCの割り当て、エフェクトの調整ができます。
+
+![SUPER KNOBBER PIANOのハンマー、弦、共鳴とダンパーの操作画面](../images/plugins/super-knobber-piano.png)
+
+## OSTF Chord Trigger
+
+**Windows開発版**
+
+ピアノロールでルート音を選び、トラックのスパナから開きます。メジャー、マイナー、Sus2、Sus4、7、Maj7、m7、Dim、Augから和音を選び、必要に応じて転回形を指定します。追加する音高を確認し、**適用**を押します。各ルートの発音位置、長さ、強さを引き継ぎます。同じ位置にある同音は重ねません。
+
+![OSTF Chord Trigger](../images/plugins/ostf-chord-trigger.png)
+
+## OSTF Rhythm Generator
+
+**Windows開発版**
+
+MIDIまたはドラムトラックで、作りたい小節にカーソルを置きます。分割数、小節内の打数、MIDI音高（ドラムならキットの音色）を指定すると、その拍子に合わせて打音を分散し、最初の音にアクセントが付きます。カーソルを移動したら **カーソルの小節を取得** を押します。**適用** で編集中のテイクに書き込めます。空の小節からも始められます。 開始位置をステップ単位でずらすと、打数を保ったまま打点とアクセントを小節内で回転できます。
+
+![OSTF Rhythm Generator](../images/plugins/ostf-rhythm-generator.png)
+
+## OSTF Quantize
+
+**Windows開発版**
+
+音程トラックまたはドラムのピアノロールでノートを選び、通常音符か三連符のグリッドを選びます。**補正量** で元の演奏の揺れをどれだけ残すか、**スウィング** で裏の位置を調整します。オレンジの印が元の発音位置、緑が変更案です。**適用** すると長さとベロシティを保ったまま位置が変わります。
+
+![OSTF Quantize](../images/plugins/ostf-quantize.png)
+
+## SUPER KNOBBER ORGAN
+
+**Windows開発版**
+
+**GM / Core → GM 017 Drawbar Organ** を選び、16′と8′のドローバーを手前に引いて低い倍音を加えます。和音を伸ばしたまま **Rotary Mix** と **Rotary Speed** を動かし、ロック、教会、リードの各プリセットとも聴き比べられます。元のv1.0から40分類・242音色を収録した3音ポリの音源です。エフェクト、MIDI CC割り当て、2倍オーバーサンプリングの操作はLEADと共通です。
+
+![SUPER KNOBBER ORGAN](../images/plugins/super-knobber-organ.png)
+
+## OSTF Arpeggiator
+
+**Windows開発版**
+
+同じクリップで同時に鳴る音を選びます。上行・下行・往復から方向を選び、四分音符の分割数とゲートを設定して「適用」を押します。一番短い音の終わりまでパターンが繰り返されます。1巡できない短い和音や歌詞の付いた和音はそのまま残ります。
+
+![OSTF Arpeggiator](../images/plugins/ostf-arpeggiator.png)
+
+## OSTF Velocity Range
+
+**Windows開発版** · ピアノロールでノートを選び、対象トラックのスパナから開きます。「選択を取得」で対象を読み、下限と上限を調整して変更音符数を確認します。弱すぎる音は下限まで、強すぎる音は上限まで動き、範囲に収まっている音は元の強弱で鳴ります。上下を同じ値にすると固定できます。ベロシティーを継承しているノートは継承を維持します。
+
+![OSTF Velocity Range](../images/plugins/ostf-velocity-range.png)
+
+## OSTF Legato
+
+**Windows開発版**
+
+フレーズを選び、次の音までの長さを100%、90%、75%から選びます。つなぐ間隔の上限は四分音符単位です。各クリップで最後に選んだ音は元の長さを保ちます。100%・四分音符4つ分までなら、ピアノロールの「レガート」でも同じ編集ができます。
+
+![OSTF Legato](../images/plugins/ostf-legato.png)

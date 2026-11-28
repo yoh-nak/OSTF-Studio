@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="147" height="44" viewBox="0 0 147 44" role="img" aria-label="不具合を報告">
+  <rect x=".5" y=".5" width="146" height="43" rx="7" fill="#253748" stroke="#738b9e"/>
+  <path transform="translate(8 10)" d="M6 10h12v5a6 6 0 0 1-12 0zM8 10V8a4 4 0 0 1 8 0v2M12 12v6M3 11l3 1m12 0 3-1M3 17l3-1m12 0 3 1M7 3l2 2m6 0 2-2" fill="none" stroke="#99e5d1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="39" y="28" fill="#ffffff" font-family="system-ui, sans-serif" font-size="16" font-weight="600">不具合を報告</text>
+</svg>

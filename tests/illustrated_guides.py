@@ -32,6 +32,8 @@ def verify():
         for group in GROUPS:
             page = GALLERY / (group + suffix)
             sections = re.split(r"^## ([^\n]+)\n", page.read_text(encoding="utf-8"), flags=re.MULTILINE)
+            count = re.search(rf"^## \[.*?\((\d+)\)\]\({re.escape(page.name)}\)$", overview, re.MULTILINE)
+            assert count and int(count[1]) == len(sections[1::2]), (index, group, "device count")
             for name, body in zip(sections[1::2], sections[2::2]):
                 slug = name.lower().replace(" ", "-")
                 assert name not in seen, f"Duplicate device in {page}: {name}"
@@ -44,7 +46,24 @@ def verify():
         inventories.append((seen, preview))
     assert inventories[0] == inventories[1], "The two guides disagree on devices or preview status"
 
-    pages = [ROOT / "README.md", ROOT / "README.ja.md", *GALLERY.glob("*.md"),
+    homepages = [ROOT / "README.md", ROOT / "README.ja.md", *sorted((ROOT / "docs/languages").glob("*.md"))]
+    funding = (ROOT / ".github/FUNDING.yml").read_text(encoding="utf-8")
+    account = re.search(r"^buy_me_a_coffee: ([\w-]+)$", funding, re.MULTILINE)
+    assert account, "Missing Buy Me a Coffee account"
+    assets = None
+    for home in homepages:
+        body = home.read_text(encoding="utf-8")
+        assert f"](https://buymeacoffee.com/{account[1]})" in body, home
+        links = {link for link in re.findall(r"\]\(([^)]+)\)", body) if "/releases/download/" in link}
+        if assets is None:
+            assets = links
+            assert len(assets) == 4, "Expected two Windows and two macOS downloads"
+        assert links == assets, (home, "download links")
+        nav = next(line for line in body.splitlines() if line.startswith("🌐 "))
+        targets = {(home.parent / link).resolve() for link in re.findall(r"\]\(([^)]+)\)", nav)}
+        assert targets == set(homepages) - {home}, (home, "language navigation")
+
+    pages = [*homepages, *GALLERY.glob("*.md"),
              *(ROOT / "docs/manual").glob("*.md")]
     for page in pages:
         text = page.read_text(encoding="utf-8")

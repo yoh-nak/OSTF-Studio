@@ -1,8 +1,12 @@
 # OSTF Studio
 
-コード、歌詞、テイクを一つのタイムラインで編集・演奏するデスクトップDAWです。単体でも、普段のDAWのVST3音源としても使えます。 [English](README.md)
+🌐 [English](README.md) · **日本語** · [Español](docs/languages/es.md) · [Français](docs/languages/fr.md) · [Deutsch](docs/languages/de.md) · [Português (Brasil)](docs/languages/pt-BR.md) · [简体中文](docs/languages/zh-CN.md) · [한국어](docs/languages/ko.md)
+
+コード、歌詞、テイクを一つのタイムラインで編集・演奏するデスクトップDAWです。単体でも、普段のDAWのVST3音源としても使えます。
 
 [![ダウンロード](docs/images/navigation/download-ja.svg)](#downloads) [![操作マニュアル](docs/images/navigation/manual-ja.svg)](docs/manual/README.md) [![プラグイン図鑑](docs/images/navigation/plugins-ja.svg)](docs/plugins/README.md) [![Buy Me a CoffeeでOSTF Studioの開発を応援する](docs/images/support-development.svg)](https://buymeacoffee.com/yohsukenak)
+
+OSTF Studioは無料です。Buy Me a Coffeeからのご支援は、音源の開発や動作検証、マニュアルの整備に役立ちます。
 
 ![Paper Lantern Repliesのライブセッション。構成とテイクを並べたグリッドの上で、演奏中と次のコードを確認できます](docs/images/ostf-studio-live-session.png)
 
@@ -10,25 +14,23 @@
 
 ## 公開アルファ2をダウンロード
 
-単体版と41本のVST3を配布しています。Windowsでインストールせずに試す場合はPortableを、Macではプロセッサーに合うDMGを選んでください。
+単体版と41本のVST3を配布しています。Windows x64でインストールする場合はSetup、そのまま試す場合はPortableを選びます。Macではプロセッサーに合うDMGを選んでください。
 
-| パソコン | 配布ファイル |
-| --- | --- |
-| Windows x64 | [Setup (.exe)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Setup.exe) · [Portable (.zip)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Portable.zip) |
-| macOS · Apple silicon | [DMG · arm64](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_arm64.dmg) |
-| macOS · Intel | [DMG · x86_64](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_x86_64.dmg) |
+[![Windows Setup (exe)](docs/images/navigation/win-setup.svg)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Setup.exe) [![Windows Portable (zip)](docs/images/navigation/win-portable.svg)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Portable.zip) [![Mac · Apple silicon (dmg)](docs/images/navigation/mac-arm.svg)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_arm64.dmg) [![Mac · Intel (dmg)](docs/images/navigation/mac-intel.svg)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_x86_64.dmg)
 
 [リリースノートと対応ソース](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.2) · [公開アルファ1](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1) · [変更履歴](CHANGELOG.md)
 
 ## 開発版の画面と操作
 
-画像付きマニュアルでは、トラックのスパナからツールを開き、選択した音符の強弱やリズムを変え、元の演奏を残して別テイクを試す手順を紹介しています。図鑑では開発版で増えた5本を含む全46本を見られます。 [テイクを試す](docs/manual/README.md#track-tools) · [最新のOSTF仕様](https://github.com/yoh-nak/Open-Song-Timeline-Format)
+Windows開発版では、FXラックの順番をドラッグで変え、ドラムマシンの12パッドで音色を試せます。トラックのスパナからは、和音をアルペジオにしたり、元のテイクを残して別の演奏を作ったりできます。図鑑の全55本のうち、14本が公開アルファ2以降の追加です。
+
+[FXラックの使い方](docs/manual/README.md#fx-rack) · [音符の強弱を整える](docs/manual/README.md#velocity) · [最新のOSTF仕様](https://github.com/yoh-nak/Open-Song-Timeline-Format)
 
 ## ご意見・不具合報告
 
-[![意見・要望を送る](docs/images/navigation/feedback-ja.svg)](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml)
+[![意見・要望を送る](docs/images/navigation/feedback-ja.svg)](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml) [![不具合を報告](docs/images/navigation/bug-ja.svg)](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml)
 
-日本語・英語で投稿できます。投稿内容は公開されます。 [不具合を報告](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml) · [既存の投稿](https://github.com/yoh-nak/OSTF-Studio/issues)
+日本語・英語で投稿できます。投稿内容は公開されます。 [既存の投稿](https://github.com/yoh-nak/OSTF-Studio/issues)
 
 ## 他のDAWでStudio本体を使う
 
@@ -58,7 +60,7 @@ OSTF 5.1・5.2のMIDIテイクをアレンジビューとライブセッショ�
 
 ミキサーの「IN」で入力を選び、MIDIトラックの「R」を点灯して演奏すると、「MIDIキャプチャ」で直前のノートをクリップにできます。停止中の演奏は編集カーソル位置から、再生中の演奏は演奏した位置に配置します。音源・エフェクトはブラウザーからミキサーにドラッグできます。マスターとキューの出力ボタンで出力ペアを選択し、「オーディオ / MIDI デバイス」から設定画面を開けます。
 
-トランスポート、プロンプトガイド、主旋律・コーラスの現在の表示歌詞に共通の黒い液晶表示を使います。展開したトラックでは音量・パン・入力の下にセンド8枠を配置します。幅が狭く高さが足りるときは2段で表示します。対応するリターンを追加すると、トラックとミキサーの両方でそのノブを操作できます。
+トランスポート、プロンプトガイド、主旋律・コーラスの現在の表示歌詞に共通の黒い液晶表示を使います。展開したトラックでは音量・パン・入力の下に、設定済みのセンドを番号で1列に表示します。対応するリターンを追加すると、トラックとミキサーの両方でそのノブを操作できます。
 
 「Paper Lantern Replies」の英語部分は、コードに付く表示歌詞が英語、音符に付く発音歌詞がカタカナです。日本語の節には漢字交じりの表示歌詞を使います。
 
@@ -72,7 +74,7 @@ Scale Editorのヘッダーで試聴音源を選び、構成または全曲で�
 
 キューボタンはトラックとミキサーの M・S・R に並ぶヘッドホンです。オンにすると水色に点灯します。ミキサー右端のマスターでは、左右のレベルメーターの白線がピークを1.5秒保持します。デモのボイシングトラックは高さ100 pxで、初期状態はミュートです。
 
-トラックヘッダーのパンはドラッグで左右に振り、ダブルクリックで中央に戻せます。リターンを追加すると、各トラックのヘッダーとミキサーに、その名前のセンドノブが1個ずつ増えます。同じトラックの送り量は両画面で連動します。バスとリターンはそれぞれ1〜8本です。右端のマスターには左右のVU、フェーズスコープ、ラウドネス、トゥルーピーク、スペクトルを同時に表示します。ミキサーの「音源」でインストラメントを、「FX」で選択中のエフェクトを開けます。FXの右の矢印から別のエフェクトを選べます。
+トラックヘッダーのパンはドラッグで左右に振り、ダブルクリックで中央に戻せます。リターンを追加すると、トラックには番号付きのセンドノブが増えます。ミキサーでは送り先の名前とセンド量（%）を確認・調整できます。同じトラックの送り量は両画面で連動します。バスとリターンはそれぞれ1〜8本です。右端のマスターには左右のVU、フェーズスコープ、ラウドネス、トゥルーピーク、スペクトルを同時に表示します。ミキサーの「音源」でインストラメントを、「FX」で選択中のエフェクトを開けます。FXの右の矢印から別のエフェクトを選べます。
 
 主旋律とコーラスの歌詞欄には、再生カーソルのコードに結び付いた表示歌詞が大きく出ます。発音歌詞は各ノートに沿って表示します。
 
@@ -135,6 +137,8 @@ OSTF Studio は、楽曲の構造と演奏情報を OSTF 5.0 で扱う Windows�
 ## 音源と素材ブラウザー
 
 「ファイル → デモ曲 → First Light Vector」では、アルペジオにFM、ベースにアナログ、ドラムにドラムマシン、パッドにウェーブテーブル音源を使用します。各音源のプリセットはプログラムチェンジの値0〜3で選べます。49小節目で4パートの音色が切り替わります。
+
+Windows開発版では、[ギターとベースの3つのリグ](docs/plugins/space-and-tone.md#electric-guitar-rig)をペダルとアンプの配置で操作できます。[FM・Analog・Wavetable Synth](docs/plugins/workstations.md#fm-synth)には、Toneと音色選択に連動する表示を加えました。
 
 右ペインの「オーディオ素材」でフォルダを開き、WAV・AIFF・FLAC・MP3をオーディオトラックにドラッグできます。ピアノロールでは対象レーンを選び、「数値を入力」からプログラム番号やCC値などを指定できます。
 
@@ -226,7 +230,7 @@ alpha 3 は、120 BPM・4/4・32小節の空の新規プロジェクトで起動
 
 開発ビルドには音を加工する9種類のエフェクトと、解析用VST3の **Wave Analyzer** を同梱します。解析器をマスターまたは個別トラックのFXに挿すと、左右の波形とスペクトル、ピークとRMS、位相相関、3種類のLUFS、最大トゥルーピークを確認できます。スペクトルにカーソルを置くと周波数とレベルを表示します。Freezeで表示を固定し、Reset metersで積算をやり直せます。**File → Demo songs → Paper Lantern Replies** を開くと、リードボーカルの **EQ → Compressor**、ドラムとベースの Bus A、伴奏の Bus B、Return 1 のリバーブを確認できます。トラックのセンド量、パン、フェーダー、エフェクトの順番を `.ostf` と `.ostfp` の両方で復元します。[デモ曲ごとの試聴手順](examples/demo-songs/README.md)
 
-プラグインブラウザーには VST3 がメーカー別に表示されます。初回のスキャン結果はこの PC に保存されます。楽器とエフェクトを絞り込み、トラックへドラッグして割り当てられます。見つからない場合は **Scan one…** から個別に VST3 を選択できます。
+プラグインブラウザーには VST3 がメーカー別に表示されます。開発版では **すべて・音源・FX・OSTFツール** を直接選べます。スパナはOSTFツールの印です。種類、メーカー、名前検索を組み合わせて、対応トラックへドラッグできます。初回のスキャン結果はこの PC に保存されます。見つからない場合は **Scan one…** から個別に VST3 を選択できます。
 
 **GM Sound Module** はチャンネルごとに音色、音量、パン、エクスプレッションなどを設定できる16パートの音源です。チャンネル10は打楽器です。配布版は FluidR3 GM を同梱しており、手元の SF2 も読み込めます。複数トラックで1つの音源を共有するには **Instrument → Instrument destination** で同じ音源トラックを指定し、各パートの MIDI チャンネルを選びます。共有音源のステレオ出力は音源を置いたトラックで調整します。[FluidR3 の配布条件](licenses/NOTICE.md)
 

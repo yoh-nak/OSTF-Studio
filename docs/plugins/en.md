@@ -2,17 +2,17 @@
 
 [日本語](README.md) · [Studio user manual](../manual/en.md)
 
-Explore the 41 VST3s in Public Alpha 2 and five additions in the Windows development build. Each entry shows the editor and a first control to try.
+Explore the 41 VST3s in Public Alpha 2 and fourteen additions in the Windows development build. Each entry shows the editor and a first control to try.
 
 In another DAW, load an instrument on an instrument track or put a reverb or tuner in an audio effect slot. To edit a Studio project’s notes and takes, load **OSTF Studio (VST3)** in your DAW and open its tools inside the workstation. [Set up Studio in another DAW](../manual/en.md#studio-vst3)
 
-**Added in development** · OSTF Velocity Shaper, OSTF Guitar Voicer, OSTF Note Split, OSTF Motif Expander and Universal Tuner.
+To try the new MIDI tools, start with [Velocity Range](workstations.en.md#ostf-velocity-range) for dynamics, [Arpeggiator](workstations.en.md#ostf-arpeggiator) for held chords or [Rhythm Generator](workstations.en.md#ostf-rhythm-generator) for pulses. Each of the fourteen additional devices carries a **Windows development preview** label.
 
-## [Composition and instruments (14)](workstations.en.md)
+## [Composition and instruments (23)](workstations.en.md)
 
 [<img src="../images/plugins/ostf-scale-editor.png" alt="OSTF Scale Editor" width="360">](workstations.en.md)
 
-[OSTF Studio](workstations.en.md#ostf-studio) · [OSTF Scale Editor](workstations.en.md#ostf-scale-editor) · [OSTF Velocity Shaper](workstations.en.md#ostf-velocity-shaper) · [OSTF Guitar Voicer](workstations.en.md#ostf-guitar-voicer) · [OSTF Note Split](workstations.en.md#ostf-note-split) · [OSTF Motif Expander](workstations.en.md#ostf-motif-expander) · [GM Sound Module](workstations.en.md#gm-sound-module) · [OSTF Formant Singer](workstations.en.md#ostf-formant-singer) · [FM Synth](workstations.en.md#fm-synth) · [Analog Synth](workstations.en.md#analog-synth) · [Wavetable Synth](workstations.en.md#wavetable-synth) · [Drum Machine](workstations.en.md#drum-machine) · [Instrument Rack](workstations.en.md#instrument-rack) · [SUPER KNOBBER LEAD](workstations.en.md#super-knobber-lead)
+[OSTF Studio](workstations.en.md#ostf-studio) · [OSTF Scale Editor](workstations.en.md#ostf-scale-editor) · [OSTF Velocity Shaper](workstations.en.md#ostf-velocity-shaper) · [OSTF Guitar Voicer](workstations.en.md#ostf-guitar-voicer) · [OSTF Note Split](workstations.en.md#ostf-note-split) · [OSTF Motif Expander](workstations.en.md#ostf-motif-expander) · [GM Sound Module](workstations.en.md#gm-sound-module) · [OSTF Formant Singer](workstations.en.md#ostf-formant-singer) · [FM Synth](workstations.en.md#fm-synth) · [Analog Synth](workstations.en.md#analog-synth) · [Wavetable Synth](workstations.en.md#wavetable-synth) · [Drum Machine](workstations.en.md#drum-machine) · [Instrument Rack](workstations.en.md#instrument-rack) · [SUPER KNOBBER LEAD](workstations.en.md#super-knobber-lead) · [SUPER KNOBBER PAD](workstations.en.md#super-knobber-pad) · [SUPER KNOBBER PIANO](workstations.en.md#super-knobber-piano) · [OSTF Chord Trigger](workstations.en.md#ostf-chord-trigger) · [OSTF Rhythm Generator](workstations.en.md#ostf-rhythm-generator) · [OSTF Quantize](workstations.en.md#ostf-quantize) · [OSTF Arpeggiator](workstations.en.md#ostf-arpeggiator) · [OSTF Velocity Range](workstations.en.md#ostf-velocity-range) · [OSTF Legato](workstations.en.md#ostf-legato) · [SUPER KNOBBER ORGAN](workstations.en.md#super-knobber-organ)
 
 ## [EQ, filtering and dynamics (16)](eq-dynamics.en.md)
 
