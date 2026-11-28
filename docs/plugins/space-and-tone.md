@@ -56,21 +56,21 @@
 
 ## Electric Guitar Rig
 
-エレキギターの駆動、キャビネット、圧縮、出力を1つの画面で調整します。**Drive dB** と **Amp mix %** から始め、ピッキングの強弱を弾き比べてください。
+左のコンパクトペダルで **Threshold** を調整し、右のアンプで **Drive** と **Amp mix** を合わせます。弱く弾いた音と強く弾いた音を交互に試してみてください。
 
-![Electric Guitar Rigの画面。ドライブ、キャビネット、アンプのミックス、圧縮](../images/plugins/electric-guitar-rig.png)
+![Electric Guitar Rig — 赤茶色のコンプレッサーペダルとDrive・Cabinet・Amp mix・Outputを備えたアンプ](../images/plugins/electric-guitar-rig.png)
 
 ## Acoustic Guitar Rig
 
-アコースティックギターの低い振動や胴鳴りを整えます。**Notch Hz** で響きすぎる周波数を探し、**Notch cut dB** で下げ、必要に応じて **Room %** で空間を足します。
+緑のEQペダルで **Notch** を動かして胴鳴りの周波数を探し、**Depth** で抑えます。右側の **Air** と **Room** で高域と部屋の響きを整えます。
 
-![Acoustic Guitar Rigの画面。ローカット、ノッチ、Air、Room](../images/plugins/acoustic-guitar-rig.png)
+![Acoustic Guitar Rig — 緑のEQペダルにLow cut・Notch・Depth、木目のアンプにAir・Room](../images/plugins/acoustic-guitar-rig.png)
 
 ## Bass Rig
 
-低域の芯を残しながらアンプの倍音を足せます。**Amp blend %** で原音との比率を決め、**Compressor dB** で強く弾いた音の飛び出しを整えます。
+左のコンプレッサーの **Threshold** で強く弾いた音を整えます。金属グリルのアンプで **Drive** と **Amp blend** を調整すると、低域の芯を保ちながら倍音を足せます。
 
-![Bass Rigの画面。ドライブ、キャビネット、アンプのブレンド、圧縮](../images/plugins/bass-rig.png)
+![Bass Rig — 青いコンプレッサーペダルと金属グリルのベースアンプ](../images/plugins/bass-rig.png)
 
 ## Effect Rack
 

@@ -2,15 +2,17 @@
 
 [日本語](README.md) · [Studio user manual](../manual/en.md)
 
-Browse the bundled VST3s by what you want to do. Each entry shows the editor and suggests a first control to try. Public Alpha 2 includes 41 tools. The additions since Public Alpha 1 are the OSTF Studio workstation, SUPER KNOBBER LEAD synthesizer and SUPER KNOBBER REVERB stereo effect.
+Explore the 41 VST3s in Public Alpha 2 and five additions in the Windows development build. Each entry shows the editor and a first control to try.
 
-**All 41 screenshots come from the Windows build of Public Alpha 2.** To edit a Studio song inside another DAW, load OSTF Studio on an instrument track and open Scale Editor inside it. To use a single effect such as an EQ or reverb, insert it directly in your DAW’s effect slot. [Set up the workstation in another DAW](../manual/en.md#studio-vst3)
+In another DAW, load an instrument on an instrument track or put a reverb or tuner in an audio effect slot. To edit a Studio project’s notes and takes, load **OSTF Studio (VST3)** in your DAW and open its tools inside the workstation. [Set up Studio in another DAW](../manual/en.md#studio-vst3)
 
-## [Composition and instruments (10)](workstations.en.md)
+**Added in development** · OSTF Velocity Shaper, OSTF Guitar Voicer, OSTF Note Split, OSTF Motif Expander and Universal Tuner.
+
+## [Composition and instruments (14)](workstations.en.md)
 
 [<img src="../images/plugins/ostf-scale-editor.png" alt="OSTF Scale Editor" width="360">](workstations.en.md)
 
-[OSTF Studio](workstations.en.md#ostf-studio) · [OSTF Scale Editor](workstations.en.md#ostf-scale-editor) · [GM Sound Module](workstations.en.md#gm-sound-module) · [OSTF Formant Singer](workstations.en.md#ostf-formant-singer) · [FM Synth](workstations.en.md#fm-synth) · [Analog Synth](workstations.en.md#analog-synth) · [Wavetable Synth](workstations.en.md#wavetable-synth) · [Drum Machine](workstations.en.md#drum-machine) · [Instrument Rack](workstations.en.md#instrument-rack) · [SUPER KNOBBER LEAD](workstations.en.md#super-knobber-lead)
+[OSTF Studio](workstations.en.md#ostf-studio) · [OSTF Scale Editor](workstations.en.md#ostf-scale-editor) · [OSTF Velocity Shaper](workstations.en.md#ostf-velocity-shaper) · [OSTF Guitar Voicer](workstations.en.md#ostf-guitar-voicer) · [OSTF Note Split](workstations.en.md#ostf-note-split) · [OSTF Motif Expander](workstations.en.md#ostf-motif-expander) · [GM Sound Module](workstations.en.md#gm-sound-module) · [OSTF Formant Singer](workstations.en.md#ostf-formant-singer) · [FM Synth](workstations.en.md#fm-synth) · [Analog Synth](workstations.en.md#analog-synth) · [Wavetable Synth](workstations.en.md#wavetable-synth) · [Drum Machine](workstations.en.md#drum-machine) · [Instrument Rack](workstations.en.md#instrument-rack) · [SUPER KNOBBER LEAD](workstations.en.md#super-knobber-lead)
 
 ## [EQ, filtering and dynamics (16)](eq-dynamics.en.md)
 
@@ -24,8 +26,8 @@ Browse the bundled VST3s by what you want to do. Each entry shows the editor and
 
 [Reverb](space-and-tone.en.md#reverb) · [Delay](space-and-tone.en.md#delay) · [Chorus](space-and-tone.en.md#chorus) · [Phaser](space-and-tone.en.md#phaser) · [Flanger](space-and-tone.en.md#flanger) · [Harmonizer](space-and-tone.en.md#harmonizer) · [Distortion](space-and-tone.en.md#distortion) · [Guitar Amp](space-and-tone.en.md#guitar-amp) · [Electric Guitar Rig](space-and-tone.en.md#electric-guitar-rig) · [Acoustic Guitar Rig](space-and-tone.en.md#acoustic-guitar-rig) · [Bass Rig](space-and-tone.en.md#bass-rig) · [Effect Rack](space-and-tone.en.md#effect-rack) · [SUPER KNOBBER REVERB](space-and-tone.en.md#super-knobber-reverb)
 
-## [Analysis and stem extraction (2)](analysis.en.md)
+## [Analysis, tuning and stem extraction (3)](analysis.en.md)
 
 [<img src="../images/plugins/wave-analyzer.png" alt="Wave Analyzer" width="360">](analysis.en.md)
 
-[Wave Analyzer](analysis.en.md#wave-analyzer) · [Stem Separator](analysis.en.md#stem-separator)
+[Wave Analyzer](analysis.en.md#wave-analyzer) · [Universal Tuner](analysis.en.md#universal-tuner) · [Stem Separator](analysis.en.md#stem-separator)

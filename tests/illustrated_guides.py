@@ -22,9 +22,13 @@ def anchors(text):
 
 def verify():
     devices = {p["name"] if p["code"] == "Osd1" else display_name(p) for p in catalog()}
+    # Both guides also cover explicitly labelled devices from Windows development builds.
+    inventories = []
     for suffix, index in ((".en.md", "en.md"), (".md", "README.md")):
         overview = (GALLERY / index).read_text(encoding="utf-8")
         seen = set()
+        preview = set()
+        preview_label = "**Windows development preview**" if index == "en.md" else "**Windows開発版**"
         for group in GROUPS:
             page = GALLERY / (group + suffix)
             sections = re.split(r"^## ([^\n]+)\n", page.read_text(encoding="utf-8"), flags=re.MULTILINE)
@@ -32,9 +36,13 @@ def verify():
                 slug = name.lower().replace(" ", "-")
                 assert name not in seen, f"Duplicate device in {page}: {name}"
                 seen.add(name)
+                if body.lstrip().startswith(preview_label):
+                    preview.add(name)
                 assert f"({page.name}#{slug})" in overview, (page, name)
                 assert f"](../images/plugins/{slug}.png)" in body, (page, name)
-        assert seen == devices, (index, seen ^ devices)
+        assert seen == devices | preview, (index, seen ^ (devices | preview))
+        inventories.append((seen, preview))
+    assert inventories[0] == inventories[1], "The two guides disagree on devices or preview status"
 
     pages = [ROOT / "README.md", ROOT / "README.ja.md", *GALLERY.glob("*.md"),
              *(ROOT / "docs/manual").glob("*.md")]
@@ -53,7 +61,8 @@ def verify():
             header = stream.read(24)
         assert header[:8] == bytes.fromhex("89504e470d0a1a0a") and header[12:16] == b"IHDR", image
         assert all(struct.unpack(">II", header[16:24])), image
-    print(f"Verified {len(devices)} device entries per language and relative links in {len(pages)} guides.")
+    print(f"Verified {len(seen)} device entries per language ({len(devices)} in this build) "
+          f"and relative links in {len(pages)} guides.")
 
 
 if __name__ == "__main__":

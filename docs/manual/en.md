@@ -2,7 +2,7 @@
 
 [日本語](README.md) · [Illustrated plug-in guide](../plugins/en.md) · [Project home](../../README.md)
 
-These screenshots show the Windows interface in Public Alpha 2. The installer includes the standalone workstation and 41 VST3s. On macOS, choose the disk image for your processor and run the package inside it.
+Public Alpha 2 includes standalone Studio and 41 VST3s. The illustrations show the Windows development build. Where the controls differ, follow the instructions for your version.
 
 <a name="studio-vst3"></a>
 
@@ -19,27 +19,47 @@ If you work in Ableton Live, Cubase or another VST3 host, load **OSTF Studio** a
 
 The plug-in follows the host’s play, stop and time position. Studio reads tempo changes from the OSTF score. To line up bars with other tracks, match the host tempo map to the song. This demo starts at **78 BPM in 4/4**.
 
-<a name="scale-assignment"></a>
-
 ## Edit a global lane boundary (development build)
 
 Split a section, chord, key, scale or meter interval to expose a triangular handle. Drag it with the pointer or scissors tool. Sections and meters snap to bars, keys to beats, and chords and scales to half beats.
 
 Right-click a boundary, or select it and press Delete. Choose **Keep earlier value** or **Keep later value**. For example, keeping the later value at a 4/4 to 3/4 boundary extends 3/4 into the preceding interval. Notes retain their tick positions and lengths. Audio placement and tempo events stay in place. The musical bar and beat count changes. Undo restores the boundary. Pasting into an existing section, chord, key, scale or meter interval replaces its value and keeps its two edges.
 
+<a name="scale-assignment"></a>
+
 ## Assign a scale to the project
 
 In Public Alpha 2, load **OSTF Scale Editor** on an instrument track **inside OSTF Studio**. In another DAW, load **OSTF Studio (VST3)** first and open the project there. Choose a chord in the left pane, audition candidates, then choose **Set scale**. The check mark and scale name show the assignment for the selected target. **Harmony** updates Studio’s global scale lane. A pitched track receives its own scale direction. Save the project in Studio or in the DAW containing it.
 
+In the Windows development build, open **wrench → OSTF Scale Editor** on a MIDI track to audition through its assigned instrument. For shared harmony you can also open it from the wrench beside the prompt guide arrows.
+
 If you choose the DAW installer preset, also select **OSTF Scale Editor** under **Composition**.
 
-Choose the section in the header, then click **Play section**, or use **Play song** to start from the beginning. The header shows the sounding scale. A completely unassigned range plays suggested scales. A gap between saved assignments stays silent. To check the audio route, select the reference tone or an instrument in the header and play a test note.
+Choose the section in the header, then click **Play section**, or use **Play song** to start from the beginning. The header shows the sounding scale. A completely unassigned range plays suggested scales. A gap between saved assignments stays silent. In Public Alpha 2, to check the audio route, select the reference tone or an instrument in the header and play a test note.
 
 ![Scale Editor showing the Neon Platforms chord list, comparison cards and audition controls](../images/plugins/ostf-scale-editor.png)
 
 ## Start in standalone Studio
 
 Open the Studio application, choose your audio output under **Settings**, then choose a project under **File → Demo songs** and press Play. To add devices, scan VST3s in the plug-in browser and drag an instrument or effect to the corresponding mixer slot.
+
+In the development build, select **Plug-ins → OSTF Tools** to show devices marked with a blue wrench. In a narrow browser the button reads **Tools**. You can also choose a manufacturer or enter a search term, then drag the tool onto a compatible MIDI track.
+
+<a name="track-tools"></a>
+
+### Try a phrase in a different take (Windows development build)
+
+In a track header, the keyboard opens the instrument slot, the wrench opens OSTF Tools, the overlapping boxes open the FX chain and the faders open mix settings. The wrench beside the prompt guide arrows opens global Tools. The voicing and audio track wrenches list tools compatible with those tracks.
+
+![The global wrench beside the prompt arrows and the instrument, Tools, FX and mix buttons on the Chord Voicing track](../images/track-tools.png)
+
+1. Open the take you want on a pitched MIDI track with an instrument assigned. Select a phrase in its piano roll.
+2. Open **OSTF Motif Expander** from that track’s wrench and capture the selection. Generate a variation and listen to both versions. For an AI variation, the tool window’s title bar gives access to Studio’s shared AI connection.
+3. Choose **New take here** to keep both performances at the same position. The original stays adopted. To place the phrase later, move the cursor to an empty span on the destination track and take, then choose **Place at cursor**.
+
+![Motif Expander showing the source track, take and bar above the original notes and their variation](../images/plugins/ostf-motif-expander.png)
+
+Use Velocity Shaper for accents, Guitar Voicer for fret positions, or Note Split for repeated notes. [See the tool controls](../plugins/workstations.en.md#ostf-velocity-shaper)
 
 ### Arrangement and mixer
 
@@ -140,3 +160,11 @@ Open **Details** beside the song information strip to edit the song and its cred
 Use the **Mode** menu to choose arrangement, lyric or vocal work. The prompt guide beside the timeline changes with the mode. Use its arrows to read another example. The toolbar shows the ChatGPT connection status. When working with an external AI, choose the OSTF material to share and review the result before importing it.
 
 ![AI Arrangement Studio prompt example and navigation arrows](../images/ai-prompt-guide.png)
+
+## DAWproject exchange
+
+In the development build, choose **File → Import DAWproject** or drop a `.dawproject` file onto Studio. Embed the audio when exporting from the source DAW. Studio reads WAV, AIFF and FLAC and converts the latter two to WAV. Studio opens a new editable arrangement. Use **Save as OSTFP** to keep the converted song and its audio together.
+
+Choose **File → Export DAWproject** to send the arrangement to another DAW. MIDI parts retain their clip positions, note lengths, channels and velocities. The exchange also carries track names and colours, volume, pan, mute and solo, section markers, meter and stepped tempo changes. Pan automation supports both linear transitions and held values. Imported loops and linked clips become editable clip instances. Audio with Studio pitch, warp or loop edits is rendered into an embedded WAV so the recipient hears those edits.
+
+Assign an instrument to each MIDI track in the receiving DAW. Keep the native project for device states, bus routing, take selection, lyrics and chord/scale editing. The conversion report identifies omitted features. Studio accepts up to 15 source tracks and mono or stereo embedded WAV files up to 16 MiB each and 64 MiB combined. Split hybrid note/audio tracks in the source DAW. [DAWproject 1.0 specification](https://github.com/bitwig/dawproject)

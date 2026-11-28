@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="185" height="44" viewBox="0 0 185 44" role="img" aria-label="Share feedback">
+  <rect x=".5" y=".5" width="184" height="43" rx="8" fill="#263749" stroke="#68879a"/>
+  <g transform="translate(10 10)" stroke="#f3f8fe" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H9l-5 4zM8 8h8m-8 4h5"/></g>
+  <text x="42" y="28" fill="#f3f8fe" font-family="system-ui, sans-serif" font-size="16" font-weight="600">Share feedback</text>
+</svg>

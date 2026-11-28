@@ -1,46 +1,42 @@
 # OSTF Studio
 
-[![Buy Me a CoffeeでOSTF Studioの開発を応援する](docs/images/support-development.svg)](https://buymeacoffee.com/yohsukenak)
+コード、歌詞、テイクを一つのタイムラインで編集・演奏するデスクトップDAWです。単体でも、普段のDAWのVST3音源としても使えます。 [English](README.md)
 
-**[ご意見・機能要望を送る](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml)** · [不具合を報告する](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml) · [届いている意見を見る](https://github.com/yoh-nak/OSTF-Studio/issues)
+[![ダウンロード](docs/images/navigation/download-ja.svg)](#downloads) [![操作マニュアル](docs/images/navigation/manual-ja.svg)](docs/manual/README.md) [![プラグイン図鑑](docs/images/navigation/plugins-ja.svg)](docs/plugins/README.md) [![Buy Me a CoffeeでOSTF Studioの開発を応援する](docs/images/support-development.svg)](https://buymeacoffee.com/yohsukenak)
 
-日本語・英語で投稿できます。投稿は公開されます。
+![Paper Lantern Repliesのライブセッション。構成とテイクを並べたグリッドの上で、演奏中と次のコードを確認できます](docs/images/ostf-studio-live-session.png)
 
-[最新のOSTF仕様・開発状況](https://github.com/yoh-nak/Open-Song-Timeline-Format)。Studioの対応範囲はこのページの機能一覧で確認できます。
+<a name="downloads"></a>
 
-**[画像付き操作マニュアル](docs/manual/README.md)** · **[全プラグインの図鑑](docs/plugins/README.md)** · [English manual](docs/manual/en.md)
+## 公開アルファ2をダウンロード
 
-**公開アルファ2をダウンロード** · [Windows x64 Setup](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Setup.exe) · [Windows Portable](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Portable.zip) · [Mac (Apple Silicon)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_arm64.dmg) · [Mac (Intel)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_x86_64.dmg)
+単体版と41本のVST3を配布しています。Windowsでインストールせずに試す場合はPortableを、Macではプロセッサーに合うDMGを選んでください。
 
-[リリースノートと対応ソース](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.2) · [公開アルファ1](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1) · [CHANGELOG](CHANGELOG.md)
+| パソコン | 配布ファイル |
+| --- | --- |
+| Windows x64 | [Setup (.exe)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Setup.exe) · [Portable (.zip)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Portable.zip) |
+| macOS · Apple silicon | [DMG · arm64](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_arm64.dmg) |
+| macOS · Intel | [DMG · x86_64](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_x86_64.dmg) |
 
-公開アルファ2には、M4L版の188音色を収録し、通常処理と2倍オーバーサンプリングを切り替えられるリードシンセを追加しました。[SUPER KNOBBER LEADの操作画面](docs/plugins/workstations.md#super-knobber-lead)
+[リリースノートと対応ソース](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.2) · [公開アルファ1](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1) · [変更履歴](CHANGELOG.md)
 
-公開アルファ2では「ファイル → 曲全体をオーディオに書き出す」からステレオミックスを保存できます。Ctrl／⌘クリックで複数のトラック名やクリップを選び、右クリックから1本のオーディオトラックにバウンスできます。「楽譜」を開いて「ピアノロール」を押すと、同じパートの楽譜を見ながらノートを編集できます。[バウンスと楽譜の操作](docs/manual/README.md)
+## 開発版の画面と操作
 
-[SUPER KNOBBER REVERBの操作とアナライザー](docs/plugins/space-and-tone.md#super-knobber-reverb)
+画像付きマニュアルでは、トラックのスパナからツールを開き、選択した音符の強弱やリズムを変え、元の演奏を残して別テイクを試す手順を紹介しています。図鑑では開発版で増えた5本を含む全46本を見られます。 [テイクを試す](docs/manual/README.md#track-tools) · [最新のOSTF仕様](https://github.com/yoh-nak/Open-Song-Timeline-Format)
 
-公開アルファ2のScale Editorでは、書き込み先を選び、**「構成を試聴」または「全曲を試聴」** を押すと、設定済みのスケールを選択中の音源で聴けます。曲のテンポに合わせて音階が8分音符で上行し、未設定区間は休符になります。試聴はStudioの再生とは独立して停止できます。
+## ご意見・不具合報告
 
-公開アルファ2のインストーラーでは、他のDAWでVST3だけを使う場合は「OSTF Studio 本体」のチェックを外せます。本体が必須のプラグインを選んだ間だけ、本体が自動選択されます。Scale Editorを選択すると本体にもチェックが入り、Scale Editorを外すと本体のチェックを変更できます。
+[![意見・要望を送る](docs/images/navigation/feedback-ja.svg)](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml)
 
-公開アルファ2では **ファイル → Synthesizer V 形式で書き出す (.svp)** から「主旋律のみ」「コーラスのみ」「主旋律とコーラス」を選べます。両方を選ぶと、採用中の音符と歌詞が同じ曲の別トラックに入ります。声の重なる和音は声部に分け、テンポと拍子の変更も引き継ぎます。歌声と歌唱表現はSynthesizer Vで設定できます。
+日本語・英語で投稿できます。投稿内容は公開されます。 [不具合を報告](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml) · [既存の投稿](https://github.com/yoh-nak/OSTF-Studio/issues)
 
-公開アルファ2では、曲の終わりに最後のキーが残ります。横のキャメロット番号を押すと、現在のキーを縁取りした長調・短調の対応表が円形に開きます。個別のプラグインを一時的に外して聴き比べるには、FXチェーンの各行、音源のメニュー、またはラック内のデバイスで「バイパス」を切り替えます。割り当てと有効状態はOSTFPの保存・再読み込みで復元できます。
+## 他のDAWでStudio本体を使う
 
-## 他のDAWでStudio本体を使う（開発版）
-
-WindowsのDAW用インストーラー `OSTF_Studio_VST3_Windows_x64_Setup.exe` は、Studio本体と全プラグインにチェックが入った状態で開きます。Studio VST3とデモ曲用の音源・エフェクトだけを入れる場合は、「他のDAWで使う Studio VST3」を選んでください。インストール後、DAWでVST3を再スキャンし、インストゥルメントとして **OSTF Studio** を開きます。プラグイン内の **ファイル → デモソング → Paper Lantern Replies** を選び、DAWで再生してください。
+Windowsのセットアップは、Studio本体と全プラグインにチェックが入った状態で開きます。Studio VST3とデモ曲用の音源・エフェクトだけを入れる場合は、「他のDAWで使う Studio VST3」を選んでください。インストール後、DAWでVST3を再スキャンし、インストゥルメントとして **OSTF Studio** を開きます。プラグイン内の **ファイル → デモソング → Paper Lantern Replies** を選び、DAWで再生してください。
 
 インストゥルメントトラックに **OSTF Studio** を挿し、プラグイン内で `.ostf` または `.ostfp` を開きます。アレンジ、ライブセッション、ピアノロール、ミキサーを操作でき、ステレオのミックスがDAWのトラックに返ります。**DAWの再生に追従** をオンにすると再生・停止とタイムラインの秒位置に追従します。テンポはOSTFのテンポマップを使います。単独で試聴したいときは追従をオフにします。
 
 DAWのプロジェクトを保存すると、Studioの曲、プロジェクトに同梱した音声、音源・エフェクトの設定も一緒に保存されます。このVST3は公開アルファ1の次の開発版で追加した機能です。
-
-**公開アルファ2のVST3は全41本です。** 公開アルファ1から、他のDAWで曲全体を開く **OSTF Studio (VST3)**、リード音源 **SUPER KNOBBER LEAD**、残響を調整する **SUPER KNOBBER REVERB** が加わりました。
-
-![Paper Lantern Repliesのライブセッション。上に現在と次のコード、中央に構成別のトラック、下に選択した演奏を表示](docs/images/ostf-studio-live-session.png)
-
-[他のDAWでStudioを使う](docs/manual/README.md#studio-vst3) · [コードとスケールを編集する](docs/manual/README.md#timeline-edit) · [ドラムをループする](docs/manual/README.md#drum-loop) · [楽譜とピアノロールを並べる](docs/manual/README.md#score-piano) · [オーディオの書き出しとバウンス](docs/manual/README.md#audio-export)
 
 Formant Singerは「フレイム」のような1つの歌詞を複数の音符に割り当てたとき、最初の音で子音を発音し、途中は母音でつないで最後の音で語尾を歌います。Singerに直接読み込んだOSTFでは、音符の途中のテンポ変更も発音の長さに反映されます。
 

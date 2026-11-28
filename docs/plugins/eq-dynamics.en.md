@@ -8,6 +8,8 @@ Insert these on the track or bus whose tone, dynamics or space in the mix you wa
 
 To map a hardware knob, route MIDI to the effect, open **MIDI CC**, choose a parameter and turn the knob. The menu displays the learned channel and CC number. Choose a mapped parameter to relearn or remove it. The mapping is saved with that effect instance.
 
+Start with EQ to adjust a frequency range, Compressor to control loud passages, or Unmask to make room for a kick or vocal on a different track.
+
 ## EQ
 
 Three broad controls for lows, mids and highs. Move **Mid 1 kHz dB** a little in each direction to hear how the midrange changes.

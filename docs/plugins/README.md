@@ -2,15 +2,17 @@
 
 [English](en.md) · [Studio操作マニュアル](../manual/README.md)
 
-同梱VST3を用途から探せます。各項目に実際の操作画面と、最初に試す操作を載せました。公開アルファ2は全41本です。公開アルファ1に加えてワークステーション音源 **OSTF Studio**、リードシンセ **SUPER KNOBBER LEAD**、ステレオリバーブ **SUPER KNOBBER REVERB** が使えます。
+公開アルファ2で使える41本と、Windows開発版で加わった5本を用途別に紹介します。各項目には操作画面と、音や編集結果を確かめるために最初に試す操作があります。
 
-**41本の操作画面は公開アルファ2のWindows版で撮影しました。** 普段のDAWでStudioの曲全体を扱う場合は、音源トラックにOSTF Studioを読み込み、その中でScale Editorを開きます。リバーブやEQを使う場合は、普段のDAWのFXスロットに直接挿せます。 [他のDAWでの起動手順](../manual/README.md#studio-vst3)
+他のDAWを使う場合、音源はインストゥルメントトラックに、リバーブやチューナーは音声を通すFXスロットに挿します。Studioの音符やテイクを編集するときは、DAWに **OSTF Studio (VST3)** を読み込み、その中でツールを開きます。 [他のDAWでの起動手順](../manual/README.md#studio-vst3)
 
-## [作曲ツールと音源 (10)](workstations.md)
+**開発版で追加**　OSTF Velocity Shaper、OSTF Guitar Voicer、OSTF Note Split、OSTF Motif Expander、Universal Tuner。
+
+## [作曲ツールと音源 (14)](workstations.md)
 
 [<img src="../images/plugins/ostf-scale-editor.png" alt="OSTF Scale Editor" width="360">](workstations.md)
 
-[OSTF Studio](workstations.md#ostf-studio) · [OSTF Scale Editor](workstations.md#ostf-scale-editor) · [GM Sound Module](workstations.md#gm-sound-module) · [OSTF Formant Singer](workstations.md#ostf-formant-singer) · [FM Synth](workstations.md#fm-synth) · [Analog Synth](workstations.md#analog-synth) · [Wavetable Synth](workstations.md#wavetable-synth) · [Drum Machine](workstations.md#drum-machine) · [Instrument Rack](workstations.md#instrument-rack) · [SUPER KNOBBER LEAD](workstations.md#super-knobber-lead)
+[OSTF Studio](workstations.md#ostf-studio) · [OSTF Scale Editor](workstations.md#ostf-scale-editor) · [OSTF Velocity Shaper](workstations.md#ostf-velocity-shaper) · [OSTF Guitar Voicer](workstations.md#ostf-guitar-voicer) · [OSTF Note Split](workstations.md#ostf-note-split) · [OSTF Motif Expander](workstations.md#ostf-motif-expander) · [GM Sound Module](workstations.md#gm-sound-module) · [OSTF Formant Singer](workstations.md#ostf-formant-singer) · [FM Synth](workstations.md#fm-synth) · [Analog Synth](workstations.md#analog-synth) · [Wavetable Synth](workstations.md#wavetable-synth) · [Drum Machine](workstations.md#drum-machine) · [Instrument Rack](workstations.md#instrument-rack) · [SUPER KNOBBER LEAD](workstations.md#super-knobber-lead)
 
 ## [EQ・フィルター・ダイナミクス (16)](eq-dynamics.md)
 
@@ -24,8 +26,8 @@
 
 [Reverb](space-and-tone.md#reverb) · [Delay](space-and-tone.md#delay) · [Chorus](space-and-tone.md#chorus) · [Phaser](space-and-tone.md#phaser) · [Flanger](space-and-tone.md#flanger) · [Harmonizer](space-and-tone.md#harmonizer) · [Distortion](space-and-tone.md#distortion) · [Guitar Amp](space-and-tone.md#guitar-amp) · [Electric Guitar Rig](space-and-tone.md#electric-guitar-rig) · [Acoustic Guitar Rig](space-and-tone.md#acoustic-guitar-rig) · [Bass Rig](space-and-tone.md#bass-rig) · [Effect Rack](space-and-tone.md#effect-rack) · [SUPER KNOBBER REVERB](space-and-tone.md#super-knobber-reverb)
 
-## [解析・素材の取り出し (2)](analysis.md)
+## [解析・チューニング・素材の取り出し (3)](analysis.md)
 
 [<img src="../images/plugins/wave-analyzer.png" alt="Wave Analyzer" width="360">](analysis.md)
 
-[Wave Analyzer](analysis.md#wave-analyzer) · [Stem Separator](analysis.md#stem-separator)
+[Wave Analyzer](analysis.md#wave-analyzer) · [Universal Tuner](analysis.md#universal-tuner) · [Stem Separator](analysis.md#stem-separator)

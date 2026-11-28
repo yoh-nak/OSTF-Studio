@@ -1,5 +1,7 @@
 # OSTF Studio — architecture proposal (not normative OSTF spec)
 
+The [illustrated manual](manual/en.md#track-tools) distinguishes the 41 VST3s in Public Alpha 2 from the 46 in the Windows development build. In that build, Studio hosts scope-compatible editing tools alongside the track instrument. Note edits can target an individual take. Motif Expander can capture a phrase, audition a variation and write it to an alternate take while preserving the adopted performance. The [plug-in guide](plugins/en.md) identifies the five development additions.
+
 The [current OSTF specification and registry](https://github.com/yoh-nak/Open-Song-Timeline-Format) govern format work. Review its default branch before changing a reader or writer. Studio embeds the reviewed schemas for the file versions it implements. The upstream status reviewed at [e207a09](https://github.com/yoh-nak/Open-Song-Timeline-Format/blob/e207a097bfee7c57e53c5fb86216b75b0cea1595/STATUS.json) identifies 5.4.0 as the source baseline and 6.0.0 as draft design.
 
 Global boundary edits operate in source-score ticks. The arrangement reads shared edge positions from the score when it builds the preview. Moving one shared edge resizes both neighboring spans. Removing a meter change keeps MIDI ticks and audio placement while changing the meter map. Its section anchors index musical bar numbers separately from the linear tick axis. A later authored meter change keeps its tick even if this shortens the preceding measure. [Build targets and cache policy](BUILDING.md)

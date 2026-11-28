@@ -8,6 +8,6 @@
 
 1. Choose **OSTF Studio** in the DAW’s instrument browser and open an OSTFP from the workstation’s File menu.
 2. Enable **Follow DAW transport** and press Play in the host. Studio renders its instruments and inserts to the host track. Turn follow off to use Studio’s transport for a separate audition.
-3. To assign scales, load **OSTF Scale Editor** in a Studio instrument slot. Saving the host project stores Studio’s project and the follow setting.
+3. To assign scales, open **OSTF Scale Editor** in a Studio instrument slot in Public Alpha 2, or from a Studio track’s wrench in the Windows development build. Saving the host project stores Studio’s project and the follow setting.
 
 Match the initial downbeat and tempo and meter maps for identical bar numbers. A second computer needs the VST3s and external libraries used in the song.

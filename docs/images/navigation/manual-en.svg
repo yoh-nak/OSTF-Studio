@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="158" height="44" viewBox="0 0 158 44" role="img" aria-label="User manual">
+  <rect x=".5" y=".5" width="157" height="43" rx="8" fill="#263749" stroke="#68879a"/>
+  <g transform="translate(10 10)" stroke="#f3f8fe" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5q5-2 9 1 4-3 9-1v14q-5-2-9 1-4-3-9-1zM12 6v14"/></g>
+  <text x="42" y="28" fill="#f3f8fe" font-family="system-ui, sans-serif" font-size="16" font-weight="600">User manual</text>
+</svg>

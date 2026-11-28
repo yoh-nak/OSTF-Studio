@@ -56,21 +56,21 @@ Adds preamp drive and cabinet coloration to a direct guitar. Set **Preamp dB** f
 
 ## Electric Guitar Rig
 
-Combines electric guitar drive, cabinet tone, compression and output. Start with **Drive dB** and **Amp mix %** while alternating soft and hard picking.
+Set **Threshold** on the compressor pedal, then balance **Drive** and **Amp mix** on the amp. Alternate light and heavy picking to hear the difference.
 
-![Electric Guitar Rig showing drive, cabinet, amp mix and compression](../images/plugins/electric-guitar-rig.png)
+![Electric Guitar Rig — rust-red compressor pedal beside the drive, cabinet, mix and output controls on the amp](../images/plugins/electric-guitar-rig.png)
 
 ## Acoustic Guitar Rig
 
-Shapes acoustic guitar resonance. Find a ringing body frequency with **Notch Hz**, reduce it with **Notch cut dB**, then add ambience with **Room %**.
+Use **Notch** on the green EQ pedal to find a resonant body frequency and **Depth** to reduce it. Adjust **Air** and **Room** on the cabinet to finish the sound.
 
-![Acoustic Guitar Rig showing low cut, notch, air and room](../images/plugins/acoustic-guitar-rig.png)
+![Acoustic Guitar Rig — green three-knob EQ pedal and a wood-trimmed acoustic amp with Air and Room](../images/plugins/acoustic-guitar-rig.png)
 
 ## Bass Rig
 
-Blends amp harmonics with a bass signal while retaining its low end. Use **Amp blend %** for color and **Compressor dB** to control accented notes.
+Use **Threshold** on the compressor pedal to control accented notes. On the metal-grille amp, adjust **Drive** and **Amp blend** to add harmonics while retaining the bass foundation.
 
-![Bass Rig showing drive, cabinet, amp blend and compression](../images/plugins/bass-rig.png)
+![Bass Rig — blue compressor pedal next to the metal-grille bass amp](../images/plugins/bass-rig.png)
 
 ## Effect Rack
 

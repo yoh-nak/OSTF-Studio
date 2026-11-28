@@ -1,36 +1,34 @@
 # OSTF Studio
 
-[![Support OSTF Studio on Buy Me a Coffee](docs/images/support-development.svg)](https://buymeacoffee.com/yohsukenak)
+Arrange chords, lyrics and takes on one musical timeline. Play the song in standalone Studio or load the workstation as a VST3 instrument in your usual DAW. [日本語](README.ja.md)
 
-**[Share feedback or request a feature](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml)** · [Report a bug](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml) · [Read existing feedback](https://github.com/yoh-nak/OSTF-Studio/issues)
+[![Download](docs/images/navigation/download-en.svg)](#downloads) [![User manual](docs/images/navigation/manual-en.svg)](docs/manual/en.md) [![Plug-in guide](docs/images/navigation/plugins-en.svg)](docs/plugins/en.md) [![Support OSTF Studio on Buy Me a Coffee](docs/images/support-development.svg)](https://buymeacoffee.com/yohsukenak)
 
-Posts are public. English and Japanese are welcome.
+![Paper Lantern Replies in Live Session, with current and upcoming chords above the section and take grid](docs/images/ostf-studio-live-session.png)
 
-[Current OSTF specification and development status](https://github.com/yoh-nak/Open-Song-Timeline-Format). See the feature inventory below for the versions supported by Studio.
+<a name="downloads"></a>
 
-OSTF Studio is a desktop music workstation for arranging, playing and editing Open Song Timeline Format scores.
+## Download Public Alpha 2
 
-**[Illustrated user manual](docs/manual/en.md)** · **[Browse all plug-ins with screenshots](docs/plugins/en.md)** · [日本語マニュアル](docs/manual/README.md)
+The release includes the standalone workstation and 41 VST3s. Choose Portable to try Studio on Windows without installing it, or choose the disk image for your Mac’s processor.
 
-**Download Public Alpha 2** · [Windows x64 Setup](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Setup.exe) · [Windows Portable](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Portable.zip) · [Mac (Apple Silicon)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_arm64.dmg) · [Mac (Intel)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_x86_64.dmg)
+| Platform | Download |
+| --- | --- |
+| Windows x64 | [Setup (.exe)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Setup.exe) · [Portable (.zip)](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_Windows_x64_Portable.zip) |
+| macOS · Apple silicon | [DMG · arm64](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_arm64.dmg) |
+| macOS · Intel | [DMG · x86_64](https://github.com/yoh-nak/OSTF-Studio/releases/download/v1.0.0-public-alpha.2/OSTF_Studio_1.0.0-public-alpha.2_macOS_x86_64.dmg) |
 
-[Release notes and corresponding source](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.2) · [Previous Public Alpha 1](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1) · [CHANGELOG](CHANGELOG.md)
+[Release notes and corresponding source](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.2) · [Previous Public Alpha 1](https://github.com/yoh-nak/OSTF-Studio/releases/tag/v1.0.0-public-alpha.1) · [Changelog](CHANGELOG.md)
 
-Public Alpha 2 includes a lead synth with 188 factory sounds from the M4L instrument and selectable 2x oversampling. [SUPER KNOBBER LEAD controls and screenshot](docs/plugins/workstations.en.md#super-knobber-lead)
+## In the development build
 
-In Public Alpha 2, choose **File → Export mix as audio** to write the stereo master. Ctrl/Cmd-click track headers to select a group, then right-click to bounce the group to one audio track. Ctrl/Cmd-click clips to bounce just their time span. Open **Score → Piano Roll** to edit MIDI while reading the selected part. [Audio and notation workflows](docs/manual/en.md)
+The illustrated manual shows how to open a track’s wrench, reshape selected notes and audition a variation while keeping the original take. The gallery covers all 46 devices, including the five development additions. [Try the track tools](docs/manual/en.md#track-tools) · [Current OSTF specification](https://github.com/yoh-nak/Open-Song-Timeline-Format)
 
-[SUPER KNOBBER REVERB controls and analyzer](docs/plugins/space-and-tone.en.md#super-knobber-reverb)
+## Feedback
 
-In Public Alpha 2 for Windows, drag the edge between global clips to change their timing. Sections and meter snap to bars, keys to beats, and chords and scales to half beats. Use the drum ruler to draw a loop or drag either end. The Scale Editor names the scale sounding during section and song auditions.
+[![Share feedback](docs/images/navigation/feedback-en.svg)](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=feedback.yml)
 
-**Public Alpha 2 includes 41 VST3s, up from 38 in Public Alpha 1.** The three additions are the OSTF Studio workstation VST3, SUPER KNOBBER LEAD and SUPER KNOBBER REVERB.
-
-![Paper Lantern Replies in Live Session, with chord cues above the section and track grid and a MIDI editor below](docs/images/ostf-studio-live-session.png)
-
-*Paper Lantern Replies in the Windows development build.* Pick takes in the grid and follow the current and upcoming chords as the queued sections play.
-
-[Use Studio in another DAW](docs/manual/en.md#studio-vst3) · [Edit chords and scales](docs/manual/en.md#timeline-edit) · [Set a drum loop](docs/manual/en.md#drum-loop) · [Edit beside the score](docs/manual/en.md#score-piano) · [Export and bounce](docs/manual/en.md#audio-export)
+Posts are public. English and Japanese are welcome. [Report a bug](https://github.com/yoh-nak/OSTF-Studio/issues/new?template=bug.yml) · [Read existing feedback](https://github.com/yoh-nak/OSTF-Studio/issues)
 
 ## OSTF 5.2 studio preview
 
@@ -38,9 +36,9 @@ In Public Alpha 2, choose **File → Export Synthesizer V (.svp)** and select th
 
 The transport retains the last key at the end of the score. Click its coloured Camelot number to see the 24 major and minor keys with the current key highlighted. Switch **Bypass** on in an FX chain, the instrument destination menu, or a rack to audition the mix with an individual device inactive. Save the session as an OSTFP to recall the assignments and switch settings.
 
-### Run Studio inside another DAW (development build)
+### Run Studio inside another DAW
 
-The Windows DAW installer, `OSTF_Studio_VST3_Windows_x64_Setup.exe`, initially selects the standalone Studio application and every bundled VST3. To install only the workstation plug-in and the devices used by **Paper Lantern Replies**, choose **Studio VST3 for another DAW**. After installation, rescan VST3s in your DAW, load **OSTF Studio** as an instrument, then choose **File → Demo songs → Paper Lantern Replies** in the plug-in and press Play in the DAW.
+Windows Setup initially selects the standalone Studio application and every bundled VST3. To install only the workstation plug-in and the devices used by **Paper Lantern Replies**, choose **Studio VST3 for another DAW**. After installation, rescan VST3s in your DAW, load **OSTF Studio** as an instrument, then choose **File → Demo songs → Paper Lantern Replies** in the plug-in and press Play in the DAW.
 
 Load **OSTF Studio** on a stereo instrument track and open an `.ostf` or `.ostfp` in its editor. The arrangement, live session, piano roll and mixer use the same project as the standalone application. **Follow DAW transport** starts and stops the song with the host and follows its timeline position in seconds. The OSTF tempo map controls the song's tempo. Turn follow off to audition Studio independently.
 

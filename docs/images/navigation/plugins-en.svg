@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="159" height="44" viewBox="0 0 159 44" role="img" aria-label="Plug-in guide">
+  <rect x=".5" y=".5" width="158" height="43" rx="8" fill="#263749" stroke="#68879a"/>
+  <g transform="translate(10 10)" stroke="#f3f8fe" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></g>
+  <text x="42" y="28" fill="#f3f8fe" font-family="system-ui, sans-serif" font-size="16" font-weight="600">Plug-in guide</text>
+</svg>

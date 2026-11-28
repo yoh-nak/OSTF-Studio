@@ -1,5 +1,11 @@
 # OSTF Studio development handoff
 
+## 2026-11-28 — Homepage and illustrated guides
+
+The bilingual manuals and plug-in guides show the Windows development interface at Studio revision `7c12476`. Public Alpha 2 packages contain 41 devices. The additional five entries carry a visible Windows development label. The manuals cover the global and track wrenches, host transport and source-take audition and placement. The homepage download table points to the four platform assets of Public Alpha 2.
+
+Run `python tests/illustrated_guides.py` from this checkout. It checks the installer catalogue, both language inventories, image references and internal anchors. The screenshots came from the Windows x64 workstation, editor renderers and their fixtures, including stereo input for the analyzer and a running WebView2 for Scale Editor. The captured version and publication status apply to the documentation; see the release page for platform packages.
+
 ## 2026-11-28 — Incremental builds and global boundaries
 
 Branch `codex/incremental-build-timeline`. See [build modes and measurements](docs/BUILDING.md). Test a split with scissors still active, drag the triangle, then remove it with either value and undo. Variable-length measures are indexed by source tick and musical bar. The ruler, transport, metronome, notation and bar insertion use that map. The track-view smoke test checks both meter choices against the saved score. The same Windows configuration rebuilt 74 translation units in 466.88 seconds before the display-version change was isolated, and one in 30.50 seconds afterward. Local Windows Release passed all 48 CTests, including the focused transport, notation, project, track-view and provider tests. The Ninja core passed the unchanged-build log check. Windows Setup and Portable ZIP generation passed locally. The ZIP integrity check covered all 885 entries and found exactly one full GM soundfont. Subsequent CI and packaging evidence is attached to [PR #12](https://github.com/yoh-nak/OSTF-Studio/pull/12). The homepage links directly to the current OSTF registry and the development support page. Release history is in [RELEASING.md](docs/RELEASING.md).
